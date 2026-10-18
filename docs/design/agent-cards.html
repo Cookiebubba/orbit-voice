@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Orbit Agents: card view mockup</title>
+<style>
+:root{
+  --bg:#0b0d14;--panel:#121522;--card:#161a29;--line:#252a3d;--line2:#343b57;
+  --text:#e7e9f2;--muted:#8b90a8;--accent:#7c8cff;
+  --run:#4ade80;--pause:#fbbf24;--need:#f472b6;--done:#60a5fa;--fail:#f87171;--stop:#9ca3af;
+  --r:14px;color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;padding-block:20px;padding-inline:16px}
+.wrap{max-width:1120px;margin:0 auto}
+.note{color:var(--muted);font-size:12px;margin:0 0 12px}
+header.run{display:flex;flex-wrap:wrap;gap:14px 18px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
+.orb{width:34px;height:34px;border-radius:50%;flex:none;background:radial-gradient(circle at 35% 30%,#d6dbff,#6d5dfc 45%,#1d1b4b 78%);box-shadow:0 0 18px #6d5dfc88}
+.goal{flex:1 1 260px;min-width:0}
+.goal h1{font-size:16px;margin:0 0 2px;font-weight:600}
+.goal p{margin:0;color:var(--muted);font-size:13px}
+.overall{flex:1 1 200px;min-width:160px}
+.overall .small{display:flex;justify-content:space-between;margin-bottom:6px}
+.hbtns{display:flex;gap:8px;flex-wrap:wrap}
+.bar{height:6px;background:#22273a;border-radius:99px;overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .4s}
+.small{font-size:12px;color:var(--muted)}
+button{font:inherit;font-size:13px;color:var(--text);background:#1f2436;border:1px solid var(--line);border-radius:9px;padding:6px 12px;cursor:pointer}
+button:hover{border-color:var(--line2);background:#252b40}
+button:disabled{opacity:.4;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:#0b0d14;font-weight:600}
+button.danger{color:var(--fail)}
+button.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.layout{display:grid;grid-template-columns:1fr 300px;gap:16px;margin-top:16px;align-items:start}
+@media (max-width:860px){.layout{grid-template-columns:1fr}}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:10px;transition:border-color .2s,opacity .2s}
+.card.need{border-color:#f472b670;box-shadow:0 0 0 1px #f472b625 inset}
+.card.over{border-color:#fbbf2470}
+.card.stopped{opacity:.6}
+.top{display:flex;align-items:center;gap:8px;min-width:0}
+.name{font-weight:600}
+.role{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{margin-left:auto;flex:none;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:99px;display:inline-flex;align-items:center;gap:6px}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.pill.running{color:var(--run);background:#4ade8018}
+.pill.running::before{animation:pulse 1.4s ease-in-out infinite}
+.pill.paused{color:var(--pause);background:#fbbf2418}
+.pill.need{color:var(--need);background:#f472b618}
+.pill.need::before{animation:pulse 1s ease-in-out infinite}
+.pill.done{color:var(--done);background:#60a5fa18}
+.pill.failed{color:var(--fail);background:#f8717118}
+.pill.stopped{color:var(--stop);background:#9ca3af18}
+@keyframes pulse{50%{opacity:.25}}
+.task{margin:0;font-size:13.5px}
+.prog .small{display:flex;justify-content:space-between;gap:8px;margin-top:6px}
+.prog .small span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card.running .bar>i{background:var(--run)}
+.card.paused .bar>i{background:var(--pause)}
+.card.need .bar>i{background:var(--need)}
+.card.done .bar>i{background:var(--done)}
+.card.stopped .bar>i,.card.failed .bar>i{background:var(--stop)}
+.activity{font:12px/1.4 ui-monospace,"Cascadia Code",Consolas,monospace;color:#c4c8dc;background:#0f1220;border:1px solid var(--line);border-radius:9px;padding:7px 9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.activity.wrap{white-space:normal;font-family:inherit;font-size:12.5px}
+.meta{display:flex;gap:12px;flex-wrap:wrap}
+.ask{background:#f472b60f;border:1px solid #f472b640;border-radius:10px;padding:9px 10px;display:flex;flex-direction:column;gap:8px;font-size:13px}
+.ask .row{display:flex;gap:8px}
+.redirect{display:flex;flex-direction:column;gap:8px}
+.redirect textarea{width:100%;min-height:62px;resize:vertical;background:#0f1220;color:var(--text);border:1px solid var(--line2);border-radius:9px;padding:8px;font:inherit;font-size:13px}
+.redirect .row{display:flex;gap:8px;justify-content:flex-end}
+.actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.actions .ghost{margin-left:auto}
+.details{border-top:1px solid var(--line);padding-top:8px;font-size:12.5px}
+.details ol{margin:0;padding-left:20px}
+.details li{margin:2px 0;color:var(--muted)}
+.details li.c{color:#a7f3d0}
+.details li.c::marker{content:"✓  "}
+.details li.ip{color:var(--text);font-weight:600}
+.details li.ip::marker{content:"▸  "}
+.report{margin-top:8px;color:#c4c8dc}
+aside.feed{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;position:sticky;top:calc(16px + env(safe-area-inset-top, 0px))}
+aside h2{font-size:13px;margin:0 0 10px;font-weight:600;display:flex;align-items:center;gap:8px}
+aside h2 .orb{width:16px;height:16px;box-shadow:none}
+.events{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;max-height:430px;overflow:auto}
+.events li{font-size:12.5px;color:#c4c8dc;border-left:2px solid var(--line2);padding-left:9px}
+.events li b{color:var(--text);font-weight:600}
+.events li time{display:block;color:var(--muted);font-size:11px}
+.events li.you{border-color:var(--accent)}
+.synth{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.synth h3{font-size:12px;margin:0 0 6px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.synth p{margin:0;font-size:12.5px;color:#c4c8dc}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="note">Mockup with sample data. The buttons work locally, so you can try pause, redirect, approve and stop.</p>
+
+  <header class="run">
+    <div class="orb" aria-hidden="true"></div>
+    <div class="goal">
+      <h1>Run 7 · Harden the sleep and hang-up flow</h1>
+      <p id="conductorLine">Conductor: waiting on tests and docs. refactor is paused by you.</p>
+    </div>
+    <div class="overall">
+      <div class="small"><span>Overall</span><span id="overallTxt"></span></div>
+      <div class="bar"><i id="overallBar"></i></div>
+    </div>
+    <div class="hbtns">
+      <button id="pauseAll">Pause all</button>
+      <button class="danger" id="stopRun">Stop run</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <main class="grid" id="grid" aria-live="polite"></main>
+    <aside class="feed">
+      <h2><span class="orb" aria-hidden="true"></span>Conductor</h2>
+      <ul class="events" id="events"></ul>
+      <div class="synth">
+        <h3>Summary so far</h3>
+        <p id="synth">review found one low-severity issue, and the Conductor sent the fix to tests. Waiting on tests and docs before merging the branches.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+const agents = [
+  { id:'docs', role:'writer · agents/run-7/docs', task:'Update README and CHANGELOG for "go to sleep hangs up"',
+    state:'need', ask:'Allow edit to README.md (+12 −3)?', done:2, total:4,
+    activity:'Waiting for your approval', secs:241, cost:0.18, plan:['Read current README','Draft wording','Edit README.md','Edit CHANGELOG.md'] },
+  { id:'tests', role:'writer · agents/run-7/tests', task:'Unit tests for hangUpWhenQuiet and the tap-mode draft hold',
+    state:'running', done:4, total:7,
+    activity:'Running npm test -- useVoice', secs:372, cost:0.41,
+    plan:['Read useVoice.ts','Set up fake timers','Test quiet-detection hang-up','Test tools-in-flight delay','Test 60 s draft hold','Add WebSocket Origin test (from review)','Run full suite'] },
+  { id:'refactor', role:'writer · agents/run-7/refactor', task:'Split server.js routes into modules, no behaviour change',
+    state:'paused', done:3, total:9,
+    activity:'Paused by you · context kept', secs:508, cost:0.62,
+    plan:['Map routes','Extract auth','Extract models route','Extract sessions API','Extract voice proxy','Extract static + CSP','Wire router','Run security checks','Run tests'] },
+  { id:'review', role:'reader · shared checkout', task:'Security review of the new /api/runs endpoints',
+    state:'done', done:5, total:5,
+    activity:'Report delivered', secs:296, cost:0.33,
+    plan:['List new endpoints','Check auth + cookie','Check Origin / Host','Check WebSocket upgrade','Write report'],
+    report:'One low: the /api/runs/stream upgrade skipped the Origin check. The Conductor routed the fix to tests. Nothing else found.' },
+];
+
+let events = [
+  { t:'09:41', html:'Planned 4 tasks from the goal; spawned <b>tests</b>, <b>docs</b>, <b>refactor</b>, <b>review</b>.' },
+  { t:'09:46', html:'<b>review</b> reported done: 1 low issue.' },
+  { t:'09:46', html:'Sent the Origin-check fix to <b>tests</b> (agents never message each other).' },
+  { t:'09:48', html:'You paused <b>refactor</b>.', you:true },
+  { t:'09:49', html:'<b>docs</b> needs you: README edit approval.' },
+];
+
+const LABEL = { running:'Running', paused:'Paused', need:'Needs you', done:'Done', failed:'Failed', stopped:'Stopped' };
+const open = new Set(), redirecting = new Set();
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = s => `${Math.floor(s/60)}m ${String(s%60).padStart(2,'0')}s`;
+const now = () => new Date().toTimeString().slice(0,5);
+const order = { need:0, running:1, paused:2, failed:3, done:4, stopped:5 };
+
+function log(html, you){ events.push({ t:now(), html, you }); renderEvents(); }
+
+function card(a){
+  const pct = Math.round(a.done / a.total * 100);
+  const step = a.state === 'done' ? 'All steps complete' : `Step ${Math.min(a.done+1,a.total)} of ${a.total} · ${esc(a.plan[Math.min(a.done,a.total-1)])}`;
+  const live = ['running','need','paused'].includes(a.state);
+  const planHtml = a.plan.map((p,i) => `<li class="${i < a.done ? 'c' : (i === a.done && live ? 'ip' : '')}">${esc(p)}</li>`).join('');
+  return `
+  <article class="card ${a.state}" data-id="${a.id}">
+    <div class="top">
+      <span class="name">${a.id}</span><span class="role">${esc(a.role)}</span>
+      <span class="pill ${a.state}">${LABEL[a.state]}</span>
+    </div>
+    <p class="task">${esc(a.task)}</p>
+    <div class="prog">
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="small"><span>${step}</span><span>${a.done}/${a.total}</span></div>
+    </div>
+    <div class="activity ${a.state==='done'?'wrap':''}">${a.state==='done' ? esc(a.report) : esc(a.activity)}</div>
+    ${a.state==='need' ? `
+      <div class="ask"><span>${esc(a.ask)}</span>
+        <div class="row"><button class="primary" data-act="approve">Approve</button><button data-act="deny">Deny</button></div>
+      </div>` : ''}
+    ${redirecting.has(a.id) ? `
+      <div class="redirect">
+        <textarea placeholder="New instruction for ${a.id}. It keeps its context." data-input></textarea>
+        <div class="row"><button class="ghost" data-act="cancelRedirect">Cancel</button><button class="primary" data-act="sendRedirect">Send redirect</button></div>
+      </div>` : ''}
+    <div class="meta small"><span>⏱ ${fmt(a.secs)}</span><span>$${a.cost.toFixed(2)}</span></div>
+    <div class="actions">
+      ${a.state==='paused'
+        ? `<button data-act="resume">Resume</button>`
+        : `<button data-act="pause" ${['running','need'].includes(a.state)?'':'disabled'}>Pause</button>`}
+      <button data-act="redirect" ${['running','paused','need'].includes(a.state)?'':'disabled'}>Redirect</button>
+      <button class="danger" data-act="stop" ${['done','stopped','failed'].includes(a.state)?'disabled':''}>Stop</button>
+      <button class="ghost" data-act="details">${open.has(a.id)?'Hide':'Details'}</button>
+    </div>
+    ${open.has(a.id) ? `<div class="details"><ol>${planHtml}</ol>${a.report && a.state!=='done' ? `<div class="report">${esc(a.report)}</div>`:''}</div>` : ''}
+  </article>`;
+}
+
+function render(){
+  const g = document.getElementById('grid');
+  g.innerHTML = [...agents].sort((x,y) => order[x.state] - order[y.state]).map(card).join('');
+  const d = agents.reduce((s,a) => s + a.done, 0), t = agents.reduce((s,a) => s + a.total, 0);
+  document.getElementById('overallTxt').textContent = `${d} of ${t} steps · $${agents.reduce((s,a)=>s+a.cost,0).toFixed(2)}`;
+  document.getElementById('overallBar').style.width = `${Math.round(d/t*100)}%`;
+  const waiting = agents.filter(a => ['running','need'].includes(a.state)).map(a => a.id);
+  const paused = agents.filter(a => a.state==='paused').map(a => a.id);
+  document.getElementById('conductorLine').textContent =
+    waiting.length ? `Conductor: waiting on ${waiting.join(' and ')}.${paused.length ? ` ${paused.join(', ')} paused by you.` : ''}`
+    : paused.length ? `Conductor: everything else is finished; ${paused.join(', ')} paused by you.` : 'Conductor: all agents finished; writing the summary.';
+  const anyLive = agents.some(a => ['running','need'].includes(a.state));
+  document.getElementById('pauseAll').textContent = anyLive ? 'Pause all' : 'Resume all';
+}
+
+function renderEvents(){
+  const el = document.getElementById('events');
+  el.innerHTML = events.map(e => `<li class="${e.you?'you':''}"><time>${e.t}</time>${e.html}</li>`).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+document.getElementById('grid').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-act]'); if (!b) return;
+  const id = b.closest('.card').dataset.id, a = agents.find(x => x.id === id);
+  switch (b.dataset.act) {
+    case 'pause': a.prev = a.state; a.state = 'paused'; a.activity = 'Paused by you · context kept'; log(`You paused <b>${id}</b>. Its turn was cancelled; its session stays open.`, true); break;
+    case 'resume': a.state = a.prev === 'need' ? 'need' : 'running'; a.activity = a.state==='need' ? 'Waiting for your approval' : 'Continuing where it left off'; log(`You resumed <b>${id}</b>.`, true); break;
+    case 'approve': a.state = 'running'; a.done = Math.min(a.done+1, a.total); a.activity = 'Editing README.md'; log(`You approved <b>${id}</b>'s edit.`, true); break;
+    case 'deny': a.state = 'running'; a.activity = 'Rethinking: README edit denied'; log(`You denied <b>${id}</b>'s edit; it will propose another approach.`, true); break;
+    case 'redirect': redirecting.add(id); render(); document.querySelector(`.card[data-id="${id}"] textarea`)?.focus(); return;
+    case 'cancelRedirect': redirecting.delete(id); break;
+    case 'sendRedirect': {
+      const txt = b.closest('.card').querySelector('[data-input]').value.trim(); if (!txt) return;
+      redirecting.delete(id); a.state = 'running'; a.activity = `Redirected: "${txt}"`;
+      log(`You redirected <b>${id}</b>: “${esc(txt)}”. Same context, new direction. Plan updated.`, true); break;
+    }
+    case 'stop': a.state = 'stopped'; a.activity = 'Stopped · worktree kept for inspection'; redirecting.delete(id); log(`You stopped <b>${id}</b>. Other agents keep running.`, true); break;
+    case 'details': open.has(id) ? open.delete(id) : open.add(id); break;
+  }
+  render();
+});
+
+document.getElementById('pauseAll').addEventListener('click', () => {
+  const live = agents.filter(a => ['running','need'].includes(a.state));
+  if (live.length) { live.forEach(a => { a.prev = a.state; a.state = 'paused'; a.activity = 'Paused by you · context kept'; }); log('You paused all agents. The Conductor is waiting.', true); }
+  else { agents.filter(a => a.state==='paused').forEach(a => { a.state = a.prev==='need' ? 'need' : 'running'; a.activity = 'Continuing where it left off'; }); log('You resumed all agents.', true); }
+  render();
+});
+document.getElementById('stopRun').addEventListener('click', e => {
+  const b = e.currentTarget;
+  if (b.dataset.confirm !== '1') { b.dataset.confirm = '1'; b.textContent = 'Click again to stop'; setTimeout(() => { b.dataset.confirm=''; b.textContent='Stop run'; }, 3000); return; }
+  agents.forEach(a => { if (!['done','stopped'].includes(a.state)) { a.state='stopped'; a.activity='Stopped · worktree kept for inspection'; } });
+  b.dataset.confirm=''; b.textContent='Stop run'; log('You stopped the run. Branches and worktrees are kept.', true); render();
+});
+
+// Simulated live progress for running agents
+const tickerActs = { tests:['Running npm test -- useVoice','Editing ui/src/useVoice.test.ts','Reading src/server.js','Running npm test'], docs:['Editing README.md','Editing CHANGELOG.md','Reading RELEASE_NOTES.md'] };
+setInterval(() => {
+  agents.forEach(a => { if (a.state==='running') a.secs++; if (['running','need'].includes(a.state)) a.cost += 0.0004; });
+  if (!redirecting.size) render(); // don't wipe a redirect being typed
+}, 1000);
+setInterval(() => {
+  agents.filter(a => a.state==='running').forEach(a => {
+    if (Math.random() < .35 && a.done < a.total) {
+      a.done++;
+      if (a.done === a.total) { a.state='done'; a.report = a.report || `All ${a.total} steps done; branch ready to merge.`; log(`<b>${a.id}</b> reported done.`); }
+    } else if (tickerActs[a.id] && !a.activity.startsWith('Redirected')) {
+      a.activity = tickerActs[a.id][Math.floor(Math.random()*tickerActs[a.id].length)];
+    }
+  });
+  if (!redirecting.size) render();
+}, 4000);
+
+render(); renderEvents();
+</script>
+</body>
+</html>

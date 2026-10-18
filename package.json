@@ -20,12 +20,14 @@
     "icons": "electron scripts/make-icons.mjs",
     "check": "node src/selftest.js",
     "dist": "npm run build:ui && node scripts/fetch-model.mjs && electron-builder --win --publish never",
-    "fetch-model": "node scripts/fetch-model.mjs"
+    "fetch-model": "node scripts/fetch-model.mjs",
+    "test": "node --test test/*.test.js"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "1.6.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
