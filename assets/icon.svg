@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="orb" cx="42%" cy="38%" r="62%">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.45" stop-color="#d9d9d9"/>
+      <stop offset="1" stop-color="#3a3a3a"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="tile"><rect width="512" height="512" rx="112"/></clipPath>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#050505"/>
+  <g clip-path="url(#tile)">
+    <circle cx="256" cy="256" r="210" fill="url(#glow)"/>
+    <ellipse cx="256" cy="256" rx="206" ry="74" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="10" transform="rotate(-24 256 256)"/>
+    <circle cx="256" cy="256" r="122" fill="url(#orb)"/>
+    <path d="M 70 300 A 206 74 -24 0 0 442 212" fill="none" stroke="#ffffff" stroke-opacity="0.75" stroke-width="10" stroke-linecap="round" transform="rotate(0)"/>
+    <circle cx="420" cy="166" r="30" fill="#f5a524"/>
+  </g>
+</svg>

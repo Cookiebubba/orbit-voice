@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: #000;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* talking-speed slider */
+.speed-slider { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 999px; outline: none; cursor: pointer; }
+.speed-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px rgba(255,255,255,.12); }
+.speed-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(255,255,255,.35); }
+select option, select optgroup { background: #111; color: #fff; }
+
+/* Claude-is-working indicators */
+@keyframes working-pulse { 0%, 100% { opacity: .35; transform: scale(.85); } 50% { opacity: 1; transform: scale(1); } }
+.working-dot { display: inline-block; width: 7px; height: 7px; border-radius: 999px; background: #f5a524; animation: working-pulse 1.4s ease-in-out infinite; flex-shrink: 0; }
+@keyframes claude-ring { 0% { opacity: .55; transform: scale(.96); } 70% { opacity: 0; transform: scale(1.12); } 100% { opacity: 0; transform: scale(1.12); } }
+.claude-ring { position: absolute; inset: -3px; border-radius: 999px; border: 2px solid #f5a524; pointer-events: none; animation: claude-ring 2.4s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .working-dot, .claude-ring { animation: none; } .claude-ring { opacity: .5; } }

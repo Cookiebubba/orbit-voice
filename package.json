@@ -1,0 +1,79 @@
+{
+  "name": "orbit-voice",
+  "productName": "Orbit",
+  "version": "1.0.0",
+  "description": "A hands-free voice companion for Claude Code Desktop, powered by Grok Voice. Hear what your sessions are doing and dictate prompts into them.",
+  "type": "module",
+  "private": true,
+  "main": "electron/main.js",
+  "author": "Cookiebubba",
+  "license": "MIT",
+  "homepage": "https://github.com/Cookiebubba/orbit-voice",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Cookiebubba/orbit-voice.git"
+  },
+  "scripts": {
+    "app": "electron .",
+    "web": "node src/server.js",
+    "build:ui": "npm --prefix ui ci --no-audit --no-fund && npm --prefix ui run build",
+    "icons": "electron scripts/make-icons.mjs",
+    "check": "node src/selftest.js",
+    "dist": "npm run build:ui && electron-builder --win --publish never"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "dev.orbit.voice",
+    "productName": "Orbit",
+    "copyright": "Copyright © 2026 Orbit contributors",
+    "files": [
+      "electron/**",
+      "src/**",
+      "public/**",
+      "assets/**",
+      "package.json",
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.md",
+      "!src/selftest.js",
+      "!electron/selftest.js"
+    ],
+    "asarUnpack": [
+      "src/desktop.ps1"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Orbit-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Orbit",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": null
+  }
+}

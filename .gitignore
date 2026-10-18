@@ -1,0 +1,17 @@
+# dependencies
+node_modules/
+
+# build output
+public/
+dist/
+*.tsbuildinfo
+
+# local secrets and per-user state (never commit)
+.env
+settings.json
+usage.json
+xai-key.bin
+logs/
+
+# scratch
+.tmp-*
