@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('desktop', {
   orbDragMove: () => ipcRenderer.send('orb:drag-move'),
   orbDragEnd: () => ipcRenderer.send('orb:drag-end'),
   openLogs: () => ipcRenderer.invoke('app:open-logs'),
+  openAgents: () => ipcRenderer.send('agents:open'),
   startWithWindows: {
     get: () => ipcRenderer.invoke('app:get-login'),
     set: (enabled) => ipcRenderer.invoke('app:set-login', !!enabled),

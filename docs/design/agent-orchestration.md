@@ -176,7 +176,7 @@ Each step is useful on its own and lowers the risk of the next one.
    - Starts N agents from a hand-written JSON task list.
    - Adds the state machine, budgets, the JSONL ledger and replay after a crash.
    - Unit tests run against a fake ACP agent.
-3. **Read-only card view (1 day).** Bridge endpoints and a WebSocket stream, with cards built from the ledger. Already useful for watching parallel work.
+3. **Read-only card view (1 day). Done:** see [Step 3 results](#step-3-results). Bridge endpoints and a WebSocket stream, with cards built from the ledger. Already useful for watching parallel work.
 4. **Controls (1 day).** Pause now, pause after this step, resume, redirect and stop. Tested end to end against the fake agent and one real agent.
 5. **Conductor (2 days).**
    - The Agent SDK loop with the tools above, the report format, and the final summary.
@@ -282,6 +282,52 @@ States: `queued`, `starting`, `running`, `needs_you`, `paused`, `idle`, `blocked
 - **Event ordering:** an agent's turn handle must be cleared before its "done" event goes out, or a listener that reacts right away sees the agent as busy. The smoke test caught this, and a regression test now covers it.
 - **Isolated agents ask about shell commands, even read-only ones.** Per-role allowlists (step 8) will matter for usability. Until then, the card's "Needs you" handles them.
 - **Restart:** `restart()` gives the agent a fresh session plus a note with its last progress. Restoring the old context with ACP `loadSession`/`resumeSession` is still untested; it belongs to step 8.
+
+## Step 3 results
+
+![Agents window with a demo run](agent-cards-step3.png)
+
+**Read side:** [`src/agents/hub.js`](../../src/agents/hub.js) reads run ledgers from `%APPDATA%\Orbit\agents\runs` and tails them every 250 ms. It doesn't talk to the Supervisor, so the view works for a run in Orbit's own process or in any other process that writes a ledger. It can't change a run.
+
+**Bridge endpoints:** all sit behind the existing session cookie and the Host, Origin and `Sec-Fetch-Site` checks.
+
+| Endpoint | Returns |
+| --- | --- |
+| `GET /api/agents/runs` | Runs, newest first: goal, agent count, active count, needs-you count, cost |
+| `GET /api/agents/run?id=` | A snapshot: run summary, cards and activity feed |
+| `GET /api/agents/stream?id=` | Server-sent events: a snapshot, then updates with changed cards and new feed lines. Updates are batched per 250 ms poll. |
+
+Run ids must match `^[A-Za-z0-9_-]{1,80}$` and resolve inside the runs folder, so path tricks get a 404. The sign-in link takes `view=agents` and opens `/agents.html`.
+
+**The window:** `ui/agents.html` with [`AgentsApp.tsx`](../../ui/src/AgentsApp.tsx).
+- **Opening it:** the grid button in Orbit's title bar, or **Agents** in the tray menu. It's a normal resizable window with native window controls, and closing it doesn't quit Orbit.
+- **Run picker:** follows the newest run unless you pick another one.
+- **Cards:** sorted with "Needs you" first. Each shows:
+  - status pill, task and progress bar with the current step
+  - live activity
+  - why the agent is paused, failed or waiting
+  - its report when done, with an expandable list of changed files
+  - working time, cost, context use and model
+- **Activity feed:** state changes, reports and your actions in plain words.
+- **Working time:** counts only time spent running. Time waiting on you doesn't count against the agent's time budget.
+
+**Tests:** 22 tests pass (`npm test`), stable over 3 runs. The 4 new ones cover:
+- run listing and id checks
+- tailing, including a half-written line
+- feed wording
+- an end-to-end bridge test: cookie and cross-site refusals, the page's CSP, and a live SSE stream while the Supervisor runs two agents to done
+
+**Checked visually:**
+- in the browser pane at desktop and phone width
+- in a real Electron window with the Agents window's settings, using `node scripts/agents-demo.mjs`. The demo starts a bridge on port 4318 with temp folders and runs 7 scripted agents through every state. It costs no tokens.
+
+The button-to-window path inside Orbit itself is untested, because your installed Orbit holds the single-instance lock. It's a direct IPC call to `showAgents()`.
+
+**Fixed along the way:**
+- Repeated pause requests recorded duplicate events; a repeat is now a no-op.
+- A `null` run id got past the id check.
+- Waiting on you counted as working time.
+- A timing-sensitive test assumed a process ends within 300 ms on Windows; it now waits for the exit event.
 
 ## Open questions
 

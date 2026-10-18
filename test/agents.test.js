@@ -152,8 +152,11 @@ test('pause after this step parks the agent on a step boundary', async (t) => {
   const id = sup.spawn({ name: 'a', task: '[fake steps=5 stepMs=40]' });
   await until(sup, () => sup.card(id).progress.done >= 1, 'one step');
   await sup.pause(id, { when: 'step' });
+  await sup.pause(id, { when: 'step' }); // a second click is a no-op
   await until(sup, () => sup.card(id).state === 'paused', 'parked');
+  await sup.pause(id); // so is pausing a paused agent
   assert.equal(sup.card(id).reason, 'paused by you after a step');
+  assert.equal(eventsOf(sup, id, 'control').length, 1, 'only one pause recorded');
   const before = readEvents(sup.ledger.file).length;
   await sleep(300);
   const during = readEvents(sup.ledger.file).slice(before).filter((e) => ['agent_activity', 'agent_progress'].includes(e.type));
@@ -198,8 +201,9 @@ test('stop ends one agent and leaves the others running', async (t) => {
   assert.equal(sup.card(a).state, 'stopped');
   await sup.wait([b]);
   assert.equal(sup.card(b).state, 'done');
-  await sleep(300);
-  assert.notEqual(sup.rt.get(a).child.exitCode, null, "a's process is gone");
+  const child = sup.rt.get(a).child;
+  if (child.exitCode === null && child.signalCode === null) await Promise.race([new Promise((r) => child.once('exit', r)), sleep(5000)]);
+  assert.ok(child.exitCode !== null || child.signalCode !== null, "a's process is gone");
 });
 
 test('needs you: write permissions wait for an answer; a denial ends as blocked', async (t) => {

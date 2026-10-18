@@ -36,6 +36,7 @@ import { listDesktopSessions, ago } from './sessions.js';
 import { TOOL_DEFS, createToolRunner } from './tools.js';
 import { startMeter, usageSummary } from './usage.js';
 import { createSessionWatcher } from './watcher.js';
+import { createAgentsHub } from './agents/hub.js';
 
 const HOST = '127.0.0.1';
 const PUBLIC = path.join(PROJECT_ROOT, 'public');
@@ -185,10 +186,10 @@ let baseUrl = '';
 
 /**
  * The one-time link that signs a window in: it sets the session cookie and redirects to the UI.
- * `view` is 'main' or 'orb'. Only the desktop shell (or the terminal, in browser mode) has it.
+ * `view` is 'main', 'orb' or 'agents'. Only the desktop shell (or the terminal, in browser mode) has it.
  */
 export function authUrl(view = 'main') {
-  return `${baseUrl}/auth?t=${accessToken}${view === 'orb' ? '&view=orb' : ''}`;
+  return `${baseUrl}/auth?t=${accessToken}${view === 'orb' || view === 'agents' ? `&view=${view}` : ''}`;
 }
 
 function hasValidSession(req) {
@@ -207,7 +208,7 @@ function tokenMatches(value) {
  * Start the bridge. Resolves with its URL; rejects if the port is taken.
  * The desktop app passes its own config folder and encrypted key store.
  */
-export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, clipboard, models } = {}) {
+export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, clipboard, models, agentsRuns } = {}) {
   initConfig({ dir: configDir, secrets });
   if (clipboard) setClipboardWriter(clipboard);
   const modelsDir = models || path.join(PROJECT_ROOT, 'resources', 'models');
@@ -230,6 +231,9 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
   const sameOrigin = (req) => allowedOrigins.has(req.headers.origin);
   // Browsers label every request with Sec-Fetch-Site; refuse anything another site initiated.
   const notCrossSite = (req) => !['cross-site', 'same-site'].includes(req.headers['sec-fetch-site']);
+
+  // Orbit Agents runs (read-only view for now; see docs/design/agent-orchestration.md).
+  const agentsHub = createAgentsHub({ runsDir: agentsRuns || path.join(getConfigDir(), 'agents', 'runs') });
 
   const watcher = createSessionWatcher();
   const eventClients = new Set(); // SSE responses
@@ -285,7 +289,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       }
       res.writeHead(302, {
         'set-cookie': `${SESSION_COOKIE}=${accessToken}; HttpOnly; SameSite=Strict; Path=/`,
-        location: url.searchParams.get('view') === 'orb' ? '/#orb' : '/',
+        location: { orb: '/#orb', agents: '/agents.html' }[url.searchParams.get('view')] ?? '/',
         'cache-control': 'no-store',
         'referrer-policy': 'no-referrer',
       });
@@ -377,6 +381,30 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
 
         case 'GET /api/usage':
           return sendJson(res, 200, usageSummary());
+
+        case 'GET /api/agents/runs':
+          return sendJson(res, 200, { runs: agentsHub.listRuns() });
+
+        case 'GET /api/agents/run': {
+          const snap = agentsHub.snapshot(url.searchParams.get('id'));
+          return snap ? sendJson(res, 200, snap) : sendJson(res, 404, { error: 'no such run' });
+        }
+
+        case 'GET /api/agents/stream': {
+          // Server-sent events for one run: a snapshot, then card and feed updates as its ledger grows.
+          const id = url.searchParams.get('id');
+          let unsubscribe = null;
+          const send = (msg) => res.write(`data: ${JSON.stringify(msg)}\n\n`);
+          if (!agentsHub.snapshot(id)) return sendJson(res, 404, { error: 'no such run' });
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+          unsubscribe = agentsHub.subscribe(id, send);
+          const ping = setInterval(() => res.write(': ping\n\n'), 25_000);
+          req.on('close', () => {
+            clearInterval(ping);
+            unsubscribe?.();
+          });
+          return;
+        }
 
         case 'GET /api/events': {
           // Server-sent events: Claude working / finished, settings changes.

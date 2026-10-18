@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { History as HistoryIcon, Keyboard, Mic, Minus, Moon, SendHorizontal, Settings as SettingsIcon, X } from "lucide-react";
+import { History as HistoryIcon, Keyboard, LayoutGrid, Mic, Minus, Moon, SendHorizontal, Settings as SettingsIcon, X } from "lucide-react";
 import { Shdr29 } from "@/components/ui/shdr-29";
 import { cn } from "@/lib/utils";
 import DraftCard from "./components/DraftCard";
@@ -110,6 +110,11 @@ export default function App() {
           }}
         />
         <div className="ml-auto flex [-webkit-app-region:no-drag]">
+          {desktop && (
+            <TitleButton label="Agents" onClick={() => desktop?.openAgents()}>
+              <LayoutGrid size={14} />
+            </TitleButton>
+          )}
           <TitleButton label="History" active={view === "history"} onClick={() => setView((x) => (x === "history" ? "main" : "history"))}>
             <HistoryIcon size={14} />
           </TitleButton>

@@ -71,8 +71,9 @@ export function reduce(state, e) {
       a.sessionId = e.sessionId;
       break;
     case 'agent_state': {
-      const wasRunning = a.state === 'running' || a.state === 'needs_you';
-      const isRunning = e.state === 'running' || e.state === 'needs_you';
+      // Only time spent working counts: waiting on the user (needs_you) doesn't use the agent's time budget.
+      const wasRunning = a.state === 'running';
+      const isRunning = e.state === 'running';
       if (wasRunning && !isRunning && a.runningSince) { a.activeMs += e.t - a.runningSince; a.runningSince = null; }
       if (!wasRunning && isRunning) a.runningSince = e.t;
       if (e.state === 'starting' && !a.startedAt) a.startedAt = e.t;

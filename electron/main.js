@@ -28,6 +28,7 @@ app.setPath('userData', path.join(app.getPath('appData'), 'Orbit'));
 let main = null;
 let orb = null;
 let tray = null;
+let agentsWin = null;
 let baseUrl = '';
 let drag = null; // { cursor, win } at drag start
 let quitting = false;
@@ -147,6 +148,31 @@ function showMain() {
   main.focus();
 }
 
+// The Agents window: read-only cards for Orbit Agents runs. Opens on demand; closing it just closes it.
+function showAgents() {
+  if (agentsWin) {
+    if (agentsWin.isMinimized()) agentsWin.restore();
+    return agentsWin.focus();
+  }
+  agentsWin = new BrowserWindow({
+    width: 1120,
+    height: 760,
+    minWidth: 420,
+    minHeight: 420,
+    backgroundColor: '#000000',
+    title: 'Orbit Agents',
+    icon: ICON,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#000000', symbolColor: '#ffffff', height: 40 },
+    show: false,
+    webPreferences: secureWebPreferences,
+  });
+  lockDown(agentsWin);
+  agentsWin.loadURL(authUrl('agents'));
+  agentsWin.once('ready-to-show', () => agentsWin.show());
+  agentsWin.on('closed', () => (agentsWin = null));
+}
+
 // ---------- tray ----------
 const loginEnabled = () => app.getLoginItemSettings({ args: ['--background'] }).openAtLogin;
 function setLogin(enabled) {
@@ -162,6 +188,7 @@ function refreshTray() {
     Menu.buildFromTemplate([
       { label: 'Open Orbit', click: showMain },
       { label: `Talk / sleep  (${hotkeyLabel(getSetting('wakeHotkey'))})`, click: () => main?.webContents.send('hotkey') },
+      { label: 'Agents', click: showAgents },
       { type: 'separator' },
       { label: 'Start with Windows', type: 'checkbox', checked: loginEnabled(), click: (item) => setLogin(item.checked) },
       { type: 'separator' },
@@ -232,6 +259,7 @@ handle('app:set-login', (enabled) => setLogin(enabled));
 handle('app:open-logs', () => getLogDir() && shell.openPath(getLogDir()));
 
 on('win:minimize', () => showOrb());
+on('agents:open', () => showAgents());
 on('win:close', () => app.quit());
 on('orb:restore', () => showMain());
 on('orb:state', (s) => orb?.webContents.send('orb:state', s));

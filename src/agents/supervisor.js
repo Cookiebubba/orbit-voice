@@ -180,6 +180,7 @@ export class Supervisor extends EventEmitter {
     const rt = this.rt.get(id);
     if (a.state === 'queued') return this.#record('agent_state', { id, state: 'stopped', reason: 'removed from the queue' });
     if (!rt?.turn) return;
+    if (a.state === 'paused' || (when === 'step' && rt.softPause)) return; // already paused or pausing
     this.#record('control', { id, action: when === 'step' ? 'pause_step' : 'pause' });
     if (when === 'step') {
       rt.softPause = 'paused by you after a step';
