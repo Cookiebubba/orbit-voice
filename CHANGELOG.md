@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0 (2026-10-18)
+
+- **"Hey Grok" wake word** (opt-in, Settings → Listening): starts or wakes Grok hands-free. Recognized fully offline by a bundled Vosk model, only while Grok is off or asleep, at no cost and with no audio leaving the PC.
+- **Copy to clipboard:** ask Grok to copy text, Claude's last reply or the current draft. It only copies when you just asked it to.
+- The installer now includes the offline speech model (verified against a pinned SHA-256 at build time).
+
 ## 1.0.0 (2026-10-18)
 
 First public release.

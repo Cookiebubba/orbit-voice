@@ -8,6 +8,7 @@ export type Settings = {
   hotkeyLabel: string;
   listenMode: "always" | "tap";
   halfDuplex: boolean;
+  wakeWord: boolean;
   announce: "speak" | "chime" | "off";
   costPerMinute: number;
   model: string;

@@ -10,6 +10,7 @@ import Settings from "./Settings";
 import { playChime } from "./sounds";
 import { postJson, useAppState, type Finished } from "./useAppState";
 import { useVoice, type Phase } from "./useVoice";
+import { useWakeWord } from "./useWakeWord";
 
 const PHASE_LABEL: Record<Phase, string> = {
   off: "Tap the orb to talk",
@@ -26,6 +27,12 @@ export default function App() {
   const app = useAppState({ onFinished: (f) => finishedRef.current(f) });
   const settings = app.config?.settings;
   const v = useVoice({ listenMode: settings?.listenMode ?? "always", halfDuplex: settings?.halfDuplex ?? false });
+  // "Hey Grok": offline, and only while Grok is off or asleep. Same effect as the hotkey.
+  const { status: wakeStatus, element: wakeFrame } = useWakeWord({
+    enabled: !!settings?.wakeWord && !!app.config?.hasKey && (v.phase === "off" || v.asleep),
+    onWake: () => v.hotkey(),
+  });
+  const wakeOn = wakeStatus === "listening";
   const [view, setView] = useState<View>("main");
   const [typing, setTyping] = useState(false);
   const [text, setText] = useState("");
@@ -81,10 +88,14 @@ export default function App() {
   const on = v.phase !== "off";
   const recent = v.captions.filter((c) => c.who !== "note" || c === v.captions[v.captions.length - 1]).slice(-3);
   const asleepLabel = tap ? "Ready" : "Sleeping";
-  const hint = !on ? `Or press ${hotkey} anytime` : v.asleep ? (tap ? `Press ${hotkey} to ask something` : `Press ${hotkey} to wake`) : null;
+  const say = wakeOn ? "Say “Hey Grok” or press" : "Press";
+  const hint = !on
+    ? wakeOn ? `Say “Hey Grok” or press ${hotkey}` : `Or press ${hotkey} anytime`
+    : v.asleep ? (tap ? `${say} ${hotkey} to ask something` : `${say} ${hotkey} to wake`) : null;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-black text-white select-none">
+      {wakeFrame}
       {/* title bar: draggable in the desktop app */}
       <div className="flex h-10 shrink-0 items-center gap-1 pr-1 pl-4 [-webkit-app-region:drag]">
         <span className="mr-1 text-[13px] font-semibold tracking-tight">Orbit</span>

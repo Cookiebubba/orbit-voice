@@ -162,3 +162,15 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
+
+## vosk-browser 0.0.8
+
+https://github.com/ccoreilly/vosk-browser · Apache-2.0
+
+Licensed under the Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0
+
+## Vosk model: vosk-model-small-en-us-0.15
+
+https://alphacephei.com/vosk/models · Copyright 2020 Alpha Cephei Inc · Apache-2.0
+
+Shipped unmodified in the installer (resources/models). Licensed under the Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0

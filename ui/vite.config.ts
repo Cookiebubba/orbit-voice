@@ -7,6 +7,12 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
-  build: { outDir: "../public", emptyOutDir: true },
+  build: {
+    outDir: "../public",
+    emptyOutDir: true,
+    // wake.html: hidden wake-word helper page (see src/wake.ts)
+    rollupOptions: { input: { main: path.resolve(__dirname, "index.html"), wake: path.resolve(__dirname, "wake.html") } },
+    chunkSizeWarningLimit: 6500,
+  },
   server: { proxy: { "/voice": { target: "ws://127.0.0.1:4317", ws: true }, "/api": "http://127.0.0.1:4317" } },
 });

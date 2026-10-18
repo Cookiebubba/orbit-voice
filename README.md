@@ -21,6 +21,8 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 - **Switch sessions by voice or click.** "Switch to my Ladder 6 session." Orbit opens it in Claude's sidebar, without moving your mouse.
 - **Stays out of the way.** Minimize it to a small always-on-top orb. The orb glows when you talk, dims when it's asleep, and pulses amber while Claude is working.
 - **You control the mic.** Say "go to sleep", or use **one question at a time** mode, where Grok only listens after you press the hotkey (default **Ctrl+Alt+G**, changeable).
+- **Say "Hey Grok" (optional).** A free, fully offline wake word starts or wakes Grok hands-free. It's recognized on your PC by a small speech model, so no audio leaves your computer until Grok is awake.
+- **Copy to clipboard.** "Copy Claude's last answer", "copy that command": Grok puts it on your clipboard, ready to paste.
 
 ## Requirements
 
@@ -43,7 +45,9 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 | "List my sessions" / "What happened in the shakeout session?" | Finds and reads other sessions |
 | "Switch to the launchpad dashboard" | Opens that session in Claude |
 | "Tell Claude: add a dark mode toggle" | Shows a draft, reads it back, waits for your "yes" |
-| "Go to sleep" | Stops listening until you press the hotkey |
+| "Go to sleep" | Stops listening until you press the hotkey (or say "Hey Grok", if the wake word is on) |
+| "Hey Grok" | Starts or wakes Grok (turn it on in Settings → Listening) |
+| "Copy Claude's last answer" / "Copy that" | Puts it on your clipboard |
 | "What went wrong?" | Grok reads Orbit's recent error log and explains |
 | Title bar → session name | Pick a session to open it, or ask Grok about it |
 | Title bar → clock icon | Conversation history (this run only, never saved) |
@@ -65,6 +69,7 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 - Claude's **Microsoft Store** version keeps its session list in `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude`. The regular installer uses `%APPDATA%\Claude`. Orbit checks both.
 - **Sending a prompt** fills Claude's prompt box through Windows accessibility and presses Claude's own Send button. There are no key presses, focus changes or clipboard use. It refuses if the box already has your own typing, if a different session is open than the one the draft was for, or if it can't confirm the text landed.
 - **Switching sessions** presses the session's sidebar button through accessibility, and confirms the window title changed.
+- **The wake word** uses [Vosk](https://alphacephei.com/vosk/) (small English model, ~40 MB, shipped with the installer) running in a hidden helper page. "Grok" isn't in that model's vocabulary, so Orbit listens for close matches ("hey rock", "hey brock") and gives the model decoy names ("Brooke", "Rob", "Bob", "Rocky"...) so similar names don't trigger it. In testing it caught 10 of 10 "Hey Grok" clips across 9 voices and ignored 12 of 13 sound-alikes. The one miss was someone actually saying "Hey Brock".
 - Settings, usage and logs live in `%APPDATA%\Orbit`.
 
 ## Privacy and terms of use
@@ -72,6 +77,7 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 - Orbit is a **voice input method** for you, like dictation. Every prompt is yours, shown to you, and sent only after you confirm. Grok can't send on its own. The app enforces this in code: a voice "send" only goes through if your transcribed reply after the draft is a clear yes. Please don't modify Orbit to send prompts automatically or run Claude unattended through its UI. For automation, use Claude Code's official headless mode (`claude -p`) or the Agent SDK.
 - The parts of your sessions Grok reads are sent to **xAI** to answer you. Don't use Orbit on sessions containing secrets you wouldn't share with xAI.
 - Nothing else leaves your computer. There's no telemetry and no auto-update. Logs never contain keys or prompt text.
+- The wake word listens only on your PC, only while it's turned on and Grok is off or asleep. Its audio is never recorded or sent anywhere.
 
 ## Build from source
 

@@ -29,6 +29,7 @@ import {
   setApiKey,
   updateSettings,
 } from './config.js';
+import { setClipboardWriter } from './clipboard.js';
 import { getDesktopInfo, listSidebarSessions, switchSession } from './desktop.js';
 import { getLogDir, initLog, logError, logInfo, logWarn, recentLog } from './log.js';
 import { listDesktopSessions, ago } from './sessions.js';
@@ -72,6 +73,7 @@ Reading sessions:
 - "My session", "what's Claude doing", "did it finish" → call get_current_session or read_session.
 - To find another session, use list_sessions, then read_session with words from its title.
 - To open a different session in the Claude app ("switch to…", "open…"), call switch_session. Prompts you draft afterwards go to that session.
+- When the user asks you to copy something ("copy that", "copy Claude's answer", "put it on my clipboard"), call copy_to_clipboard. Use what="claude_last_message" or what="draft" for exact text.
 
 Problems:
 - If a tool fails or the user asks what went wrong, call get_recent_errors and explain the cause simply.
@@ -154,6 +156,7 @@ const contentSecurityPolicy = (port) =>
   [
     "default-src 'self'",
     "script-src 'self'",
+    "frame-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "media-src 'self' blob:",
@@ -204,14 +207,26 @@ function tokenMatches(value) {
  * Start the bridge. Resolves with its URL; rejects if the port is taken.
  * The desktop app passes its own config folder and encrypted key store.
  */
-export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets } = {}) {
+export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, clipboard, models } = {}) {
   initConfig({ dir: configDir, secrets });
+  if (clipboard) setClipboardWriter(clipboard);
+  const modelsDir = models || path.join(PROJECT_ROOT, 'resources', 'models');
   initLog(getConfigDir());
   logInfo('app', `Orbit ${VERSION} starting`);
 
   const allowedHosts = new Set([`${HOST}:${port}`, `localhost:${port}`]);
   const allowedOrigins = new Set([...allowedHosts].map((h) => `http://${h}`));
   const csp = contentSecurityPolicy(port);
+  const wakeCsp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'",
+    "worker-src 'self' blob:",
+    "connect-src 'self' data:", // the recognizer loads its own WebAssembly from a data: URL
+    "object-src 'none'",
+    "base-uri 'none'",
+    "frame-ancestors 'self'",
+    "form-action 'none'",
+  ].join('; ');
   const sameOrigin = (req) => allowedOrigins.has(req.headers.origin);
   // Browsers label every request with Sec-Fetch-Site; refuse anything another site initiated.
   const notCrossSite = (req) => !['cross-site', 'same-site'].includes(req.headers['sec-fetch-site']);
@@ -388,6 +403,18 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       res.writeHead(405);
       return res.end();
     }
+
+    // The offline wake-word model (public data, not secret). Exact file names only.
+    const model = url.pathname.match(/^\/models\/([a-z0-9._-]+\.tar\.gz)$/i);
+    if (model) {
+      const file = path.join(modelsDir, model[1]);
+      if (!fs.existsSync(file)) {
+        res.writeHead(404);
+        return res.end('model not installed');
+      }
+      res.writeHead(200, { 'content-type': 'application/gzip', 'content-length': fs.statSync(file).size, 'cache-control': 'max-age=31536000, immutable', ...SECURITY_HEADERS });
+      return fs.createReadStream(file).on('error', () => res.destroy()).pipe(res);
+    }
     let rel;
     try {
       rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname.slice(1));
@@ -401,7 +428,14 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       return res.end('not found');
     }
     const headers = { 'content-type': MIME[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-store', ...SECURITY_HEADERS };
-    if (file.endsWith('.html')) headers['content-security-policy'] = csp;
+    if (rel === 'wake.html') {
+      // The hidden wake-word page: the offline recognizer needs eval + WebAssembly + a blob worker.
+      // It renders nothing and can only be framed by Orbit's own window.
+      headers['content-security-policy'] = wakeCsp;
+      headers['x-frame-options'] = 'SAMEORIGIN';
+    } else if (file.endsWith('.html')) {
+      headers['content-security-policy'] = csp;
+    }
     res.writeHead(200, headers);
     fs.createReadStream(file)
       .on('error', () => res.destroy())
@@ -461,7 +495,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     let asleep = false;
     let responding = false;
     const pending = []; // announcements waiting for Grok to finish talking
-    const tools = createToolRunner({ notify: toBrowser, wakeHint, utteranceSince });
+    const tools = createToolRunner({ notify: toBrowser, wakeHint, utteranceSince, recentUtterance: () => (utterance.text ? utterance : null) });
     // One tool call at a time, in order, so two calls can't race each other.
     let toolChain = Promise.resolve();
     const runTool = (name, args) => {

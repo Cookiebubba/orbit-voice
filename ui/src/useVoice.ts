@@ -19,6 +19,8 @@ const TOOL_NOTES: Record<string, string> = {
   read_session: "Reading the session…",
   draft_prompt: "Drafting a prompt…",
   send_draft: "Sending to Claude…",
+  copy_to_clipboard: "Copying…",
+  switch_session: "Switching session…",
 };
 
 function b64ToInt16(b64: string) {
@@ -167,6 +169,9 @@ export function useVoice(options: VoiceOptions) {
           return;
         case "bridge.draft":
           setDraft(evt.draft ? { id: evt.draft.id, text: evt.draft.text, targetTitle: evt.draft.targetTitle } : null);
+          return;
+        case "bridge.copied":
+          caption({ id: `copied-${Date.now()}`, who: "note", text: `Copied to clipboard ✓ (${evt.chars} characters)` });
           return;
         case "bridge.sent":
           caption({ id: `sent-${Date.now()}`, who: "sent", text: evt.text });

@@ -1,7 +1,7 @@
 {
   "name": "orbit-voice",
   "productName": "Orbit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A hands-free voice companion for Claude Code Desktop, powered by Grok Voice. Hear what your sessions are doing and dictate prompts into them.",
   "type": "module",
   "private": true,
@@ -19,7 +19,8 @@
     "build:ui": "npm --prefix ui ci --no-audit --no-fund && npm --prefix ui run build",
     "icons": "electron scripts/make-icons.mjs",
     "check": "node src/selftest.js",
-    "dist": "npm run build:ui && electron-builder --win --publish never"
+    "dist": "npm run build:ui && node scripts/fetch-model.mjs && electron-builder --win --publish never",
+    "fetch-model": "node scripts/fetch-model.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -74,6 +75,15 @@
       "shortcutName": "Orbit",
       "deleteAppDataOnUninstall": false
     },
-    "publish": null
+    "publish": null,
+    "extraResources": [
+      {
+        "from": "resources/models",
+        "to": "models",
+        "filter": [
+          "*.tar.gz"
+        ]
+      }
+    ]
   }
 }

@@ -2,7 +2,7 @@
 node_modules/
 
 # build output
-public/
+/public/
 dist/
 *.tsbuildinfo
 
@@ -15,3 +15,6 @@ logs/
 
 # scratch
 .tmp-*
+
+# offline wake-word model (fetched + checksum-verified by scripts/fetch-model.mjs)
+resources/

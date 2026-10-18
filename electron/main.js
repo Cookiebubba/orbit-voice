@@ -1,6 +1,6 @@
 // Desktop shell: a small frameless main window, a floating always-on-top orb that replaces
 // it while minimized, a tray icon, and the global hotkey. The bridge server runs in-process.
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, safeStorage, screen, session, shell, Tray } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, safeStorage, screen, session, shell, Tray } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +17,11 @@ const ORB_SIZE = 128;
 const START_HIDDEN = process.argv.includes('--background'); // used by "Start with Windows"
 
 app.setName('Orbit');
+// Developer testing only: feed a WAV file in as the microphone (never in the installed app).
+if (!app.isPackaged && process.env.GVB_FAKE_MIC) {
+  app.commandLine.appendSwitch('use-fake-device-for-media-stream');
+  app.commandLine.appendSwitch('use-file-for-fake-audio-capture', process.env.GVB_FAKE_MIC);
+}
 app.setAppUserModelId('dev.orbit.voice');
 app.setPath('userData', path.join(app.getPath('appData'), 'Orbit'));
 
@@ -248,7 +253,13 @@ app.whenReady().then(async () => {
   if (quitting) return;
   try {
     const dir = app.getPath('userData');
-    baseUrl = await startServer({ configDir: dir, secrets: encryptedKeyStore(dir) });
+    baseUrl = await startServer({
+      configDir: dir,
+      secrets: encryptedKeyStore(dir),
+      clipboard: (text) => clipboard.writeText(text),
+      // Offline wake-word model: shipped next to the app (extraResources), or in the repo in dev.
+      models: app.isPackaged ? path.join(process.resourcesPath, 'models') : path.join(ROOT, 'resources', 'models'),
+    });
   } catch (e) {
     logError('app', 'Bridge failed to start', e?.message);
     dialog.showErrorBox(

@@ -43,6 +43,13 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
             label="Don't listen while Grok is talking"
             hint="Turn on if you use speakers instead of headphones, so Grok doesn't hear itself. You can't interrupt it then."
           />
+          <Toggle
+            className="mt-4"
+            checked={s.wakeWord}
+            onChange={(wakeWord) => update({ wakeWord })}
+            label="Wake word: say “Hey Grok”"
+            hint="Starts or wakes Grok hands-free. Recognized entirely on this PC by a small offline speech model: no audio leaves your computer and it costs nothing. Only listens while Grok is off or asleep."
+          />
         </Section>
 
         <Section title="When Claude finishes">

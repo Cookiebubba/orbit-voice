@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { DEFAULTS, getSetting } from '../src/config.js';
+import { DEFAULTS, getSetting, updateSettings } from '../src/config.js';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const sendKeys = (keys) =>
@@ -24,6 +24,26 @@ export async function runSelfTest({ dir, main, orb, globalShortcut, hits, showOr
   const report = {};
   await wait(3500);
 
+  if (process.env.GVB_SNAPSHOT_WAKE) {
+    // With GVB_FAKE_MIC playing a "Hey Grok" recording: does the wake word start Grok?
+    const logs = [];
+    main.webContents.on('console-message', (_e, level, message) => logs.push(`${level}: ${String(message).slice(0, 300)}`));
+    updateSettings({ wakeWord: true });
+    const text = () => js(`document.body.innerText`);
+    await shot(main, 'wake-before.png');
+    report.before = (await text()).slice(0, 200);
+    const t0 = Date.now();
+    while (Date.now() - t0 < 25000 && !/Connecting|Listening|Speaking|Thinking/.test(await text())) await wait(250);
+    report.woke = /Connecting|Listening|Speaking|Thinking/.test(await text());
+    report.secondsToWake = Math.round((Date.now() - t0) / 100) / 10;
+    await shot(main, 'wake-after.png');
+    updateSettings({ wakeWord: false });
+    report.after = (await text()).slice(0, 200);
+    report.console = logs.slice(-15);
+    fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify(report, null, 2));
+    return;
+  }
+
   if (process.env.GVB_SNAPSHOT_VIEWS) {
     // Picture each screen without changing any settings.
     await shot(main, 'view-main.png');
@@ -34,6 +54,9 @@ export async function runSelfTest({ dir, main, orb, globalShortcut, hits, showOr
     await js(`document.querySelector('button[aria-label="Settings"]').click()`);
     await wait(1200);
     await shot(main, 'view-settings-1.png');
+    await js(`[...document.querySelectorAll('span')].find(e => e.textContent.startsWith('Wake word'))?.scrollIntoView({ block: 'center' })`);
+    await wait(400);
+    await shot(main, 'view-settings-wake.png');
     for (const [i, frac] of [[2, 0.45], [3, 1]]) {
       await js(`(() => { const el = [...document.querySelectorAll('div')].find(d => d.scrollHeight > d.clientHeight + 20 && getComputedStyle(d).overflowY === 'auto'); if (el) el.scrollTop = el.scrollHeight * ${frac}; })()`);
       await wait(500);

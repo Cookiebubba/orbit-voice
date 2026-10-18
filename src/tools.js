@@ -6,6 +6,7 @@
 import { listDesktopSessions, resolveSession, findTranscript, readTranscriptTail, ago } from './sessions.js';
 import { getDesktopInfo, sendToDesktop, switchSession } from './desktop.js';
 import { logError, logWarn, recentLog } from './log.js';
+import { MAX_CLIPBOARD_CHARS, writeClipboard } from './clipboard.js';
 
 export const TOOL_DEFS = [
   {
@@ -93,6 +94,21 @@ export const TOOL_DEFS = [
   },
   {
     type: 'function',
+    name: 'copy_to_clipboard',
+    description:
+      'Copy something to the user\x27s clipboard so they can paste it. Use when the user asks to copy something. For Claude\x27s last reply or the current draft, use "what" so the exact text is copied instead of retyping it.',
+    parameters: {
+      type: 'object',
+      properties: {
+        what: { type: 'string', enum: ['text', 'claude_last_message', 'draft'], description: 'text = the "text" argument; claude_last_message = Claude\x27s latest reply in a session; draft = the current prompt draft.' },
+        text: { type: 'string', description: 'The exact text to copy, when what is "text".' },
+        session: { type: 'string', description: 'For claude_last_message: session title words. Empty = the session open in Claude.' },
+      },
+      required: ['what'],
+    },
+  },
+  {
+    type: 'function',
     name: 'go_to_sleep',
     description:
       'Stop listening to the microphone until the user wakes you with the hotkey or by clicking the orb. Call this when the user says "go to sleep", "stop listening", "sleep", "goodnight", "that\'s all", or similar.',
@@ -144,7 +160,7 @@ export function isClearYes(utterance) {
  * Every send uses a snapshot of the exact draft that was approved, and the send itself checks
  * that the same Claude session is still open.
  */
-export function createToolRunner({ notify, wakeHint = 'clicking the orb', utteranceSince = async () => null }) {
+export function createToolRunner({ notify, wakeHint = 'clicking the orb', utteranceSince = async () => null, recentUtterance = () => null }) {
   let draft = null; // { id, text, targetTitle, createdAt }
   let nextDraftId = 1;
   let lastSentAt = 0;
@@ -244,6 +260,33 @@ export function createToolRunner({ notify, wakeHint = 'clicking the orb', uttera
     async get_recent_errors({ limit } = {}) {
       const entries = recentLog({ limit: clampInt(limit, 10, 50) });
       return entries.length ? { entries } : { entries: [], note: 'No errors or warnings in the last 24 hours.' };
+    },
+
+    async copy_to_clipboard({ what = 'text', text, session } = {}) {
+      // Only when the user just asked for it, so text inside a transcript can't make Grok
+      // quietly put something (like a command) on the clipboard.
+      const asked = recentUtterance();
+      if (!asked || Date.now() - asked.at > 2 * 60 * 1000 || !/\b(copy|clipboard|paste)\b/i.test(asked.text)) {
+        return { ok: false, error: 'Not copied: only copy when the user has just asked you to copy something.' };
+      }
+      let value = '';
+      if (what === 'draft') {
+        value = draft?.text || '';
+        if (!value) return { ok: false, error: 'There is no draft to copy.' };
+      } else if (what === 'claude_last_message') {
+        const info = session ? null : await getDesktopInfo();
+        const s = resolveSession(session || '', { windowTitle: info?.ok ? info.sessionTitle : null });
+        if (!s) return { ok: false, error: 'No matching session.' };
+        const file = findTranscript(s.cliSessionId, s.cwd);
+        const turns = file ? readTranscriptTail(file, { lastN: 30, maxCharsPerMessage: MAX_CLIPBOARD_CHARS }).turns : [];
+        value = [...turns].reverse().find((t) => t.role === 'claude')?.text || '';
+        if (!value) return { ok: false, error: 'Claude has no reply in that session yet.' };
+      } else {
+        value = String(text || '').trim();
+      }
+      const result = await writeClipboard(value);
+      if (result.ok) notify({ type: 'bridge.copied', preview: value.slice(0, 120), chars: value.length });
+      return result.ok ? { ok: true, copied_chars: value.length, next_step: 'Tell the user it is copied, in a few words. Do not read it back.' } : result;
     },
 
     async go_to_sleep() {

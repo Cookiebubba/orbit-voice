@@ -18,6 +18,7 @@ export const DEFAULTS = Object.freeze({
   wakeHotkey: 'Control+Alt+G',
   listenMode: 'always', // 'always' = until you say "go to sleep"; 'tap' = one question per hotkey press
   halfDuplex: false, // true = ignore the mic while Grok is talking (for speakers without headphones)
+  wakeWord: false, // "Hey Grok" via the offline Vosk model, only while Grok is off or asleep
   announce: 'speak', // when Claude finishes: 'speak' | 'chime' | 'off'
   costPerMinute: 0.08, // USD, xAI's published voice-agent rate at the time of writing
   model: 'grok-voice-latest',
