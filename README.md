@@ -1,6 +1,6 @@
-<p align="center"><img src="assets/icon.png" width="96" alt="Orbit icon"></p>
+<p align="center"><img src="docs/hero.png" width="900" alt="Orbit: the floating orb over Claude Code Desktop, powered by Grok Voice"></p>
 
-<h1 align="center">Orbit</h1>
+<h1 align="center"><img src="assets/icon.png" width="40" alt="" align="top"> Orbit</h1>
 
 <p align="center"><b>A hands-free voice companion for Claude Code Desktop, powered by Grok Voice.</b><br>
 Ask what Claude is doing, hear when it finishes, switch sessions, and dictate prompts, without touching the keyboard.</p>
