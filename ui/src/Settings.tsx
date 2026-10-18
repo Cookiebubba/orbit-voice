@@ -64,16 +64,11 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
 
         {desktop && <HotkeySection />}
 
-        <Section title="App">
-          {desktop && <StartWithWindows />}
-          <Toggle
-            className={desktop ? "mt-4" : ""}
-            checked={s.returnFocus}
-            onChange={(returnFocus) => update({ returnFocus })}
-            label="Switch back after sending"
-            hint="After typing a prompt into Claude, go back to the window you were using."
-          />
-        </Section>
+        {desktop && (
+          <Section title="App">
+            <StartWithWindows />
+          </Section>
+        )}
 
         <UsageSection costPerMinute={s.costPerMinute} update={update} />
 

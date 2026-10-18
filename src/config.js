@@ -19,7 +19,6 @@ export const DEFAULTS = Object.freeze({
   listenMode: 'always', // 'always' = until you say "go to sleep"; 'tap' = one question per hotkey press
   halfDuplex: false, // true = ignore the mic while Grok is talking (for speakers without headphones)
   announce: 'speak', // when Claude finishes: 'speak' | 'chime' | 'off'
-  returnFocus: true,
   costPerMinute: 0.08, // USD, xAI's published voice-agent rate at the time of writing
   model: 'grok-voice-latest',
   orbPosition: null, // [x, y] of the floating orb
@@ -32,7 +31,6 @@ const ENV_OVERRIDES = {
   GROK_VOICE_SPEED: 'speed',
   WAKE_HOTKEY: 'wakeHotkey',
   GROK_VOICE_MODEL: 'model',
-  RETURN_FOCUS: 'returnFocus',
 };
 
 let configDir = PROJECT_ROOT;

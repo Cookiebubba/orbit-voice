@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULTS, getSetting, updateSettings } from '../src/config.js';
 import { getLogDir, logError, logWarn } from '../src/log.js';
-import { hotkeyLabel, startServer } from '../src/server.js';
+import { authUrl, hotkeyLabel, startServer } from '../src/server.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -87,7 +87,7 @@ function createMain() {
     webPreferences: secureWebPreferences,
   });
   lockDown(main);
-  main.loadURL(`${baseUrl}/`);
+  main.loadURL(authUrl('main')); // signs the window in, then shows the UI
   main.once('ready-to-show', () => (START_HIDDEN ? showOrb() : main.show()));
   // Any way of minimizing (our button, taskbar click, Win+Down) turns into the orb.
   main.on('minimize', () => showOrb());
@@ -126,7 +126,7 @@ function createOrb() {
   lockDown(orb);
   orb.setAlwaysOnTop(true, 'screen-saver');
   orb.setPosition(...orbStartPosition());
-  orb.loadURL(`${baseUrl}/#orb`);
+  orb.loadURL(authUrl('orb'));
 }
 
 function showOrb() {

@@ -75,7 +75,7 @@ export default function App() {
     if (typing) inputRef.current?.focus();
   }, [typing]);
 
-  if (app.failed) return <Centered>Couldn't reach the Orbit bridge. Restart the app.</Centered>;
+  if (app.failed) return <Centered>Orbit isn't signed in to its local bridge. Close this and open Orbit again (or, in browser mode, use the link printed in the terminal).</Centered>;
   if (!app.config) return <Centered>Loading…</Centered>;
 
   const on = v.phase !== "off";
@@ -161,7 +161,7 @@ export default function App() {
             </div>
           </div>
 
-          {v.draft && <DraftCard draft={v.draft} onSend={v.sendDraft} onDiscard={v.discardDraft} onEdit={v.editDraft} />}
+          {v.draft && <DraftCard draft={v.draft} onSend={() => v.sendDraft(v.draft!.id)} onDiscard={() => v.discardDraft(v.draft!.id)} onEdit={(text) => v.editDraft(v.draft!.id, text)} />}
 
           {typing && on && (
             <form

@@ -10,7 +10,7 @@ const MAX_HISTORY = 200;
 
 export type Phase = "off" | "connecting" | "listening" | "thinking" | "speaking";
 export type Caption = { id: string; who: "you" | "grok" | "note" | "error" | "sent"; text: string; at: number };
-export type Draft = { text: string; targetTitle: string | null } | null;
+export type Draft = { id: number; text: string; targetTitle: string | null } | null;
 export type VoiceOptions = { listenMode: "always" | "tap"; halfDuplex: boolean };
 
 const TOOL_NOTES: Record<string, string> = {
@@ -166,7 +166,7 @@ export function useVoice(options: VoiceOptions) {
           setSessionTitle(evt.title);
           return;
         case "bridge.draft":
-          setDraft(evt.draft ? { text: evt.draft.text, targetTitle: evt.draft.targetTitle } : null);
+          setDraft(evt.draft ? { id: evt.draft.id, text: evt.draft.text, targetTitle: evt.draft.targetTitle } : null);
           return;
         case "bridge.sent":
           caption({ id: `sent-${Date.now()}`, who: "sent", text: evt.text });
@@ -356,8 +356,9 @@ export function useVoice(options: VoiceOptions) {
     sendText,
     ask,
     note: (text: string) => caption({ id: `note-${Date.now()}`, who: "note", text }),
-    sendDraft: () => ws.current?.send(JSON.stringify({ type: "ui.send_draft" })),
-    discardDraft: () => ws.current?.send(JSON.stringify({ type: "ui.cancel_draft" })),
-    editDraft: (text: string) => ws.current?.send(JSON.stringify({ type: "ui.edit_draft", text })),
+    // Each names the exact draft it acts on, so a draft that changed meanwhile isn't sent.
+    sendDraft: (id: number) => ws.current?.send(JSON.stringify({ type: "ui.send_draft", id })),
+    discardDraft: (id: number) => ws.current?.send(JSON.stringify({ type: "ui.cancel_draft", id })),
+    editDraft: (id: number, text: string) => ws.current?.send(JSON.stringify({ type: "ui.edit_draft", id, text })),
   };
 }

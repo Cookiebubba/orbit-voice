@@ -9,7 +9,6 @@ export type Settings = {
   listenMode: "always" | "tap";
   halfDuplex: boolean;
   announce: "speak" | "chime" | "off";
-  returnFocus: boolean;
   costPerMinute: number;
   model: string;
 };
@@ -30,7 +29,10 @@ export function useAppState({ onFinished }: { onFinished: (f: Finished) => void 
 
   const reload = useCallback(() => {
     fetch("/api/config")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
       .then((c: AppConfig) => setConfig(c))
       .catch(() => setFailed(true));
   }, []);

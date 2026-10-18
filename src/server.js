@@ -1,11 +1,15 @@
 // Local bridge: page (mic/speaker)  <->  this server  <->  Grok Voice (xAI realtime API).
 // The xAI key never leaves this process, and every tool call runs here on your machine.
 //
-// Security model: the server listens on 127.0.0.1 only and answers only our own page:
-//   - Host header must be 127.0.0.1:<port> or localhost:<port> (blocks DNS-rebinding),
-//   - state-changing requests and the voice socket must come from our own Origin,
-//   - read-only API calls are refused when the browser marks them cross-site.
+// Security model: the server listens on 127.0.0.1 only and answers only Orbit's own windows:
+//   - every API call and the voice socket need a random per-launch token, held in an HttpOnly
+//     cookie that only Orbit's windows get (other programs and other Windows users can reach
+//     127.0.0.1 too, so headers alone aren't proof),
+//   - Host must be 127.0.0.1:<port> or localhost:<port> (blocks DNS rebinding),
+//   - state-changing requests and the voice socket must come from our own Origin, and
+//     read-only calls are refused when the browser marks them cross-site (CSRF defence).
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -172,6 +176,29 @@ const MIME = {
 
 // ---------- server ----------
 let server = null;
+const SESSION_COOKIE = 'orbit_session';
+const accessToken = crypto.randomBytes(32).toString('hex'); // new on every launch
+let baseUrl = '';
+
+/**
+ * The one-time link that signs a window in: it sets the session cookie and redirects to the UI.
+ * `view` is 'main' or 'orb'. Only the desktop shell (or the terminal, in browser mode) has it.
+ */
+export function authUrl(view = 'main') {
+  return `${baseUrl}/auth?t=${accessToken}${view === 'orb' ? '&view=orb' : ''}`;
+}
+
+function hasValidSession(req) {
+  const m = String(req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([a-f0-9]{64})`));
+  if (!m) return false;
+  return crypto.timingSafeEqual(Buffer.from(m[1]), Buffer.from(accessToken));
+}
+
+function tokenMatches(value) {
+  const v = Buffer.from(String(value || ''));
+  const t = Buffer.from(accessToken);
+  return v.length === t.length && crypto.timingSafeEqual(v, t);
+}
 
 /**
  * Start the bridge. Resolves with its URL; rejects if the port is taken.
@@ -214,13 +241,44 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     return { ...rest, hotkeyLabel: wakeLabel() };
   };
 
-  server = http.createServer(async (req, res) => {
+  server = http.createServer((req, res) => {
+    handle(req, res).catch((e) => {
+      logError('http', 'Request failed', e?.stack || String(e));
+      if (!res.headersSent) sendJson(res, 500, { error: 'internal error' });
+      else res.end();
+    });
+  });
+
+  async function handle(req, res) {
     if (!allowedHosts.has(req.headers.host)) {
       res.writeHead(421);
       return res.end();
     }
-    const url = new URL(req.url, `http://${req.headers.host}`);
+    let url;
+    try {
+      url = new URL(req.url, `http://${req.headers.host}`);
+    } catch {
+      res.writeHead(400);
+      return res.end();
+    }
+
+    // Sign-in link: trade the per-launch token for an HttpOnly cookie, then show the UI.
+    if (req.method === 'GET' && url.pathname === '/auth') {
+      if (!tokenMatches(url.searchParams.get('t'))) {
+        res.writeHead(403, { 'content-type': 'text/plain' });
+        return res.end('This link has expired. Open Orbit from its window (or the link printed when it started).');
+      }
+      res.writeHead(302, {
+        'set-cookie': `${SESSION_COOKIE}=${accessToken}; HttpOnly; SameSite=Strict; Path=/`,
+        location: url.searchParams.get('view') === 'orb' ? '/#orb' : '/',
+        'cache-control': 'no-store',
+        'referrer-policy': 'no-referrer',
+      });
+      return res.end();
+    }
+
     const isApi = url.pathname.startsWith('/api/');
+    if (isApi && !hasValidSession(req)) return sendJson(res, 401, { error: 'not signed in' });
     if (isApi && !notCrossSite(req)) return sendJson(res, 403, { error: 'forbidden' });
     if (isApi && req.method === 'POST' && !sameOrigin(req)) return sendJson(res, 403, { error: 'forbidden' });
 
@@ -330,7 +388,13 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       res.writeHead(405);
       return res.end();
     }
-    const rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname.slice(1));
+    let rel;
+    try {
+      rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname.slice(1));
+    } catch {
+      res.writeHead(400);
+      return res.end('bad request');
+    }
     const file = path.resolve(PUBLIC, rel);
     if (!file.startsWith(PUBLIC + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
       res.writeHead(404);
@@ -339,17 +403,20 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     const headers = { 'content-type': MIME[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-store', ...SECURITY_HEADERS };
     if (file.endsWith('.html')) headers['content-security-policy'] = csp;
     res.writeHead(200, headers);
-    fs.createReadStream(file).pipe(res);
-  });
+    fs.createReadStream(file)
+      .on('error', () => res.destroy())
+      .pipe(res);
+  }
 
   // ---------- voice relay ----------
   const wss = new WebSocketServer({
     server,
     path: '/voice',
     maxPayload: 1024 * 1024,
-    // Only our own page may connect. Without this, any website open in your browser
-    // could reach localhost and type prompts into Claude.
-    verifyClient: ({ origin, req }) => allowedOrigins.has(origin) && allowedHosts.has(req.headers.host),
+    // Only Orbit's own signed-in windows may connect: anything else that can reach localhost
+    // (a web page, another program, another Windows user) would otherwise be able to drive
+    // Grok and type prompts into Claude.
+    verifyClient: ({ origin, req }) => allowedOrigins.has(origin) && allowedHosts.has(req.headers.host) && hasValidSession(req),
   });
 
   // Messages the page is allowed to forward to xAI as-is.
@@ -363,11 +430,45 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       return browser.close();
     }
 
-    let lastUserTurnAt = 0;
+    // What the user last said (or typed), for confirming sends: { text, at }.
+    let speechStartedAt = 0;
+    let utterance = { text: '', at: 0 };
+    const utteranceWaiters = new Set();
+    const setUtterance = (text, at) => {
+      utterance = { text: String(text || ''), at };
+      for (const w of utteranceWaiters) w();
+    };
+    /** The user's first answer after `since`, waiting briefly if they spoke but the transcript is still coming. */
+    const utteranceSince = (since) =>
+      new Promise((resolve) => {
+        const check = () => (utterance.at > since && utterance.text.trim() ? utterance : null);
+        if (check() || speechStartedAt <= since) return resolve(check());
+        const done = () => {
+          const u = check();
+          if (u) {
+            utteranceWaiters.delete(done);
+            clearTimeout(timer);
+            resolve(u);
+          }
+        };
+        const timer = setTimeout(() => {
+          utteranceWaiters.delete(done);
+          resolve(check());
+        }, 4000);
+        utteranceWaiters.add(done);
+      });
+
     let asleep = false;
     let responding = false;
     const pending = []; // announcements waiting for Grok to finish talking
-    const tools = createToolRunner({ notify: toBrowser, wakeHint, lastUserTurnAt: () => lastUserTurnAt });
+    const tools = createToolRunner({ notify: toBrowser, wakeHint, utteranceSince });
+    // One tool call at a time, in order, so two calls can't race each other.
+    let toolChain = Promise.resolve();
+    const runTool = (name, args) => {
+      const job = toolChain.then(() => tools.run(name, args));
+      toolChain = job.catch(() => {});
+      return job;
+    };
     const upstreamUrl = process.env.XAI_REALTIME_URL || `wss://api.x.ai/v1/realtime?model=${encodeURIComponent(getSetting('model'))}`;
     const upstream = new WebSocket(upstreamUrl, { headers: { Authorization: `Bearer ${apiKey}` } });
     const toXai = (obj) => upstream.readyState === WebSocket.OPEN && upstream.send(JSON.stringify(obj));
@@ -386,8 +487,10 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       announce: (evt) => {
         if (getSetting('announce') !== 'speak') return;
         if (asleep && getSetting('listenMode') !== 'tap') return; // asleep in always-on mode: chime only
-        const summary = (evt.summary || '').replace(/\s+/g, ' ').slice(0, 400);
-        pending.push(`Claude just finished in the session "${evt.title}". Its last message was: "${summary}". Tell the user in one short sentence.`);
+        // Only the session title goes in here, never Claude's own words: those come back as
+        // tool output (data) if Grok reads the session, not as something the user "said".
+        const title = String(evt.title || 'a session').replace(/["\r\n\[\]]/g, ' ').slice(0, 80);
+        pending.push(`Claude just finished in the session titled "${title}". Call read_session for that session with last_n 2, then tell the user in one short sentence what Claude did.`);
         flushPending();
       },
     };
@@ -407,7 +510,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     upstream.on('open', () => {
       hooks.pushConfig();
       toBrowser({ type: 'bridge.ready', model: getSetting('model'), voice: getSetting('voice') });
-      tools.run('get_current_session').catch(() => {});
+      runTool('get_current_session').catch(() => {});
     });
 
     upstream.on('message', async (data, isBinary) => {
@@ -423,7 +526,9 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       if (evt.type === 'error') {
         logWarn('xai', evt.error?.message || 'Grok reported an error', evt.error?.code || evt.error?.type);
       } else if (evt.type === 'input_audio_buffer.speech_started') {
-        lastUserTurnAt = Date.now();
+        speechStartedAt = Date.now();
+      } else if (evt.type.startsWith('conversation.item.input_audio_transcription') && typeof evt.transcript === 'string') {
+        setUtterance(evt.transcript, speechStartedAt || Date.now());
       } else if (evt.type === 'response.created') {
         responding = true;
         responseDone = false;
@@ -431,7 +536,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         callsInFlight++;
         callsThisResponse++;
         toBrowser({ type: 'bridge.tool', name: evt.name, args: evt.arguments });
-        const result = await tools.run(evt.name, evt.arguments);
+        const result = await runTool(evt.name, evt.arguments);
         toBrowser({ type: 'bridge.tool_result', name: evt.name, result });
         toXai({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: evt.call_id, output: JSON.stringify(result) } });
         callsInFlight--;
@@ -473,19 +578,22 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       if (!msg || typeof msg.type !== 'string') return;
       if (FORWARDABLE.has(msg.type)) return toXai(msg);
       switch (msg.type) {
-        case 'ui.send_draft':
-          return toBrowser({ type: 'bridge.tool_result', name: 'send_draft (button)', result: await tools.sendFromUi() });
+        case 'ui.send_draft': {
+          // The Send button names the draft it approves; a different or changed draft isn't sent.
+          const result = await (toolChain = toolChain.then(() => tools.sendFromUi(Number(msg.id))));
+          return toBrowser({ type: 'bridge.tool_result', name: 'send_draft (button)', result });
+        }
         case 'ui.cancel_draft':
-          return tools.cancelFromUi();
+          return tools.cancelFromUi(msg.id === undefined ? undefined : Number(msg.id));
         case 'ui.edit_draft':
-          return tools.editFromUi(msg.text);
+          return tools.editFromUi(Number(msg.id), msg.text);
         case 'ui.state':
           asleep = !!msg.asleep;
           return;
         case 'ui.text':
           if (typeof msg.text === 'string' && msg.text.trim()) {
             // Typed message instead of speech.
-            lastUserTurnAt = Date.now();
+            setUtterance(msg.text.trim(), Date.now());
             toXai({ type: 'conversation.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: msg.text.trim().slice(0, 4000) }] } });
             toXai({ type: 'response.create' });
           }
@@ -494,6 +602,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     });
 
     browser.on('close', () => {
+      for (const w of utteranceWaiters) w();
       liveSessions.delete(hooks);
       stopMeter();
       upstream.close();
@@ -506,6 +615,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     server.once('error', reject);
     server.listen(port, HOST, () => {
       const url = `http://${HOST}:${port}`;
+      baseUrl = url;
       console.log(`\n  Orbit bridge running:  ${url}\n`);
       if (!getApiKey()) console.log('  ! No xAI API key yet. Open the app and paste it on the setup screen.\n');
       resolve(url);
@@ -515,8 +625,10 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
 
 // `node src/server.js` runs it directly (browser mode); the desktop app imports startServer().
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  startServer().catch((e) => {
-    console.error(`Could not start: ${e.message}`);
-    process.exit(1);
-  });
+  startServer()
+    .then(() => console.log(`  Open this link to use Orbit in your browser (it changes every launch):\n  ${authUrl()}\n`))
+    .catch((e) => {
+      console.error(`Could not start: ${e.message}`);
+      process.exit(1);
+    });
 }

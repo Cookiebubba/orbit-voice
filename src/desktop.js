@@ -65,13 +65,17 @@ export function switchSession(title) {
   return enqueue(() => runPs('switch', ['-TitleB64', b64(clean)]));
 }
 
-/** Type `text` into the open session's prompt box and press Enter. */
-export function sendToDesktop(text, { dryRun = false, returnFocus = true } = {}) {
+/**
+ * Put `text` into the open session's prompt box and press Claude's Send button.
+ * `expectTitle`: refuse unless that session is the one open right now.
+ */
+export function sendToDesktop(text, { dryRun = false, expectTitle = null } = {}) {
   const clean = String(text || '').trim();
   if (!clean) return Promise.resolve({ ok: false, error: 'empty_text' });
   if (clean.length > MAX_PROMPT_CHARS) return Promise.resolve({ ok: false, error: 'too_long', message: `Prompt is over ${MAX_PROMPT_CHARS} characters.` });
   const args = ['-TextB64', b64(clean)];
-  if (dryRun) args.push('-DryRun');
-  if (returnFocus) args.push('-ReturnFocus');
+  // ORBIT_DRY_RUN_SENDS=1 (for testing) fills and clears the box instead of sending.
+  if (dryRun || process.env.ORBIT_DRY_RUN_SENDS === '1') args.push('-DryRun');
+  if (expectTitle) args.push('-ExpectTitleB64', b64(expectTitle));
   return enqueue(() => runPs('send', args));
 }

@@ -1,0 +1,60 @@
+name: Release
+
+# Builds the Windows installer when a version tag (v1.2.3) is pushed, and attaches it to a
+# draft GitHub release with its SHA-256 checksum. Publish the draft by hand after checking it.
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            ui/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Audit production dependencies
+        run: |
+          npm audit --omit=dev --audit-level=high
+          npm --prefix ui audit --omit=dev --audit-level=high
+
+      - name: Build UI and installer
+        run: npm run dist
+
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist/Orbit-Setup-*.exe | Select-Object -First 1
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($exe.Name)" | Out-File -Encoding ascii "dist/$($exe.Name).sha256"
+          "Installer SHA-256: $hash"
+
+      - name: Draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem dist/Orbit-Setup-*.exe, dist/Orbit-Setup-*.exe.sha256 | ForEach-Object { $_.FullName }
+          gh release create "${{ github.ref_name }}" $files --draft --title "Orbit ${{ github.ref_name }}" --notes-file RELEASE_NOTES.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orbit-installer
+          path: |
+            dist/Orbit-Setup-*.exe
+            dist/Orbit-Setup-*.exe.sha256

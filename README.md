@@ -1,119 +1,96 @@
-# Grok Voice for Claude Code
+<p align="center"><img src="assets/icon.png" width="96" alt="Orbit icon"></p>
 
-A small Grok-style desktop app for talking to your **Claude Code Desktop** sessions out loud, using **Grok Voice** from xAI.
+<h1 align="center">Orbit</h1>
 
-- **Ask about your sessions:** "What's Claude doing?", "Did it finish?", "Summarize my launchpad session."
-- **Dictate prompts:** "Tell Claude to run the tests." Grok reads the prompt back. It types the prompt into the Claude app's prompt box and presses Enter only after you say **yes**.
-- **Minimize it** and it shrinks to a little **always-on-top orb** that keeps listening. The orb lights up when Grok talks.
-- **Say "go to sleep"** and Grok stops listening. Press **Ctrl+Alt+G** from any app to wake it again (or to start it when it is off).
+<p align="center"><b>A hands-free voice companion for Claude Code Desktop, powered by Grok Voice.</b><br>
+Ask what Claude is doing, hear when it finishes, switch sessions, and dictate prompts, without touching the keyboard.</p>
 
-Everything runs on your own PC. Your xAI key is stored in a local file.
+<p align="center"><a href="../../releases/latest"><b>Download for Windows</b></a> · <a href="#how-it-works">How it works</a> · <a href="SECURITY.md">Security</a></p>
+
+<p align="center"><img src="docs/screenshot.png" width="300" alt="Orbit main window"></p>
+
+> Orbit is an independent open-source project. It is not affiliated with, endorsed by, or sponsored by xAI or Anthropic. Grok is a trademark of xAI; Claude is a trademark of Anthropic.
 
 ---
 
-## Setup
+## What it does
 
-1. **Install Node.js** (the free "LTS" version) from https://nodejs.org, if you don't have it.
-2. Put this folder somewhere normal, like `C:\Users\<you>\grok-voice`. Avoid OneDrive.
-3. **Double-click `start.bat`.** The first run installs everything, which takes a few minutes.
-4. The app asks for your **xAI API key**. Get one at https://console.x.ai → *API Keys*, paste it in, and click *Save key*. Voice usage is billed by xAI to that account.
-5. Click the orb, or **Start talking**.
+- **Talk to your sessions.** "What's Claude doing?", "Did it finish?", "Summarize my launchpad session." Orbit reads your Claude Code sessions from disk and Grok answers out loud.
+- **Hear when Claude is done.** Orbit watches your recent sessions and plays a chime, shows a Windows notification, and (optionally) has Grok tell you what Claude did.
+- **Dictate prompts, safely.** "Tell Claude to run the tests." Grok drafts it and reads it back. It only types into Claude's prompt box after you say **yes**. You can edit the draft first.
+- **Switch sessions by voice or click.** "Switch to my Ladder 6 session." Orbit opens it in Claude's sidebar, without moving your mouse.
+- **Stays out of the way.** Minimize it to a small always-on-top orb. The orb glows when you talk, dims when it's asleep, and pulses amber while Claude is working.
+- **You control the mic.** Say "go to sleep", or use **one question at a time** mode, where Grok only listens after you press the hotkey (default **Ctrl+Alt+G**, changeable).
 
-Keep the Claude desktop app open on the Code session you want to work with.
+## Requirements
 
-> Tip: headphones stop Grok from hearing itself.
+- Windows 10 or 11 (x64)
+- [Claude desktop app](https://claude.ai/download) with Claude Code sessions
+- An [xAI API key](https://console.x.ai). Voice is billed by xAI per minute connected (about $0.08/min at the time of writing). Orbit shows an estimate in Settings → Usage and hangs up after 10 minutes asleep.
+
+## Install
+
+1. Download `Orbit-Setup-x.y.z.exe` from the [latest release](../../releases/latest).
+2. Run it. The installer isn't code-signed yet, so Windows SmartScreen may warn you. Click **More info → Run anyway**. You can check the download against the `.sha256` file on the release page.
+3. Paste your xAI key when Orbit asks. It's encrypted with your Windows account (DPAPI) and never leaves your PC except to talk to xAI.
+4. Click the orb or press **Ctrl+Alt+G** and start talking.
 
 ## Using it
 
-**Main window**
-- **Orb / Start talking:** connects to Grok. You're only billed while connected.
-- **Moon button:** put Grok to sleep (it stops hearing you). Press it again, click the orb, or press **Ctrl+Alt+G** to wake it. After 10 minutes asleep it hangs up to stop xAI billing; Ctrl+Alt+G reconnects.
-- **Keyboard button:** type to Grok instead of talking.
-- **Red phone button:** hang up.
-- **Draft card:** when Grok drafts a prompt for Claude, it shows here. Say "yes", or click **Send** or **Discard**.
-- **— button** (or any way of minimizing): shrinks the app to the floating orb.
-- **Gear button:** Settings.
-  - **Voice:** pick any of Grok's voices (the list comes live from xAI) and click **Preview** to hear it.
-  - **Talking speed:** 0.7× to 1.5×.
-  - **Wake hotkey:** click the shortcut box and press a new key combo. It works from any app; *Reset* puts back Ctrl+Alt+G.
-
-  Everything saves right away and applies even mid-conversation.
-
-**Floating orb**
-- **Click:** opens the main window again.
-- **Drag:** move it anywhere.
-- **Right-click:** sleep / wake.
-
-**How bright the orb is** tells you its state: faint while asleep, half-lit while it waits in silence, and fully lit while you talk to it or Grok answers.
-
-**Things to say**
-
-| You say | What happens |
+| Say or do | What happens |
 | --- | --- |
-| "What's Claude doing right now?" | Reads the open session and summarizes it |
-| "List my sessions" | Lists recent sessions with project names |
-| "What did Claude say in the shakeout session?" | Finds that session by title and reads it |
-| "Go to sleep" / "Stop listening" | Says goodbye and stops hearing you until Ctrl+Alt+G |
-| "Tell Claude: add a dark mode toggle" | Shows a draft, reads it back, asks "Send it?" |
-| "Yes" / "No" / "Change it to…" | Sends, discards, or redrafts |
+| "What's Claude doing right now?" | Grok reads the open session and summarizes it |
+| "List my sessions" / "What happened in the shakeout session?" | Finds and reads other sessions |
+| "Switch to the launchpad dashboard" | Opens that session in Claude |
+| "Tell Claude: add a dark mode toggle" | Shows a draft, reads it back, waits for your "yes" |
+| "Go to sleep" | Stops listening until you press the hotkey |
+| "What went wrong?" | Grok reads Orbit's recent error log and explains |
+| Title bar → session name | Pick a session to open it, or ask Grok about it |
+| Title bar → clock icon | Conversation history (this run only, never saved) |
+| Title bar → gear | Voice, speed, listening mode, notifications, hotkey, start with Windows, usage |
+| Floating orb | Click: open · drag: move · right-click: sleep/wake |
 
 ## How it works
 
 ```
- Grok Voice app (Electron)
-   ├── main window + floating orb  (React, orb = orbkit SHDR-29)
-   └── local bridge  (127.0.0.1:4317, inside the app)
-         ├── Grok Voice realtime API   wss://api.x.ai/v1/realtime
-         ├── reads sessions:  %APPDATA%\Claude\claude-code-sessions\…  +  ~\.claude\projects\…\*.jsonl
-         └── types prompts:   Windows UI Automation → Claude window → "Prompt" box → paste → Enter
+ Orbit (Electron)
+   ├── main window + floating orb (React; orb is orbkit SHDR-29)
+   └── local bridge on 127.0.0.1:4317 (inside the app)
+         ├── Grok Voice realtime API   wss://api.x.ai/v1/realtime  (your key)
+         ├── reads sessions            Claude's session list + ~/.claude/projects/**/*.jsonl  (read-only)
+         ├── watches for "finished"    stat()s recent transcripts every 2 s
+         └── fills / sends / switches  Windows UI Automation on the Claude window (no keystrokes, no clipboard)
 ```
 
-- **Reading** is read-only. It uses the session list the Claude app keeps on disk and the normal Claude Code transcript files. The Microsoft Store version of Claude keeps its list in `%LOCALAPPDATA%\Packages\Claude_…\LocalCache\Roaming\Claude`, and the regular installer uses `%APPDATA%\Claude`. Both are checked.
-- **"Current session"** is whichever session is open in the Claude window.
-- **Sending** finds the prompt box through Windows accessibility, not screen coordinates. It pastes, checks the text landed, presses Enter, and restores your clipboard. It **refuses to send** if:
-  - the box already has your own typing in it,
-  - you switched sessions after the draft was made,
-  - or it can't confirm the paste.
+- Claude's **Microsoft Store** version keeps its session list in `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude`. The regular installer uses `%APPDATA%\Claude`. Orbit checks both.
+- **Sending a prompt** fills Claude's prompt box through Windows accessibility and presses Claude's own Send button. There are no key presses, focus changes or clipboard use. It refuses if the box already has your own typing, if a different session is open than the one the draft was for, or if it can't confirm the text landed.
+- **Switching sessions** presses the session's sidebar button through accessibility, and confirms the window title changed.
+- Settings, usage and logs live in `%APPDATA%\Orbit`.
 
-## Terms of service
+## Privacy and terms of use
 
-*Not legal advice, just how it's designed.*
+- Orbit is a **voice input method** for you, like dictation. Every prompt is yours, shown to you, and sent only after you confirm. Grok can't send on its own. The app enforces this in code: a voice "send" only goes through if your transcribed reply after the draft is a clear yes. Please don't modify Orbit to send prompts automatically or run Claude unattended through its UI. For automation, use Claude Code's official headless mode (`claude -p`) or the Agent SDK.
+- The parts of your sessions Grok reads are sent to **xAI** to answer you. Don't use Orbit on sessions containing secrets you wouldn't share with xAI.
+- Nothing else leaves your computer. There's no telemetry and no auto-update. Logs never contain keys or prompt text.
 
-- **xAI:** it uses xAI's official Voice API with your own key.
-- **Anthropic / Claude:** this is a voice **input method** for you. It's like dictation, not a bot. Every prompt comes from you, is shown to you, and is sent only after you confirm it, one prompt per "yes". Grok is told never to send on its own. Don't modify it to loop prompts or run Claude unattended through the desktop UI. For automation, use Claude Code's official headless options (`claude -p`, the Agent SDK).
-- The bits of your sessions that Grok reads out **are sent to xAI**. Don't use it on sessions containing secrets.
-- It's built from scratch and shares no code with any other voice/Claude project. The orb is the open-source orbkit SHDR-29 component, added with `shadcn add zzzzshawn/orbkit/shdr-29`.
+## Build from source
 
-## Settings (`.env`, optional)
-
-| Setting | Default | Meaning |
-| --- | --- | --- |
-| `XAI_API_KEY` | — | Saved automatically by the setup screen |
-| `GROK_VOICE` | `eve` | Grok's voice. Easiest to change in Settings |
-| `GROK_VOICE_SPEED` | `1` | Talking speed, 0.7 to 1.5. Easiest to change in Settings |
-| `GROK_VOICE_MODEL` | `grok-voice-latest` | xAI voice model |
-| `RETURN_FOCUS` | `true` | After sending, switch back to the window you were in |
-| `WAKE_HOTKEY` | `Control+Alt+G` | Global start / sleep / wake hotkey. Easiest to change in the app's Settings ([Electron accelerator](https://www.electronjs.org/docs/latest/api/accelerator) format) |
-| `PORT` | `4317` | Local port |
-
-## For developers
+Requires Node.js 20+ on Windows.
 
 ```bash
-npm install
-npm run build:ui     # builds ui/ into public/
-npm run app          # desktop app
-npm run web          # same UI in a browser tab at http://127.0.0.1:4317 (no floating orb)
-npm run check        # lists sessions + reads the open one, no key needed
+npm ci
+npm run build:ui
+npm run app
 ```
 
-- `ui/`: React + Tailwind + shadcn. `App.tsx` is the main window, `OrbWindow.tsx` the floating orb, and `useVoice.ts` handles mic, audio, phase and levels.
-- `electron/`: the window shell, starting the bridge in-process.
-- `src/`: bridge server, Grok tools, session reader, Windows UI Automation script.
-- `GVB_SNAPSHOT_DIR=<dir> npm run app` saves screenshots of both windows and quits. Handy for checking UI changes. Add `GVB_SNAPSHOT_SETTINGS=1` to self-test the hotkey settings: it records a new shortcut, presses it, then resets to the default.
+`npm run dist` builds the installer into `dist/`. `npm run web` runs the same UI in a browser tab (no floating orb or hotkey). `npm run check` reads your sessions without needing a key.
 
-## Known limits
+Project layout: `electron/` window shell, tray and hotkey · `src/` local bridge, Grok tools, session reader and watcher, Windows automation script · `ui/` React UI.
 
-- **Windows only** for sending prompts.
-- Sends only to the session **open in the Claude window**.
-- If the Claude window is hidden in the system tray, it can't be found. Open it.
-- "Working / idle" is a best guess from the transcript.
+## Security
+
+See [SECURITY.md](SECURITY.md) for the threat model, what Orbit does to protect you, the published security review, and how to report a vulnerability.
+
+## License
+
+[MIT](LICENSE). Third-party components are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
