@@ -45,7 +45,7 @@ const MAX_BODY = 64 * 1024;
 
 export const hotkeyLabel = (accel) => accel.replace(/CommandOrControl|Control/g, 'Ctrl').replace(/Super|Meta/g, 'Win');
 const wakeLabel = () => hotkeyLabel(getSetting('wakeHotkey'));
-const wakeHint = () => `pressing ${wakeLabel()} or clicking the orb`;
+const wakeHint = () => (getSetting('wakeWord') ? `saying "Hey Grok" or pressing ${wakeLabel()}` : `pressing ${wakeLabel()}`);
 
 const FALLBACK_VOICES = [
   { id: 'eve', name: 'Eve', gender: 'female' },
@@ -62,7 +62,7 @@ You are a hands-free voice companion for the user's Claude Code desktop app. Cla
 You DO have access to the user's sessions through your tools. Never say you can't see them: call get_current_session, list_sessions or read_session and answer from what they return.
 
 Sleeping:
-- When the user says "go to sleep", "stop listening", "sleep", "goodnight" or similar, call go_to_sleep, then say a very short goodbye. You stop hearing them until they press ${wakeLabel()} or click the orb.
+- When the user says "go to sleep", "stop listening", "sleep", "goodnight", "hang up" or similar, call go_to_sleep, then say a very short goodbye. The app then hangs up; the user can say "Hey Grok" or press ${wakeLabel()} to start a fresh conversation.
 
 How to talk:
 - This is a spoken conversation. Keep replies short: one to three sentences unless asked for more.

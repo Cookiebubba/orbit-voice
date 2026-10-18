@@ -24,6 +24,36 @@ export async function runSelfTest({ dir, main, orb, globalShortcut, hits, showOr
   const report = {};
   await wait(3500);
 
+  if (process.env.GVB_SNAPSHOT_SLEEP) {
+    // Start talking; the fake Grok says "go to sleep" + goodbye. Orbit should hang up after the
+    // goodbye, then (fake mic playing "Hey Grok") the wake word should reconnect.
+    const text = () => js(`document.body.innerText`);
+    updateSettings({ wakeWord: true, listenMode: process.env.GVB_TAP ? 'tap' : 'always' });
+    await wait(1000);
+    await js(`document.querySelector('button[aria-label="Start talking"]').click()`);
+    const t0 = Date.now();
+    while (Date.now() - t0 < 4000 && !/Listening|Speaking|Thinking/.test(await text())) await wait(100);
+    report.connected = /Listening|Speaking|Thinking/.test(await text());
+    const t1 = Date.now();
+    let sawSpeaking = false;
+    while (Date.now() - t1 < 15000 && !/Sleeping/.test(await text())) {
+      if (/Going to sleep|Answering/.test(await text())) sawSpeaking = true;
+      await wait(100);
+    }
+    report.goodbyePlayedBeforeHangup = sawSpeaking;
+    report.hungUp = /Sleeping/.test(await text());
+    report.secondsToHangUp = Math.round((Date.now() - t1) / 100) / 10;
+    await shot(main, 'sleep-hungup.png');
+    const t2 = Date.now();
+    while (Date.now() - t2 < 25000 && !/Connecting|Listening|Speaking|Thinking/.test(await text())) await wait(200);
+    report.wokeByHeyGrok = /Connecting|Listening|Speaking|Thinking/.test(await text());
+    report.secondsToWake = Math.round((Date.now() - t2) / 100) / 10;
+    await shot(main, 'sleep-woke.png');
+    updateSettings({ wakeWord: false, listenMode: 'always' });
+    fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify(report, null, 2));
+    return;
+  }
+
   if (process.env.GVB_SNAPSHOT_WAKE) {
     // With GVB_FAKE_MIC playing a "Hey Grok" recording: does the wake word start Grok?
     const logs = [];

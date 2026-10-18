@@ -4,9 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { playChime } from "./sounds";
 
 const RATE = 24000;
-const SLEEP_HANGUP_MS = 10 * 60 * 1000;
 const TAP_TIMEOUT_MS = 10_000; // "one question" mode: give up if you say nothing for this long
+const TAP_DRAFT_HOLD_MS = 60_000; // "one question" mode: stay connected this long while a draft waits for a yes
 const MAX_HISTORY = 200;
+
+// Sleeping means hanging up: nothing is billed, and "Hey Grok" / the hotkey start a fresh
+// connection. The only "connected but not listening" moments are while Grok finishes its
+// goodbye, and in "one question" mode while it answers (or while a draft waits for a yes).
 
 export type Phase = "off" | "connecting" | "listening" | "thinking" | "speaking";
 export type Caption = { id: string; who: "you" | "grok" | "note" | "error" | "sent"; text: string; at: number };
@@ -60,6 +64,15 @@ export function useVoice(options: VoiceOptions) {
   const asleepRef = useRef(false);
   const pendingText = useRef<string | null>(null);
   const tapTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const tapHold = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const hangupPoll = useRef<ReturnType<typeof setInterval>>(undefined);
+  const responding = useRef(false);
+  const responseDoneAt = useRef(0);
+  const lastAudioAt = useRef(0);
+  const toolsInFlight = useRef(0);
+  const draftRef = useRef<Draft>(null);
+  draftRef.current = draft;
+  const stopRef = useRef<() => void>(() => {});
   const opts = useRef(options);
   opts.current = options;
 
@@ -79,24 +92,67 @@ export function useVoice(options: VoiceOptions) {
     if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify({ type: "ui.state", asleep: v }));
   };
 
-  /** Stop sending the mic to Grok (Grok can still finish what it is saying). */
-  const sleep = useCallback((quiet = false) => {
-    clearTimeout(tapTimer.current);
-    if (asleepRef.current) return;
+  /** Close the mic right away (Grok can still finish what it's saying). */
+  const muteMic = () => {
     setAsleepBoth(true);
     setHearing(false);
     if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
-    if (!quiet) playChime("sleep");
+  };
+
+  /**
+   * Hang up once Grok has gone quiet (its audio has played out), or after `maxMs` at most.
+   * `afterReply`: also wait for a reply that finishes after now (e.g. Grok's goodbye, which is
+   * spoken after its go_to_sleep tool returns). `keepIfDraft` ("one question" mode): if a draft is
+   * waiting for a yes, stay connected for a minute instead so the user can answer.
+   */
+  const hangUpWhenQuiet = useCallback((maxMs: number, { afterReply = false, keepIfDraft = false } = {}) => {
+    clearInterval(hangupPoll.current);
+    const t0 = Date.now();
+    let quietSince = 0; // must stay quiet ~1 s: there are short gaps between a tool call and the spoken reply
+    hangupPoll.current = setInterval(() => {
+      const now = Date.now();
+      const quiet =
+        playing.current.size === 0 &&
+        !responding.current &&
+        toolsInFlight.current === 0 &&
+        now - lastAudioAt.current > 600 &&
+        (!afterReply || responseDoneAt.current > t0);
+      quietSince = quiet ? quietSince || now : 0;
+      if (!(quiet && now - quietSince >= 900) && now - t0 < maxMs) return;
+      clearInterval(hangupPoll.current);
+      if (keepIfDraft && draftRef.current && ws.current) {
+        clearTimeout(tapHold.current);
+        tapHold.current = setTimeout(() => stopRef.current(), TAP_DRAFT_HOLD_MS);
+        return;
+      }
+      stopRef.current();
+    }, 150);
   }, []);
 
-  /** In "one question" mode, listen for one utterance, then go back to sleep. */
+  /** Go to sleep = hang up (after Grok's goodbye). Nothing is billed while asleep. */
+  const sleep = useCallback(
+    (reason: "user" | "grok" = "user") => {
+      clearTimeout(tapTimer.current);
+      clearTimeout(tapHold.current);
+      if (!ws.current) return;
+      muteMic();
+      playChime("sleep");
+      hangUpWhenQuiet(reason === "grok" ? 6000 : 3000, { afterReply: reason === "grok" });
+    },
+    [hangUpWhenQuiet],
+  );
+
+  /** In "one question" mode, listen for one utterance; say nothing for 10 s and it hangs up. */
   const armTapTimeout = useCallback(() => {
     clearTimeout(tapTimer.current);
     if (opts.current.listenMode === "tap") tapTimer.current = setTimeout(() => sleep(), TAP_TIMEOUT_MS);
   }, [sleep]);
 
+  /** "One question" mode, while a draft waits: open the mic again for the answer. */
   const wake = useCallback(() => {
-    if (!asleepRef.current) return;
+    if (!asleepRef.current || !ws.current) return;
+    clearInterval(hangupPoll.current);
+    clearTimeout(tapHold.current);
     setAsleepBoth(false);
     playChime("wake");
     armTapTimeout();
@@ -162,7 +218,7 @@ export function useVoice(options: VoiceOptions) {
           caption({ id: `err-${Date.now()}`, who: "error", text: `Grok disconnected${evt.reason ? `: ${evt.reason}` : "."}` });
           return;
         case "bridge.sleep":
-          sleep();
+          sleep("grok");
           return;
         case "bridge.session":
           setSessionTitle(evt.title);
@@ -178,9 +234,11 @@ export function useVoice(options: VoiceOptions) {
           return;
         case "bridge.tool":
           thinking.current = true;
+          toolsInFlight.current++;
           if (TOOL_NOTES[evt.name]) caption({ id: `tool-${Date.now()}`, who: "note", text: TOOL_NOTES[evt.name] });
           return;
         case "bridge.tool_result":
+          toolsInFlight.current = Math.max(0, toolsInFlight.current - 1);
           if (evt.result && (evt.result.error || evt.result.ok === false))
             caption({ id: `err-${Date.now()}`, who: "error", text: evt.result.message || evt.result.error });
           if (evt.result?.open_in_app) setSessionTitle(evt.result.open_in_app);
@@ -191,7 +249,11 @@ export function useVoice(options: VoiceOptions) {
         case "response.output_audio.delta":
         case "response.audio.delta":
           thinking.current = false;
+          lastAudioAt.current = Date.now();
           playPcm(evt.delta);
+          return;
+        case "response.created":
+          responding.current = true;
           return;
         case "input_audio_buffer.speech_started":
           clearTimeout(tapTimer.current);
@@ -203,11 +265,19 @@ export function useVoice(options: VoiceOptions) {
         case "input_audio_buffer.committed":
           setHearing(false);
           thinking.current = true;
-          // "One question" mode: you've asked it, so stop listening (Grok still answers).
-          if (opts.current.listenMode === "tap" && !asleepRef.current) sleep(true);
+          // "One question" mode: you've asked it, so close the mic; hang up once Grok has answered
+          // (or wait a minute if it drafted a prompt that needs your yes).
+          if (opts.current.listenMode === "tap" && !asleepRef.current) {
+            clearTimeout(tapTimer.current);
+            muteMic();
+            hangUpWhenQuiet(90_000, { afterReply: true, keepIfDraft: true });
+          }
           return;
         case "response.done":
           thinking.current = false;
+          responding.current = false;
+    toolsInFlight.current = 0;
+          responseDoneAt.current = Date.now();
           return;
       }
       if (t.startsWith("conversation.item.input_audio_transcription")) {
@@ -220,11 +290,14 @@ export function useVoice(options: VoiceOptions) {
         else if (t.endsWith(".done") && evt.transcript) caption({ id, who: "grok", text: evt.transcript });
       }
     },
-    [caption, playPcm, stopPlayback, sleep, sendText, armTapTimeout],
+    [caption, playPcm, stopPlayback, sleep, sendText, armTapTimeout, hangUpWhenQuiet],
   );
 
   const stop = useCallback(() => {
     clearTimeout(tapTimer.current);
+    clearTimeout(tapHold.current);
+    clearInterval(hangupPoll.current);
+    responding.current = false;
     ws.current?.close();
     ws.current = null;
     stopPlayback();
@@ -240,6 +313,7 @@ export function useVoice(options: VoiceOptions) {
     setLevels({ input: 0, output: 0 });
     setHearing(false);
   }, [stopPlayback]);
+  stopRef.current = stop;
 
   const start = useCallback(async () => {
     if (ws.current) return;
@@ -314,20 +388,10 @@ export function useVoice(options: VoiceOptions) {
 
   useEffect(() => stop, [stop]);
 
-  // Asleep for a long time: hang up so xAI stops billing. The hotkey reconnects.
-  useEffect(() => {
-    if (!asleep || phase === "off") return;
-    const id = setTimeout(() => {
-      stop();
-      caption({ id: `note-${Date.now()}`, who: "note", text: "Hung up after 10 minutes asleep." });
-    }, SLEEP_HANGUP_MS);
-    return () => clearTimeout(id);
-  }, [asleep, phase === "off"]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /** The global hotkey: start if off, otherwise toggle sleep. */
+  /** Hotkey, orb click/right-click and "Hey Grok": start if asleep (hung up); otherwise go to sleep. */
   const hotkey = useCallback(() => {
     if (!ws.current) start();
-    else if (asleepRef.current) wake();
+    else if (asleepRef.current) wake(); // "one question" mode: a draft is waiting for your answer
     else sleep();
   }, [start, wake, sleep]);
 
@@ -356,7 +420,7 @@ export function useVoice(options: VoiceOptions) {
     stop,
     sleep: () => sleep(),
     wake,
-    toggleSleep: () => (asleepRef.current ? wake() : sleep()),
+    toggleSleep: hotkey,
     hotkey,
     sendText,
     ask,

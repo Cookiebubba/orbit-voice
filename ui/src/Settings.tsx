@@ -33,8 +33,8 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
           />
           <p className="mt-2 text-[12.5px] leading-relaxed text-white/50">
             {s.listenMode === "always"
-              ? `Grok hears you until you say "go to sleep" or press ${s.hotkeyLabel}.`
-              : `Grok only listens after you press ${s.hotkeyLabel}, for one question, then stops by itself. Nothing in the background gets picked up.`}
+              ? `Grok hears you until you say "go to sleep" or press ${s.hotkeyLabel}. Then it hangs up, so nothing is billed, until you press ${s.hotkeyLabel}${s.wakeWord ? ' or say “Hey Grok”' : ''} again.`
+              : `Press ${s.hotkeyLabel}${s.wakeWord ? ' or say “Hey Grok”' : ''}, ask one question, and Grok hangs up after answering (it waits up to a minute if a prompt needs your yes). Nothing in the background gets picked up.`}
           </p>
           <Toggle
             className="mt-4"
@@ -48,7 +48,7 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
             checked={s.wakeWord}
             onChange={(wakeWord) => update({ wakeWord })}
             label="Wake word: say “Hey Grok”"
-            hint="Starts or wakes Grok hands-free. Recognized entirely on this PC by a small offline speech model: no audio leaves your computer and it costs nothing. Only listens while Grok is off or asleep."
+            hint="Starts Grok hands-free after it has gone to sleep. Recognized entirely on this PC by a small offline speech model: no audio leaves your computer and it costs nothing. Each wake starts a fresh conversation."
           />
         </Section>
 
@@ -174,7 +174,7 @@ function UsageSection({ costPerMinute, update }: { costPerMinute: number; update
         ))}
       </div>
       <p className="mt-2 text-[12px] leading-snug text-white/45">
-        An estimate from time connected to Grok. Your xAI console has the real bill. Orbit hangs up after 10 minutes asleep.
+        An estimate from time connected to Grok. Your xAI console has the real bill. Orbit hangs up when you say "go to sleep", so sleeping costs nothing.
       </p>
       <label className="mt-3 flex items-center justify-between gap-3 text-[12.5px] text-white/70">
         Price per minute (USD)

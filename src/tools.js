@@ -291,7 +291,10 @@ export function createToolRunner({ notify, wakeHint = 'clicking the orb', uttera
 
     async go_to_sleep() {
       notify({ type: 'bridge.sleep' });
-      return { sleeping: true, next_step: `Say a very short goodbye (a few words) and mention ${typeof wakeHint === 'function' ? wakeHint() : wakeHint} wakes you. Then stay silent.` };
+      return {
+        sleeping: true,
+        next_step: `Say a very short goodbye (a few words) and mention that ${typeof wakeHint === 'function' ? wakeHint() : wakeHint} starts you again. Then the app hangs up.`,
+      };
     },
   };
 

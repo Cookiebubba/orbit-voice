@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { History as HistoryIcon, Keyboard, Mic, Minus, Moon, PhoneOff, SendHorizontal, Settings as SettingsIcon, X } from "lucide-react";
+import { History as HistoryIcon, Keyboard, Mic, Minus, Moon, SendHorizontal, Settings as SettingsIcon, X } from "lucide-react";
 import { Shdr29 } from "@/components/ui/shdr-29";
 import { cn } from "@/lib/utils";
 import DraftCard from "./components/DraftCard";
@@ -13,7 +13,7 @@ import { useVoice, type Phase } from "./useVoice";
 import { useWakeWord } from "./useWakeWord";
 
 const PHASE_LABEL: Record<Phase, string> = {
-  off: "Tap the orb to talk",
+  off: "Sleeping", // hung up: nothing is billed until you start again
   connecting: "Connecting…",
   listening: "Listening",
   thinking: "Thinking",
@@ -87,11 +87,12 @@ export default function App() {
 
   const on = v.phase !== "off";
   const recent = v.captions.filter((c) => c.who !== "note" || c === v.captions[v.captions.length - 1]).slice(-3);
-  const asleepLabel = tap ? "Ready" : "Sleeping";
+  // Connected but not listening: Grok is finishing its goodbye before hanging up, or ("one
+  // question" mode) answering / holding a draft that waits for your yes.
+  const waitingForYes = v.asleep && tap && !!v.draft;
+  const asleepLabel = waitingForYes ? "Waiting for your answer" : tap ? "Answering" : "Going to sleep…";
   const say = wakeOn ? "Say “Hey Grok” or press" : "Press";
-  const hint = !on
-    ? wakeOn ? `Say “Hey Grok” or press ${hotkey}` : `Or press ${hotkey} anytime`
-    : v.asleep ? (tap ? `${say} ${hotkey} to ask something` : `${say} ${hotkey} to wake`) : null;
+  const hint = !on ? (wakeOn ? `Say “Hey Grok” or press ${hotkey}` : `Tap the orb or press ${hotkey}`) : waitingForYes ? `${say} ${hotkey} to answer` : null;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-black text-white select-none">
@@ -204,15 +205,12 @@ export default function App() {
                   <Keyboard size={18} />
                 </RoundButton>
                 <RoundButton
-                  label={v.asleep ? (tap ? `Ask (${hotkey})` : `Wake (${hotkey})`) : `Stop listening (${hotkey})`}
-                  active={v.asleep}
+                  label={waitingForYes ? `Answer (${hotkey})` : `Go to sleep: hangs up (${hotkey})`}
+                  active={waitingForYes}
                   onClick={v.toggleSleep}
                   big
                 >
-                  {v.asleep ? <Mic size={22} /> : <Moon size={21} />}
-                </RoundButton>
-                <RoundButton label="Hang up" onClick={v.stop} danger>
-                  <PhoneOff size={18} />
+                  {waitingForYes ? <Mic size={22} /> : <Moon size={21} />}
                 </RoundButton>
               </>
             ) : (

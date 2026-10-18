@@ -20,15 +20,15 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 - **Dictate prompts, safely.** "Tell Claude to run the tests." Grok drafts it and reads it back. It only types into Claude's prompt box after you say **yes**. You can edit the draft first.
 - **Switch sessions by voice or click.** "Switch to my Ladder 6 session." Orbit opens it in Claude's sidebar, without moving your mouse.
 - **Stays out of the way.** Minimize it to a small always-on-top orb. The orb glows when you talk, dims when it's asleep, and pulses amber while Claude is working.
-- **You control the mic.** Say "go to sleep", or use **one question at a time** mode, where Grok only listens after you press the hotkey (default **Ctrl+Alt+G**, changeable).
-- **Say "Hey Grok" (optional).** A free, fully offline wake word starts or wakes Grok hands-free. It's recognized on your PC by a small speech model, so no audio leaves your computer until Grok is awake.
+- **You control the mic, and the bill.** Say "go to sleep" and Orbit hangs up, so nothing is billed while it sleeps. Or use **one question at a time** mode: press the hotkey (default **Ctrl+Alt+G**, changeable), ask, and it hangs up after answering.
+- **Say "Hey Grok" (optional).** A free, fully offline wake word starts Grok again after it has gone to sleep. It's recognized on your PC by a small speech model, so no audio leaves your computer until Grok is awake. Each wake starts a fresh conversation: Grok doesn't remember the previous one, but it can always re-read your Claude sessions.
 - **Copy to clipboard.** "Copy Claude's last answer", "copy that command": Grok puts it on your clipboard, ready to paste.
 
 ## Requirements
 
 - Windows 10 or 11 (x64)
 - [Claude desktop app](https://claude.ai/download) with Claude Code sessions
-- An [xAI API key](https://console.x.ai). Voice is billed by xAI per minute connected (about $0.08/min at the time of writing). Orbit shows an estimate in Settings → Usage and hangs up after 10 minutes asleep.
+- An [xAI API key](https://console.x.ai). Voice is billed by xAI per minute connected (about $0.08/min at the time of writing). Orbit shows an estimate in Settings → Usage. Saying "go to sleep" hangs up, so sleeping costs nothing.
 
 ## Install
 
@@ -45,8 +45,8 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 | "List my sessions" / "What happened in the shakeout session?" | Finds and reads other sessions |
 | "Switch to the launchpad dashboard" | Opens that session in Claude |
 | "Tell Claude: add a dark mode toggle" | Shows a draft, reads it back, waits for your "yes" |
-| "Go to sleep" | Stops listening until you press the hotkey (or say "Hey Grok", if the wake word is on) |
-| "Hey Grok" | Starts or wakes Grok (turn it on in Settings → Listening) |
+| "Go to sleep" | Grok says goodbye and Orbit hangs up (nothing billed) |
+| "Hey Grok" / the hotkey / click the orb | Starts a fresh conversation (turn the wake word on in Settings → Listening) |
 | "Copy Claude's last answer" / "Copy that" | Puts it on your clipboard |
 | "What went wrong?" | Grok reads Orbit's recent error log and explains |
 | Title bar → session name | Pick a session to open it, or ask Grok about it |

@@ -1,6 +1,7 @@
 **Orbit 1.1.0: say "Hey Grok", and copy to clipboard.**
 
 - **"Hey Grok" wake word** (optional, Settings → Listening): starts or wakes Grok hands-free. Recognized fully offline on your PC, so it's free and no audio leaves your computer until Grok is awake.
+- **"Go to sleep" hangs up,** so nothing is billed while Grok sleeps. Say "Hey Grok" or press the hotkey to start again.
 - **Copy to clipboard:** "copy Claude's last answer", "copy that command". Grok only copies when you've just asked it to.
 
 Everything from 1.0: ask what Claude is doing, hear when it finishes, switch sessions, and dictate prompts that Grok only sends after you say yes or click Send. Minimizes to a small always-on-top orb. The default hotkey is **Ctrl+Alt+G** (changeable).
