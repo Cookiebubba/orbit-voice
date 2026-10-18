@@ -302,3 +302,70 @@ test('after Orbit dies, open() rebuilds the run from the ledger and restart() co
   assert.equal(sup2.card(c).state, 'done');
   assert.ok(recorded(record).filter((x) => x.kind === 'newSession').length >= 4, 'a got a fresh session');
 });
+
+// ---- Control inbox (build step 4) --------------------------------------------------
+
+import { appendControl, ownerLive } from '../src/agents/inbox.js';
+
+const resultFor = (sup, rid) => readEvents(sup.ledger.file).find((e) => e.type === 'control_result' && e.rid === rid);
+const untilResult = (sup, rid) => until(sup, () => !!resultFor(sup, rid), `result ${rid}`).then(() => resultFor(sup, rid));
+
+test('the owner keeps a heartbeat while running and clears it on shutdown', async (t) => {
+  const { sup } = setup(t);
+  assert.equal(ownerLive(sup.runDir), true);
+  await sup.shutdown();
+  assert.equal(ownerLive(sup.runDir), false);
+});
+
+test('inbox requests drive the agent and each gets a result', async (t) => {
+  const { sup } = setup(t, { inboxPollMs: 20 });
+  const id = sup.spawn({ name: 'a', task: '[fake steps=6 stepMs=60 write=ask]', writes: true });
+
+  await until(sup, () => sup.card(id).state === 'needs_you', 'first write request');
+  let r = await untilResult(sup, appendControl(sup.runDir, { agent: id, action: 'approve' }));
+  assert.equal(r.ok, true);
+
+  await until(sup, () => sup.card(id).state === 'needs_you' && sup.card(id).needs.title === 'Write step-2.txt', 'second request');
+  r = await untilResult(sup, appendControl(sup.runDir, { agent: id, action: 'approve' }));
+  r = await untilResult(sup, appendControl(sup.runDir, { agent: id, action: 'approve' }));
+  assert.equal(r.ok, false, 'approving twice fails cleanly');
+  assert.match(r.error, /isn't waiting/);
+
+  r = await untilResult(sup, appendControl(sup.runDir, { agent: id, action: 'pause_step' }));
+  assert.equal(r.ok, true);
+  await until(sup, () => sup.card(id).state === 'paused' || sup.card(id).state === 'needs_you', 'parked or asking');
+  if (sup.card(id).state === 'needs_you') await untilResult(sup, appendControl(sup.runDir, { agent: id, action: 'approve' }));
+  await until(sup, () => sup.card(id).state === 'paused', 'parked');
+
+  r = await untilResult(sup, appendControl(sup.runDir, { agent: id, action: 'redirect', text: 'SHORTER FILES' }));
+  assert.equal(r.ok, true);
+  await until(sup, () => sup.card(id).state === 'needs_you', 'asks again after redirect');
+  assert.match(sup.card(id).needs.title, /redirected: SHORTER FILES/);
+
+  r = await untilResult(sup, appendControl(sup.runDir, { agent: id, action: 'stop' }));
+  assert.equal(r.ok, true);
+  assert.equal(sup.card(id).state, 'stopped');
+  r = await untilResult(sup, appendControl(sup.runDir, { agent: id, action: 'restart' }));
+  assert.equal(r.ok, true);
+  await until(sup, () => sup.card(id).state === 'needs_you', 'restarted and asking');
+});
+
+test('bad inbox requests get an error result, and old requests are ignored', async (t) => {
+  const runsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-sup-'));
+  const base = { agentCommand: { command: process.execPath, args: [FAKE] }, inboxPollMs: 20 };
+  const first = Supervisor.create({ runsDir, goal: 'g', ...base });
+  const id = first.spawn({ name: 'a', task: '[fake steps=1 stepMs=5]' });
+  await first.wait([id]);
+  await first.shutdown();
+  const stale = appendControl(first.runDir, { agent: id, action: 'stop' }); // written while nobody owns the run
+
+  const sup = Supervisor.open(first.runDir, base);
+  t.after(() => sup.shutdown());
+  const unknown = await untilResult(sup, appendControl(sup.runDir, { agent: 'ghost', action: 'pause' }));
+  assert.deepEqual([unknown.ok, unknown.error], [false, 'no agent ghost']);
+  fs.appendFileSync(path.join(sup.runDir, 'inbox.jsonl'), JSON.stringify({ rid: 'x1', agent: id, action: 'format_disk' }) + '\n');
+  const bogus = await untilResult(sup, 'x1');
+  assert.deepEqual([bogus.ok, bogus.error], [false, 'unknown action']);
+  assert.equal(resultFor(sup, stale), undefined, 'a request from before this owner is never run');
+  assert.equal(sup.card(id).state, 'done');
+});

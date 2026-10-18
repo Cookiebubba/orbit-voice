@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as acp from '@agentclientprotocol/sdk';
 import { Ledger, readEvents, replay, reduce, toCard, TERMINAL } from './ledger.js';
+import { BEAT_MS, clearBeat, createInboxReader, validateControl, writeBeat } from './inbox.js';
 
 export const PROGRESS_MCP = fileURLToPath(new URL('./progress-mcp.js', import.meta.url));
 
@@ -101,7 +102,7 @@ export class Supervisor extends EventEmitter {
    * @param {number} [o.maxConcurrent=4]
    * @param {(agent, request) => boolean} [o.autoApprove] permission policy; unapproved requests go to the card
    */
-  constructor({ runDir, agentCommand, isolate = true, mode = 'default', model = null, maxConcurrent = 4, autoApprove = null, budgetCheckMs = 1000 }) {
+  constructor({ runDir, agentCommand, isolate = true, mode = 'default', model = null, maxConcurrent = 4, autoApprove = null, budgetCheckMs = 1000, inboxPollMs = 200 }) {
     super();
     this.runDir = runDir;
     this.agentCommand = agentCommand;
@@ -117,6 +118,7 @@ export class Supervisor extends EventEmitter {
     this.deferQueue = false;
     this.budgetTimer = setInterval(() => { for (const id of this.state.order) this.#checkBudget(id); }, budgetCheckMs);
     this.budgetTimer.unref?.();
+    this.#startInbox(inboxPollMs);
   }
 
   /** Starts a new run in runsDir/<runId>. */
@@ -204,7 +206,7 @@ export class Supervisor extends EventEmitter {
       return;
     }
     if (rt?.turn) { rt.softPause = null; return; } // "pausing after this step" was requested; cancel it
-    if (['paused', 'idle', 'blocked'].includes(a.state)) return this.#prompt(id, 'Continue where you left off.');
+    if (['paused', 'idle', 'blocked'].includes(a.state)) this.#prompt(id, 'Continue where you left off.'); // returns once sent
   }
 
   /** Cancel whatever the agent is doing and give it a new instruction in the same session. */
@@ -216,7 +218,8 @@ export class Supervisor extends EventEmitter {
     const rt = this.rt.get(id);
     if (rt.turn) { rt.intent = 'redirect'; await this.#cancelTurn(id); }
     rt.softPause = null;
-    return this.#prompt(id, `Change of plan from the user: ${text.trim()}\n\nKeep reporting progress with report_progress, and end with the report JSON block as before.`);
+    const prefix = a.state === 'done' ? 'Follow-up from the user:' : 'Change of plan from the user:';
+    this.#prompt(id, `${prefix} ${text.trim()}\n\nKeep reporting progress with report_progress, and end with the report JSON block as before.`);
   }
 
   /**
@@ -258,9 +261,15 @@ export class Supervisor extends EventEmitter {
   }
 
   /** Start an interrupted, failed or stopped agent again in a new process. */
-  restart(id) {
+  async restart(id) {
     const a = this.#need(id);
-    if (this.rt.get(id)?.child?.exitCode === null) throw new Error(`${id} is still running`);
+    if (!['failed', 'interrupted', 'stopped'].includes(a.state)) throw new Error(`${id} is ${a.state}; only failed, interrupted or stopped agents restart`);
+    const old = this.rt.get(id)?.child;
+    if (old && old.exitCode === null && old.signalCode === null) { // e.g. Restart clicked right after Stop
+      const exited = new Promise((r) => old.once('exit', r));
+      killTree(old);
+      await Promise.race([exited, new Promise((r) => setTimeout(r, STOP_GRACE_MS))]);
+    }
     this.rt.delete(id);
     const p = a.progress;
     const note = `Note: you were interrupted (${a.reason ?? a.state}) and are being restarted.` +
@@ -282,6 +291,8 @@ export class Supervisor extends EventEmitter {
   async shutdown() {
     this.closed = true;
     clearInterval(this.budgetTimer);
+    clearInterval(this.inboxTimer);
+    clearBeat(this.runDir); // the card view disables controls right away
     const exits = [];
     for (const rt of this.rt.values()) {
       if (rt.child && rt.child.exitCode === null) {
@@ -294,6 +305,44 @@ export class Supervisor extends EventEmitter {
   }
 
   // ---- Internals --------------------------------------------------------------
+
+  /** Owns the run: heartbeat in owner.json, and requests from the card view via inbox.jsonl. */
+  #startInbox(pollMs) {
+    const read = createInboxReader(this.runDir);
+    let lastBeat = 0;
+    let chain = Promise.resolve();
+    const tick = () => {
+      if (this.closed) return;
+      if (Date.now() - lastBeat >= BEAT_MS / 2) { writeBeat(this.runDir); lastBeat = Date.now(); }
+      for (const req of read()) chain = chain.then(() => this.#handleControl(req));
+    };
+    tick();
+    this.inboxTimer = setInterval(tick, pollMs);
+    this.inboxTimer.unref?.();
+  }
+
+  async #handleControl({ rid, agent, action, text }) {
+    if (this.closed) return;
+    const done = (ok, error) => this.#record('control_result', { id: this.state.agents[agent] ? agent : undefined, rid, action, ok, ...(error && { error }) });
+    const invalid = validateControl({ agent, action, text });
+    if (invalid) return done(false, invalid);
+    if (!this.state.agents[agent]) return done(false, `no agent ${agent}`);
+    try {
+      switch (action) {
+        case 'pause': await this.pause(agent, { when: 'now' }); break;
+        case 'pause_step': await this.pause(agent, { when: 'step' }); break;
+        case 'resume': await this.resume(agent); break;
+        case 'redirect': await this.redirect(agent, text); break;
+        case 'stop': await this.stop(agent); break;
+        case 'approve': this.answer(agent, true); break;
+        case 'deny': this.answer(agent, false); break;
+        case 'restart': await this.restart(agent); break;
+      }
+      done(true);
+    } catch (e) {
+      done(false, e?.message ?? String(e));
+    }
+  }
 
   #need(id) {
     const a = this.agent(id);

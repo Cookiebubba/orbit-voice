@@ -5,10 +5,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readEvents, replay, reduce, emptyRun, toCard, TERMINAL } from './ledger.js';
+import { ownerLive } from './inbox.js';
 
 export const RUN_ID = /^[A-Za-z0-9_-]{1,80}$/;
 const SETTLED = new Set([...TERMINAL, 'blocked', 'idle', 'interrupted']);
-const FEED_TYPES = new Set(['run_started', 'run_ended', 'agent_spawned', 'agent_state', 'agent_report', 'agent_needs', 'agent_over_budget', 'control']);
+const FEED_TYPES = new Set(['run_started', 'run_ended', 'agent_spawned', 'agent_state', 'agent_report', 'agent_needs', 'agent_over_budget', 'control', 'control_result']);
+const ACTION_VERBS = { pause: 'pause', pause_step: 'pause', resume: 'resume', redirect: 'redirect', stop: 'stop', approve: 'approve the request from', deny: 'deny the request from', restart: 'restart' };
 const FEED_LIMIT = 200;
 
 const STATE_WORDS = {
@@ -36,11 +38,13 @@ export function feedEntry(e, prevState) {
       return { ...base, state: e.state, text: `${e.id} ${STATE_WORDS[e.state] ?? e.state}${e.reason ? `: ${String(e.reason).split('\n')[0].slice(0, 140)}` : ''}` };
     case 'agent_report': return { ...base, text: `${e.id} reported ${e.report.status}: ${e.report.summary.slice(0, 200)}` };
     case 'agent_needs': return null; // covered by the needs_you state line
+    case 'control_result':
+      return e.ok ? null : { ...base, failed: true, text: `Couldn't ${ACTION_VERBS[e.action] ?? e.action} ${e.id ?? 'the agent'}: ${e.error}` };
     case 'agent_over_budget': return { ...base, text: `${e.id} hit its budget (${e.reason}); pausing after this step` };
     case 'control': {
       const words = CONTROL_WORDS[e.action] ?? e.action;
       if (e.action === 'message') return { ...base, text: `Asked ${e.id}: ${String(e.text ?? '').slice(0, 120)}` };
-      if (e.action === 'redirect') return { ...base, you: true, text: `You redirected ${e.id}: “${String(e.text ?? '').slice(0, 160)}”` };
+      if (e.action === 'redirect') return { ...base, you: true, text: `${prevState === 'done' ? 'You followed up with' : 'You redirected'} ${e.id}: “${String(e.text ?? '').slice(0, 160)}”` };
       return { ...base, you: true, text: `${words} ${e.id}` };
     }
     default: return null;
@@ -63,7 +67,7 @@ export function cardOf(a, now = Date.now()) {
   return { ...toCard(a, now), ticking: !!a.runningSince, asOf: now };
 }
 
-function runSummary(id, state) {
+function runSummary(id, state, live = false) {
   const agents = Object.values(state.agents);
   return {
     id,
@@ -74,11 +78,14 @@ function runSummary(id, state) {
     active: agents.filter((a) => !SETTLED.has(a.state)).length,
     needsYou: agents.filter((a) => a.state === 'needs_you').length,
     cost: agents.reduce((s, a) => s + (a.usage.cost || 0), 0),
+    live, // a Supervisor is reading this run's inbox, so controls work
   };
 }
 
 export function createAgentsHub({ runsDir, pollMs = 250 }) {
-  const watchers = new Map(); // runId -> { file, offset, partial, state, feedStates, subs, timer }
+  const watchers = new Map(); // runId -> { file, offset, partial, state, feedStates, live, subs, timer }
+  const isLive = (id) => ownerLive(path.join(runsDir, id));
+  const runDir = (id) => (ledgerFile(id) ? path.join(runsDir, id) : null);
 
   const ledgerFile = (id) => {
     if (typeof id !== 'string' || !RUN_ID.test(id)) return null;
@@ -90,7 +97,7 @@ export function createAgentsHub({ runsDir, pollMs = 250 }) {
     if (!fs.existsSync(runsDir)) return [];
     return fs.readdirSync(runsDir, { withFileTypes: true })
       .filter((d) => d.isDirectory() && RUN_ID.test(d.name) && fs.existsSync(path.join(runsDir, d.name, 'ledger.jsonl')))
-      .map((d) => runSummary(d.name, replay(readEvents(path.join(runsDir, d.name, 'ledger.jsonl')))))
+      .map((d) => runSummary(d.name, replay(readEvents(path.join(runsDir, d.name, 'ledger.jsonl'))), isLive(d.name)))
       .sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0));
   }
 
@@ -100,7 +107,7 @@ export function createAgentsHub({ runsDir, pollMs = 250 }) {
     const events = readEvents(file);
     const state = replay(events);
     const now = Date.now();
-    return { type: 'snapshot', run: runSummary(id, state), cards: state.order.map((aid) => cardOf(state.agents[aid], now)), feed: buildFeed(events) };
+    return { type: 'snapshot', run: runSummary(id, state, isLive(id)), cards: state.order.map((aid) => cardOf(state.agents[aid], now)), feed: buildFeed(events) };
   }
 
   function poll(id, w) {
@@ -114,7 +121,16 @@ export function createAgentsHub({ runsDir, pollMs = 250 }) {
       for (const s of w.subs) s(snap);
       return;
     }
-    if (size === w.offset) return;
+    const live = isLive(id);
+    if (size === w.offset) {
+      if (live !== w.live) { // owner appeared or went away: controls switch on or off
+        w.live = live;
+        const msg = { type: 'update', run: runSummary(id, w.state, live), cards: [], order: w.state.order, feed: [], results: [] };
+        for (const s of w.subs) s(msg);
+      }
+      return;
+    }
+    w.live = live;
     const fd = fs.openSync(w.file, 'r');
     const buf = Buffer.alloc(size - w.offset);
     fs.readSync(fd, buf, 0, buf.length, w.offset);
@@ -124,6 +140,7 @@ export function createAgentsHub({ runsDir, pollMs = 250 }) {
     w.partial = lines.pop(); // an incomplete last line waits for the next poll
     const changed = new Set();
     const feed = [];
+    const results = [];
     for (const line of lines) {
       if (!line.trim()) continue;
       let e;
@@ -133,11 +150,12 @@ export function createAgentsHub({ runsDir, pollMs = 250 }) {
       if (e.type === 'agent_state') w.feedStates[e.id] = e.state;
       if (f) feed.push(f);
       reduce(w.state, e);
-      if (e.id) changed.add(e.id);
+      if (e.type === 'control_result') results.push({ rid: e.rid, id: e.id ?? null, action: e.action, ok: e.ok, error: e.error ?? null });
+      else if (e.id) changed.add(e.id);
     }
-    if (!changed.size && !feed.length) return;
+    if (!changed.size && !feed.length && !results.length) return;
     const now = Date.now();
-    const msg = { type: 'update', run: runSummary(id, w.state), cards: [...changed].filter((a) => w.state.agents[a]).map((a) => cardOf(w.state.agents[a], now)), order: w.state.order, feed };
+    const msg = { type: 'update', run: runSummary(id, w.state, live), cards: [...changed].filter((a) => w.state.agents[a]).map((a) => cardOf(w.state.agents[a], now)), order: w.state.order, feed, results };
     for (const s of w.subs) s(msg);
   }
 
@@ -153,7 +171,7 @@ export function createAgentsHub({ runsDir, pollMs = 250 }) {
         if (e.type === 'agent_spawned') feedStates[e.id] = 'queued';
         if (e.type === 'agent_state') feedStates[e.id] = e.state;
       }
-      w = { file, offset: fs.statSync(file).size, partial: '', state: replay(events), feedStates, subs: new Set() };
+      w = { file, offset: fs.statSync(file).size, partial: '', state: replay(events), feedStates, live: isLive(id), subs: new Set() };
       w.timer = setInterval(() => poll(id, w), pollMs);
       w.timer.unref?.();
       watchers.set(id, w);
@@ -171,5 +189,5 @@ export function createAgentsHub({ runsDir, pollMs = 250 }) {
     watchers.clear();
   }
 
-  return { runsDir, listRuns, snapshot, subscribe, close };
+  return { runsDir, runDir, isLive, listRuns, snapshot, subscribe, close };
 }

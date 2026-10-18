@@ -79,6 +79,7 @@ test('feed lines skip noise and speak plainly', () => {
   assert.equal(feedEntry({ type: 'agent_usage', id: 'a' }), null);
   assert.equal(feedEntry({ type: 'agent_state', id: 'a', state: 'paused', reason: 'paused by you' }, 'running').text, 'a paused: paused by you');
   assert.equal(feedEntry({ type: 'control', id: 'a', action: 'redirect', text: 'skip e2e' }).text, 'You redirected a: “skip e2e”');
+  assert.equal(feedEntry({ type: 'control', id: 'a', action: 'redirect', text: 'one more' }, 'done').text, 'You followed up with a: “one more”');
 });
 
 // ---- Bridge endpoints -----------------------------------------------------------
@@ -173,4 +174,50 @@ test('bridge: agents endpoints need the session cookie and serve runs, snapshots
 
   const snap = await (await get(`/api/agents/run?id=${sup.runId}`)).json();
   assert.deepEqual(snap.cards.map((c) => c.state), ['done', 'done']);
+});
+
+test('bridge: control requests are checked, queued for the run owner, and answered on the stream', async (t) => {
+  const runsDir = tmp('orbit-runs-');
+  const { base, cookie } = await startBridge(t, runsDir);
+  const origin = base;
+  const post = (body, headers = {}) => fetch(`${base}/api/agents/control`, { method: 'POST', headers: { cookie, origin, 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
+
+  const sup = Supervisor.create({ runsDir, goal: 'Controls', agentCommand: { command: process.execPath, args: [FAKE] }, inboxPollMs: 50 });
+  t.after(() => sup.shutdown());
+  const id = sup.spawn({ name: 'a', task: '[fake steps=8 stepMs=150]' });
+
+  assert.equal((await fetch(`${base}/api/agents/control`, { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: '{}' })).status, 401, 'no cookie');
+  assert.equal((await post({ run: sup.runId, agent: id, action: 'stop' }, { origin: 'http://evil.example' })).status, 403, 'foreign origin');
+  assert.equal((await post({ run: 'nope', agent: id, action: 'stop' })).status, 404);
+  assert.equal((await post({ run: sup.runId, agent: id, action: 'format_disk' })).status, 400);
+  assert.equal((await post({ run: sup.runId, agent: '../x', action: 'stop' })).status, 400);
+  assert.equal((await post({ run: sup.runId, agent: id, action: 'redirect', text: '   ' })).status, 400);
+  assert.equal((await post({ run: sup.runId, agent: id, action: 'redirect', text: 'x'.repeat(4001) })).status, 400);
+
+  const snap = await (await fetch(`${base}/api/agents/run?id=${sup.runId}`, { headers: { cookie } })).json();
+  assert.equal(snap.run.live, true);
+
+  const stream = await fetch(`${base}/api/agents/stream?id=${sup.runId}`, { headers: { cookie } });
+  const sse = readSse(stream, (m) => m.some((x) => x.cards?.some((c) => c.state === 'done')), 20000);
+  await sleep(500);
+  const pauseRes = await post({ run: sup.runId, agent: id, action: 'pause_step' });
+  assert.equal(pauseRes.status, 202);
+  const { rid: pauseRid } = await pauseRes.json();
+  while (sup.card(id).state !== 'paused') await sleep(50);
+  await sleep(400); // longer than the hub's 250 ms poll, so the paused card is streamed
+  const { rid: badRid } = await (await post({ run: sup.runId, agent: id, action: 'approve' })).json(); // nothing to approve
+  const { rid: resumeRid } = await (await post({ run: sup.runId, agent: id, action: 'resume' })).json();
+  const msgs = await sse;
+  const results = Object.fromEntries(msgs.flatMap((m) => m.results ?? []).map((r) => [r.rid, r]));
+  assert.equal(results[pauseRid]?.ok, true);
+  assert.equal(results[resumeRid]?.ok, true);
+  assert.equal(results[badRid]?.ok, false);
+  assert.ok(msgs.some((m) => m.cards?.some((c) => c.state === 'paused')), 'card showed paused');
+  assert.ok(msgs.flatMap((m) => m.feed ?? []).some((f) => f.failed && /Couldn't approve the request from a/.test(f.text)), 'the failure is in the feed');
+
+  // Once the owner is gone, controls are refused and the view says so.
+  await sup.shutdown();
+  assert.equal((await post({ run: sup.runId, agent: id, action: 'stop' })).status, 409);
+  const after = await (await fetch(`${base}/api/agents/run?id=${sup.runId}`, { headers: { cookie } })).json();
+  assert.equal(after.run.live, false);
 });

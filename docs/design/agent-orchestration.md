@@ -177,7 +177,7 @@ Each step is useful on its own and lowers the risk of the next one.
    - Adds the state machine, budgets, the JSONL ledger and replay after a crash.
    - Unit tests run against a fake ACP agent.
 3. **Read-only card view (1 day). Done:** see [Step 3 results](#step-3-results). Bridge endpoints and a WebSocket stream, with cards built from the ledger. Already useful for watching parallel work.
-4. **Controls (1 day).** Pause now, pause after this step, resume, redirect and stop. Tested end to end against the fake agent and one real agent.
+4. **Controls (1 day). Done:** see [Step 4 results](#step-4-results). Pause now, pause after this step, resume, redirect and stop. Tested end to end against the fake agent and one real agent.
 5. **Conductor (2 days).**
    - The Agent SDK loop with the tools above, the report format, and the final summary.
    - You give it a goal; it makes a plan, runs agents and returns a summary.
@@ -328,6 +328,73 @@ The button-to-window path inside Orbit itself is untested, because your installe
 - A `null` run id got past the id check.
 - Waiting on you counted as working time.
 - A timing-sensitive test assumed a process ends within 300 ms on Windows; it now waits for the exit event.
+
+## Step 4 results
+
+**How a click reaches the agent:** the card view only reads ledger files and doesn't know which process owns a run. So controls go through two files next to the ledger, defined in [`src/agents/inbox.js`](../../src/agents/inbox.js):
+
+```mermaid
+sequenceDiagram
+  participant C as Card (Agents window)
+  participant B as Bridge
+  participant I as runs/<id>/inbox.jsonl
+  participant S as Supervisor (run owner)
+  participant L as runs/<id>/ledger.jsonl
+  C->>B: POST /api/agents/control {run, agent, action, text}
+  B->>B: cookie, Origin, Sec-Fetch-Site, validate, owner alive?
+  B->>I: append {rid, agent, action, text}
+  B-->>C: 202 {rid}
+  S->>I: reads new requests (every 200 ms)
+  S->>S: pause / pause after step / resume / redirect / stop / approve / deny / restart
+  S->>L: control + state events, then control_result {rid, ok, error}
+  L-->>C: streamed over SSE; the card matches rid, clears "Pausing…" or shows the error
+```
+
+- **Heartbeat:** the owner writes `owner.json` about once a second and deletes it on shutdown. If it's missing or more than 6 seconds old, the run is view-only: the bridge answers 409, and the window shows a "View only" banner with disabled buttons.
+- **Old requests:** a Supervisor reads its inbox from the end, so requests written while nobody owned the run never run later.
+- **Errors:** bad requests get a `control_result` with an error, not a crash. Examples: an unknown action, a missing agent, or approving when nothing is waiting.
+- **Same path everywhere:** this works whether the Supervisor runs inside Orbit or in another process (the demo and smoke scripts), and needs no extra socket or port.
+
+**Buttons by state:**
+
+| State | Buttons |
+| --- | --- |
+| Running | Pause (choose now or after this step), Redirect, Stop |
+| Pausing after this step | Keep going, Redirect, Stop |
+| Needs you | Approve, Deny, Pause, Redirect, Stop |
+| Paused | Resume, Redirect, Stop |
+| Idle | Continue, Redirect, Stop |
+| Blocked | Continue, Answer, Stop |
+| Done | Follow up |
+| Failed, interrupted, stopped | Restart |
+| Queued, starting | Stop |
+
+- **Stop:** asks for confirmation.
+- **Redirect and follow-up:** an inline box, sent with Ctrl+Enter.
+- **Feedback:** while a request is in flight the card shows "Pausing…", "Resuming…" and so on. A failure shows on the card for 8 seconds and also in the feed. A request with no answer within 15 seconds says so.
+
+**Tests:** 26 tests pass, stable over 3 runs. The new ones cover:
+- the heartbeat
+- every action through the inbox
+- error results, and old requests being ignored
+- an end-to-end bridge test: 401 without the cookie, 403 for a foreign origin, 400 and 404 validation, and 409 once the owner is gone, plus pause after a step, a failed approve and resume over HTTP, with results matched by request id on the stream
+
+**Clicked through in the browser against the demo:**
+- Approve and Deny on docs
+- Resume on refactor, which had been paused after a step
+- Restart on perf
+- Stop on budget, with its confirmation
+- a follow-up on the finished tests agent
+
+All of them landed, and their results and feed lines showed up.
+
+**Fixed along the way:**
+- **Restart right after Stop failed with "still running".** The Windows process kill hadn't finished yet. `restart()` now ends the old process and waits for it to exit.
+- **A redirect box could close and drop your text.** It closed when the agent finished mid-typing. Now it stays open, and finished agents take a **Follow up**, worded to the agent as a follow-up rather than a change of plan.
+
+**Not covered:**
+- The "View only" banner wasn't checked visually, because the demo's bridge and Supervisor share one process. The bridge test covers the behaviour.
+- The Agents button inside your installed Orbit is untested, as in step 3.
 
 ## Open questions
 

@@ -82,3 +82,26 @@
 .ag-empty h1 { font-size: 18px; margin: 0 0 8px; color: #fff; }
 .ag-empty p { margin: 0 0 8px; font-size: 13.5px; color: var(--muted); }
 .ag-empty code { font-size: 12.5px; color: var(--soft); }
+
+/* ---- controls (build step 4) ---- */
+.ag textarea { user-select: text; }
+.ag-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ag-actions.end { justify-content: flex-end; }
+.ag-actions.end .ag-small { margin-right: auto; }
+.ag-note .ag-actions { margin-top: 8px; }
+.ag-btn { font: inherit; font-size: 12.5px; color: #fff; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line2); border-radius: 8px; padding: 4px 11px; cursor: pointer; }
+.ag-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
+.ag-btn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.ag-btn:disabled { opacity: 0.4; cursor: default; }
+.ag-btn.primary { background: #fff; color: #000; border-color: #fff; font-weight: 600; }
+.ag-btn.primary:hover:not(:disabled) { background: rgba(255, 255, 255, 0.88); }
+.ag-btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.ag-btn.danger { color: var(--fail); }
+.ag-btn.danger-solid { background: var(--fail); border-color: var(--fail); color: #000; font-weight: 600; }
+.ag-panel { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line2); border-radius: 10px; padding: 9px; background: rgba(255, 255, 255, 0.03); }
+.ag-panel textarea { width: 100%; min-height: 64px; resize: vertical; background: rgba(0, 0, 0, 0.5); color: #fff; border: 1px solid var(--line2); border-radius: 8px; padding: 7px 8px; font: inherit; font-size: 13px; box-sizing: border-box; }
+.ag-panel textarea:focus { outline: none; border-color: rgba(255, 255, 255, 0.45); }
+.ag-pending { animation: ag-pulse 1.2s ease-in-out infinite; }
+.ag-error { font-size: 12.5px; color: #fecaca; background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.3); border-radius: 8px; padding: 6px 9px; }
+.ag-readonly { margin-top: 4px !important; color: var(--pause) !important; }
+.ag-feed li.failed { border-color: var(--fail); color: #fecaca; }

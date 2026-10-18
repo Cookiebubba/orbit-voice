@@ -37,6 +37,7 @@ import { TOOL_DEFS, createToolRunner } from './tools.js';
 import { startMeter, usageSummary } from './usage.js';
 import { createSessionWatcher } from './watcher.js';
 import { createAgentsHub } from './agents/hub.js';
+import { appendControl, validateControl } from './agents/inbox.js';
 
 const HOST = '127.0.0.1';
 const PUBLIC = path.join(PROJECT_ROOT, 'public');
@@ -384,6 +385,19 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
 
         case 'GET /api/agents/runs':
           return sendJson(res, 200, { runs: agentsHub.listRuns() });
+
+        case 'POST /api/agents/control': {
+          // A card button: queue the request for the Supervisor that owns the run. The outcome
+          // arrives on the run's stream as a control_result with the same request id.
+          const body = await readJson(req);
+          const dir = agentsHub.runDir(body.run);
+          if (!dir) return sendJson(res, 404, { error: 'no such run' });
+          const request = { agent: body.agent, action: body.action, text: body.text };
+          const invalid = validateControl(request);
+          if (invalid) return sendJson(res, 400, { error: invalid });
+          if (!agentsHub.isLive(body.run)) return sendJson(res, 409, { error: 'Nothing is running this run any more, so it cannot be controlled.' });
+          return sendJson(res, 202, { rid: appendControl(dir, request) });
+        }
 
         case 'GET /api/agents/run': {
           const snap = agentsHub.snapshot(url.searchParams.get('id'));
