@@ -1,5 +1,5 @@
 {
-  "name": "grok-voice-bridge-ui",
+  "name": "orbit-voice-ui",
   "private": true,
   "version": "0.2.0",
   "type": "module",
@@ -8,7 +8,6 @@
     "build": "tsc -b && vite build"
   },
   "dependencies": {
-    "grok-voice-bridge": "file:..",
     "lucide-react": "^0.511.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
