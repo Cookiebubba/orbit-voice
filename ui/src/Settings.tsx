@@ -51,6 +51,7 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
             label="Wake word: say “Hey Grok”"
             hint="Starts Grok hands-free after it has gone to sleep. Recognized entirely on this PC by a small offline speech model: no audio leaves your computer and it costs nothing. Each wake starts a fresh conversation."
           />
+          {desktop && <MicStealSettings s={s} update={update} />}
         </Section>
 
         <Section title="When Claude finishes">
@@ -83,6 +84,13 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
               onChange={(orbStick) => update({ orbStick })}
               label="Stick to Claude Code"
               hint="The orb rides on the Claude window: it follows it around, stays on top of it, and hides while Claude is minimized. Drag the orb to choose its spot on the window."
+            />
+            <Toggle
+              className="mt-4"
+              checked={s.orbPulse}
+              onChange={(orbPulse) => update({ orbPulse })}
+              label="Pulse with your voice"
+              hint="The orb grows very slightly as you speak, so you can see it hearing you."
             />
           </Section>
         )}
@@ -156,6 +164,91 @@ function StartWithWindows() {
       label="Start with Windows"
       hint="Orbit starts quietly as the floating orb when you sign in."
     />
+  );
+}
+
+// ---------- mute my mic in other apps ----------
+type MicApp = { exe: string; name: string; active: boolean; running: boolean; action: "mute" | "leave"; why: "you" | "recording-or-routing" | "default" };
+
+function MicStealSettings({ s, update }: { s: SettingsT; update: Update }) {
+  const [apps, setApps] = useState<MicApp[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    fetch("/api/mic/apps")
+      .then((r) => (r.ok ? r.json() : { apps: [] }))
+      .then((j) => setApps(j.apps))
+      .catch(() => setApps([]))
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => {
+    if (s.micSteal) load();
+  }, [s.micSteal, s.micStealDefault, JSON.stringify(s.micStealRules)]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const choose = (exe: string, action: "mute" | "leave") => update({ micStealRules: { ...s.micStealRules, [exe]: action } });
+
+  return (
+    <div className="mt-4">
+      <Toggle
+        checked={s.micSteal}
+        onChange={(micSteal) => update({ micSteal })}
+        label="Mute my mic in other apps while Grok listens"
+        hint="While Grok has your mic, the apps you choose (Discord, Zoom, Teams...) get silence instead of your voice, so you don't have to mute yourself there. They get your mic back the moment Grok sleeps."
+      />
+      {s.micSteal && (
+        <div className="mt-3 rounded-xl border border-white/10 p-3">
+          <Segmented
+            value={s.micStealDefault}
+            onChange={(micStealDefault) => update({ micStealDefault })}
+            options={[
+              { value: "mute", label: "Mute all apps except…" },
+              { value: "leave", label: "Mute only…" },
+            ]}
+          />
+          <p className="mt-2 text-[12px] leading-snug text-white/45">
+            {s.micStealDefault === "mute" ? "Every other app is muted while Grok listens, except the ones you switch off below." : "Only the apps you switch on below are muted while Grok listens."}
+          </p>
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-[12.5px] text-white/70">Apps using your mic</span>
+            <button onClick={load} disabled={loading} className="text-[12px] text-white/45 hover:text-white/80 disabled:opacity-50">
+              {loading ? "Looking…" : "Refresh"}
+            </button>
+          </div>
+          <div className="mt-1.5 space-y-1">
+            {apps === null && <p className="text-[12px] text-white/40">Looking for apps…</p>}
+            {apps?.length === 0 && <p className="text-[12px] text-white/40">No other app has your mic open right now. Open the app (join a call in Discord, for example) and press Refresh.</p>}
+            {apps?.map((a) => (
+              <div key={a.exe} className="flex items-center gap-3 rounded-lg px-1 py-1.5">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] text-white/90">
+                    {a.name}
+                    {a.active && <span className="ml-1.5 text-[11px] text-emerald-300/80">in use</span>}
+                  </span>
+                  <span className="block truncate text-[11.5px] text-white/40">
+                    {a.exe}
+                    {a.why === "recording-or-routing" ? " · left alone by default (recording or audio routing)" : a.why === "you" ? " · your choice" : ""}
+                  </span>
+                </span>
+                <button
+                  role="switch"
+                  aria-checked={a.action === "mute"}
+                  aria-label={`Mute ${a.name} while Grok listens`}
+                  title={a.action === "mute" ? "Muted while Grok listens" : "Left alone"}
+                  onClick={() => choose(a.exe, a.action === "mute" ? "leave" : "mute")}
+                  className={cn("relative h-5 w-9 shrink-0 rounded-full transition-colors", a.action === "mute" ? "bg-white" : "bg-white/20")}
+                >
+                  <span className={cn("absolute top-0.5 size-4 rounded-full transition-all", a.action === "mute" ? "left-[18px] bg-black" : "left-0.5 bg-white")} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[11.5px] leading-snug text-white/40">
+            Recording and audio-routing apps (OBS, Streamlabs, Voicemeeter, Krisp, NVIDIA Broadcast...) are left alone unless you switch them on: muting them can silence a recording, or even your own voice to Grok.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 

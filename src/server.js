@@ -32,6 +32,7 @@ import {
   updateSettings,
 } from './config.js';
 import { askBrain, findClaude } from './brain.js';
+import { BUILTIN_LEAVE, decide } from './mic-apps.js';
 import { setClipboardWriter } from './clipboard.js';
 import { getDesktopInfo, listSidebarSessions, switchSession } from './desktop.js';
 import { getLogDir, initLog, logError, logInfo, logWarn, recentLog } from './log.js';
@@ -216,7 +217,7 @@ function tokenMatches(value) {
  * Start the bridge. Resolves with its URL; rejects if the port is taken.
  * The desktop app passes its own config folder and encrypted key store.
  */
-export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, brainSecrets, clipboard, models } = {}) {
+export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, brainSecrets, clipboard, models, micApps } = {}) {
   initConfig({ dir: configDir, secrets, brainSecrets });
   if (clipboard) setClipboardWriter(clipboard);
   const modelsDir = models || path.join(PROJECT_ROOT, 'resources', 'models');
@@ -380,6 +381,26 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           const result = await switchSession(title);
           if (result.ok) broadcast({ type: 'claude.open', title: result.sessionTitle });
           return sendJson(res, result.ok ? 200 : 409, result);
+        }
+
+        case 'GET /api/mic/apps': {
+          // For Settings → "Mute my mic in other apps": the apps using a microphone now, plus any
+          // the user has chosen for, each with what will happen to it while Grok listens.
+          if (!micApps) return sendJson(res, 404, { error: 'only available in the desktop app' });
+          const seen = new Map();
+          for (const s of await micApps()) {
+            if (!s.exe) continue; // a program we can't see (e.g. running as administrator): follows the default
+            const exe = path.win32.basename(s.exe).toLowerCase();
+            if (s.exe.toLowerCase() === process.execPath.toLowerCase()) continue; // Orbit itself
+            const prev = seen.get(exe);
+            seen.set(exe, { exe, name: s.name || prev?.name || exe, active: !!(s.active || prev?.active), running: true });
+          }
+          const settings = { micStealDefault: getSetting('micStealDefault'), micStealRules: getSetting('micStealRules') };
+          for (const exe of Object.keys(settings.micStealRules)) if (!seen.has(exe)) seen.set(exe, { exe, name: BUILTIN_LEAVE[exe] || exe.replace(/\.exe$/, ''), active: false, running: false });
+          const apps = [...seen.values()]
+            .map((a) => ({ ...a, ...decide(a.exe, settings) }))
+            .sort((a, b) => Number(b.active) - Number(a.active) || Number(b.running) - Number(a.running) || a.name.localeCompare(b.name));
+          return sendJson(res, 200, { apps });
         }
 
         case 'GET /api/brain': {

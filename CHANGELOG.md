@@ -9,6 +9,13 @@
   - It stays on top of Claude without floating over other apps.
   - It hides while Claude is minimized.
   - Drag it to choose its spot, which is remembered from the nearest corner.
+- While Claude works, Claude-orange tiles flow through the orb, fading in and out smoothly, instead of a pulsing orange ring around it. The orb also brightens to at least 85% opacity, even when Grok is off or asleep (normally 55% and 30%). Otherwise it changes only with Grok's state and its opacity.
+- The orb has no glow or ring around it any more: its brightness alone shows activity.
+- **Pulse with your voice** (Settings → App, optional): the orb grows up to 6% with your voice level.
+- **Mute my mic in other apps while Grok listens** (Settings → Listening, optional): the apps you choose get silence while Grok has your mic, and get it back when Grok sleeps.
+  - Choose "mute all apps except…" or "mute only…", and switch individual apps from the list of apps using your mic.
+  - Recording and audio-routing apps (OBS, Streamlabs, Cap, Voicemeeter, Krisp, NVIDIA Broadcast, Voicemod…) are left alone by default.
+  - Orbit only unmutes what it muted, and recovers after a crash.
 - The session finder no longer shows "Loading…" before you type.
 - Settings has a thin pill scrollbar. Hovering or dragging it outlines the whole track.
 - `npm test` runs the new tests.

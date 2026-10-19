@@ -50,7 +50,8 @@
     ],
     "asarUnpack": [
       "src/desktop.ps1",
-      "electron/claude-window.ps1"
+      "electron/claude-window.ps1",
+      "electron/mic-steal.ps1"
     ],
     "directories": {
       "output": "dist",

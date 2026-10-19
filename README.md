@@ -19,7 +19,7 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 - **Hear when Claude is done.** Orbit watches your recent sessions and plays a chime, shows a Windows notification, and (optionally) has Grok tell you what Claude did.
 - **Dictate prompts, safely.** "Tell Claude to run the tests." Grok drafts it and reads it back. It only types into Claude's prompt box after you say **yes**. You can edit the draft first.
 - **Switch sessions by voice or click.** "Switch to my Ladder 6 session." Orbit opens it in Claude's sidebar, without moving your mouse.
-- **Stays out of the way.** Minimize it to a small always-on-top orb. The orb glows when you talk, dims when it's asleep, and pulses amber while Claude is working.
+- **Stays out of the way.** Minimize it to a small always-on-top orb. The orb changes with Grok's state (listening, thinking, talking). It has no glow around it: brightness alone says how active it is. It dims when asleep and brightens with Claude-orange tiles flowing through it while Claude is working. It can also pulse very slightly with your voice (optional).
 - **Stick to Claude Code (optional).** The orb rides on the Claude window:
   - It follows the window as you move or resize it, at any display scaling.
   - It stays on top of Claude without floating over other apps.
@@ -27,6 +27,11 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
   - Drag it to choose its spot on the window.
 - **You control the mic, and the bill.** Say "go to sleep" and Orbit hangs up, so nothing is billed while it sleeps. Or use **one question at a time** mode: press the hotkey (default **Ctrl+Alt+G**, changeable), ask, and it hangs up after answering.
 - **Say "Hey Grok" (optional).** A free, fully offline wake word starts Grok again after it has gone to sleep. It's recognized on your PC by a small speech model, so no audio leaves your computer until Grok is awake. Each wake starts a fresh conversation: Grok doesn't remember the previous one, but it can always re-read your Claude sessions.
+- **Mute your mic in other apps while Grok listens (optional).**
+  - While Grok has your mic, the apps you choose (Discord, Zoom, Teams…) get silence, so you don't have to mute yourself there.
+  - Pick "mute all apps except…" or "mute only…", then switch apps on or off from the list of apps using your mic.
+  - Recording and audio-routing apps (OBS, Voicemeeter, Krisp…) are left alone unless you switch them on.
+  - They get your mic back the moment Grok sleeps. Orbit only unmutes what it muted, even after a crash.
 - **Copy to clipboard.** "Copy Claude's last answer", "copy that command": Grok puts it on your clipboard, ready to paste.
 - **A second brain for hard questions.** When a question needs more thought, or needs a look at the code in your current project ("why would the hotkey stop working after sleep?"), Grok quietly asks Claude and tells you the answer.
   - Grok picks Haiku, Sonnet or Opus to fit the question.
@@ -95,6 +100,13 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
   - It uses under 1% of one CPU core while idle.
   - The orb is topmost while Claude or Orbit is in front. Otherwise it sits directly above Claude in the window stack, so other apps cover both.
   - If Claude is closed or on another virtual desktop, the orb floats freely as usual.
+- **Muting other apps' mics** works through Windows Core Audio: each app's microphone stream can be muted on its own.
+  - While Grok listens, Orbit mutes the mic streams of the apps your rules allow, never its own, and checks every second for new ones.
+  - Apps are matched by program file (for example `discord.exe`).
+  - Recording and audio-routing apps are left alone by default. Muting a router such as Voicemeeter, Krisp or NVIDIA Broadcast would silence everything that uses its virtual mic, Orbit included.
+  - Afterwards it unmutes only the streams it muted.
+  - The apps' own mute buttons are untouched; they just receive silence.
+  - What it muted is written to `%APPDATA%\Orbit\mic-steal.state`. If Orbit is closed or crashes, the helper unmutes on its way out, and the next launch undoes anything left over.
 - Settings, usage and logs live in `%APPDATA%\Orbit`.
 
 ## Privacy and terms of use

@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('desktop', {
   },
   orbRestore: () => ipcRenderer.send('orb:restore'),
   orbAction: (a) => ipcRenderer.send('orb:action', a),
+  micLive: (live) => ipcRenderer.send('mic:live', !!live),
   orbDragStart: () => ipcRenderer.send('orb:drag-start'),
   orbDragMove: () => ipcRenderer.send('orb:drag-move'),
   orbDragEnd: () => ipcRenderer.send('orb:drag-end'),

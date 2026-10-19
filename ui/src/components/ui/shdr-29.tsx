@@ -118,7 +118,11 @@ void main() {
   float promoted = step(1.0 - uP_confetti, cyc);
   vec3 confetti = 0.5 + 0.5 * cos(6.2831 * (h2 + vec3(0.0, 0.33, 0.67)));
   confetti = normalize(confetti + 0.05) * 1.2;
-  vec3 litCol = mix(uC_lit, confetti, promoted);
+  // Orbit addition: "accent" turns the confetti tiles one colour (Claude orange while Claude
+  // works), with a little per-tile brightness variety so they still read as separate LEDs;
+  // "tint" warms the lit tiles toward the same colour.
+  confetti = mix(confetti, uC_accent * (0.95 + 0.35 * h2), uP_accent);
+  vec3 litCol = mix(mix(uC_lit, uC_accent, uP_tint), confetti, promoted);
 
   // lit face over the dark wall; frames and off-tiles stay faintly present
   vec3 offCol = uC_wall * tile;
@@ -153,11 +157,15 @@ export const shdr29Orb: OrbVariant = {
     { key: "confetti", label: "Confetti", min: 0, max: 1, step: 0.01, default: 0.22 },
     { key: "light", label: "Key light", min: 0, max: 3, step: 0.015, default: 0.6 },
     { key: "gain", label: "Panel gain", min: 0.05, max: 5, step: 0.05, default: 1 },
-    { key: "contrast", label: "Contrast", min: 0.15, max: 10, step: 0.05, default: 1 }
+    { key: "contrast", label: "Contrast", min: 0.15, max: 10, step: 0.05, default: 1 },
+    // Orbit additions (see the shader): 0 = the orb exactly as orbkit ships it.
+    { key: "accent", label: "Accent confetti", min: 0, max: 1, step: 0.01, default: 0 },
+    { key: "tint", label: "Accent tint", min: 0, max: 1, step: 0.01, default: 0 }
   ],
   colors: [
     { key: "lit", label: "Lit tile", default: "#fff2dd" },
-    { key: "wall", label: "Wall", default: "#161616" }
+    { key: "wall", label: "Wall", default: "#161616" },
+    { key: "accent", label: "Accent", default: "#d97757" }
   ],
   /*
     Each state animates DIFFERENTLY — its own motion, same palette and

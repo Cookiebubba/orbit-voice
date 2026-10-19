@@ -18,6 +18,10 @@ export type Settings = {
   brainConnection: "claude-code" | "api-key";
   brainClaudePath: string;
   orbStick: boolean;
+  orbPulse: boolean;
+  micSteal: boolean;
+  micStealDefault: "mute" | "leave";
+  micStealRules: Record<string, "mute" | "leave">;
 };
 
 export type AppConfig = { version: string; hasKey: boolean; keyStorage: string; settings: Settings };
