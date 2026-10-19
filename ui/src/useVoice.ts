@@ -635,9 +635,5 @@ export function useVoice(options: VoiceOptions) {
     sendText,
     ask,
     note: (text: string) => caption({ id: `note-${Date.now()}`, who: "note", text }),
-    // Each names the exact draft it acts on, so a draft that changed meanwhile isn't sent.
-    sendDraft: (id: number) => ws.current?.send(JSON.stringify({ type: "ui.send_draft", id })),
-    discardDraft: (id: number) => ws.current?.send(JSON.stringify({ type: "ui.cancel_draft", id })),
-    editDraft: (id: number, text: string) => ws.current?.send(JSON.stringify({ type: "ui.edit_draft", id, text })),
   };
 }

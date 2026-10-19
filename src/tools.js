@@ -1,7 +1,8 @@
 // The function tools Grok can call, and what they do on this machine.
 //
-// Sending is deliberately two steps: draft_prompt stores the text and shows it on screen,
-// send_draft only fires after the user has said yes. Grok never sends on its own.
+// Sending is deliberately two steps: draft_prompt stores the text (Grok reads it back aloud),
+// send_draft only fires after the user has said yes. Grok never sends on its own, and there is
+// no on-screen Send button: approval is voice-only.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -386,7 +387,7 @@ export function createToolRunner({
       if (!isClearYes(answer.text)) {
         return {
           ok: false,
-          error: `Not sent: the user's reply ("${String(answer.text).slice(0, 80)}") isn't a clear yes. Ask them to say "yes, send it", or to press Send on screen.`,
+          error: `Not sent: the user's reply ("${String(answer.text).slice(0, 80)}") isn't a clear yes. Ask them to say "yes, send it".`,
         };
       }
       return doSend(snapshot);
@@ -588,21 +589,8 @@ export function createToolRunner({
         return { error: String(e?.message || e) };
       }
     },
-    /** The Send button: only sends the draft the user was looking at (by id). */
-    sendFromUi: (id) => {
-      const snapshot = draft;
-      if (!snapshot || snapshot.id !== id) return Promise.resolve({ ok: false, error: 'That draft is no longer current, so nothing was sent.' });
-      return doSend(snapshot);
-    },
-    cancelFromUi: (id) => {
-      if (draft && (id === undefined || draft.id === id)) setDraft(null);
-    },
-    /** The user edited the draft text on screen (keeps its id: the user is the author). */
-    editFromUi: (id, text) => {
-      const clean = String(text || '').trim().slice(0, 8000);
-      if (draft && draft.id === id && clean) setDraft({ ...draft, text: clean });
-      return publicDraft(draft);
-    },
+    // No on-screen Send/Edit/Discard: sending is voice-only. A draft is approved by the user's
+    // own clear "yes" (spoken, or typed in Orbit's text box), changed by asking Grok to redraft.
     getDraft: () => publicDraft(draft),
     /** The app just passed Grok a notification: what follows needs the user's own words again. */
     noteNotification: () => {

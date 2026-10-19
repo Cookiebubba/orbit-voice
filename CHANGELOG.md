@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Sending is voice-only.** The draft card (Send / Edit / Discard) is gone from Orbit's window. Grok reads the draft back, and only your clear "yes" sends it; to change it, ask Grok to redraft. The bridge no longer accepts the old button messages, so there's one way to approve a send.
 - **Start a new session by voice:** "start a new session" or "new thread in castpilot".
   - Orbit presses Claude's own New session button (or New session in that project) and confirms an empty session opened. Nothing is typed.
   - Grok then asks what to tell Claude. The usual draft, read-back and "yes" follow, and you never touch the keyboard.

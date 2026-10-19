@@ -528,8 +528,6 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
 
   /** Run an async socket handler; a failure is logged and ends nothing else (no unhandled rejection). */
   const guarded = (fn) => (...args) => Promise.resolve().then(() => fn(...args)).catch((e) => logError('voice', 'Message handling failed', e?.stack || String(e)));
-  /** A draft id from the page: a plain number, or NaN (which matches no draft). */
-  const draftId = (v) => (typeof v === 'number' || typeof v === 'string' ? Number(v) : NaN);
 
   // Messages the page is allowed to forward to xAI as-is.
   const FORWARDABLE = new Set(['input_audio_buffer.append', 'input_audio_buffer.clear', 'input_audio_buffer.commit', 'response.cancel']);
@@ -855,15 +853,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
             announce.timer = setTimeout(() => hangUpAnnounce('no reply'), ANNOUNCE_TIMING.listenMs + ANNOUNCE_TIMING.slackMs);
           }
           return;
-        case 'ui.send_draft': {
-          // The Send button names the draft it approves; a different or changed draft isn't sent.
-          const result = await (toolChain = toolChain.then(() => tools.sendFromUi(draftId(msg.id))));
-          return toBrowser({ type: 'bridge.tool_result', name: 'send_draft (button)', result });
-        }
-        case 'ui.cancel_draft':
-          return tools.cancelFromUi(msg.id === undefined ? undefined : draftId(msg.id));
-        case 'ui.edit_draft':
-          return tools.editFromUi(draftId(msg.id), typeof msg.text === 'string' ? msg.text : '');
+        // There is no on-screen Send/Edit/Discard: a draft is only ever sent on the user's own
+        // clear "yes" (send_draft). Old ui.send_draft / edit / cancel messages fall through, ignored.
         case 'ui.state':
           asleep = !!msg.asleep;
           return;

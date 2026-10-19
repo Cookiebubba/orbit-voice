@@ -302,15 +302,6 @@ async function fuzzTools() {
         if (!utter || utter.at <= lastNotif || utter.at === lastNewAsk) fail('tools', 'new session started without a fresh request', { utter, lastNotif, lastNewAsk });
         lastNewAsk = utter?.at;
       }
-      if (g.chance(0.1)) {
-        const d = runner.getDraft();
-        if (d && g.chance(0.5)) {
-          const t = g.str(100);
-          runner.editFromUi(d.id, t);
-          if (t.trim()) drafted.add(t.trim().slice(0, 8000));
-        }
-        if (consent && d) await runner.sendFromUi(g.chance(0.8) ? d.id : g.int(5));
-      }
     }
     const crashed = log.recentLog({ minLevel: 'error', limit: 300 }).filter((e) => /crashed/.test(e.message));
     for (const c of crashed.splice(0)) fail('tools', `tool crashed: ${c.message} ${c.detail || ''}`.slice(0, 400));
@@ -543,14 +534,15 @@ async function fuzzVoice() {
         { type: 'input_audio_buffer.commit' },
         { type: 'ui.state', asleep: g.value() },
         { type: 'ui.text', text: g.chance(0.7) ? said() : g.value() },
+        // The old on-screen Send/Edit/Discard messages: gone from the app, must be ignored (a
+        // "send" here never sends, an "edit" never changes what gets sent).
         { type: 'ui.cancel_draft', id: g.value() },
         { type: 'ui.edit_draft', id: g.chance(0.7) ? lastDraftId : g.value(), text: g.str(100) },
-        ...(consent ? [{ type: 'ui.send_draft', id: g.chance(0.8) ? lastDraftId : g.value() }] : []),
+        { type: 'ui.send_draft', id: g.chance(0.8) ? lastDraftId : g.value() },
         { type: 'session.update', session: g.value() }, // not forwardable: must be dropped
         { type: g.str(20), x: g.value() },
       ];
       let msg = g.pick(msgs);
-      if (msg.type === 'ui.edit_draft' && typeof msg.text === 'string' && msg.text.trim()) drafted.add(msg.text.trim().slice(0, 8000));
       if (msg.type === 'ui.listen_window') round.windows.push(Date.now());
       if (msg.type === 'ui.text') round.texts.push(Date.now());
       try {

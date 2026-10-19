@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { History as HistoryIcon, Keyboard, Mic, Minus, Moon, SendHorizontal, Settings as SettingsIcon, X } from "lucide-react";
 import { Shdr29 } from "@/components/ui/shdr-29";
 import { cn } from "@/lib/utils";
-import DraftCard from "./components/DraftCard";
 import History from "./components/History";
 import SessionSwitcher from "./components/SessionSwitcher";
 import { desktop, orbOpacity, orbProps } from "./desktop";
@@ -181,8 +180,6 @@ export default function App() {
               ))}
             </div>
           </div>
-
-          {v.draft && <DraftCard draft={v.draft} onSend={() => v.sendDraft(v.draft!.id)} onDiscard={() => v.discardDraft(v.draft!.id)} onEdit={(text) => v.editDraft(v.draft!.id, text)} />}
 
           {typing && on && (
             <form
