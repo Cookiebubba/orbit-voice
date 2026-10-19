@@ -193,14 +193,87 @@ export function askBrain({ question, model = 'sonnet', explore = false, cwd, con
       const seconds = Math.round((Date.now() - started) / 100) / 10;
       let j = null;
       try { j = JSON.parse(out.trim().split('\n').filter(Boolean).pop() || 'null'); } catch { /* not JSON */ }
-      if (!j) return finish({ ok: false, error: describeFailure(err || out, code) });
+      if (!j) return finish({ ok: false, error: describeFailure(err || out, code), needsSignIn: isSignInProblem(err || out) });
       if (j.is_error || j.subtype !== 'success' || typeof j.result !== 'string') {
-        return finish({ ok: false, error: describeFailure(j.result || j.subtype || err, code) });
+        const raw = j.result || j.subtype || err;
+        return finish({ ok: false, error: describeFailure(raw, code), needsSignIn: isSignInProblem(raw) });
       }
       finish({ ok: true, answer: j.result.trim().slice(0, MAX_ANSWER_CHARS), model, explore, seconds, cost: j.total_cost_usd ?? null, turns: j.num_turns ?? null });
     });
     child.stdin.on('error', () => {});
     child.stdin.end(brainPrompt({ question, context, session }));
+  });
+}
+
+/** Claude Code's own sign-in is missing or expired (as opposed to a rate limit or a crash). */
+export function isSignInProblem(text) {
+  return /session expired|could not be refreshed|not logged in|please run \/login|log ?in|authenticat|unauthori[sz]ed|\b401\b/i.test(String(text || ''));
+}
+
+/** The environment for running Claude Code on the user's own Claude login (no API key). */
+function loginEnv() {
+  const env = { ...process.env };
+  delete env.ANTHROPIC_API_KEY;
+  delete env.ELECTRON_RUN_AS_NODE;
+  return env;
+}
+
+/**
+ * Is Claude Code signed in? Runs `claude auth status --json`: no model call, nothing billed.
+ * Resolves { ok: true, signedIn, method } or { ok: false, error }.
+ */
+export function claudeAuthStatus({ claudePath, spawnImpl = spawn, timeoutMs = 15_000 } = {}) {
+  return new Promise((resolve) => {
+    if (!claudePath) return resolve({ ok: false, error: 'Claude Code was not found.' });
+    let out = '';
+    let done = false;
+    const finish = (r) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(r);
+    };
+    let child;
+    try {
+      child = spawnImpl(claudePath, ['auth', 'status', '--json'], { cwd: os.tmpdir(), env: loginEnv(), windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch (e) {
+      return finish({ ok: false, error: `Couldn't start Claude Code: ${e.message}` });
+    }
+    const timer = setTimeout(() => {
+      killTree(child);
+      finish({ ok: false, error: 'Claude Code took too long to report its sign-in.' });
+    }, timeoutMs);
+    child.stdout.on('data', (d) => { if (out.length < 100_000) out += d; });
+    child.on('error', (e) => finish({ ok: false, error: `Couldn't start Claude Code: ${e.message}` }));
+    child.on('close', () => {
+      try {
+        const j = JSON.parse(out.trim());
+        finish({ ok: true, signedIn: j.loggedIn === true, method: typeof j.authMethod === 'string' ? j.authMethod.slice(0, 40) : null });
+      } catch {
+        finish({ ok: false, error: 'Claude Code did not report its sign-in (it may be too old: run "claude update").' });
+      }
+    });
+  });
+}
+
+/**
+ * Opens Claude Code's own sign-in (`claude auth login`) in a console window of its own, so the
+ * user sees it and can finish in the browser it opens. No shell is involved: the executable is
+ * the one findClaude vouched for, with fixed arguments. Resolves { ok } once it has started.
+ */
+export function openClaudeSignIn({ claudePath, spawnImpl = spawn } = {}) {
+  return new Promise((resolve) => {
+    if (!claudePath) return resolve({ ok: false, error: 'Claude Code was not found.' });
+    let child;
+    try {
+      // detached on Windows = its own console window, which closes when sign-in finishes.
+      child = spawnImpl(claudePath, ['auth', 'login'], { cwd: os.homedir(), env: loginEnv(), detached: true, windowsHide: false, stdio: 'ignore' });
+    } catch (e) {
+      return resolve({ ok: false, error: `Couldn't open the Claude Code sign-in: ${e.message}` });
+    }
+    child.on?.('error', (e) => resolve({ ok: false, error: `Couldn't open the Claude Code sign-in: ${e.message}` }));
+    child.on?.('spawn', () => resolve({ ok: true }));
+    child.unref?.();
   });
 }
 
@@ -223,9 +296,9 @@ process.on('exit', () => { for (const c of live) killTree(c, true); });
 
 function describeFailure(text, code) {
   const t = String(text || '').trim();
-  if (/session expired|could not be refreshed|token.*expired/i.test(t)) return 'Claude Code\x27s sign-in has expired. Open a terminal, run "claude", type /login and sign in again (or add an Anthropic API key in Orbit Settings).';
+  if (/session expired|could not be refreshed|token.*expired/i.test(t)) return 'Claude Code\x27s sign-in has expired. Sign in again with Sign in under Settings → Second brain (or ask Grok to open it).';
   if (/unknown option.*restricted/i.test(t)) return 'This Claude Code is too old for the second brain. Update Claude Code (run "claude update") and try again.';
-  if (/log ?in|authenticat|api key|unauthori[sz]ed|401/i.test(t)) return 'Claude Code is not signed in. Open Claude Code once and sign in, or add an Anthropic API key in Orbit Settings.';
+  if (/log ?in|authenticat|api key|unauthori[sz]ed|401/i.test(t)) return 'Claude Code is not signed in. Use Sign in under Settings → Second brain (or ask Grok to open it), or add an Anthropic API key there.';
   if (/budget/i.test(t)) return 'The second brain hit its spending limit for one question.';
   if (/rate.?limit|usage limit|429|overloaded/i.test(t)) return 'Claude is rate-limited or busy right now. Try again in a bit.';
   return `The second brain failed${code ? ` (exit ${code})` : ''}${t ? `: ${t.split('\n')[0].slice(0, 200)}` : '.'}`;

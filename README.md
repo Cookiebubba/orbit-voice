@@ -48,6 +48,7 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 - [Claude desktop app](https://claude.ai/download) with Claude Code sessions
 - An [xAI API key](https://console.x.ai). Voice is billed by xAI per minute connected (about $0.08/min at the time of writing). Orbit shows an estimate in Settings → Usage. Saying "go to sleep" hangs up, so sleeping costs nothing (unless you turn on "Wake Grok to say it": each spoken update bills a few seconds).
 - For the second brain: Claude Code, signed in. The Claude desktop app already includes it, and Orbit finds it automatically. Questions count toward your Claude plan, or toward an Anthropic API key if you set one in Settings.
+  - Claude Code keeps its own sign-in, separate from the Claude desktop app's, and it can expire even while the desktop app still works. Orbit checks it (Settings → Second brain shows "Signed in ✓" or a **Sign in** button). If a question fails because the sign-in expired, Grok tells you and offers to open the sign-in: say yes, and Claude Code's own sign-in opens in a small window and your browser.
 
 ## Install
 

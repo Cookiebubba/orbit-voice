@@ -143,7 +143,7 @@ test('failures come back as plain words: not signed in, rate limit, garbage, tim
   assert.match(r.error, /not signed in/);
   // The exact text Claude Code 2.1.303 prints when its saved login can't renew itself.
   r = await run(JSON.stringify({ subtype: 'success', is_error: true, result: 'Failed to authenticate: OAuth session expired and could not be refreshed' }));
-  assert.match(r.error, /sign-in has expired.*\/login/);
+  assert.match(r.error, /sign-in has expired.*Sign in/);
   r = await run(JSON.stringify({ subtype: 'error_during_execution', is_error: true, result: 'Rate limit reached' }));
   assert.match(r.error, /rate-limited/);
   r = await run('this is not json', { code: 1 });

@@ -224,7 +224,7 @@ function PulseAmount({ value, update }: { value: number; update: Update }) {
 type MicApp = { exe: string; name: string; active: boolean; running: boolean; action: "mute" | "leave"; why: "you" | "recording-or-routing" | "default" };
 
 // ---------- second brain ----------
-type BrainStatus = { found: boolean; path: string | null; source: "settings" | "path" | "claude-desktop" | null; hasKey: boolean };
+type BrainStatus = { found: boolean; path: string | null; source: "settings" | "path" | "claude-desktop" | null; hasKey: boolean; signedIn: boolean | null };
 
 function SecondBrainSection({ s, update }: { s: SettingsT; update: Update }) {
   const [status, setStatus] = useState<BrainStatus | null>(null);
@@ -241,13 +241,38 @@ function SecondBrainSection({ s, update }: { s: SettingsT; update: Update }) {
       .catch(() => {});
   useEffect(() => {
     refresh();
-  }, [s.brainClaudePath]);
+  }, [s.brainClaudePath, s.brainConnection]);
+
+  // After "Sign in": re-check every 3 s (for up to 3 minutes) until Claude Code reports signed in.
+  const [signingIn, setSigningIn] = useState<{ since: number; error?: string } | null>(null);
+  useEffect(() => {
+    if (!signingIn || signingIn.error) return;
+    const id = setInterval(async () => {
+      const st: BrainStatus | null = await fetch("/api/brain").then((r) => r.json()).catch(() => null);
+      if (st) setStatus(st);
+      if (st?.signedIn || Date.now() - signingIn.since > 3 * 60 * 1000) {
+        setSigningIn(null);
+        if (st?.signedIn) setTest({ state: "idle" });
+      }
+    }, 3000);
+    return () => clearInterval(id);
+  }, [signingIn]);
+  const signIn = async () => {
+    setSigningIn({ since: Date.now() });
+    try {
+      const r = await (await postJson("/api/brain/login", {})).json();
+      if (!r.ok) setSigningIn({ since: Date.now(), error: r.error || "Couldn't open the sign-in." });
+    } catch {
+      setSigningIn({ since: Date.now(), error: "Couldn't reach Orbit." });
+    }
+  };
 
   const runTest = async () => {
     setTest({ state: "testing" });
     try {
       const r = await (await postJson("/api/brain/test", {})).json();
       setTest(r.ok ? { state: "ok", text: `Connected (${r.seconds} s)` } : { state: "failed", text: r.error });
+      if (r.needsSignIn) refresh();
     } catch {
       setTest({ state: "failed", text: "Couldn't reach Orbit." });
     }
@@ -312,6 +337,29 @@ function SecondBrainSection({ s, update }: { s: SettingsT; update: Update }) {
               ? "Uses your Claude Code sign-in, so questions count toward your Claude plan. No setup if you use Claude Code."
               : "Questions are billed to your Anthropic API account. The key is encrypted on this PC."}
           </p>
+
+          {s.brainConnection === "claude-code" && status?.found && status.signedIn !== null && (
+            <div className="mt-2 flex items-center justify-between gap-3 text-[12.5px]">
+              <span className={cn("min-w-0 leading-snug", status.signedIn ? "text-white/70" : signingIn?.error ? "text-red-300" : "text-amber-200/90")}>
+                {status.signedIn
+                  ? "Signed in to Claude Code ✓"
+                  : signingIn?.error
+                    ? signingIn.error
+                    : signingIn
+                      ? "Finish signing in in the window and browser that opened…"
+                      : "Claude Code isn't signed in (or its sign-in expired)."}
+              </span>
+              {!status.signedIn && (
+                <button
+                  onClick={signIn}
+                  disabled={!!signingIn && !signingIn.error}
+                  className="h-8 shrink-0 rounded-lg bg-white px-3 text-[12.5px] font-medium text-black disabled:opacity-40"
+                >
+                  {signingIn && !signingIn.error ? "Waiting…" : "Sign in"}
+                </button>
+              )}
+            </div>
+          )}
 
           {s.brainConnection === "api-key" && (
             <div className="mt-2">

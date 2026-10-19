@@ -241,7 +241,7 @@ function fuzzUnits() {
 
 // ---------- phase: tools ----------
 async function fuzzTools() {
-  const names = [...tools.TOOL_DEFS.map((t) => t.name), 'ask_second_brain', '__proto__', 'constructor', 'toString', 'hasOwnProperty', 'valueOf', g.str(20)];
+  const names = [...tools.TOOL_DEFS.map((t) => t.name), 'ask_second_brain', 'open_claude_sign_in', '__proto__', 'constructor', 'toString', 'hasOwnProperty', 'valueOf', g.str(20)];
   for (let round = 0; round < Math.max(5, ITER / 50); round++) {
     beat();
     const consent = g.chance(0.5);
@@ -305,6 +305,13 @@ async function fuzzTools() {
     }
     const crashed = log.recentLog({ minLevel: 'error', limit: 300 }).filter((e) => /crashed/.test(e.message));
     for (const c of crashed.splice(0)) fail('tools', `tool crashed: ${c.message} ${c.detail || ''}`.slice(0, 400));
+    // The Claude Code sign-in only ever opens after a second-brain run found it signed out.
+    {
+      const calls = globalThis.__fuzz.calls;
+      const firstOffer = calls.findIndex((c) => c.name === 'brain-needs-sign-in');
+      const firstOpen = calls.findIndex((c) => c.name === 'sign-in');
+      if (firstOpen >= 0 && (firstOffer < 0 || firstOpen < firstOffer)) fail('tools', 'opened the Claude Code sign-in without a sign-in problem first', calls.slice(0, 5));
+    }
     const sends = globalThis.__fuzz.calls.filter((c) => c.name === 'send');
     if (!consent && sends.length) fail('tools', `${sends.length} prompt(s) sent without consent`, sends[0]);
     for (const s of sends) if (!drafted.has(s.args.text)) fail('tools', 'sent text that was never drafted', s.args.text);
@@ -434,7 +441,7 @@ async function fuzzVoice() {
   }
 
   const cover = { rounds: 0, said: 0, ready: 0, hungUp: 0, window: 0, after: 0 }; // how often the spoken-update paths ran
-  const toolNames = [...tools.TOOL_DEFS.map((t) => t.name), 'ask_second_brain', '__proto__', g.str(10)];
+  const toolNames = [...tools.TOOL_DEFS.map((t) => t.name), 'ask_second_brain', 'open_claude_sign_in', '__proto__', g.str(10)];
   for (let round = 0; round < Math.max(5, ITER / 40); round++) {
     beat();
     const consent = g.chance(0.5);

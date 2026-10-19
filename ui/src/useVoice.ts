@@ -37,6 +37,7 @@ const TOOL_NOTES: Record<string, string> = {
   copy_to_clipboard: "Copying…",
   switch_session: "Switching session…",
   new_session: "Starting a new session…",
+  open_claude_sign_in: "Opening the Claude Code sign-in…",
 };
 
 // listening: the ~3 s window; heard: you started talking in it, waiting for your words.
