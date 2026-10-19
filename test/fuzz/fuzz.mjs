@@ -14,12 +14,15 @@
 //
 // Invariants: nothing throws or crashes, no 500s, no secret in any response, no file outside
 // public/ served, /api needs the session cookie, and no prompt is ever sent without consent.
+// New sessions start only on a fresh request from the user, and drafts and sends only target a
+// Code session or a new one. Spoken updates (?announce=1): no mic audio reaches Grok before it
+// has spoken the update and the page opened its window, or after the window without speech.
 
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { makeGen } from './gen.mjs';
+import { NASTY, makeGen } from './gen.mjs';
 
 const argv = process.argv.slice(2);
 const arg = (name, def) => {
@@ -129,13 +132,24 @@ const brain = await import('../../src/brain.js');
 const stick = await import('../../electron/orb-stick.js');
 const updater = await import('../../electron/updater.js');
 const server = await import('../../src/server.js');
+// Short timings so windows and deadlines actually run out within a round.
+tools.TOOL_TIMING.openSessionWaitMs = 0;
+tools.TOOL_TIMING.newSessionWaitMs = 0;
+Object.assign(server.ANNOUNCE_TIMING, { listenMs: 60, slackMs: 40, maxMs: 1500 });
+const ANNOUNCE_WINDOW_MS = server.ANNOUNCE_TIMING.listenMs + server.ANNOUNCE_TIMING.slackMs;
+// "Claude finished" events, fed in by the voice phase.
+const watcherListeners = new Set();
+const fakeWatcher = { on: (fn) => watcherListeners.add(fn), start() {}, working: () => [] };
+const claudeFinished = (title) => watcherListeners.forEach((fn) => fn({ type: 'claude.finished', id: String(title), title, summary: g.str(50) }));
 
 const memStore = (value) => ({ kind: 'memory', get: () => value, set: (v) => { value = String(v); } });
 const xaiKey = 'xai-FUZZSECRET' + 'Q'.repeat(40);
 const anthropicKey = 'sk-ant-api03-FUZZSECRET' + 'R'.repeat(60);
 const xaiStore = memStore(xaiKey);
 const brainStore = memStore(anthropicKey);
-const secrets = () => [xaiKey, anthropicKey, xaiStore.get(), brainStore.get()].filter((s) => s && s.length > 12);
+// A key the fuzzer saved from its own generated strings can also turn up in other generated data
+// (a fake session title), which is not a leak: only count keys the generator can't produce verbatim.
+const secrets = () => [xaiKey, anthropicKey, xaiStore.get(), brainStore.get()].filter((s) => s && s.length > 12 && !NASTY.includes(s));
 
 const timed = (phase, label, input, fn) => {
   const t0 = performance.now();
@@ -239,11 +253,31 @@ async function fuzzTools() {
       if (!consent && tools.isClearYes(t)) t = 'no';
       utter = { text: t, at: Date.now() };
     };
-    const runner = tools.createToolRunner({ notify: (e) => notes.push(e), utteranceSince: async (since) => (utter && utter.at >= since ? utter : null), recentUtterance: () => utter });
+    let lastNotif = 0; // when the runner was last told about an app notification
+    let lastNewAsk = 0; // the utterance that last started a new session
+    const draftIds = new Set();
+    const runner = tools.createToolRunner({
+      notify: (e) => {
+        notes.push(e);
+        // A new draft (not an on-screen edit of one) needs the user's own words after the latest notification.
+        if (e.type === 'bridge.draft' && e.draft && !draftIds.has(e.draft.id)) {
+          draftIds.add(e.draft.id);
+          if (!(utter && utter.at > lastNotif)) fail('tools', 'drafted without the user speaking after a notification', e.draft.text);
+        }
+      },
+      utteranceSince: async (since) => (utter && utter.at >= since ? utter : null),
+      recentUtterance: () => utter,
+    });
     globalThis.__fuzz.calls = [];
     const drafted = new Set();
     for (let i = 0; i < 50; i++) {
       if (g.chance(0.3)) say();
+      if (g.chance(0.05)) {
+        lastNotif = Date.now();
+        runner.noteNotification();
+      }
+      const newBefore = globalThis.__fuzz.calls.filter((c) => c.name === 'new').length;
+      const switchBefore = globalThis.__fuzz.calls.filter((c) => c.name === 'switch').length;
       const name = g.pick(names);
       const args = g.chance(0.2) ? g.str(50) : g.json(name === 'draft_prompt' && g.chance(0.6) ? { text: g.str(200) } : g.value());
       if (name === 'draft_prompt') {
@@ -260,6 +294,14 @@ async function fuzzTools() {
         continue;
       }
       if (!Object.prototype.hasOwnProperty.call({ ...Object.fromEntries(names.slice(0, -6).map((n) => [n, 1])) }, name) && !(r && /Unknown tool/.test(r.error || ''))) fail('tools', `unknown tool "${name}" was not refused`, { name, r });
+      // Claude's New button is pressed only for a fresh request: after the latest notification,
+      // and one press per request.
+      // Switching sessions also needs the user's own request after the latest notification.
+      if (globalThis.__fuzz.calls.filter((c) => c.name === 'switch').length > switchBefore && !(utter && utter.at > lastNotif)) fail('tools', 'switched session without a request from the user', { utter, lastNotif });
+      if (globalThis.__fuzz.calls.filter((c) => c.name === 'new').length > newBefore) {
+        if (!utter || utter.at <= lastNotif || utter.at === lastNewAsk) fail('tools', 'new session started without a fresh request', { utter, lastNotif, lastNewAsk });
+        lastNewAsk = utter?.at;
+      }
       if (g.chance(0.1)) {
         const d = runner.getDraft();
         if (d && g.chance(0.5)) {
@@ -275,6 +317,9 @@ async function fuzzTools() {
     const sends = globalThis.__fuzz.calls.filter((c) => c.name === 'send');
     if (!consent && sends.length) fail('tools', `${sends.length} prompt(s) sent without consent`, sends[0]);
     for (const s of sends) if (!drafted.has(s.args.text)) fail('tools', 'sent text that was never drafted', s.args.text);
+    // Every send names its target: one Code session by title, or a new session (never neither).
+    for (const s of sends) if (!s.args.expectTitle === !s.args.expectNew) fail('tools', 'send without exactly one target check', s.args);
+    for (const s of sends) if (s.args.expectNew && !s.args.expectFolder) fail('tools', 'send into a new session without its folder check', s.args);
     runner.dispose();
   }
 }
@@ -364,12 +409,25 @@ const { WebSocket, WebSocketServer } = await import('ws');
 let upstreamScript = null; // (socket) => void, set per round
 
 async function fuzzVoice() {
+  if (!cookie) await signIn(); // --only voice skips the http phase, which signs in
   const fake = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await new Promise((r) => fake.on('listening', r));
   process.env.XAI_REALTIME_URL = `ws://127.0.0.1:${fake.address().port}`;
+  // What the fake Grok saw this round, with times, for the spoken-update invariants.
+  let seen = null;
   fake.on('connection', (sock, req) => {
     if (req.headers.authorization !== `Bearer ${xaiStore.get()}`) fail('voice', 'upstream got the wrong Authorization header', req.headers.authorization?.slice(0, 20));
     sock.on('error', () => {});
+    // Bound to the round this connection belongs to: a previous round's socket that is still
+    // closing must not log into the next round.
+    const mine = seen;
+    sock.on('message', (m) => {
+      if (!mine) return;
+      let msg;
+      try { msg = JSON.parse(String(m)); } catch { return; }
+      if (msg.type === 'input_audio_buffer.append') mine.appends.push(Date.now());
+      if (msg.type === 'conversation.item.create' && !mine.noticeAt && /\[App notification\]/.test(JSON.stringify(msg))) mine.noticeAt = Date.now();
+    });
     upstreamScript?.(sock);
   });
 
@@ -384,10 +442,20 @@ async function fuzzVoice() {
     if (ok && !(h.origin === origin && h.cookie === cookie)) fail('voice', 'socket opened without full auth', h);
   }
 
+  const cover = { rounds: 0, said: 0, ready: 0, hungUp: 0, window: 0, after: 0 }; // how often the spoken-update paths ran
   const toolNames = [...tools.TOOL_DEFS.map((t) => t.name), 'ask_second_brain', '__proto__', g.str(10)];
   for (let round = 0; round < Math.max(5, ITER / 40); round++) {
     beat();
     const consent = g.chance(0.5);
+    // A spoken update: the page connects with ?announce=1, usually with the setting on and
+    // something finished to say.
+    const announceRound = g.chance(0.35);
+    if (announceRound) {
+      config.updateSettings({ announce: g.chance(0.85) ? 'speak' : g.pick(['chime', 'off']), announceWake: g.chance(0.85) });
+      if (g.chance(0.85)) claudeFinished(titles.length && g.chance(0.6) ? g.pick(titles) : g.str(60));
+    }
+    seen = { appends: [], noticeAt: 0, responseCreateAt: 0, doneAfterNotice: 0, speechAt: [], windows: [], texts: [] };
+    const round = seen;
     globalThis.__fuzz.calls = [];
     const drafted = new Set();
     const said = () => {
@@ -397,8 +465,29 @@ async function fuzzVoice() {
     };
     upstreamScript = (sock) => {
       let n = 0;
+      sock.on('message', (m) => {
+        let type;
+        try {
+          type = JSON.parse(String(m)).type;
+        } catch {}
+        if (type !== 'response.create') return;
+        if (!round.responseCreateAt) round.responseCreateAt = Date.now();
+        // Spoken updates: usually answer like the real Grok (a spoken reply, then done), so the
+        // listening window really opens; the random events keep interleaving.
+        if (announceRound && g.chance(0.75)) {
+          const seq = [{ type: 'response.created' }, { type: 'response.output_audio.delta', delta: Buffer.alloc(240).toString('base64') }, { type: 'response.done' }];
+          const step = () => {
+            const e = seq.shift();
+            if (!e || sock.readyState !== WebSocket.OPEN) return;
+            if (e.type === 'response.done' && round.noticeAt && !round.doneAfterNotice) round.doneAfterNotice = Date.now();
+            sock.send(JSON.stringify(e));
+            setTimeout(step, g.int(5));
+          };
+          setTimeout(step, g.int(5));
+        }
+      });
       const tick = () => {
-        if (sock.readyState !== WebSocket.OPEN || n++ > 60) return;
+        if (sock.readyState !== WebSocket.OPEN || n++ > (announceRound ? 140 : 60)) return;
         const id = `item${g.int(5)}`;
         const evts = [
           { type: 'session.created' },
@@ -418,6 +507,10 @@ async function fuzzVoice() {
         ];
         let e = g.pick(evts);
         if (typeof e === 'function') e = e();
+        // Spoken updates: like the real Grok, this one answers (response.*) only once asked to.
+        if (announceRound && !round.responseCreateAt && typeof e.type === 'string' && e.type.startsWith('response.')) e = { type: 'session.created' };
+        if (e.type === 'response.done' && round.noticeAt && !round.doneAfterNotice) round.doneAfterNotice = Date.now();
+        if (e.type === 'input_audio_buffer.speech_started') round.speechAt.push(Date.now());
         try {
           if (g.chance(0.03)) sock.send(Buffer.from(g.str(50)), { binary: true });
           else sock.send(g.chance(0.03) ? g.str(100) : JSON.stringify(e));
@@ -427,21 +520,26 @@ async function fuzzVoice() {
       tick();
     };
 
-    const page = new WebSocket(`ws://${host}/voice`, { headers: { origin, cookie } });
+    const page = new WebSocket(`ws://${host}/voice${announceRound ? '?announce=1' : ''}`, { headers: { origin, cookie } });
     page.on('error', () => {});
     let lastDraftId = null;
     page.on('message', (m) => {
       try {
         const e = JSON.parse(String(m));
+        if (e.type === 'bridge.announce_ready') round.ready = true;
+        if (e.type === 'bridge.announce' && e.reason === 'no reply') round.hungUp = true;
         if (e.type === 'bridge.draft') lastDraftId = e.draft?.id ?? null;
         if (e.type === 'bridge.draft' && e.draft?.text) drafted.add(e.draft.text);
         if (typeof m === 'string' || Buffer.isBuffer(m)) for (const s of secrets()) if (String(m).includes(s)) fail('voice', 'page received a secret', e.type);
       } catch {}
     });
     await new Promise((r) => { page.on('open', r); page.on('close', r); });
-    for (let i = 0; i < 40 && page.readyState === WebSocket.OPEN; i++) {
+    for (let i = 0; i < (announceRound ? 90 : 40) && page.readyState === WebSocket.OPEN; i++) {
+      const mic = { type: 'input_audio_buffer.append', audio: g.chance(0.8) ? Buffer.from(Array.from({ length: g.int(200) }, () => g.int(256))).toString('base64') : g.value() };
+      if (g.chance(0.02)) claudeFinished(g.str(40)); // another session finishes mid-conversation
       const msgs = [
-        { type: 'input_audio_buffer.append', audio: g.chance(0.8) ? Buffer.from(Array.from({ length: g.int(200) }, () => g.int(256))).toString('base64') : g.value() },
+        mic,
+        ...(announceRound ? [mic, mic, { type: 'ui.listen_window' }, { type: 'ui.listen_window', x: g.value() }] : []),
         { type: 'input_audio_buffer.commit' },
         { type: 'ui.state', asleep: g.value() },
         { type: 'ui.text', text: g.chance(0.7) ? said() : g.value() },
@@ -453,6 +551,8 @@ async function fuzzVoice() {
       ];
       let msg = g.pick(msgs);
       if (msg.type === 'ui.edit_draft' && typeof msg.text === 'string' && msg.text.trim()) drafted.add(msg.text.trim().slice(0, 8000));
+      if (msg.type === 'ui.listen_window') round.windows.push(Date.now());
+      if (msg.type === 'ui.text') round.texts.push(Date.now());
       try {
         page.send(g.chance(0.05) ? g.str(200) : g.chance(0.01) ? 'x'.repeat(1.5 * 1024 * 1024) : JSON.stringify(msg));
       } catch {}
@@ -460,12 +560,45 @@ async function fuzzVoice() {
     }
     page.close();
     await new Promise((r) => setTimeout(r, 120));
+    seen = null;
+    if (announceRound) {
+      cover.rounds++;
+      if (round.ready) cover.ready++;
+      if (round.hungUp) cover.hungUp++;
+      if (round.doneAfterNotice) cover.said++;
+      if (round.appends.length) cover.window++;
+      if (round.speechAt.some((s) => s > Math.min(Infinity, ...round.windows))) cover.after++;
+      // Typing answers a spoken update (an ordinary conversation from then on): only audio
+      // before the first typed message is checked. Timings are taken at the fake Grok and the
+      // page, so each check only flags what the bridge cannot have allowed.
+      const firstText = Math.min(Infinity, ...round.texts);
+      const firstWindow = Math.min(Infinity, ...round.windows);
+      for (const r of round.appends) {
+        if (r > firstText) break;
+        const input = { at: r, ...round, appends: round.appends.length };
+        if (!round.doneAfterNotice || r < round.doneAfterNotice) {
+          fail('voice', 'spoken update: mic audio reached Grok before it had spoken', input);
+          break;
+        }
+        const lastWindow = Math.max(-Infinity, ...round.windows.filter((w) => w < r));
+        if (!Number.isFinite(lastWindow)) {
+          fail('voice', 'spoken update: mic audio reached Grok before the listening window', input);
+          break;
+        }
+        const spoke = round.speechAt.some((s) => s > firstWindow - 100 && s < r);
+        if (!spoke && r > lastWindow + ANNOUNCE_WINDOW_MS + 400) {
+          fail('voice', 'spoken update: mic audio reached Grok after the listening window ended', input);
+          break;
+        }
+      }
+    }
     const sends = globalThis.__fuzz.calls.filter((c) => c.name === 'send');
     if (!consent && sends.length) fail('voice', `${sends.length} prompt(s) sent without consent`, sends[0]);
     for (const s of sends) if (!drafted.has(s.args.text)) fail('voice', 'sent text that was never drafted or edited', s.args.text);
     const crashed = log.recentLog({ minLevel: 'error', limit: 300 }).filter((e) => /crashed|Request failed|Message handling failed/.test(e.message));
     for (const c of crashed) fail('voice', `${c.message} ${c.detail || ''}`.slice(0, 400));
   }
+  console.log(`         spoken updates: ${cover.rounds} rounds, ${cover.said} said, ${cover.ready} ready to listen, ${cover.window} with mic audio, ${cover.after} heard speech, ${cover.hungUp} hung up on silence`);
   upstreamScript = null;
   fake.close();
 }
@@ -485,7 +618,7 @@ const watchdog = setInterval(() => {
 }, 5000);
 watchdog.unref();
 try {
-  await server.startServer({ port: PORT, configDir: path.join(ROOT, 'config'), secrets: xaiStore, brainSecrets: brainStore, clipboard: () => {}, models: path.join(ROOT, 'models') });
+  await server.startServer({ port: PORT, configDir: path.join(ROOT, 'config'), secrets: xaiStore, brainSecrets: brainStore, clipboard: () => {}, models: path.join(ROOT, 'models'), watcher: fakeWatcher });
 } catch (e) {
   console.error(`Could not start the bridge on port ${PORT}: ${e.message}. Is another fuzz run still going?`);
   process.exit(3);

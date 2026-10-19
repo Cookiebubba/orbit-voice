@@ -50,6 +50,8 @@ export default function App() {
     if (mode === "off") return;
     playChime("done", 0.1);
     v.note(`Claude finished in “${f.title}”`);
+    // "Wake Grok to say it": Grok is asleep (hung up), so connect just long enough to say it.
+    if (mode === "speak" && settings?.announceWake && v.phase === "off" && app.config?.hasKey) v.announce();
     if ((document.hidden || !document.hasFocus()) && "Notification" in window) {
       try {
         new Notification(`Claude finished: ${f.title}`, { body: f.summary.slice(0, 180), silent: true });

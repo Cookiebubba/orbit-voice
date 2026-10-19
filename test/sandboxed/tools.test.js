@@ -50,6 +50,7 @@ test('tool names must be real tools, and odd arguments are just empty', async ()
 test('a yes older than a minute approves nothing', async () => {
   globalThis.__fuzz.calls = [];
   const { r, say } = runner();
+  await say('tell claude to run the tests');
   await r.run('draft_prompt', JSON.stringify({ text: 'run the tests' }));
   await say('yes send it', Date.now() + 1);
   assert.equal((await r.run('send_draft', '{}')).ok, true, 'a fresh yes sends');

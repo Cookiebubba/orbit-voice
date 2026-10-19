@@ -5,8 +5,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { listDesktopSessions, resolveSession, findTranscript, readTranscriptTail, ago } from './sessions.js';
-import { getDesktopInfo, sendToDesktop, switchSession } from './desktop.js';
+import { listDesktopSessions, resolveSession, findSessionByTitle, findTranscript, readTranscriptTail, ago } from './sessions.js';
+import { getDesktopInfo, newSession, sendToDesktop, switchSession } from './desktop.js';
 import { logError, logInfo, logWarn, recentLog } from './log.js';
 import { MAX_CLIPBOARD_CHARS, writeClipboard } from './clipboard.js';
 import { getBrainKey, getSetting } from './config.js';
@@ -83,6 +83,19 @@ export const TOOL_DEFS = [
       type: 'object',
       properties: { session: { type: 'string', description: 'Title, or words from the title, of the session to open.' } },
       required: ['session'],
+    },
+  },
+  {
+    type: 'function',
+    name: 'new_session',
+    description:
+      'Start a brand-new, empty Claude Code session in the desktop app (like pressing New session). Use when the user says "start a new session / conversation / thread", "start fresh", "new chat with Claude". It sends nothing: afterwards ask what they want to say, then use draft_prompt and confirm as usual. Claude creates the session when that first prompt is sent.',
+    parameters: {
+      type: 'object',
+      properties: {
+        project: { type: 'string', description: 'Optional: the project folder (or sidebar group) to start it in, as the user named it. Empty = the folder Claude suggests (usually the last one used).' },
+      },
+      required: [],
     },
   },
   {
@@ -175,6 +188,49 @@ function readSession(session, { lastN = 8, includeTools = false } = {}) {
 
 const clampInt = (v, def, max) => Math.max(1, Math.min(max, Number.isFinite(+v) && +v > 0 ? Math.floor(+v) : def));
 
+/** Tunable for tests: how long to wait for a just-started session to show up on disk. */
+export const TOOL_TIMING = { openSessionWaitMs: 4000, openSessionPollMs: 500, newSessionWaitMs: 10_000 };
+const NEW_SESSION_CLOCK_SLACK_MS = 5000;
+const NEW_SESSION_FALLBACK_MS = 10 * 60 * 1000;
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * The session open in the Claude window, from disk. `info` is getDesktopInfo()'s answer.
+ *   { session, how }       found ('title' = by its window title, 'latest' = no title to go by)
+ *   { newSession, folder } a new session nothing has been sent in yet (nothing on disk)
+ *   { pending }            the window shows a session (by this title) that isn't on disk yet
+ *   {}                     no sessions on disk at all
+ * A session started moments ago may not be saved yet, or not under its final title, so this waits
+ * a little; then it takes the newest session only if it was created in the last 10 minutes and is
+ * the most recently focused one. Otherwise it says the session isn't on disk yet, rather than
+ * falling back to whichever session was used last (as a loose title lookup would).
+ */
+async function findOpenSession(info, waitMs = TOOL_TIMING.openSessionWaitMs, stopped = () => false, newSince = 0) {
+  if (info?.ok && info.newSession) return { newSession: true, folder: typeof info.folder === 'string' ? info.folder : null };
+  const title = info?.ok && typeof info.sessionTitle === 'string' ? info.sessionTitle : '';
+  if (!title) {
+    const s = resolveSession('');
+    return s ? { session: s, how: 'latest' } : {};
+  }
+  // Just sent the first prompt of a new session: only a session created since then is that one.
+  // Claude saves it a few seconds after that prompt, and may give it a title an older session
+  // already has (it did in testing: two sessions titled "Are you there").
+  const fresh = (s) => !newSince || s.createdAt >= newSince - NEW_SESSION_CLOCK_SLACK_MS;
+  const t0 = Date.now();
+  const wait = newSince ? Math.max(waitMs, TOOL_TIMING.newSessionWaitMs) : waitMs;
+  for (;;) {
+    const exact = findSessionByTitle(title, fresh);
+    if (exact) return { session: exact, how: 'title' };
+    if (Date.now() - t0 >= wait || stopped()) break;
+    await sleepMs(TOOL_TIMING.openSessionPollMs);
+  }
+  const all = listDesktopSessions();
+  if (!all.length) return {};
+  const newest = all.reduce((a, s) => (s.createdAt > a.createdAt ? s : a), all[0]);
+  if (newest === all[0] && newest.createdAt && Date.now() - newest.createdAt < NEW_SESSION_FALLBACK_MS && fresh(newest)) return { session: newest, how: 'newest' };
+  return { pending: title };
+}
+
 const MIN_GAP_BETWEEN_SENDS_MS = 3000;
 const CONSENT_MAX_AGE_MS = 60_000; // a "yes" older than this doesn't approve anything
 const COPY_ASK_MAX_AGE_MS = 2 * 60 * 1000;
@@ -210,17 +266,34 @@ export function isClearYes(utterance) {
  * Every send uses a snapshot of the exact draft that was approved, and the send itself checks
  * that the same Claude session is still open.
  */
-export function createToolRunner({ notify, wakeHint = 'clicking the orb', utteranceSince = async () => null, recentUtterance = () => null, brain = askBrain }) {
-  let draft = null; // { id, text, targetTitle, createdAt }
+export function createToolRunner({
+  notify,
+  wakeHint = 'clicking the orb',
+  utteranceSince = async () => null,
+  recentUtterance = () => null,
+  // Has the user spoken (or typed) after `ts`? The bridge also counts speech still being transcribed.
+  heardSince = (ts) => (recentUtterance()?.at || 0) > ts,
+  brain = askBrain,
+}) {
+  let draft = null; // { id, text, targetTitle, targetNew, createdAt }
   let nextDraftId = 1;
   let lastSentAt = 0;
+  let lastNotificationAt = 0; // when the app last passed Grok a notification ("Claude finished")
+  let newSessionAskUsed = 0; // the `at` of the request that already started a new session
+  let disposed = false; // the connection closed
+  let newSessionSent = null; // { at, title }: the first prompt of a new session Orbit sent
+  /** The open session, from disk; right after sending a new session its first prompt, only that new session. */
+  const findOpenSessionNow = (info) => {
+    const recent = newSessionSent && Date.now() - newSessionSent.at < NEW_SESSION_FALLBACK_MS && info?.ok && (!newSessionSent.title || info.sessionTitle === newSessionSent.title);
+    return findOpenSession(info, undefined, () => disposed, recent ? newSessionSent.at : 0);
+  };
   let brainRun = null; // AbortController of the second-brain question in progress
   let brainRuns = 0;
   let lastBrainAt = 0; // when the last second-brain question was asked
   let lastBrainAnswerAt = 0; // when its answer came back (text Grok may now repeat)
   let copyAskUsed = 0; // the `at` of the copy request already used: one request, one copy
 
-  const publicDraft = (d) => d && { id: d.id, text: d.text, targetTitle: d.targetTitle };
+  const publicDraft = (d) => d && { id: d.id, text: d.text, targetTitle: d.targetNew ? 'a new session' : d.targetTitle };
   const setDraft = (d) => {
     draft = d;
     notify({ type: 'bridge.draft', draft: publicDraft(d) });
@@ -231,9 +304,12 @@ export function createToolRunner({ notify, wakeHint = 'clicking the orb', uttera
     if (draft !== snapshot) return { ok: false, error: 'The draft changed before it was sent, so nothing was sent. Read the current draft back and ask again.' };
     if (Date.now() - lastSentAt < MIN_GAP_BETWEEN_SENDS_MS) return { ok: false, error: 'Just sent one. Wait a moment.' };
     lastSentAt = Date.now();
-    const result = await sendToDesktop(snapshot.text, { expectTitle: snapshot.targetTitle });
+    const sentAt = Date.now();
+    const result = await sendToDesktop(snapshot.text, { expectTitle: snapshot.targetTitle, expectNew: !!snapshot.targetNew, expectFolder: snapshot.targetFolder });
     if (result.ok) {
       notify({ type: 'bridge.sent', text: snapshot.text, sessionTitle: result.sessionTitle });
+      if (snapshot.targetNew && result.sessionTitle) notify({ type: 'bridge.session', title: result.sessionTitle });
+      if (snapshot.targetNew) newSessionSent = { at: sentAt, title: typeof result.sessionTitle === 'string' ? result.sessionTitle : null };
       if (draft === snapshot) setDraft(null);
     } else {
       lastSentAt = 0;
@@ -244,15 +320,19 @@ export function createToolRunner({ notify, wakeHint = 'clicking the orb', uttera
   const handlers = {
     async get_current_session() {
       const info = await getDesktopInfo();
-      const session = resolveSession('', { windowTitle: info.ok ? info.sessionTitle : null });
-      if (!session) return { error: 'No Claude Code desktop sessions found on this computer. Is the Claude desktop app installed and has it been used for Code sessions?' };
-      notify({ type: 'bridge.session', title: session.title });
-      return {
-        app_open: !!info.ok,
-        open_in_app: info.ok ? info.sessionTitle : null,
-        prompt_box_has_text: info.ok ? !!info.promptText : null,
-        ...readSession(session, { lastN: 4 }),
-      };
+      const open = await findOpenSessionNow(info);
+      const app = { app_open: !!info.ok, open_in_app: info.ok ? info.sessionTitle : null, prompt_box_has_text: info.ok ? !!info.promptText : null };
+      if (open.newSession) {
+        notify({ type: 'bridge.session', title: 'New session' });
+        return { ...app, open_in_app: 'a new, empty session', new_session: true, folder: open.folder, note: 'Nothing has been sent in it yet, so there is nothing to read. Ask the user what to tell Claude, then use draft_prompt.' };
+      }
+      if (open.pending) {
+        notify({ type: 'bridge.session', title: open.pending });
+        return { ...app, transcript_pending: true, note: 'This session was only just started and Claude has not saved it to disk yet. Say so, and try read_session again in a few seconds.' };
+      }
+      if (!open.session) return { error: 'No Claude Code desktop sessions found on this computer. Is the Claude desktop app installed and has it been used for Code sessions?' };
+      notify({ type: 'bridge.session', title: open.session.title });
+      return { ...app, ...readSession(open.session, { lastN: 4 }) };
     },
 
     async list_sessions({ limit } = {}) {
@@ -260,22 +340,37 @@ export function createToolRunner({ notify, wakeHint = 'clicking the orb', uttera
     },
 
     async read_session({ session, last_n, include_tool_calls } = {}) {
-      const info = session ? null : await getDesktopInfo();
-      const s = resolveSession(session || '', { windowTitle: info?.ok ? info.sessionTitle : null });
-      if (!s) return { error: `No session matched "${session}". Try list_sessions.` };
-      return readSession(s, { lastN: clampInt(last_n, 8, 30), includeTools: !!include_tool_calls });
+      const opts = { lastN: clampInt(last_n, 8, 30), includeTools: !!include_tool_calls };
+      const query = typeof session === 'string' ? session.trim() : '';
+      if (query) {
+        const s = resolveSession(query);
+        if (!s) return { error: `No session matched "${query.slice(0, 80)}". Try list_sessions.` };
+        return readSession(s, opts);
+      }
+      const open = await findOpenSessionNow(await getDesktopInfo());
+      if (open.newSession) return { new_session: true, folder: open.folder, note: 'The session open in Claude is new and empty: nothing has been sent in it yet.' };
+      if (open.pending) return { open_in_app: open.pending, transcript_pending: true, note: 'This session was only just started and Claude has not saved it to disk yet. Try again in a few seconds.' };
+      if (!open.session) return { error: 'No Claude Code desktop sessions found on this computer.' };
+      return readSession(open.session, opts);
     },
 
     async draft_prompt({ text } = {}) {
       const clean = String(text || '').trim().slice(0, 8000);
       if (!clean) return { error: 'Draft text was empty.' };
+      // The words must come from the user: not from an app notification or a transcript Grok read.
+      if (!heardSince(lastNotificationAt)) return { error: 'Not drafted: ask the user what they want to tell Claude first. A draft needs their own words, said after the latest app notification.' };
       const info = await getDesktopInfo();
       if (!info.ok) return { error: info.message || info.error };
       if (!info.promptBoxFound) return { error: 'The Claude app has no prompt box visible. Ask the user to open a Code session.' };
-      setDraft({ id: nextDraftId++, text: clean, targetTitle: info.sessionTitle, createdAt: Date.now() });
+      // Only into a Code session, or a new one: never a page Orbit can't name (the send checks it again).
+      if (!info.sessionTitle && !info.newSession) return { error: 'The Claude window is not showing a Code session. Ask the user to open one, or start one with new_session.' };
+      const targetNew = !info.sessionTitle && !!info.newSession;
+      const targetFolder = targetNew && typeof info.folder === 'string' && info.folder ? info.folder : null;
+      if (targetNew && !targetFolder) return { error: 'The new session has no project folder chosen yet. Ask the user to pick one in Claude, or start one with new_session and a project name.' };
+      setDraft({ id: nextDraftId++, text: clean, targetTitle: targetNew ? null : info.sessionTitle, targetNew, targetFolder, createdAt: Date.now() });
       return {
         drafted: true,
-        target_session: info.sessionTitle,
+        target_session: targetNew ? `a new session${typeof info.folder === 'string' && info.folder ? ` in ${info.folder}` : ''}` : info.sessionTitle,
         note: info.promptText ? 'Warning: the prompt box already has text typed in it; sending will be refused until the user clears it.' : undefined,
         next_step: 'Read the draft back in a sentence and ask the user to confirm before calling send_draft.',
       };
@@ -306,10 +401,52 @@ export function createToolRunner({ notify, wakeHint = 'clicking the orb', uttera
     async switch_session({ session } = {}) {
       const query = String(session || '').trim();
       if (!query) return { error: 'Say which session to open.' };
+      // Only for something the user just said: not an app notification, a transcript Grok read, or
+      // a second-brain answer (a spoken update reads a session before anyone has said a word).
+      const asked = recentUtterance();
+      if (!asked || asked.at <= Math.max(lastNotificationAt, lastBrainAnswerAt) || Date.now() - asked.at > COPY_ASK_MAX_AGE_MS) {
+        return { ok: false, error: 'Not switched: only switch sessions when the user has just asked to.' };
+      }
       const known = resolveSession(query);
       const result = await switchSession(known?.title || query);
       if (result.ok) notify({ type: 'bridge.session', title: result.sessionTitle });
       return result;
+    },
+
+    async new_session({ project } = {}) {
+      // Only when the user just asked for one, in their own words (one request, one new session):
+      // never from a notification, a transcript Grok read or a second-brain answer. That would move
+      // Claude's window away from what you're doing.
+      const asked = recentUtterance();
+      const words = String(asked?.text || '');
+      if (
+        !asked ||
+        asked.at <= Math.max(lastNotificationAt, lastBrainAnswerAt) ||
+        asked.at === newSessionAskUsed ||
+        Date.now() - asked.at > COPY_ASK_MAX_AGE_MS ||
+        !/\b(new|fresh|blank|another|scratch|over)\b/i.test(words) ||
+        /\b(don'?t|do not|not|never|no)\b/i.test(words)
+      ) {
+        return { ok: false, error: 'Not started: only start a new session when the user has just asked for a new one in their own words (each request starts one).' };
+      }
+      newSessionAskUsed = asked.at;
+      const result = await newSession({ project: typeof project === 'string' ? project : '' });
+      if (!result.ok) {
+        // Folder names come from Claude's window: data for Grok to read out, never instructions.
+        if (Array.isArray(result.projects)) return { ...result, projects: result.projects.slice(0, 15).map((p) => String(p).slice(0, 60)), next_step: 'Ask the user which of the listed project folders to use.' };
+        return result;
+      }
+      const hadDraft = !!draft;
+      if (hadDraft) setDraft(null); // it was meant for the session that was open before
+      notify({ type: 'bridge.session', title: 'New session' });
+      const folder = typeof result.folder === 'string' && result.folder ? result.folder : null;
+      return {
+        ok: true,
+        new_session: true,
+        folder,
+        previous_draft_discarded: hadDraft || undefined,
+        next_step: 'Tell the user the new session is open (name the folder briefly) and ask what they want to say to Claude. Then draft_prompt and confirm as usual.',
+      };
     },
 
     async get_recent_errors({ limit } = {}) {
@@ -338,9 +475,8 @@ export function createToolRunner({ notify, wakeHint = 'clicking the orb', uttera
         value = draft?.text || '';
         if (!value) return { ok: false, error: 'There is no draft to copy.' };
       } else if (what === 'claude_last_message') {
-        const info = session ? null : await getDesktopInfo();
-        const s = resolveSession(session || '', { windowTitle: info?.ok ? info.sessionTitle : null });
-        if (!s) return { ok: false, error: 'No matching session.' };
+        const s = session ? resolveSession(String(session)) : (await findOpenSession(await getDesktopInfo(), 0)).session;
+        if (!s) return { ok: false, error: 'No matching session (a brand-new session has nothing to copy yet).' };
         const file = findTranscript(s.cliSessionId, s.cwd);
         const turns = file ? readTranscriptTail(file, { lastN: 30, maxCharsPerMessage: MAX_CLIPBOARD_CHARS }).turns : [];
         value = [...turns].reverse().find((t) => t.role === 'claude')?.text || '';
@@ -361,8 +497,10 @@ export function createToolRunner({ notify, wakeHint = 'clicking the orb', uttera
       if (brainRun) return { error: 'Still working on the previous question. Wait for that answer first.' };
       // Each question needs the user to have spoken since the last one, so a reply (or text in a
       // file) can't keep Grok asking in a loop; and there's a cap per conversation.
+      // An app notification needs the user's own words after it too (it can't start a paid run).
       const spoke = recentUtterance();
-      if (lastBrainAt && !(spoke && spoke.at > lastBrainAt)) return { error: 'Answer the user first. Ask the second brain again only after the user says something new.' };
+      const since = Math.max(lastBrainAt, lastNotificationAt);
+      if (since && !(spoke && spoke.at > since)) return { error: 'Answer the user first. Ask the second brain again only after the user says something new.' };
       if (brainRuns >= MAX_BRAIN_RUNS) return { error: `The second brain was asked ${MAX_BRAIN_RUNS} times in this conversation, which is the limit. Starting a new conversation resets it.` };
 
       const fixed = getSetting('brainModel');
@@ -378,7 +516,7 @@ export function createToolRunner({ notify, wakeHint = 'clicking the orb', uttera
       // picked by naming some other session, and never a whole home folder or drive.
       const wantExplore = getSetting('brainExplore') && mode === 'explore';
       const info = !session || wantExplore ? await getDesktopInfo() : null; // which session is open
-      const openSession = info?.ok ? resolveSession('', { windowTitle: info.sessionTitle }) : null;
+      const openSession = info?.ok ? (await findOpenSession(info, 0)).session || null : null;
       const s = session ? resolveSession(String(session)) : openSession || resolveSession('');
       const isOpen = !!s && !!openSession && s.id === openSession.id;
       const cwd = wantExplore && isOpen && s.cwd && fs.existsSync(s.cwd) && !tooBroadToExplore(s.cwd) ? s.cwd : null;
@@ -466,7 +604,14 @@ export function createToolRunner({ notify, wakeHint = 'clicking the orb', uttera
       return publicDraft(draft);
     },
     getDraft: () => publicDraft(draft),
+    /** The app just passed Grok a notification: what follows needs the user's own words again. */
+    noteNotification: () => {
+      lastNotificationAt = Date.now();
+    },
     /** The connection closed: stop any second-brain question still running. */
-    dispose: () => brainRun?.abort(),
+    dispose: () => {
+      disposed = true;
+      brainRun?.abort();
+    },
   };
 }

@@ -69,6 +69,15 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
               ? "Orbit won't tell you when Claude finishes."
               : `Orbit watches your recent Claude sessions. When Claude finishes a task you get a chime and a Windows notification${s.announce === "speak" ? ", and if Grok is on, it says what Claude did." : "."}`}
           </p>
+          {s.announce === "speak" && (
+            <Toggle
+              className="mt-4"
+              checked={s.announceWake}
+              onChange={(announceWake) => update({ announceWake })}
+              label="Wake Grok to say it"
+              hint="While Grok is asleep, it connects just long enough to tell you, then listens for 3 seconds in case you want something. The mic opens only after it has spoken. Each wake bills a few seconds of xAI time."
+            />
+          )}
         </Section>
 
         <SecondBrainSection s={s} update={update} />

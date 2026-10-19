@@ -17,6 +17,10 @@ export function getDesktopInfo() {
       { ok: true, sessionTitle: title, promptBoxFound: true, promptText: '' },
       { ok: true, sessionTitle: title, promptBoxFound: false, promptText: '' },
       { ok: true, sessionTitle: title, promptBoxFound: true, promptText: 'typed by user' },
+      // A new session nothing has been sent in yet: no title (see desktop.ps1 -Mode new).
+      { ok: true, sessionTitle: null, newSession: true, folder: fz().str(), promptBoxFound: true, promptText: '' },
+      // Some other Claude page with a prompt box that isn't a Code session.
+      { ok: true, sessionTitle: null, newSession: false, folder: null, promptBoxFound: true, promptText: '' },
       { ok: false, error: 'claude_window_not_found', message: 'The Claude desktop app is not open.' },
     ]),
   );
@@ -35,7 +39,21 @@ export function switchSession(title) {
   return Promise.resolve(pick([{ ok: true, sessionTitle: String(title).slice(0, 200) }, { ok: false, error: 'session_not_found', message: 'x' }]));
 }
 
+export function newSession(opts = {}) {
+  record('new', { project: opts.project });
+  return Promise.resolve(
+    pick([
+      { ok: true, created: true, newSession: true, folder: fz().str() },
+      { ok: true, created: false, newSession: true, folder: null },
+      { ok: false, error: 'project_not_in_sidebar', message: 'x', projects: [fz().str(), fz().str()] },
+      { ok: false, error: 'project_ambiguous', message: 'x', projects: [fz().str(), fz().str()] },
+      { ok: false, error: 'prompt_box_not_empty', message: 'x' },
+      { ok: false, error: 'new_button_not_found', message: 'x' },
+    ]),
+  );
+}
+
 export function sendToDesktop(text, opts = {}) {
-  record('send', { text, expectTitle: opts.expectTitle });
-  return Promise.resolve(pick([{ ok: true, sessionTitle: opts.expectTitle || 't' }, { ok: false, error: 'prompt_box_not_empty', message: 'x' }]));
+  record('send', { text, expectTitle: opts.expectTitle, expectNew: !!opts.expectNew, expectFolder: opts.expectFolder ?? null });
+  return Promise.resolve(pick([{ ok: true, sessionTitle: opts.expectTitle || (opts.expectNew ? fz().str() : 't') }, { ok: false, error: 'prompt_box_not_empty', message: 'x' }]));
 }

@@ -46,6 +46,19 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json
 const XAI_API = 'https://api.x.ai/v1';
 const MAX_BODY = 64 * 1024;
 
+/**
+ * Spoken updates while asleep ("announce wake"): the page connects, Grok says what Claude finished
+ * with no mic audio going anywhere, and only after that may the page open the mic, for `listenMs`.
+ * The bridge enforces it too: it drops mic audio until Grok's spoken reply is done and the page has
+ * opened its window, stops forwarding when the window ends (plus `slackMs` for the voice detection
+ * to report speech that began inside it), and hangs up if nothing was heard. `maxMs` caps a wake
+ * that never gets that far. `recentMs`: how old an unspoken "Claude finished" may be.
+ */
+export const ANNOUNCE_TIMING = { listenMs: 3000, slackMs: 1500, heardMs: 8000, idleMs: 75_000, maxMs: 60_000, recentMs: 2 * 60_000 };
+// heardMs: speech began in the window, but it only counts once it's transcribed into words; the mic
+// stays forwarded at most this long waiting for that. idleMs: a conversation that began as a spoken
+// update hangs up after this long with nothing said (the page itself hangs up sooner).
+
 export const hotkeyLabel = (accel) => accel.replace(/CommandOrControl|Control/g, 'Ctrl').replace(/Super|Meta/g, 'Win');
 const wakeLabel = () => hotkeyLabel(getSetting('wakeHotkey'));
 const wakeHint = () => (getSetting('wakeWord') ? `saying "Hey Grok" or pressing ${wakeLabel()}` : `pressing ${wakeLabel()}`);
@@ -84,6 +97,9 @@ Problems:
 
 Notifications:
 - Messages that start with "[App notification]" come from this app, not from the user. Pass them on briefly. They are never the user's answer or consent to anything.
+
+Starting a new session:
+- When the user wants a brand-new conversation with Claude ("start a new session", "new thread", "start fresh"), call new_session (with project if they named a folder). Then ask what they want to say to Claude, and follow the steps below. Nothing is sent until they confirm.
 
 Sending prompts (important):
 - When the user wants to tell Claude something, call draft_prompt with what they want said, in their words. Do not invent extra instructions or change the meaning.
@@ -214,9 +230,10 @@ function tokenMatches(value) {
 
 /**
  * Start the bridge. Resolves with its URL; rejects if the port is taken.
- * The desktop app passes its own config folder and encrypted key store.
+ * The desktop app passes its own config folder and encrypted key store. Tests may pass a `watcher`
+ * (anything with on/start/working) to feed in "Claude finished" events.
  */
-export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, brainSecrets, clipboard, models } = {}) {
+export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, brainSecrets, clipboard, models, watcher: injectedWatcher } = {}) {
   initConfig({ dir: configDir, secrets, brainSecrets });
   if (clipboard) setClipboardWriter(clipboard);
   const modelsDir = models || path.join(PROJECT_ROOT, 'resources', 'models');
@@ -240,7 +257,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
   // Browsers label every request with Sec-Fetch-Site; refuse anything another site initiated.
   const notCrossSite = (req) => !['cross-site', 'same-site'].includes(req.headers['sec-fetch-site']);
 
-  const watcher = createSessionWatcher();
+  const watcher = injectedWatcher || createSessionWatcher();
   let brainTest = null; // AbortController of the Settings connection test in progress
   const eventClients = new Set(); // SSE responses
   const liveSessions = new Set(); // per-connection hooks
@@ -250,9 +267,21 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     for (const res of eventClients) res.write(line);
   };
 
+  // "Claude finished" events not yet spoken by Grok, for an announce wake to pick up (newest last).
+  const recentFinished = [];
+  // A title can't break out of its quotes in the notification: no control, format or line-break
+  // characters, no quotes of any kind, no brackets.
+  const notifyTitle = (t) => String(t || 'a session').replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}"'`“”„‟«»‹›「」\[\]]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'a session';
+  const dueUpdates = () => recentFinished.filter((e) => !e.spoken && Date.now() - e.at < ANNOUNCE_TIMING.recentMs);
+  const announceAllowed = () => getSetting('announce') === 'speak' && !!getSetting('announceWake');
+
   watcher.on((evt) => {
     broadcast(evt);
-    if (evt.type === 'claude.finished') for (const s of liveSessions) s.announce(evt);
+    if (evt.type !== 'claude.finished') return;
+    const entry = { title: notifyTitle(evt.title), at: Date.now(), spoken: false };
+    recentFinished.push(entry);
+    if (recentFinished.length > 10) recentFinished.shift();
+    for (const s of liveSessions) if (s.announce(evt)) entry.spoken = true;
   });
 
   onSettingsChange((changed, all) => {
@@ -505,7 +534,11 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
   // Messages the page is allowed to forward to xAI as-is.
   const FORWARDABLE = new Set(['input_audio_buffer.append', 'input_audio_buffer.clear', 'input_audio_buffer.commit', 'response.cancel']);
 
-  wss.on('connection', (browser) => {
+  wss.on('connection', (browser, req) => {
+    let wantAnnounce = false;
+    try {
+      wantAnnounce = new URL(req.url, 'http://x').searchParams.get('announce') === '1';
+    } catch {}
     const toBrowser = (obj) => browser.readyState === WebSocket.OPEN && browser.send(JSON.stringify(obj));
     const apiKey = getApiKey();
     let connectedAt = Date.now();
@@ -515,6 +548,13 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     if (!apiKey) {
       logWarn('xai', 'Could not start Grok: no xAI API key saved');
       toBrowser({ type: 'bridge.error', message: 'No xAI API key yet. Add it on the setup screen.' });
+      return browser.close();
+    }
+    // A spoken update that isn't allowed, or has nothing to say, never reaches xAI (or the bill).
+    if (wantAnnounce && (!announceAllowed() || !dueUpdates().length)) {
+      const why = announceAllowed() ? 'nothing to say' : 'turned off';
+      logInfo('voice', `Spoken update: not started (${why})`);
+      toBrowser({ type: 'bridge.announce', ok: false, reason: why });
       return browser.close();
     }
 
@@ -550,7 +590,74 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     let asleep = false;
     let responding = false;
     const pending = []; // announcements waiting for Grok to finish talking
-    const tools = createToolRunner({ notify: toBrowser, wakeHint, utteranceSince, recentUtterance: () => (utterance.text ? utterance : null) });
+    const tools = createToolRunner({
+      notify: toBrowser,
+      wakeHint,
+      utteranceSince,
+      recentUtterance: () => (utterance.text ? utterance : null),
+      heardSince: (ts) => speechStartedAt > ts || utterance.at > ts,
+    });
+
+    // Announce wake (see ANNOUNCE_TIMING). null = an ordinary conversation.
+    //   stage 'waiting'   : connected with ?announce=1, Grok not reached yet; mic audio is dropped
+    //   stage 'speaking'  : Grok is saying the update; mic audio is dropped
+    //   stage 'ready'     : Grok's spoken reply is done; the page may open its listening window
+    //   stage 'listening' : mic audio is forwarded until `windowEnds`; silence hangs up
+    //   stage 'heard'     : speech began in the window; forwarded until `heardUntil` for it to be
+    //                       transcribed. Words turn this into an ordinary conversation; a cough,
+    //                       or anything that never becomes words, hangs up.
+    let announce = wantAnnounce ? { stage: 'waiting', windowEnds: 0, heardUntil: 0, timer: null, capTimer: null } : null;
+    const wasAnnounce = wantAnnounce;
+    let audioThisResponse = 0;
+    let idleTimer = null;
+    const endAnnounce = () => {
+      if (!announce) return;
+      clearTimeout(announce.timer);
+      clearTimeout(announce.capTimer);
+      announce = null;
+    };
+    // Once the bridge hangs up a spoken update, nothing more goes to Grok, even what the page
+    // sends before its socket has finished closing.
+    let hungUp = false;
+    const hangUp = (why) => {
+      if (hungUp) return;
+      hungUp = true;
+      endAnnounce();
+      clearTimeout(idleTimer);
+      logInfo('voice', `Spoken update: hung up (${why})`);
+      toBrowser({ type: 'bridge.announce', ok: false, reason: why });
+      browser.close();
+    };
+    const hangUpAnnounce = (why) => announce && hangUp(why);
+    /** A conversation that began as a spoken update hangs up once nothing has happened for a while. */
+    const touchIdle = () => {
+      if (!wasAnnounce || announce || hungUp) return;
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => (callsInFlight > 0 || responding ? touchIdle() : hangUp('quiet')), ANNOUNCE_TIMING.idleMs);
+    };
+    const micAllowed = () => {
+      if (hungUp) return false;
+      if (!announce) return true;
+      const now = Date.now();
+      return (announce.stage === 'listening' && now < announce.windowEnds) || (announce.stage === 'heard' && now < announce.heardUntil);
+    };
+    const announceListening = () => !!announce && (announce.stage === 'listening' || announce.stage === 'heard');
+    /** Grok is connected: say the updates no conversation has spoken yet, or hang up. */
+    const startAnnounce = () => {
+      if (!announce || announce.stage !== 'waiting') return; // the user typed something meanwhile
+      const due = dueUpdates();
+      if (!due.length || !announceAllowed()) return hangUpAnnounce(due.length ? 'turned off' : 'nothing to say');
+      for (const e of due) e.spoken = true;
+      announce.stage = 'speaking';
+      announce.capTimer = setTimeout(() => hangUpAnnounce('took too long'), ANNOUNCE_TIMING.maxMs);
+      logInfo('voice', `Spoken update: ${due.length} to say`);
+      toBrowser({ type: 'bridge.announce', ok: true });
+      pending.push(
+        ...due.map((e) => finishedText(e.title)),
+        'Grok was asleep and woke only for this. After saying it, ask in a few words what they would like to do next, if anything (an open question, not a yes/no one). If they say nothing, the app hangs up by itself.',
+      );
+      flushPending();
+    };
     // One tool call at a time, in order, so two calls can't race each other.
     let toolChain = Promise.resolve();
     const runTool = (name, args) => {
@@ -567,23 +674,28 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     const stopMeter = startMeter();
 
     const sayNotification = (text) => {
+      tools.noteNotification(); // what Grok does next needs the user's own words again
       toXai({ type: 'conversation.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: `[App notification] ${text}` }] } });
       toXai({ type: 'response.create' });
     };
     const flushPending = () => {
-      if (!responding && pending.length) sayNotification(pending.splice(0).join(' '));
+      // Kept until Grok is connected: a notice sent before that would be dropped.
+      if (!responding && pending.length && upstream.readyState === WebSocket.OPEN) sayNotification(pending.splice(0).join(' '));
     };
+    // Only the session title goes in here, never Claude's own words: those come back as tool
+    // output (data) if Grok reads the session, not as something the user "said".
+    const finishedText = (title) => `Claude just finished in the session titled "${title}". Call read_session for that session with last_n 2, then tell the user in one short sentence what Claude did.`;
 
     const hooks = {
       pushConfig: () => toXai({ type: 'session.update', session: sessionConfig() }),
+      /** Returns true if this conversation will speak it. */
       announce: (evt) => {
-        if (getSetting('announce') !== 'speak') return;
-        if (asleep && getSetting('listenMode') !== 'tap') return; // asleep in always-on mode: chime only
-        // Only the session title goes in here, never Claude's own words: those come back as
-        // tool output (data) if Grok reads the session, not as something the user "said".
-        const title = String(evt.title || 'a session').replace(/["\r\n\[\]]/g, ' ').slice(0, 80);
-        pending.push(`Claude just finished in the session titled "${title}". Call read_session for that session with last_n 2, then tell the user in one short sentence what Claude did.`);
+        if (getSetting('announce') !== 'speak') return false;
+        if (asleep && getSetting('listenMode') !== 'tap') return false; // asleep in always-on mode: chime only
+        if (announce?.stage === 'waiting') return false; // a spoken update about to start picks it up
+        pending.push(finishedText(notifyTitle(evt.title)));
         flushPending();
+        return true;
       },
     };
     liveSessions.add(hooks);
@@ -605,6 +717,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       hooks.pushConfig();
       toBrowser({ type: 'bridge.ready', model: getSetting('model'), voice: getSetting('voice') });
       runTool('get_current_session').catch(() => {});
+      flushPending();
+      startAnnounce();
     });
 
     upstream.on('message', guarded(async (data, isBinary) => {
@@ -616,11 +730,24 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         return;
       }
       if (!evt || typeof evt !== 'object' || typeof evt.type !== 'string') return;
+      // Spoken update, mic not open: no audio has been sent, so "speech" here isn't the user.
+      // Dropped entirely, so it can neither count as an answer nor cut Grok off on the page.
+      if (announce && !announceListening() && (evt.type.startsWith('input_audio_buffer.') || evt.type.startsWith('conversation.item.input_audio_transcription'))) return;
       toBrowser(evt);
 
       if (evt.type === 'error') {
         logWarn('xai', evt.error?.message || 'Grok reported an error', evt.error?.code || evt.error?.type);
       } else if (evt.type === 'input_audio_buffer.speech_started') {
+        if (announce?.stage === 'listening') {
+          // Speech inside the listening window: keep listening until it's transcribed (words carry on
+          // as a conversation; anything else hangs up at heardUntil).
+          if (Date.now() > announce.windowEnds) return hangUpAnnounce('no reply');
+          clearTimeout(announce.timer);
+          announce.stage = 'heard';
+          announce.heardUntil = Date.now() + ANNOUNCE_TIMING.heardMs;
+          announce.timer = setTimeout(() => hangUpAnnounce('no words'), ANNOUNCE_TIMING.heardMs);
+        }
+        touchIdle();
         speechStartedAt = Date.now();
         stats.heard++;
         // Each transcript is stamped with when ITS speech started, so a late "yes" to something
@@ -630,10 +757,25 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           if (speechStarts.size > 200) speechStarts.delete(speechStarts.keys().next().value);
         }
       } else if (evt.type.startsWith('conversation.item.input_audio_transcription') && typeof evt.transcript === 'string') {
+        if (announce && /[\p{L}\p{N}]/u.test(evt.transcript)) {
+          // Real words in reply to the update: from here on, an ordinary conversation.
+          endAnnounce();
+          logInfo('voice', 'Spoken update: the user answered');
+          touchIdle();
+        }
         setUtterance(evt.transcript, speechStarts.get(evt.item_id) || speechStartedAt || Date.now());
       } else if (evt.type === 'response.created') {
         responding = true;
         responseDone = false;
+        audioThisResponse = 0;
+        touchIdle();
+        if (announce && (announce.stage === 'listening' || announce.stage === 'ready')) {
+          // Grok speaks again (another update) before the user said anything: mic closed again.
+          clearTimeout(announce.timer);
+          announce.stage = 'speaking';
+        }
+      } else if (evt.type === 'response.output_audio.delta' || evt.type === 'response.audio.delta') {
+        audioThisResponse++;
       } else if (evt.type === 'response.function_call_arguments.done') {
         callsInFlight++;
         callsThisResponse++;
@@ -643,11 +785,19 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         toBrowser({ type: 'bridge.tool_result', name: evt.name, result });
         toXai({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: evt.call_id, output: JSON.stringify(result) } });
         callsInFlight--;
+        touchIdle();
         maybeContinue();
       } else if (evt.type === 'response.done') {
         stats.replies++;
+        touchIdle();
         responding = false;
         responseDone = true;
+        // Grok has said its piece (spoken, and no tool call still to answer): the page may now
+        // open the mic, once that audio has finished playing.
+        if (announce && announce.stage === 'speaking' && audioThisResponse > 0 && callsThisResponse === 0 && callsInFlight === 0 && !pending.length) {
+          announce.stage = 'ready';
+          toBrowser({ type: 'bridge.announce_ready' });
+        }
         maybeContinue();
         if (callsThisResponse === 0) flushPending();
       }
@@ -672,7 +822,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       const why = reason.toString();
       const micSecs = (stats.micBytes / 2 / 24000).toFixed(1); // pcm16 mono at 24 kHz
       const heard = `mic audio sent ${micSecs}s, loudest ${Math.round((stats.micPeak / 32768) * 100)}%, heard you ${stats.heard}x, replied ${stats.replies}x, tools ${stats.tools}`;
-      if (pageClosed) logInfo('xai', `Grok session ended by Orbit after ${secs}s (hang up / sleep)`, heard);
+      if (pageClosed) logInfo('xai', `Grok session ended by Orbit after ${secs}s (${wasAnnounce ? 'spoken update' : 'hang up / sleep'})`, heard);
       else if (code !== 1000 && code !== 1005) logWarn('xai', `Grok closed the connection after ${secs}s (code ${code})`, `${why} · ${heard}`);
       else logWarn('xai', `Grok ended the session after ${secs}s (code ${code})`, `${why || 'no reason given'} · ${heard}`);
       toBrowser({ type: 'bridge.closed', code, reason: reason.toString() });
@@ -686,7 +836,9 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       } catch {
         return;
       }
-      if (!msg || typeof msg.type !== 'string') return;
+      if (!msg || typeof msg.type !== 'string' || hungUp) return;
+      // Spoken update: no mic audio leaves this machine outside the listening window.
+      if ((msg.type === 'input_audio_buffer.append' || msg.type === 'input_audio_buffer.commit') && !micAllowed()) return;
       if (msg.type === 'input_audio_buffer.append' && typeof msg.audio === 'string') {
         const pcm = Buffer.from(msg.audio, 'base64');
         stats.micBytes += pcm.length;
@@ -694,6 +846,15 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       }
       if (FORWARDABLE.has(msg.type)) return toXai(msg);
       switch (msg.type) {
+        case 'ui.listen_window':
+          // The page has played Grok's update and opened the mic: listen for a short window.
+          if (announce && announce.stage === 'ready') {
+            announce.stage = 'listening';
+            announce.windowEnds = Date.now() + ANNOUNCE_TIMING.listenMs + ANNOUNCE_TIMING.slackMs;
+            clearTimeout(announce.timer);
+            announce.timer = setTimeout(() => hangUpAnnounce('no reply'), ANNOUNCE_TIMING.listenMs + ANNOUNCE_TIMING.slackMs);
+          }
+          return;
         case 'ui.send_draft': {
           // The Send button names the draft it approves; a different or changed draft isn't sent.
           const result = await (toolChain = toolChain.then(() => tools.sendFromUi(draftId(msg.id))));
@@ -708,7 +869,9 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           return;
         case 'ui.text':
           if (typeof msg.text === 'string' && msg.text.trim()) {
-            // Typed message instead of speech.
+            // Typed message instead of speech (during a spoken update, that's an answer too).
+            endAnnounce();
+            touchIdle();
             setUtterance(msg.text.trim(), Date.now());
             toXai({ type: 'conversation.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: msg.text.trim().slice(0, 4000) }] } });
             toXai({ type: 'response.create' });
@@ -722,6 +885,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
 
     browser.on('close', () => {
       pageClosed = true;
+      clearTimeout(idleTimer);
+      endAnnounce();
       tools.dispose();
       for (const w of utteranceWaiters) w();
       liveSessions.delete(hooks);

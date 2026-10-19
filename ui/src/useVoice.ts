@@ -8,10 +8,20 @@ const TAP_TIMEOUT_MS = 10_000; // "one question" mode: give up if you say nothin
 const TAP_DRAFT_HOLD_MS = 60_000; // "one question" mode: stay connected this long while a draft waits for a yes
 const SECOND_BRAIN_MAX_MS = 330_000; // the longest a second-brain answer can take (Opus: 5 min) plus a margin
 const MAX_HISTORY = 200;
+const ANNOUNCE_LISTEN_MS = 3000; // spoken update: how long the mic stays open for a reply
+const ANNOUNCE_GRACE_MS = 1000; // ...plus this, once, if you were just starting to talk
+const ANNOUNCE_MAX_MS = 45_000; // give up on a spoken update that never gets said
+const ANNOUNCE_HEARD_MS = 8000; // you started talking in the window: this long for it to become words
+const ANNOUNCE_IDLE_MS = 20_000; // a conversation that began as a spoken update hangs up after this much quiet
 
 // Sleeping means hanging up: nothing is billed, and "Hey Grok" / the hotkey start a fresh
 // connection. The only "connected but not listening" moments are while Grok finishes its
 // goodbye, and in "one question" mode while it answers (or while a draft waits for a yes).
+//
+// Spoken updates ("announce"): when Claude finishes while Grok is asleep, Orbit can connect just
+// to say so. The mic isn't even opened until Grok's update has finished playing; then it listens
+// for ~3 s. Speech there turns it into a normal conversation; silence hangs up. The bridge
+// enforces the same window on its side.
 
 export type Phase = "off" | "connecting" | "listening" | "thinking" | "speaking";
 export type Caption = { id: string; who: "you" | "grok" | "note" | "error" | "sent"; text: string; at: number };
@@ -26,7 +36,11 @@ const TOOL_NOTES: Record<string, string> = {
   send_draft: "Sending to Claude…",
   copy_to_clipboard: "Copying…",
   switch_session: "Switching session…",
+  new_session: "Starting a new session…",
 };
+
+// listening: the ~3 s window; heard: you started talking in it, waiting for your words.
+type Announce = { stage: "speaking" | "listening" | "heard"; startedAt: number; ready: boolean; grace: boolean; timer?: ReturnType<typeof setTimeout> };
 
 function b64ToInt16(b64: string) {
   const bin = atob(b64);
@@ -54,7 +68,14 @@ export function useVoice(options: VoiceOptions) {
   const ws = useRef<WebSocket | null>(null);
   const ctx = useRef<AudioContext | null>(null);
   const mic = useRef<MediaStream | null>(null);
+  const micSource = useRef<MediaStreamAudioSourceNode | null>(null);
   const worklet = useRef<AudioWorkletNode | null>(null);
+  const announceRef = useRef<Announce | null>(null);
+  const announcePoll = useRef<ReturnType<typeof setInterval>>(undefined);
+  const lastLoudAt = useRef(0);
+  const idlePoll = useRef<ReturnType<typeof setInterval>>(undefined);
+  const lastActivity = useRef(0); // you spoke or typed
+  const toolsRunning = useRef(0); // tool calls still running (a second-brain answer can take minutes)
   const analyser = useRef<AnalyserNode | null>(null);
   const outBus = useRef<GainNode | null>(null);
   const playing = useRef(new Set<AudioBufferSourceNode>());
@@ -91,6 +112,60 @@ export function useVoice(options: VoiceOptions) {
     asleepRef.current = v;
     setAsleep(v);
     if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify({ type: "ui.state", asleep: v }));
+  };
+
+  /** Leave spoken-update mode (it became a normal conversation, or is ending). */
+  const endAnnounce = () => {
+    const a = announceRef.current;
+    if (a) clearTimeout(a.timer);
+    clearInterval(announcePoll.current);
+    announceRef.current = null;
+  };
+
+  /** Open the microphone and start sending it (unless asleep). Needs the AudioContext from start(). */
+  const openMic = useCallback(async () => {
+    const ac = ctx.current;
+    if (!ac || mic.current) return;
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+    if (ctx.current !== ac) {
+      stream.getTracks().forEach((tr) => tr.stop()); // hung up meanwhile
+      return;
+    }
+    if (!worklet.current) {
+      await ac.audioWorklet.addModule("pcm-worklet.js");
+      const node = new AudioWorkletNode(ac, "pcm-capture");
+      worklet.current = node;
+      node.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
+        // Not listening: asleep, a spoken update whose listening window isn't open, or
+        // (half-duplex) Grok is talking and might hear itself.
+        const a = announceRef.current;
+        const deaf = asleepRef.current || (!!a && a.stage === "speaking") || (opts.current.halfDuplex && playing.current.size > 0);
+        const pcm = new Int16Array(e.data);
+        let sum = 0;
+        for (let i = 0; i < pcm.length; i++) sum += (pcm[i] / 0x8000) ** 2;
+        inLevel.current = deaf ? 0 : Math.sqrt(sum / pcm.length);
+        if (inLevel.current > 0.02) lastLoudAt.current = Date.now();
+        if (!deaf && ws.current?.readyState === WebSocket.OPEN)
+          ws.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: bufToB64(e.data) }));
+      };
+    }
+    if (ctx.current !== ac) {
+      stream.getTracks().forEach((tr) => tr.stop());
+      return;
+    }
+    mic.current = stream;
+    micSource.current = ac.createMediaStreamSource(stream);
+    micSource.current.connect(worklet.current);
+  }, []);
+
+  /** Close the microphone device itself (not just stop sending). */
+  const closeMic = () => {
+    micSource.current?.disconnect();
+    mic.current?.getTracks().forEach((tr) => tr.stop());
+    micSource.current = mic.current = null;
+    inLevel.current = 0;
   };
 
   /** Close the mic right away (Grok can still finish what it's saying). */
@@ -138,6 +213,7 @@ export function useVoice(options: VoiceOptions) {
       clearTimeout(tapTimer.current);
       clearTimeout(tapHold.current);
       if (!ws.current) return;
+      endAnnounce();
       muteMic();
       playChime("sleep");
       hangUpWhenQuiet(reason === "grok" ? 6000 : 3000, { afterReply: reason === "grok" });
@@ -160,6 +236,82 @@ export function useVoice(options: VoiceOptions) {
     playChime("wake");
     armTapTimeout();
   }, [armTapTimeout]);
+
+  /** Spoken update: Grok is done and its audio has played out, so open the mic for a short reply. */
+  const openListenWindow = useCallback(async () => {
+    const a = announceRef.current;
+    if (!a || a.stage !== "speaking" || !ws.current) return;
+    a.stage = "listening";
+    playChime("wake"); // you hear when the mic opens; it plays out before the mic starts
+    await new Promise((r) => setTimeout(r, 450));
+    if (announceRef.current !== a || a.stage !== "listening") return;
+    try {
+      await openMic();
+    } catch (e: any) {
+      caption({ id: `err-${Date.now()}`, who: "error", text: `Microphone problem: ${e.message}` });
+      stopRef.current();
+      return;
+    }
+    if (announceRef.current === a && a.stage !== "listening") return closeMic(); // Grok started speaking again
+    if (announceRef.current !== a || ws.current?.readyState !== WebSocket.OPEN) return;
+    ws.current.send(JSON.stringify({ type: "ui.listen_window" }));
+    caption({ id: `note-${Date.now()}`, who: "note", text: `Listening for ${ANNOUNCE_LISTEN_MS / 1000} seconds…` });
+    const check = () => {
+      if (announceRef.current !== a || a.stage !== "listening") return;
+      // You may have started talking just as the window closed: give the voice detection a moment.
+      if (!a.grace && Date.now() - lastLoudAt.current < 400) {
+        a.grace = true;
+        a.timer = setTimeout(check, ANNOUNCE_GRACE_MS);
+        return;
+      }
+      stopRef.current(); // nothing said: back to sleep (hang up)
+    };
+    clearTimeout(a.timer);
+    a.timer = setTimeout(check, ANNOUNCE_LISTEN_MS);
+  }, [caption, openMic]);
+
+  /** Spoken update: wait until the bridge says Grok is done and its audio has finished playing. */
+  const watchAnnounce = useCallback(() => {
+    clearInterval(announcePoll.current);
+    const a = announceRef.current;
+    if (!a) return;
+    let quietSince = 0;
+    announcePoll.current = setInterval(() => {
+      const cur = announceRef.current;
+      if (cur !== a || a.stage !== "speaking") return clearInterval(announcePoll.current);
+      const now = Date.now();
+      if (now - a.startedAt > ANNOUNCE_MAX_MS) {
+        clearInterval(announcePoll.current);
+        stopRef.current();
+        return;
+      }
+      const quiet = a.ready && lastAudioAt.current > a.startedAt && playing.current.size === 0 && !responding.current && now - lastAudioAt.current > 300;
+      quietSince = quiet ? quietSince || now : 0;
+      if (quiet && now - quietSince >= 300) {
+        clearInterval(announcePoll.current);
+        void openListenWindow();
+      }
+    }, 100);
+  }, [openListenWindow]);
+
+  /**
+   * You answered a spoken update: carry on as a normal conversation. Since you didn't start it,
+   * it hangs up by itself after 20 s of quiet (a minute while a draft waits for your yes).
+   */
+  const answeredAnnounce = useCallback(() => {
+    endAnnounce();
+    clearInterval(idlePoll.current);
+    lastActivity.current = Date.now();
+    idlePoll.current = setInterval(() => {
+      if (!ws.current) return clearInterval(idlePoll.current);
+      const busy = playing.current.size > 0 || responding.current || toolsRunning.current > 0 || asleepRef.current;
+      const last = Math.max(lastActivity.current, lastAudioAt.current, responseDoneAt.current);
+      if (!busy && Date.now() - last > (draftRef.current ? TAP_DRAFT_HOLD_MS : ANNOUNCE_IDLE_MS)) {
+        clearInterval(idlePoll.current);
+        sleep();
+      }
+    }, 1000);
+  }, [sleep]);
 
   const stopPlayback = useCallback(() => {
     for (const s of playing.current) {
@@ -192,11 +344,17 @@ export function useVoice(options: VoiceOptions) {
   const sendText = useCallback(
     (text: string) => {
       if (!ws.current || !text.trim()) return;
+      if (announceRef.current) {
+        // Typing during a spoken update answers it: carry on as a normal conversation.
+        answeredAnnounce();
+        openMic().catch((e) => caption({ id: `err-${Date.now()}`, who: "error", text: `Microphone problem: ${e.message}` }));
+      }
+      lastActivity.current = Date.now();
       caption({ id: `typed-${Date.now()}`, who: "you", text });
       ws.current.send(JSON.stringify({ type: "ui.text", text }));
       thinking.current = true;
     },
-    [caption],
+    [caption, openMic, answeredAnnounce],
   );
 
   const handle = useCallback(
@@ -205,6 +363,12 @@ export function useVoice(options: VoiceOptions) {
       switch (t) {
         case "bridge.ready":
           ready.current = true;
+          if (announceRef.current) {
+            // Woken only to say what Claude finished: no wake chime, mic still closed.
+            ws.current?.send(JSON.stringify({ type: "ui.state", asleep: false }));
+            watchAnnounce();
+            return;
+          }
           playChime("wake");
           ws.current?.send(JSON.stringify({ type: "ui.state", asleep: asleepRef.current }));
           if (pendingText.current) {
@@ -222,6 +386,12 @@ export function useVoice(options: VoiceOptions) {
           return;
         case "bridge.sleep":
           sleep("grok");
+          return;
+        case "bridge.announce":
+          if (!evt.ok) stopRef.current(); // nothing (left) to say, or the window ended: hang up
+          return;
+        case "bridge.announce_ready":
+          if (announceRef.current) announceRef.current.ready = true;
           return;
         case "bridge.session":
           setSessionTitle(evt.title);
@@ -244,10 +414,12 @@ export function useVoice(options: VoiceOptions) {
         case "bridge.tool":
           thinking.current = true;
           toolsInFlight.current++;
+          toolsRunning.current++;
           if (TOOL_NOTES[evt.name]) caption({ id: `tool-${Date.now()}`, who: "note", text: TOOL_NOTES[evt.name] });
           return;
         case "bridge.tool_result":
           toolsInFlight.current = Math.max(0, toolsInFlight.current - 1);
+          toolsRunning.current = Math.max(0, toolsRunning.current - 1);
           if (evt.result && (evt.result.error || evt.result.ok === false))
             caption({ id: `err-${Date.now()}`, who: "error", text: evt.result.message || evt.result.error });
           if (evt.result?.open_in_app) setSessionTitle(evt.result.open_in_app);
@@ -261,15 +433,39 @@ export function useVoice(options: VoiceOptions) {
           lastAudioAt.current = Date.now();
           playPcm(evt.delta);
           return;
-        case "response.created":
+        case "response.created": {
           responding.current = true;
+          const a = announceRef.current;
+          if (a) {
+            // Spoken update: Grok speaks again (e.g. another session finished) before you said
+            // anything. Close the mic again; it reopens for a fresh window once Grok is done.
+            a.ready = false;
+            if (a.stage === "listening") {
+              clearTimeout(a.timer);
+              a.stage = "speaking";
+              a.grace = false;
+              closeMic();
+            }
+            watchAnnounce();
+          }
           return;
-        case "input_audio_buffer.speech_started":
+        }
+        case "input_audio_buffer.speech_started": {
+          const a = announceRef.current;
+          if (a && a.stage === "listening") {
+            // You started talking in the window. It only counts once it's words (a cough doesn't);
+            // keep listening a few seconds for them.
+            clearTimeout(a.timer);
+            a.stage = "heard";
+            a.timer = setTimeout(() => announceRef.current === a && stopRef.current(), ANNOUNCE_HEARD_MS);
+          }
+          lastActivity.current = Date.now();
           clearTimeout(tapTimer.current);
           setHearing(true);
           thinking.current = false;
           stopPlayback(); // you started talking: let Grok be interrupted
           return;
+        }
         case "input_audio_buffer.speech_stopped":
         case "input_audio_buffer.committed":
           setHearing(false);
@@ -290,6 +486,8 @@ export function useVoice(options: VoiceOptions) {
           return;
       }
       if (t.startsWith("conversation.item.input_audio_transcription")) {
+        // Real words in reply to a spoken update: from here on, a normal conversation.
+        if (announceRef.current && typeof evt.transcript === "string" && /[\p{L}\p{N}]/u.test(evt.transcript)) answeredAnnounce();
         const id = `you-${evt.item_id}`;
         if (evt.transcript != null) caption({ id, who: "you", text: evt.transcript });
         else if (evt.delta) caption({ id, who: "you", text: evt.delta }, "append");
@@ -299,21 +497,24 @@ export function useVoice(options: VoiceOptions) {
         else if (t.endsWith(".done") && evt.transcript) caption({ id, who: "grok", text: evt.transcript });
       }
     },
-    [caption, playPcm, stopPlayback, sleep, sendText, armTapTimeout, hangUpWhenQuiet],
+    [caption, playPcm, stopPlayback, sleep, sendText, armTapTimeout, hangUpWhenQuiet, watchAnnounce, answeredAnnounce],
   );
 
   const stop = useCallback(() => {
     clearTimeout(tapTimer.current);
     clearTimeout(tapHold.current);
     clearInterval(hangupPoll.current);
+    clearInterval(idlePoll.current);
+    endAnnounce();
+    toolsRunning.current = 0;
     responding.current = false;
     ws.current?.close();
     ws.current = null;
     stopPlayback();
-    mic.current?.getTracks().forEach((tr) => tr.stop());
+    closeMic();
     worklet.current?.disconnect();
     ctx.current?.close();
-    ctx.current = mic.current = worklet.current = analyser.current = outBus.current = null;
+    ctx.current = worklet.current = analyser.current = outBus.current = null;
     ready.current = false;
     thinking.current = false;
     asleepRef.current = false;
@@ -324,42 +525,29 @@ export function useVoice(options: VoiceOptions) {
   }, [stopPlayback]);
   stopRef.current = stop;
 
-  const start = useCallback(async () => {
+  /** Connect. `announce`: woken only to say what Claude finished (the mic stays closed for now). */
+  const start = useCallback(async ({ announce = false }: { announce?: boolean } = {}) => {
     if (ws.current) return;
     setPhase("connecting");
     try {
       const ac = new AudioContext({ sampleRate: RATE });
       ctx.current = ac;
+      if (ac.state === "suspended") void ac.resume();
       outBus.current = ac.createGain();
       analyser.current = ac.createAnalyser();
       analyser.current.fftSize = 512;
       outBus.current.connect(analyser.current);
       analyser.current.connect(ac.destination);
-
-      mic.current = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
-      await ac.audioWorklet.addModule("pcm-worklet.js");
-      const node = new AudioWorkletNode(ac, "pcm-capture");
-      worklet.current = node;
-      node.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
-        // Not listening: asleep, or (half-duplex) Grok is talking and might hear itself.
-        const deaf = asleepRef.current || (opts.current.halfDuplex && playing.current.size > 0);
-        const pcm = new Int16Array(e.data);
-        let sum = 0;
-        for (let i = 0; i < pcm.length; i++) sum += (pcm[i] / 0x8000) ** 2;
-        inLevel.current = deaf ? 0 : Math.sqrt(sum / pcm.length);
-        if (!deaf && ws.current?.readyState === WebSocket.OPEN)
-          ws.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: bufToB64(e.data) }));
-      };
-      ac.createMediaStreamSource(mic.current).connect(node);
+      if (announce) announceRef.current = { stage: "speaking", startedAt: Date.now(), ready: false, grace: false };
+      else await openMic();
     } catch (e: any) {
       caption({ id: `err-${Date.now()}`, who: "error", text: `Microphone problem: ${e.message}` });
       stop();
       return;
     }
 
-    const sock = new WebSocket(`ws://${location.host}/voice`);
+    // ?announce=1: the bridge drops all mic audio until the listening window, and says the update.
+    const sock = new WebSocket(`ws://${location.host}/voice${announce ? "?announce=1" : ""}`);
     ws.current = sock;
     sock.onmessage = (m) => {
       try {
@@ -380,6 +568,9 @@ export function useVoice(options: VoiceOptions) {
     let out = 0;
     let inp = 0;
     const id = setInterval(() => {
+      // Hung up (stop() has run) but React hasn't re-rendered yet: don't turn "off" back into
+      // "connecting" (that left the orb stuck on "Connecting…" after a hang-up).
+      if (!ctx.current) return;
       if (analyser.current) {
         analyser.current.getFloatTimeDomainData(buf);
         let sum = 0;
@@ -389,7 +580,13 @@ export function useVoice(options: VoiceOptions) {
       inp = Math.max(inLevel.current, inp * 0.8);
       setLevels({ input: Math.min(1, inp * 6), output: Math.min(1, out * 5) });
       setPhase(
-        !ready.current ? "connecting" : playing.current.size > 0 ? "speaking" : thinking.current ? "thinking" : "listening",
+        !ready.current
+          ? "connecting"
+          : playing.current.size > 0
+            ? "speaking"
+            : thinking.current || (announceRef.current && announceRef.current.stage === "speaking") // spoken update: the mic is closed
+              ? "thinking"
+              : "listening",
       );
     }, 50);
     return () => clearInterval(id);
@@ -425,8 +622,12 @@ export function useVoice(options: VoiceOptions) {
     hearing,
     sessionTitle,
     setSessionTitle,
-    start,
+    start: () => start(),
     stop,
+    /** Claude finished while Grok is off: connect just to say so, then listen ~3 s for a reply. */
+    announce: () => {
+      if (!ws.current) void start({ announce: true });
+    },
     sleep: () => sleep(),
     wake,
     toggleSleep: hotkey,

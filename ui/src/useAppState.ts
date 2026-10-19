@@ -10,6 +10,7 @@ export type Settings = {
   halfDuplex: boolean;
   wakeWord: boolean;
   announce: "speak" | "chime" | "off";
+  announceWake: boolean;
   costPerMinute: number;
   model: string;
   brainEnabled: boolean;

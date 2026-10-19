@@ -21,6 +21,9 @@ export const DEFAULTS = Object.freeze({
   halfDuplex: false, // true = ignore the mic while Grok is talking (for speakers without headphones)
   wakeWord: false, // "Hey Grok" via the offline Vosk model, only while Grok is off or asleep
   announce: 'speak', // when Claude finishes: 'speak' | 'chime' | 'off'
+  // With announce 'speak': while Grok is asleep, connect just long enough to say it, then listen
+  // ~3 s for a reply. Off by default: each wake bills a few seconds of xAI time.
+  announceWake: false,
   costPerMinute: 0.08, // USD, xAI's published voice-agent rate at the time of writing
   model: 'grok-voice-latest',
   orbPosition: null, // [x, y] of the floating orb

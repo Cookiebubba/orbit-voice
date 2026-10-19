@@ -90,6 +90,7 @@ function readSessionRoot(root, includeArchived) {
           model: str(meta.model) || null,
           lastFocusedAt: num(meta.lastFocusedAt),
           lastActivityAt: num(meta.lastActivityAt) || num(meta.createdAt),
+          createdAt: num(meta.createdAt),
           isArchived: !!meta.isArchived,
         });
       }
@@ -115,6 +116,15 @@ export function findTranscript(cliSessionId, cwd) {
 
 function normalize(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * The session whose title is exactly this window title (ignoring case and punctuation), or null.
+ * Titles can repeat: the most recently focused one wins, among those `accept` allows.
+ */
+export function findSessionByTitle(title, accept = () => true) {
+  const t = normalize(title);
+  return t ? listDesktopSessions().find((s) => normalize(s.title) === t && accept(s)) || null : null;
 }
 
 /**

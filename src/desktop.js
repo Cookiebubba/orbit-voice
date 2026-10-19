@@ -66,10 +66,22 @@ export function switchSession(title) {
 }
 
 /**
+ * Start a brand-new session: press Claude's own "New" button in the sidebar (or "New session in
+ * <folder>" when `project` names one), and confirm an empty new-session prompt box appeared.
+ * Nothing is typed or sent; Claude creates the session when its first message is sent.
+ */
+export function newSession({ project = '' } = {}) {
+  const clean = String(project || '').trim().slice(0, 200);
+  return enqueue(() => runPs('new', clean ? ['-ProjectB64', b64(clean)] : []));
+}
+
+/**
  * Put `text` into the open session's prompt box and press Claude's Send button.
  * `expectTitle`: refuse unless that session is the one open right now.
+ * `expectNew`: refuse unless a new, not yet started session is open (it has no title yet), in
+ * folder `expectFolder` when given.
  */
-export function sendToDesktop(text, { dryRun = false, expectTitle = null } = {}) {
+export function sendToDesktop(text, { dryRun = false, expectTitle = null, expectNew = false, expectFolder = null } = {}) {
   const clean = String(text || '').trim();
   if (!clean) return Promise.resolve({ ok: false, error: 'empty_text' });
   if (clean.length > MAX_PROMPT_CHARS) return Promise.resolve({ ok: false, error: 'too_long', message: `Prompt is over ${MAX_PROMPT_CHARS} characters.` });
@@ -77,5 +89,9 @@ export function sendToDesktop(text, { dryRun = false, expectTitle = null } = {})
   // ORBIT_DRY_RUN_SENDS=1 (for testing) fills and clears the box instead of sending.
   if (dryRun || process.env.ORBIT_DRY_RUN_SENDS === '1') args.push('-DryRun');
   if (expectTitle) args.push('-ExpectTitleB64', b64(expectTitle));
-  return enqueue(() => runPs('send', args));
+  else if (expectNew) {
+    args.push('-ExpectNew');
+    if (expectFolder) args.push('-ExpectFolderB64', b64(expectFolder));
+  }
+  return enqueue(() => runPs('send', args, expectNew ? 30000 : 20000));
 }

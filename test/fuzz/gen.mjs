@@ -13,7 +13,7 @@ export function mulberry32(seed) {
 
 // Strings that tend to break things: traversal, encodings, control and wide characters, markup,
 // prototype keys, regex-hungry repetition, words the consent check looks for.
-const NASTY = [
+export const NASTY = [
   '', ' ', '../', '..\\', '%2e%2e%2f', '%', '%E0%A4%A', '%00', '\u0000', '\r\n', '\t', '\u202e', '\uFEFF', '😀', '\uD800',
   '__proto__', 'constructor', 'prototype', 'toString', 'hasOwnProperty', 'null', 'undefined', 'NaN', '-1', '1e309', '0x10',
   '<script>alert(1)</script>', '"><img src=x onerror=alert(1)>', 'javascript:alert(1)', '${7*7}', '`whoami`', '$(calc)', '& calc',

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Start a new session by voice:** "start a new session" or "new thread in castpilot".
+  - Orbit presses Claude's own New session button (or New session in that project) and confirms an empty session opened. Nothing is typed.
+  - Grok then asks what to tell Claude. The usual draft, read-back and "yes" follow, and you never touch the keyboard.
+  - That first prompt only goes into the new, still-empty session, in the folder you heard.
+  - Reading it back waits a few seconds for Claude to save it. It never reads an older session that happens to have the same title.
+  - It only happens when you ask in your own words.
+- **Spoken updates while asleep** (Settings → When Claude finishes → "Wake Grok to say it", off by default).
+  - When Claude finishes while Grok sleeps, Grok connects just long enough to say what Claude did, then asks what you'd like to do.
+  - The mic opens only after Grok has spoken, for 3 seconds. Answer and the conversation carries on (and hangs up after 20 s of quiet). Stay quiet and it hangs up.
+  - There's no always-on listening, and the bridge enforces the window too. Each wake bills a few seconds of xAI time.
+- Switching sessions by voice now needs you to have asked for it. Notifications and text in transcripts never count.
+- Fixed: the orb and status could get stuck on "Connecting…" after Grok hung up.
+- **Security review (b)** ([report](docs/security/2026-10-19b-review.md)): 11 issues fixed or documented (2 medium, 9 low), plus 6 bugs found by testing. Highlights:
+  - A noise during a spoken update's listening window can't keep the mic open: only transcribed words continue the conversation.
+  - Orbit only ever presses or types into Claude's own page, never a web page shown inside Claude's window. Send must sit right next to the prompt box.
+  - A refused spoken update never connects to xAI.
+- The fuzzer covers the new tool, spoken updates (mic timing at the bridge) and the new setting.
+
 - **Second brain:** for hard questions, or questions about the code in your current project, Grok quietly asks Claude (Haiku, Sonnet or Opus, picked per question or fixed in Settings) and answers in its own words. Claude can read the open session's project (read-only) and never changes anything. It runs your own Claude Code headless and isolated, so it needs no setup if you use Claude Code; an Anthropic API key is optional. The only UI is Settings → Second brain: on/off, model, "Read the current project", connection, a connection test, and the Claude Code location.
 - One-question mode waits for a second-brain answer before hanging up.
 - **Stick to Claude Code** (Settings → App): the orb rides on the Claude window.
