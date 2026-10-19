@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Second brain:** for hard questions, or questions about the code in your current project, Grok quietly asks Claude (Haiku, Sonnet or Opus, picked per question or fixed in Settings) and answers in its own words. Claude can read the open session's project (read-only) and never changes anything. It runs your own Claude Code headless and isolated, so it needs no setup if you use Claude Code; an Anthropic API key is optional. The only UI is Settings → Second brain: on/off, model, "Read the current project", connection, a connection test, and the Claude Code location.
+- One-question mode waits for a second-brain answer before hanging up.
+- **Stick to Claude Code** (Settings → App): the orb rides on the Claude window.
+  - It follows moves and resizes at any display scaling.
+  - It stays on top of Claude without floating over other apps.
+  - It hides while Claude is minimized.
+  - Drag it to choose its spot, which is remembered from the nearest corner.
+- The session finder no longer shows "Loading…" before you type.
+- Settings has a thin pill scrollbar. Hovering or dragging it outlines the whole track.
+- `npm test` runs the new tests.
+
 ## 1.1.0 (2026-10-18)
 
 - **"Go to sleep" now hangs up,** so nothing is billed while asleep. "Hey Grok", the hotkey or a click starts a fresh conversation. One-question mode hangs up after each answer. The 10-minute auto hang-up and the separate hang-up button are gone.

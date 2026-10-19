@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { desktop, type HotkeyInfo } from "./desktop";
 import { postJson, type AppConfig, type Settings as SettingsT } from "./useAppState";
 import VoiceSettings from "./VoiceSettings";
+import PillScroll from "./components/PillScroll";
 
 export const REPO_URL = "https://github.com/Cookiebubba/orbit-voice";
 
@@ -13,7 +14,7 @@ type Update = (patch: Partial<SettingsT>) => Promise<void>;
 export default function Settings({ config, update, onClose }: { config: AppConfig; update: Update; onClose: () => void }) {
   const s = config.settings;
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-6">
+    <PillScroll className="flex flex-col px-4 pb-6">
       <button onClick={onClose} className="mb-4 flex items-center gap-1.5 self-start rounded-md py-1 pr-2 text-[13px] text-white/60 hover:text-white">
         <ArrowLeft size={15} /> Back
       </button>
@@ -69,11 +70,20 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
           </p>
         </Section>
 
+        <SecondBrainSection s={s} update={update} />
+
         {desktop && <HotkeySection />}
 
         {desktop && (
           <Section title="App">
             <StartWithWindows />
+            <Toggle
+              className="mt-4"
+              checked={s.orbStick}
+              onChange={(orbStick) => update({ orbStick })}
+              label="Stick to Claude Code"
+              hint="The orb rides on the Claude window: it follows it around, stays on top of it, and hides while Claude is minimized. Drag the orb to choose its spot on the window."
+            />
           </Section>
         )}
 
@@ -81,7 +91,7 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
 
         <AboutSection config={config} />
       </div>
-    </div>
+    </PillScroll>
   );
 }
 
@@ -146,6 +156,165 @@ function StartWithWindows() {
       label="Start with Windows"
       hint="Orbit starts quietly as the floating orb when you sign in."
     />
+  );
+}
+
+// ---------- second brain ----------
+type BrainStatus = { found: boolean; path: string | null; source: "settings" | "path" | "claude-desktop" | null; hasKey: boolean };
+
+function SecondBrainSection({ s, update }: { s: SettingsT; update: Update }) {
+  const [status, setStatus] = useState<BrainStatus | null>(null);
+  const [test, setTest] = useState<{ state: "idle" | "testing" | "ok" | "failed"; text?: string }>({ state: "idle" });
+  const [key, setKey] = useState("");
+  const [keyError, setKeyError] = useState("");
+  const [path, setPath] = useState(s.brainClaudePath);
+  const [advanced, setAdvanced] = useState(!!s.brainClaudePath);
+
+  const refresh = () =>
+    fetch("/api/brain")
+      .then((r) => r.json())
+      .then(setStatus)
+      .catch(() => {});
+  useEffect(() => {
+    refresh();
+  }, [s.brainClaudePath]);
+
+  const runTest = async () => {
+    setTest({ state: "testing" });
+    try {
+      const r = await (await postJson("/api/brain/test", {})).json();
+      setTest(r.ok ? { state: "ok", text: `Connected (${r.seconds} s)` } : { state: "failed", text: r.error });
+    } catch {
+      setTest({ state: "failed", text: "Couldn't reach Orbit." });
+    }
+  };
+  const saveKey = async (value: string) => {
+    setKeyError("");
+    const r = await postJson("/api/brain/key", { key: value });
+    if (!r.ok) return setKeyError((await r.json().catch(() => ({}))).error || "Couldn't save the key.");
+    setKey("");
+    refresh();
+  };
+
+  const where = status?.source === "claude-desktop" ? "the copy inside the Claude app" : status?.source === "settings" ? "the path below" : "Claude Code on this PC";
+  return (
+    <Section title="Second brain">
+      <Toggle
+        checked={s.brainEnabled}
+        onChange={(brainEnabled) => update({ brainEnabled })}
+        label="Let Grok ask Claude when a question is hard"
+        hint="For deep questions, or questions about the code in your current project, Grok quietly asks Claude and tells you the answer. Nothing appears on screen."
+      />
+      {s.brainEnabled && (
+        <>
+          <div className="mt-4 mb-1.5 text-[12.5px] text-white/70">Model</div>
+          <Segmented
+            value={s.brainModel}
+            onChange={(brainModel) => update({ brainModel })}
+            options={[
+              { value: "auto", label: "Grok picks" },
+              { value: "haiku", label: "Haiku" },
+              { value: "sonnet", label: "Sonnet" },
+              { value: "opus", label: "Opus" },
+            ]}
+          />
+          <p className="mt-2 text-[12px] leading-snug text-white/45">
+            {s.brainModel === "auto"
+              ? "Grok chooses per question: Haiku for quick lookups, Sonnet for most code questions, Opus only for hard problems."
+              : `Every question goes to ${s.brainModel[0].toUpperCase() + s.brainModel.slice(1)}.`}
+          </p>
+          <Toggle
+            className="mt-4"
+            checked={s.brainExplore}
+            onChange={(brainExplore) => update({ brainExplore })}
+            label="Read the current project"
+            hint="Claude may read the files of the project open in your Claude session to answer (read-only: it can't run commands or change anything; .env files and keys are off-limits)."
+          />
+
+          <div className="mt-4 mb-1.5 text-[12.5px] text-white/70">Connection</div>
+          <Segmented
+            value={s.brainConnection}
+            onChange={(brainConnection) => {
+              update({ brainConnection });
+              setTest({ state: "idle" });
+            }}
+            options={[
+              { value: "claude-code", label: "My Claude login" },
+              { value: "api-key", label: "Anthropic API key" },
+            ]}
+          />
+          <p className="mt-2 text-[12px] leading-snug text-white/45">
+            {s.brainConnection === "claude-code"
+              ? "Uses your Claude Code sign-in, so questions count toward your Claude plan. No setup if you use Claude Code."
+              : "Questions are billed to your Anthropic API account. The key is encrypted on this PC."}
+          </p>
+
+          {s.brainConnection === "api-key" && (
+            <div className="mt-2">
+              {status?.hasKey && !key ? (
+                <div className="flex items-center justify-between gap-2 text-[12.5px] text-white/70">
+                  <span>API key saved ✓</span>
+                  <button onClick={() => saveKey("")} className="rounded-md px-2 py-1 text-white/50 hover:text-white">
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (key.trim()) saveKey(key.trim());
+                  }}
+                  className="flex gap-2"
+                >
+                  <input
+                    type="password"
+                    value={key}
+                    onChange={(e) => setKey(e.target.value)}
+                    placeholder="sk-ant-…"
+                    autoComplete="off"
+                    className="h-8 min-w-0 flex-1 rounded-lg border border-white/15 bg-black/40 px-2 text-[13px] outline-none select-text focus:border-white/40"
+                  />
+                  <button disabled={!key.trim()} className="h-8 rounded-lg bg-white px-3 text-[12.5px] font-medium text-black disabled:opacity-30">
+                    Save
+                  </button>
+                </form>
+              )}
+              {keyError && <p className="mt-1 text-[12px] text-red-300">{keyError}</p>}
+            </div>
+          )}
+
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              onClick={runTest}
+              disabled={test.state === "testing"}
+              className="h-8 shrink-0 rounded-lg border border-white/15 px-3 text-[12.5px] text-white/80 hover:border-white/40 disabled:opacity-50"
+            >
+              {test.state === "testing" ? "Testing…" : "Test connection"}
+            </button>
+            <span className={cn("min-w-0 text-[12px] leading-snug", test.state === "failed" ? "text-red-300" : test.state === "ok" ? "text-emerald-300" : "text-white/45")}>
+              {test.state === "idle" ? (status ? (status.found ? `Using ${where}.` : "Claude Code not found.") : "") : test.text}
+            </span>
+          </div>
+
+          <button onClick={() => setAdvanced((a) => !a)} className="mt-3 text-[12px] text-white/45 hover:text-white/80">
+            {advanced ? "Hide location" : "Claude Code location…"}
+          </button>
+          {advanced && (
+            <div className="mt-2">
+              <input
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                onBlur={() => path.trim() !== s.brainClaudePath && update({ brainClaudePath: path.trim() })}
+                placeholder={status?.path && status.source !== "settings" ? `Automatic: ${status.path}` : "Automatic"}
+                spellCheck={false}
+                className="h-8 w-full rounded-lg border border-white/15 bg-black/40 px-2 text-[12px] outline-none select-text focus:border-white/40"
+              />
+              <p className="mt-1 text-[11.5px] leading-snug text-white/40">Leave empty to find it automatically. Otherwise, the full path to claude.exe.</p>
+            </div>
+          )}
+        </>
+      )}
+    </Section>
   );
 }
 

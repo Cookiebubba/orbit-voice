@@ -6,6 +6,7 @@ import { playChime } from "./sounds";
 const RATE = 24000;
 const TAP_TIMEOUT_MS = 10_000; // "one question" mode: give up if you say nothing for this long
 const TAP_DRAFT_HOLD_MS = 60_000; // "one question" mode: stay connected this long while a draft waits for a yes
+const SECOND_BRAIN_MAX_MS = 330_000; // the longest a second-brain answer can take (Opus: 5 min) plus a margin
 const MAX_HISTORY = 200;
 
 // Sleeping means hanging up: nothing is billed, and "Hey Grok" / the hotkey start a fresh
@@ -105,7 +106,7 @@ export function useVoice(options: VoiceOptions) {
    * spoken after its go_to_sleep tool returns). `keepIfDraft` ("one question" mode): if a draft is
    * waiting for a yes, stay connected for a minute instead so the user can answer.
    */
-  const hangUpWhenQuiet = useCallback((maxMs: number, { afterReply = false, keepIfDraft = false } = {}) => {
+  const hangUpWhenQuiet = useCallback((maxMs: number, { afterReply = false, keepIfDraft = false, waitForTools = false } = {}) => {
     clearInterval(hangupPoll.current);
     const t0 = Date.now();
     let quietSince = 0; // must stay quiet ~1 s: there are short gaps between a tool call and the spoken reply
@@ -118,7 +119,9 @@ export function useVoice(options: VoiceOptions) {
         now - lastAudioAt.current > 600 &&
         (!afterReply || responseDoneAt.current > t0);
       quietSince = quiet ? quietSince || now : 0;
-      if (!(quiet && now - quietSince >= 900) && now - t0 < maxMs) return;
+      // waitForTools: a second-brain question can take up to 5 minutes; don't cut it off.
+      const limit = waitForTools && toolsInFlight.current > 0 ? Math.max(maxMs, SECOND_BRAIN_MAX_MS) : maxMs;
+      if (!(quiet && now - quietSince >= 900) && now - t0 < limit) return;
       clearInterval(hangupPoll.current);
       if (keepIfDraft && draftRef.current && ws.current) {
         clearTimeout(tapHold.current);
@@ -270,7 +273,7 @@ export function useVoice(options: VoiceOptions) {
           if (opts.current.listenMode === "tap" && !asleepRef.current) {
             clearTimeout(tapTimer.current);
             muteMic();
-            hangUpWhenQuiet(90_000, { afterReply: true, keepIfDraft: true });
+            hangUpWhenQuiet(90_000, { afterReply: true, keepIfDraft: true, waitForTools: true });
           }
           return;
         case "response.done":

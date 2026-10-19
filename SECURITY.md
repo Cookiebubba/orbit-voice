@@ -15,6 +15,8 @@ Please **don't open a public issue**. Use GitHub's private vulnerability reporti
 | The local bridge (127.0.0.1:4317) | Another program, Windows user or web page drives it | A random per-launch token is exchanged once for an `HttpOnly; SameSite=Strict` cookie that only Orbit's own windows receive. Every API call and the voice socket require it. Host checks (DNS rebinding), Origin checks and `Sec-Fetch-Site` checks (CSRF) add defence in depth. |
 | Your xAI key | Theft from disk or logs | Encrypted with Windows DPAPI (Electron `safeStorage`) in `%APPDATA%\Orbit\xai-key.bin`. Never written to logs (scrubbed) or sent anywhere but `api.x.ai`. |
 | Your clipboard | Secrets leaking, or a planted command | Sending prompts never touches the clipboard: Orbit fills Claude's prompt box through Windows accessibility and presses Claude's own Send button. Grok can copy to the clipboard only when you asked to copy something in the last 2 minutes, so text in a transcript can't quietly put a command there. |
+| Your project and machine | The second brain (Claude, asked by Grok) being steered into running or changing something, or leaking secrets | It runs your Claude Code headless with only read-only tools (Read, Glob, Grep), or none at all. There's no Bash, no edits and no web tools. It loads none of your Claude Code settings, hooks, plugins or MCP servers, so no inherited "bypass permissions" and no connectors. `.env` files and keys are denied. The question goes in on stdin, never on a command line, and nothing is saved to your session history. Orbit only ever runs a file named `claude`/`claude.exe`, and a custom path must be absolute. Its answer reaches Grok as tool output marked as data, never as your consent. |
+| Your Anthropic API key (optional) | Theft from disk or logs | Encrypted with Windows DPAPI in `%APPDATA%\Orbit\anthropic-key.bin`, used only by the second brain, never logged. By default the second brain uses your Claude Code sign-in and needs no key. |
 | Your microphone | Always-on listening | Off by default. The "Hey Grok" wake word, when you turn it on, runs fully offline (Vosk) and only while Grok is off or asleep. Its audio never leaves the PC. It runs in a hidden helper page with its own script policy (the recognizer needs `eval` and WebAssembly), kept separate from the main window, which keeps the strict policy. |
 | Your machine | Code execution through the app | Renderers are sandboxed with context isolation and no Node integration. Navigation is locked to the local page and external links open in your browser. The only permissions are microphone and notifications, for Orbit's own page. A strict Content-Security-Policy applies. PowerShell is called by full path with fixed arguments, and text is passed base64-encoded, never interpolated into a command. |
 
@@ -27,7 +29,8 @@ Please **don't open a public issue**. Use GitHub's private vulnerability reporti
 ## Data handling
 
 - **Stays local:** session transcripts are read from disk, read-only. Settings, usage and logs live in `%APPDATA%\Orbit`. Logs contain no keys and no prompt or transcript text.
-- **Sent to xAI:** your voice audio, and whatever session text Grok reads to answer you.
+- **Sent to xAI:** your voice audio, whatever session text Grok reads to answer you, and the second brain's answers.
+- **Sent to Anthropic (second brain only):** the question Grok asks, the recent messages of your open Claude session, and any project files Claude reads to answer. It goes through your own Claude Code. Logs record only the model, the time taken and the cost, never the question or the answer.
 - **No telemetry, analytics or auto-update.**
 
 ## Reviews

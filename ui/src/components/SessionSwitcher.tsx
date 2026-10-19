@@ -80,7 +80,7 @@ export default function SessionSwitcher({
 
       {open && (
         <div className="absolute top-8 left-0 z-20 flex max-h-[380px] w-[310px] flex-col rounded-xl border border-white/15 bg-[#0d0d0d] shadow-2xl">
-          <div className="border-b border-white/10 p-1.5">
+          <div className={cn("p-1.5", (rows !== null || filter) && "border-b border-white/10")}>
             <input
               autoFocus
               value={filter}
@@ -89,8 +89,9 @@ export default function SessionSwitcher({
               className="h-8 w-full rounded-lg bg-white/[0.06] px-2.5 text-[12.5px] outline-none select-text placeholder:text-white/35"
             />
           </div>
-          <div role="listbox" className="min-h-0 flex-1 overflow-y-auto p-1">
-            {rows === null && <div className="px-2.5 py-2 text-[12.5px] text-white/40">Loading…</div>}
+          {/* While the list is still loading and nothing is typed, show just the search field. */}
+          <div role="listbox" hidden={rows === null && !filter} className="min-h-0 flex-1 overflow-y-auto p-1">
+            {rows === null && filter && <div className="px-2.5 py-2 text-[12.5px] text-white/40">Loading…</div>}
             {rows !== null && shown.length === 0 && <div className="px-2.5 py-2 text-[12.5px] text-white/40">No sessions found.</div>}
             {shown.map((s) => {
               const working = s.working || workingTitles.has(s.title);

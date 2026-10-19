@@ -23,6 +23,14 @@ export const DEFAULTS = Object.freeze({
   costPerMinute: 0.08, // USD, xAI's published voice-agent rate at the time of writing
   model: 'grok-voice-latest',
   orbPosition: null, // [x, y] of the floating orb
+  orbStick: false, // "Stick to Claude Code": the orb rides on the Claude window
+  orbStickAnchor: null, // { corner: 'tl'|'tr'|'bl'|'br', dx, dy } in DIPs from that corner of the Claude window
+  // Second brain: Grok can hand hard questions to Claude through the user's Claude Code.
+  brainEnabled: true,
+  brainModel: 'auto', // 'auto' = Grok picks Haiku, Sonnet or Opus per question; or always one of them
+  brainExplore: true, // may read (never change) the project of the open Claude session
+  brainConnection: 'claude-code', // 'claude-code' = the user's Claude login; 'api-key' = an Anthropic API key
+  brainClaudePath: '', // '' = find Claude Code automatically
 });
 
 export const LIMITS = Object.freeze({ minSpeed: 0.7, maxSpeed: 1.5 });
@@ -37,15 +45,16 @@ const ENV_OVERRIDES = {
 let configDir = PROJECT_ROOT;
 let settings = { ...DEFAULTS };
 let secretStore = null;
+let brainSecretStore = null;
 const listeners = new Set();
 
 /** Plain-text .env store, used outside the desktop app. */
-function envSecretStore(dir) {
+function envSecretStore(dir, name = 'XAI_API_KEY') {
   const file = path.join(dir, '.env');
   return {
     kind: 'env-file',
-    get: () => readDotEnv(file).XAI_API_KEY || '',
-    set: (key) => writeDotEnvValue(file, 'XAI_API_KEY', key),
+    get: () => readDotEnv(file)[name] || '',
+    set: (key) => writeDotEnvValue(file, name, key),
   };
 }
 
@@ -100,6 +109,21 @@ function sanitize(input) {
       case 'model':
         if (typeof val === 'string' && val.length > 0 && val.length < 60 && /^[\w+.-]+$/.test(val)) out[k] = val;
         break;
+      case 'brainModel':
+        if (['auto', 'haiku', 'sonnet', 'opus'].includes(val)) out.brainModel = val;
+        break;
+      case 'brainConnection':
+        if (val === 'claude-code' || val === 'api-key') out.brainConnection = val;
+        break;
+      case 'brainClaudePath':
+        // Only ever an absolute path to a file named claude / claude.exe (see brain.js), or '' for automatic.
+        if (val === '' || (typeof val === 'string' && val.length < 400 && path.isAbsolute(val) && ![...val].some((c) => c.charCodeAt(0) < 32 || '"<>|?*'.includes(c)) && ['claude', 'claude.exe'].includes(path.basename(val).toLowerCase()))) out.brainClaudePath = val;
+        break;
+      case 'orbStickAnchor':
+        if (val === null || (val && ['tl', 'tr', 'bl', 'br'].includes(val.corner) && [val.dx, val.dy].every((n) => Number.isFinite(n) && n >= 0 && n <= 10000))) {
+          out.orbStickAnchor = val && { corner: val.corner, dx: Math.round(val.dx), dy: Math.round(val.dy) };
+        }
+        break;
       case 'orbPosition':
         if (val === null || (Array.isArray(val) && val.length === 2 && val.every(Number.isFinite))) out.orbPosition = val && val.map(Math.round);
         break;
@@ -114,10 +138,11 @@ function sanitize(input) {
  * Load settings. Call once at startup (the desktop app passes its own folder and key store).
  * Order: defaults → .env overrides in the project folder → settings.json in the config folder.
  */
-export function initConfig({ dir, secrets } = {}) {
+export function initConfig({ dir, secrets, brainSecrets } = {}) {
   configDir = dir || PROJECT_ROOT;
   fs.mkdirSync(configDir, { recursive: true });
   secretStore = secrets || envSecretStore(configDir);
+  brainSecretStore = brainSecrets || envSecretStore(configDir, 'ANTHROPIC_API_KEY');
 
   const env = { ...readDotEnv(path.join(PROJECT_ROOT, '.env')), ...process.env };
   const fromEnv = {};
@@ -157,4 +182,7 @@ export function onSettingsChange(fn) {
 export const getApiKey = () => (secretStore ? secretStore.get() : '') || '';
 export const setApiKey = (key) => secretStore.set(key);
 export const keyStorageKind = () => secretStore?.kind || 'none';
+/** The optional Anthropic API key for the second brain (stored like the xAI key). */
+export const getBrainKey = () => (brainSecretStore ? brainSecretStore.get() : '') || '';
+export const setBrainKey = (key) => brainSecretStore.set(key);
 export const getConfigDir = () => configDir;

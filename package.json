@@ -27,7 +27,6 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "1.6.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
@@ -50,7 +49,8 @@
       "!electron/selftest.js"
     ],
     "asarUnpack": [
-      "src/desktop.ps1"
+      "src/desktop.ps1",
+      "electron/claude-window.ps1"
     ],
     "directories": {
       "output": "dist",

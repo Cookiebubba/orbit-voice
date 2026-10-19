@@ -12,6 +12,12 @@ export type Settings = {
   announce: "speak" | "chime" | "off";
   costPerMinute: number;
   model: string;
+  brainEnabled: boolean;
+  brainModel: "auto" | "haiku" | "sonnet" | "opus";
+  brainExplore: boolean;
+  brainConnection: "claude-code" | "api-key";
+  brainClaudePath: string;
+  orbStick: boolean;
 };
 
 export type AppConfig = { version: string; hasKey: boolean; keyStorage: string; settings: Settings };

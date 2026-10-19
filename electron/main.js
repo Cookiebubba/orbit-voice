@@ -4,7 +4,9 @@ import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, n
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULTS, getSetting, updateSettings } from '../src/config.js';
+import { DEFAULTS, getSetting, onSettingsChange, updateSettings } from '../src/config.js';
+import { createClaudeWindowTracker } from './claude-window.js';
+import { anchorFor, orbPositionFor } from './orb-stick.js';
 import { getLogDir, logError, logWarn } from '../src/log.js';
 import { authUrl, hotkeyLabel, startServer } from '../src/server.js';
 
@@ -28,7 +30,6 @@ app.setPath('userData', path.join(app.getPath('appData'), 'Orbit'));
 let main = null;
 let orb = null;
 let tray = null;
-let agentsWin = null;
 let baseUrl = '';
 let drag = null; // { cursor, win } at drag start
 let quitting = false;
@@ -39,9 +40,9 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => showMain());
 }
 
-/** The xAI key, encrypted with Windows DPAPI (tied to your Windows account). */
-function encryptedKeyStore(dir) {
-  const file = path.join(dir, 'xai-key.bin');
+/** A key (xAI, or the optional Anthropic one), encrypted with Windows DPAPI (tied to your Windows account). */
+function encryptedKeyStore(dir, name = 'xai-key.bin') {
+  const file = path.join(dir, name);
   return {
     kind: safeStorage.isEncryptionAvailable() ? 'windows-dpapi' : 'unavailable',
     get() {
@@ -131,47 +132,95 @@ function createOrb() {
   });
   lockDown(orb);
   orb.setAlwaysOnTop(true, 'screen-saver');
+  orbLayer = 'free';
   orb.setPosition(...orbStartPosition());
   orb.loadURL(authUrl('orb'));
 }
 
 function showOrb() {
   main.hide();
-  orb.showInactive();
+  orbMode = true;
+  if (getSetting('orbStick') && claude?.found) placeOrb();
+  else orb.showInactive();
 }
 
 function showMain() {
   if (!main) return;
+  orbMode = false;
   orb?.hide();
   if (main.isMinimized()) main.restore();
   main.show();
   main.focus();
 }
 
-// The Agents window: read-only cards for Orbit Agents runs. Opens on demand; closing it just closes it.
-function showAgents() {
-  if (agentsWin) {
-    if (agentsWin.isMinimized()) agentsWin.restore();
-    return agentsWin.focus();
-  }
-  agentsWin = new BrowserWindow({
-    width: 1120,
-    height: 760,
-    minWidth: 420,
-    minHeight: 420,
-    backgroundColor: '#000000',
-    title: 'Orbit Agents',
-    icon: ICON,
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#000000', symbolColor: '#ffffff', height: 40 },
-    show: false,
-    webPreferences: secureWebPreferences,
-  });
-  lockDown(agentsWin);
-  agentsWin.loadURL(authUrl('agents'));
-  agentsWin.once('ready-to-show', () => agentsWin.show());
-  agentsWin.on('closed', () => (agentsWin = null));
+// ---------- stick to Claude Code ----------
+// The orb rides on the Claude window: it follows moves and resizes at any display scaling, sits
+// just above Claude in z-order (topmost only while Claude or Orbit is in front, so other apps can
+// cover both), hides while Claude is minimized, and floats freely again when Claude isn't on
+// screen (closed, or on another virtual desktop). Dragging it picks a new spot on the window.
+let orbMode = false; // the orb is meant to be showing (the main window is hidden)
+let orbLayer = null; // 'free' | 'top' | 'above:<hwnd>'
+let claude = null; // last state from the watcher: { found, hwnd, min, front, x, y, w, h } in screen pixels
+let claudeDip = null; // the Claude window in DIPs, when sticking
+const claudeTracker = createClaudeWindowTracker({
+  onChange: (s) => {
+    claude = s;
+    placeOrb();
+  },
+  onError: (message) => logWarn('orb', message),
+});
+const sticking = () => getSetting('orbStick') && !!claude?.found;
+
+function setOrbBounds({ x, y }) {
+  const b = orb.getBounds();
+  // Always pass the size too: moving between displays with different scaling can otherwise
+  // leave the window resized.
+  if (b.x !== x || b.y !== y || b.width !== ORB_SIZE || b.height !== ORB_SIZE) orb.setBounds({ x, y, width: ORB_SIZE, height: ORB_SIZE });
 }
+
+function setOrbLayer(layer) {
+  if (layer === orbLayer) return;
+  orbLayer = layer;
+  if (layer === 'free' || layer === 'top') return orb.setAlwaysOnTop(true, 'screen-saver');
+  orb.setAlwaysOnTop(false);
+  try {
+    orb.moveAbove(`window:${claude.hwnd}:0`); // directly above Claude, under whatever covers it
+  } catch {
+    orb.setAlwaysOnTop(true, 'screen-saver');
+  }
+}
+
+function placeOrb() {
+  if (!orb || orb.isDestroyed() || drag) return;
+  if (!sticking()) {
+    claudeDip = null;
+    if (orbLayer !== 'free') {
+      setOrbLayer('free');
+      const [x, y] = orbStartPosition();
+      setOrbBounds({ x, y });
+    }
+    if (orbMode && !orb.isVisible()) orb.showInactive();
+    return;
+  }
+  if (claude.min) {
+    if (orb.isVisible()) orb.hide();
+    return;
+  }
+  claudeDip = screen.screenToDipRect(null, { x: claude.x, y: claude.y, width: claude.w, height: claude.h });
+  setOrbBounds(orbPositionFor(claudeDip, getSetting('orbStickAnchor'), ORB_SIZE));
+  setOrbLayer(claude.front === 'other' ? `above:${claude.hwnd}` : 'top');
+  if (orbMode && !orb.isVisible()) orb.showInactive();
+}
+
+onSettingsChange((changed) => {
+  if (!changed.includes('orbStick')) return;
+  if (getSetting('orbStick')) claudeTracker.start();
+  else {
+    claudeTracker.stop();
+    claude = null;
+    placeOrb();
+  }
+});
 
 // ---------- tray ----------
 const loginEnabled = () => app.getLoginItemSettings({ args: ['--background'] }).openAtLogin;
@@ -188,7 +237,6 @@ function refreshTray() {
     Menu.buildFromTemplate([
       { label: 'Open Orbit', click: showMain },
       { label: `Talk / sleep  (${hotkeyLabel(getSetting('wakeHotkey'))})`, click: () => main?.webContents.send('hotkey') },
-      { label: 'Agents', click: showAgents },
       { type: 'separator' },
       { label: 'Start with Windows', type: 'checkbox', checked: loginEnabled(), click: (item) => setLogin(item.checked) },
       { type: 'separator' },
@@ -259,7 +307,6 @@ handle('app:set-login', (enabled) => setLogin(enabled));
 handle('app:open-logs', () => getLogDir() && shell.openPath(getLogDir()));
 
 on('win:minimize', () => showOrb());
-on('agents:open', () => showAgents());
 on('win:close', () => app.quit());
 on('orb:restore', () => showMain());
 on('orb:state', (s) => orb?.webContents.send('orb:state', s));
@@ -274,7 +321,14 @@ on('orb:drag-move', () => {
 });
 on('orb:drag-end', () => {
   drag = null;
-  updateSettings({ orbPosition: orb.getPosition() });
+  if (sticking() && !claude.min && claudeDip) {
+    // Remember the spot relative to the nearest corner of the Claude window, then snap inside it.
+    const [x, y] = orb.getPosition();
+    updateSettings({ orbStickAnchor: anchorFor(claudeDip, { x, y }, ORB_SIZE) });
+    placeOrb();
+  } else {
+    updateSettings({ orbPosition: orb.getPosition() });
+  }
 });
 
 app.whenReady().then(async () => {
@@ -284,6 +338,7 @@ app.whenReady().then(async () => {
     baseUrl = await startServer({
       configDir: dir,
       secrets: encryptedKeyStore(dir),
+      brainSecrets: encryptedKeyStore(dir, 'anthropic-key.bin'),
       clipboard: (text) => clipboard.writeText(text),
       // Offline wake-word model: shipped next to the app (extraResources), or in the repo in dev.
       models: app.isPackaged ? path.join(process.resourcesPath, 'models') : path.join(ROOT, 'resources', 'models'),
@@ -304,6 +359,7 @@ app.whenReady().then(async () => {
 
   createMain();
   createOrb();
+  if (getSetting('orbStick')) claudeTracker.start();
   createTray();
   if (registerHotkey(getSetting('wakeHotkey'))) activeHotkey = getSetting('wakeHotkey');
   else logWarn('hotkey', `Could not register ${getSetting('wakeHotkey')}; another app may be using it`);
@@ -316,6 +372,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   quitting = true;
+  claudeTracker.stop();
 });
 app.on('window-all-closed', () => app.quit());
 app.on('will-quit', () => globalShortcut.unregisterAll());

@@ -19,3 +19,13 @@ select option, select optgroup { background: #111; color: #fff; }
 @keyframes claude-ring { 0% { opacity: .55; transform: scale(.96); } 70% { opacity: 0; transform: scale(1.12); } 100% { opacity: 0; transform: scale(1.12); } }
 .claude-ring { position: absolute; inset: -3px; border-radius: 999px; border: 2px solid #f5a524; pointer-events: none; animation: claude-ring 2.4s ease-out infinite; }
 @media (prefers-reduced-motion: reduce) { .working-dot, .claude-ring { animation: none; } .claude-ring { opacity: .5; } }
+
+/* Thin pill scrollbar (components/PillScroll.tsx): a 4px pill in a 12px grab strip; hovering or
+   dragging outlines the whole track. */
+.pill-scroll-area { scrollbar-width: none; }
+.pill-scroll-area::-webkit-scrollbar { display: none; }
+.pill-rail { position: absolute; right: 2px; width: 12px; cursor: default; touch-action: none; }
+.pill-rail::before { content: ""; position: absolute; inset: 0 3px; border-radius: 999px; box-shadow: inset 0 0 0 1px transparent; transition: box-shadow .15s; }
+.pill-rail:hover::before, .pill-rail.dragging::before { box-shadow: inset 0 0 0 1px rgba(255,255,255,.22); }
+.pill-thumb { position: absolute; left: 4px; width: 4px; border-radius: 999px; background: rgba(255,255,255,.28); transition: background-color .15s; }
+.pill-rail:hover .pill-thumb, .pill-rail.dragging .pill-thumb { background: rgba(255,255,255,.55); }

@@ -29,7 +29,6 @@ type DesktopApi = {
   orbDragMove(): void;
   orbDragEnd(): void;
   openLogs(): Promise<void>;
-  openAgents(): void;
   startWithWindows: { get(): Promise<boolean>; set(enabled: boolean): Promise<boolean> };
   onHotkey(cb: () => void): () => void;
 };
