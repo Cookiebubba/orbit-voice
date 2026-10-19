@@ -89,7 +89,10 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
   - nothing saved to your session history
 
   It's capped at 1, 2.5 or 5 minutes for Haiku, Sonnet or Opus, and stops if you hang up.
-- **Stick to Claude Code** runs a small helper that reads the Claude window's position, minimized state and which app is in front. It works in real pixels on every display (per-monitor DPI aware), reports only changes, and costs well under 1% of one CPU core. Orbit converts those pixels to its own units, so the orb keeps the same distance from the window's corner at any resolution or scaling.
+- **Stick to Claude Code** runs a small helper that listens for Windows' own events: the Claude window moving, being minimized or changing virtual desktop, and another app coming to the front.
+  - The helper moves the orb itself the instant Claude moves, so the orb doesn't trail behind a dragged window. In a simulated drag it stayed in place for 39 of 40 steps.
+  - It works in real pixels on every display (per-monitor DPI aware), and keeps the orb a fixed distance from the window's corner, in Orbit's own units, at any resolution or scaling.
+  - It uses under 1% of one CPU core while idle.
   - The orb is topmost while Claude or Orbit is in front. Otherwise it sits directly above Claude in the window stack, so other apps cover both.
   - If Claude is closed or on another virtual desktop, the orb floats freely as usual.
 - Settings, usage and logs live in `%APPDATA%\Orbit`.

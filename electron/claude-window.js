@@ -1,5 +1,6 @@
-// Runs claude-window.ps1 and reports the Claude window's state ({ found, hwnd, min, front, x, y,
-// w, h } in real screen pixels) whenever it changes. Restarts the watcher if it dies.
+// Runs claude-window.ps1: reports the Claude window's state ({ found, hwnd, min, front, x, y, w, h }
+// in real screen pixels) whenever it changes, and moves the orb itself while following (see
+// follow()). Restarts the helper if it dies, re-sending the last command.
 
 import { spawn } from 'node:child_process';
 import path from 'node:path';
@@ -15,10 +16,18 @@ export function createClaudeWindowTracker({ onChange, onError = () => {} }) {
   let child = null;
   let stopped = true;
   let restarts = [];
+  let command = 'pause'; // the last instruction, replayed after a restart
+
+  const send = (line) => {
+    command = line;
+    try { child?.stdin.write(`${line}\n`); } catch { /* restarting; replayed on start */ }
+  };
 
   const start = () => {
     if (process.platform !== 'win32') return;
-    child = spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT, '-ParentPid', String(process.pid)], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT, '-ParentPid', String(process.pid)], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    child.stdin.on('error', () => {});
+    child.stdin.write(`${command}\n`);
     let err = '';
     child.stderr.on('data', (d) => { if (err.length < 4000) err += d; });
     readline.createInterface({ input: child.stdout }).on('line', (line) => {
@@ -46,8 +55,18 @@ export function createClaudeWindowTracker({ onChange, onError = () => {} }) {
     },
     stop() {
       stopped = true;
+      command = 'pause';
       try { child?.kill(); } catch { /* already gone */ }
       child = null;
+    },
+    /** Keep the orb (native window handle) at this spot on the Claude window; the helper moves it. */
+    follow(orbHwnd, anchor) {
+      const line = `follow ${orbHwnd} ${anchor.corner} ${anchor.dx} ${anchor.dy}`;
+      if (line !== command) send(line);
+    },
+    /** Stop moving the orb (hidden, free, or being dragged). */
+    pause() {
+      if (command !== 'pause') send('pause');
     },
     get running() { return !stopped; },
   };

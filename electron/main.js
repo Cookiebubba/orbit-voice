@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULTS, getSetting, onSettingsChange, updateSettings } from '../src/config.js';
 import { createClaudeWindowTracker } from './claude-window.js';
-import { anchorFor, orbPositionFor } from './orb-stick.js';
+import { DEFAULT_ANCHOR, anchorFor, isAnchor, orbPositionFor } from './orb-stick.js';
 import { getLogDir, logError, logWarn } from '../src/log.js';
 import { authUrl, hotkeyLabel, startServer } from '../src/server.js';
 
@@ -140,6 +140,7 @@ function createOrb() {
 function showOrb() {
   main.hide();
   orbMode = true;
+  drag = null; // a click on the orb starts a "drag" that never ends; don't let it block the orb
   if (getSetting('orbStick') && claude?.found) placeOrb();
   else orb.showInactive();
 }
@@ -147,6 +148,8 @@ function showOrb() {
 function showMain() {
   if (!main) return;
   orbMode = false;
+  drag = null;
+  claudeTracker.pause();
   orb?.hide();
   if (main.isMinimized()) main.restore();
   main.show();
@@ -193,23 +196,40 @@ function setOrbLayer(layer) {
 function placeOrb() {
   if (!orb || orb.isDestroyed() || drag) return;
   if (!sticking()) {
+    claudeTracker.pause();
     claudeDip = null;
     if (orbLayer !== 'free') {
       setOrbLayer('free');
       const [x, y] = orbStartPosition();
       setOrbBounds({ x, y });
     }
-    if (orbMode && !orb.isVisible()) orb.showInactive();
-    return;
-  }
-  if (claude.min) {
-    if (orb.isVisible()) orb.hide();
+    if (orbMode && !orb.isVisible()) {
+      orb.showInactive();
+      orb.setAlwaysOnTop(true, 'screen-saver');
+    }
     return;
   }
   claudeDip = screen.screenToDipRect(null, { x: claude.x, y: claude.y, width: claude.w, height: claude.h });
-  setOrbBounds(orbPositionFor(claudeDip, getSetting('orbStickAnchor'), ORB_SIZE));
+  if (claude.min || !orbMode) {
+    claudeTracker.pause();
+    if (orb.isVisible()) orb.hide();
+    return;
+  }
+  const anchor = isAnchor(getSetting('orbStickAnchor')) ? getSetting('orbStickAnchor') : DEFAULT_ANCHOR;
+  if (!orb.isVisible()) {
+    setOrbBounds(orbPositionFor(claudeDip, anchor, ORB_SIZE)); // in place before it appears
+    orb.showInactive();
+    orbLayer = null; // z-order set while hidden may not stick: apply it again now that it shows
+  }
+  // From here the helper moves the orb itself the instant Claude moves (no trailing behind).
+  claudeTracker.follow(nativeHandle(orb), anchor);
   setOrbLayer(claude.front === 'other' ? `above:${claude.hwnd}` : 'top');
-  if (orbMode && !orb.isVisible()) orb.showInactive();
+}
+
+/** A window's HWND as a decimal string (for the helper). */
+function nativeHandle(win) {
+  const buf = win.getNativeWindowHandle();
+  return buf.length >= 8 ? buf.readBigUInt64LE(0).toString() : String(buf.readUInt32LE(0));
 }
 
 onSettingsChange((changed) => {
@@ -312,6 +332,7 @@ on('orb:restore', () => showMain());
 on('orb:state', (s) => orb?.webContents.send('orb:state', s));
 on('orb:action', (a) => main?.webContents.send('orb:action', a));
 on('orb:drag-start', () => {
+  claudeTracker.pause(); // the user is moving the orb; the helper waits until they drop it
   drag = { cursor: screen.getCursorScreenPoint(), win: orb.getPosition() };
 });
 on('orb:drag-move', () => {
