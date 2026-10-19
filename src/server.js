@@ -241,6 +241,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
   const notCrossSite = (req) => !['cross-site', 'same-site'].includes(req.headers['sec-fetch-site']);
 
   const watcher = createSessionWatcher();
+  let brainTest = null; // AbortController of the Settings connection test in progress
   const eventClients = new Set(); // SSE responses
   const liveSessions = new Set(); // per-connection hooks
 
@@ -402,7 +403,15 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           if (!claude) return sendJson(res, 200, { ok: false, error: 'Claude Code was not found. Install it, or set its path below.' });
           const useKey = getSetting('brainConnection') === 'api-key';
           if (useKey && !getBrainKey()) return sendJson(res, 200, { ok: false, error: 'Add your Anthropic API key first.' });
-          const r = await askBrain({ question: 'Reply with exactly one word: ready', model: 'haiku', claudePath: claude.path, apiKey: useKey ? getBrainKey() : '' });
+          if (brainTest) return sendJson(res, 200, { ok: false, error: 'A connection test is already running.' });
+          // One test at a time, stopped if the page goes away.
+          brainTest = new AbortController();
+          const stop = () => brainTest?.abort();
+          res.on('close', stop);
+          const r = await askBrain({ question: 'Reply with exactly one word: ready', model: 'haiku', claudePath: claude.path, apiKey: useKey ? getBrainKey() : '', signal: brainTest.signal }).finally(() => {
+            res.off('close', stop);
+            brainTest = null;
+          });
           if (!r.ok) logWarn('brain', 'Connection test failed', r.error);
           return sendJson(res, 200, r.ok ? { ok: true, seconds: r.seconds } : { ok: false, error: r.error });
         }
@@ -488,6 +497,11 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     verifyClient: ({ origin, req }) => allowedOrigins.has(origin) && allowedHosts.has(req.headers.host) && hasValidSession(req),
   });
 
+  /** Run an async socket handler; a failure is logged and ends nothing else (no unhandled rejection). */
+  const guarded = (fn) => (...args) => Promise.resolve().then(() => fn(...args)).catch((e) => logError('voice', 'Message handling failed', e?.stack || String(e)));
+  /** A draft id from the page: a plain number, or NaN (which matches no draft). */
+  const draftId = (v) => (typeof v === 'number' || typeof v === 'string' ? Number(v) : NaN);
+
   // Messages the page is allowed to forward to xAI as-is.
   const FORWARDABLE = new Set(['input_audio_buffer.append', 'input_audio_buffer.clear', 'input_audio_buffer.commit', 'response.cancel']);
 
@@ -506,6 +520,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
 
     // What the user last said (or typed), for confirming sends: { text, at }.
     let speechStartedAt = 0;
+    const speechStarts = new Map(); // item_id -> when that speech started
     let utterance = { text: '', at: 0 };
     const utteranceWaiters = new Set();
     const setUtterance = (text, at) => {
@@ -592,7 +607,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       runTool('get_current_session').catch(() => {});
     });
 
-    upstream.on('message', async (data, isBinary) => {
+    upstream.on('message', guarded(async (data, isBinary) => {
       if (isBinary) return;
       let evt;
       try {
@@ -600,6 +615,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       } catch {
         return;
       }
+      if (!evt || typeof evt !== 'object' || typeof evt.type !== 'string') return;
       toBrowser(evt);
 
       if (evt.type === 'error') {
@@ -607,8 +623,14 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       } else if (evt.type === 'input_audio_buffer.speech_started') {
         speechStartedAt = Date.now();
         stats.heard++;
+        // Each transcript is stamped with when ITS speech started, so a late "yes" to something
+        // earlier can't count as an answer to a draft that appeared after it.
+        if (typeof evt.item_id === 'string') {
+          speechStarts.set(evt.item_id, speechStartedAt);
+          if (speechStarts.size > 200) speechStarts.delete(speechStarts.keys().next().value);
+        }
       } else if (evt.type.startsWith('conversation.item.input_audio_transcription') && typeof evt.transcript === 'string') {
-        setUtterance(evt.transcript, speechStartedAt || Date.now());
+        setUtterance(evt.transcript, speechStarts.get(evt.item_id) || speechStartedAt || Date.now());
       } else if (evt.type === 'response.created') {
         responding = true;
         responseDone = false;
@@ -629,7 +651,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         maybeContinue();
         if (callsThisResponse === 0) flushPending();
       }
-    });
+    }));
 
     upstream.on('unexpected-response', (_req, res) => {
       let body = '';
@@ -657,7 +679,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       browser.close();
     });
 
-    browser.on('message', async (data) => {
+    browser.on('message', guarded(async (data) => {
       let msg;
       try {
         msg = JSON.parse(data.toString());
@@ -674,13 +696,13 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       switch (msg.type) {
         case 'ui.send_draft': {
           // The Send button names the draft it approves; a different or changed draft isn't sent.
-          const result = await (toolChain = toolChain.then(() => tools.sendFromUi(Number(msg.id))));
+          const result = await (toolChain = toolChain.then(() => tools.sendFromUi(draftId(msg.id))));
           return toBrowser({ type: 'bridge.tool_result', name: 'send_draft (button)', result });
         }
         case 'ui.cancel_draft':
-          return tools.cancelFromUi(msg.id === undefined ? undefined : Number(msg.id));
+          return tools.cancelFromUi(msg.id === undefined ? undefined : draftId(msg.id));
         case 'ui.edit_draft':
-          return tools.editFromUi(Number(msg.id), msg.text);
+          return tools.editFromUi(draftId(msg.id), typeof msg.text === 'string' ? msg.text : '');
         case 'ui.state':
           asleep = !!msg.asleep;
           return;
@@ -693,7 +715,10 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           }
           return;
       }
-    });
+    }));
+
+    // A message over the size limit (or any socket fault) ends just this connection.
+    browser.on('error', (e) => logWarn('voice', 'Page connection error', e?.message));
 
     browser.on('close', () => {
       pageClosed = true;

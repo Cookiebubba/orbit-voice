@@ -17,7 +17,7 @@ const FAKE_PORT = 4399;
 const PORT = 4318;
 
 // Stand-in for wss://api.x.ai/v1/realtime.
-const fake = new WebSocketServer({ port: FAKE_PORT });
+const fake = new WebSocketServer({ host: '127.0.0.1', port: FAKE_PORT });
 const result = new Promise((resolve) => {
   fake.on('connection', (ws) => {
     let asked = false;

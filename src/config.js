@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isClaudeFile } from './brain.js';
 
 export const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -80,19 +81,22 @@ function writeDotEnvValue(file, name, value) {
   fs.writeFileSync(file, lines.join('\n'), { mode: 0o600 });
 }
 
+// Only plain values get converted: an object like {"toString": 1} would make Number()/String() throw.
 function coerce(key, value) {
   const def = DEFAULTS[key];
   if (typeof def === 'boolean') return value === true || value === 'true';
-  if (typeof def === 'number') return Number(value);
-  return value;
+  if (typeof def === 'number') return typeof value === 'number' || (typeof value === 'string' && value.trim()) ? Number(value) : undefined;
+  if (typeof def === 'string') return typeof value === 'string' || typeof value === 'number' ? String(value) : undefined;
+  return value; // object settings (positions, anchors, rules) are checked by their own case below
 }
 
 /** Keep only known keys with sane values. */
 function sanitize(input) {
   const out = {};
   for (const [k, v] of Object.entries(input || {})) {
-    if (!(k in DEFAULTS)) continue;
+    if (!Object.hasOwn(DEFAULTS, k)) continue;
     const val = coerce(k, v);
+    if (val === undefined) continue;
     switch (k) {
       case 'voice':
         if (/^[a-z0-9_-]{1,40}$/i.test(String(val))) out.voice = String(val).toLowerCase();
@@ -120,8 +124,9 @@ function sanitize(input) {
         if (val === 'claude-code' || val === 'api-key') out.brainConnection = val;
         break;
       case 'brainClaudePath':
-        // Only ever an absolute path to a file named claude / claude.exe (see brain.js), or '' for automatic.
-        if (val === '' || (typeof val === 'string' && val.length < 400 && path.isAbsolute(val) && ![...val].some((c) => c.charCodeAt(0) < 32 || '"<>|?*'.includes(c)) && ['claude', 'claude.exe'].includes(path.basename(val).toLowerCase()))) out.brainClaudePath = val;
+        // Only ever a local absolute path (no network share) to claude.exe on Windows, claude
+        // elsewhere (see isClaudeFile in brain.js), or '' for automatic.
+        if (val === '' || (typeof val === 'string' && val.length < 400 && path.isAbsolute(val) && !/^[\\/]{2}/.test(val) && ![...val].some((c) => c.charCodeAt(0) < 32 || '"<>|?*'.includes(c)) && isClaudeFile(val))) out.brainClaudePath = val;
         break;
       case 'orbPulseAmount':
         if (Number.isFinite(val)) out.orbPulseAmount = Math.min(0.1, Math.max(0.01, Math.round(val * 1000) / 1000));

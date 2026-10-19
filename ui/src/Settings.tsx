@@ -258,7 +258,7 @@ function SecondBrainSection({ s, update }: { s: SettingsT; update: Update }) {
         checked={s.brainEnabled}
         onChange={(brainEnabled) => update({ brainEnabled })}
         label="Let Grok ask Claude when a question is hard"
-        hint="For deep questions, or questions about the code in your current project, Grok quietly asks Claude and tells you the answer. Nothing appears on screen."
+        hint="For deep questions, or questions about the code in your current project, Grok quietly asks Claude and tells you the answer. Only a short note appears when Claude reads your project."
       />
       {s.brainEnabled && (
         <>
@@ -283,7 +283,7 @@ function SecondBrainSection({ s, update }: { s: SettingsT; update: Update }) {
             checked={s.brainExplore}
             onChange={(brainExplore) => update({ brainExplore })}
             label="Read the current project"
-            hint="Claude may read the files of the project open in your Claude session to answer (read-only: it can't run commands or change anything; .env files and keys are off-limits)."
+            hint="Claude may read the files of the project open in your Claude session to answer: read-only, only inside that project folder, with common secret files (.env, keys, credentials) blocked. It can't run commands or change anything."
           />
 
           <div className="mt-4 mb-1.5 text-[12.5px] text-white/70">Connection</div>

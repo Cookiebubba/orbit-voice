@@ -26,6 +26,7 @@ export const getLogDir = () => logDir;
 export function scrub(text) {
   return String(text ?? '')
     .replace(/xai-[A-Za-z0-9_-]{8,}/g, 'xai-***')
+    .replace(/sk-ant-[A-Za-z0-9_-]{8,}/g, 'sk-ant-***')
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer ***')
     .replace(/(api[_-]?key|token|secret|password)(["'\s:=]+)[^\s"',}]+/gi, '$1$2***')
     .slice(0, 1000);

@@ -30,6 +30,10 @@ export function desktopSessionRoots() {
   return roots.filter((r) => fs.existsSync(r));
 }
 
+const CLI_ID = /^[A-Za-z0-9_-]{1,100}$/;
+const str = (v) => (typeof v === 'string' ? v : '');
+const num = (v) => (Number.isFinite(v) ? v : 0);
+
 function safeReadJson(file) {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -71,18 +75,21 @@ function readSessionRoot(root, includeArchived) {
       for (const f of listDir(orgDir)) {
         if (!f.isFile() || !/^local_.*\.json$/.test(f.name)) continue;
         const meta = safeReadJson(path.join(orgDir, f.name));
-        if (!meta || !meta.cliSessionId) continue;
+        // A damaged or unexpected file is skipped, never trusted: the CLI id becomes part of a
+        // file path (findTranscript), so it must be a plain id.
+        if (!meta || typeof meta !== 'object' || typeof meta.cliSessionId !== 'string' || !CLI_ID.test(meta.cliSessionId)) continue;
         if (meta.isArchived && !includeArchived) continue;
+        const cwd = str(meta.cwd);
         sessions.push({
-          id: meta.sessionId,
+          id: str(meta.sessionId) || f.name.replace(/\.json$/, ''),
           cliSessionId: meta.cliSessionId,
-          title: meta.title || '(untitled)',
-          cwd: meta.cwd || '',
-          project: path.basename(meta.originCwd || meta.cwd || '') || '(no folder)',
-          branch: meta.branch || null,
-          model: meta.model || null,
-          lastFocusedAt: meta.lastFocusedAt || 0,
-          lastActivityAt: meta.lastActivityAt || meta.createdAt || 0,
+          title: str(meta.title).slice(0, 300) || '(untitled)',
+          cwd,
+          project: path.basename(str(meta.originCwd) || cwd) || '(no folder)',
+          branch: str(meta.branch) || null,
+          model: str(meta.model) || null,
+          lastFocusedAt: num(meta.lastFocusedAt),
+          lastActivityAt: num(meta.lastActivityAt) || num(meta.createdAt),
           isArchived: !!meta.isArchived,
         });
       }
@@ -149,13 +156,37 @@ export function resolveSession(query, { windowTitle } = {}) {
   return best;
 }
 
+// Wrapper tags Claude Code puts around text that isn't the user's own words. A linear scan, not
+// lazy regexes: those take quadratic time on text full of unclosed tags, and transcripts can hold
+// anything the user pasted.
+const NOISE = [
+  { open: '<system-reminder>', close: '</system-reminder>', keepInner: false },
+  { open: '<pasted_content', close: '</pasted_content', keepInner: true },
+  { open: '<command-', close: '</command-', keepInner: false },
+  { open: '<local-command-', close: '</local-command-', keepInner: false },
+];
+
+function cutBlocks(text, { open, close, keepInner }) {
+  let out = '';
+  let pos = 0;
+  for (;;) {
+    const start = text.indexOf(open, pos);
+    if (start < 0) break;
+    // Where the opening tag ends: right away for a complete tag, else at its next '>'.
+    const openEnd = open.endsWith('>') ? start + open.length - 1 : text.indexOf('>', start + open.length);
+    const end = openEnd < 0 ? -1 : text.indexOf(close, openEnd);
+    const closeEnd = end < 0 ? -1 : close.endsWith('>') ? end + close.length - 1 : text.indexOf('>', end + close.length);
+    if (closeEnd < 0) break; // unclosed: no later block can close either, keep the rest as is
+    out += text.slice(pos, start) + (keepInner ? text.slice(openEnd + 1, end) : '');
+    pos = closeEnd + 1;
+  }
+  return out + text.slice(pos);
+}
+
 function stripNoise(text) {
-  return String(text)
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
-    .replace(/<pasted_content[^>]*>([\s\S]*?)<\/pasted_content[^>]*>/g, '$1')
-    .replace(/<command-[a-z-]+>[\s\S]*?<\/command-[a-z-]+>/g, '')
-    .replace(/<local-command-[a-z-]+>[\s\S]*?<\/local-command-[a-z-]+>/g, '')
-    .trim();
+  let t = String(text);
+  for (const tag of NOISE) t = cutBlocks(t, tag);
+  return t.trim();
 }
 
 function clip(text, max) {
@@ -188,7 +219,7 @@ export function readTranscriptTail(file, { lastN = 8, includeTools = false, maxC
     } catch {
       continue;
     }
-    if (rec.isSidechain) continue;
+    if (!rec || typeof rec !== 'object' || rec.isSidechain) continue;
     // Claude Code writes this when a turn ends (when Stop hooks are configured).
     if (rec.type === 'system' && rec.subtype === 'stop_hook_summary') {
       lastKind = 'stopped';
@@ -196,9 +227,12 @@ export function readTranscriptTail(file, { lastN = 8, includeTools = false, maxC
       continue;
     }
     const msg = rec.message;
-    if (!msg) continue;
-    if (rec.type === 'user' || rec.type === 'assistant') lastAt = rec.timestamp || lastAt;
-    const content = typeof msg.content === 'string' ? [{ type: 'text', text: msg.content }] : msg.content || [];
+    if (!msg || typeof msg !== 'object') continue;
+    if (rec.type === 'user' || rec.type === 'assistant') lastAt = (typeof rec.timestamp === 'string' && rec.timestamp) || lastAt;
+    // Only well-formed parts: text parts with string text, tool parts as objects.
+    const content = (typeof msg.content === 'string' ? [{ type: 'text', text: msg.content }] : Array.isArray(msg.content) ? msg.content : []).filter(
+      (c) => c && typeof c === 'object' && (c.type !== 'text' || typeof c.text === 'string'),
+    );
 
     if (rec.type === 'user') {
       if (content.some((c) => c.type === 'tool_result')) {
@@ -232,9 +266,9 @@ export function readTranscriptTail(file, { lastN = 8, includeTools = false, maxC
 }
 
 function describeToolUse(c) {
-  const i = c.input || {};
+  const i = c.input && typeof c.input === 'object' ? c.input : {};
   const detail = i.description || i.command || i.file_path || i.pattern || i.url || i.query || i.prompt || '';
-  return `${c.name}${detail ? `: ${clip(String(detail), 140)}` : ''}`;
+  return `${String(c.name ?? 'tool').slice(0, 120)}${detail ? `: ${clip(String(detail), 140)}` : ''}`;
 }
 
 export function ago(ms) {

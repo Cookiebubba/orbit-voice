@@ -32,6 +32,17 @@ let main = null;
 let orb = null;
 let tray = null;
 let baseUrl = '';
+/** Is this URL Orbit's own page? An exact origin match: a prefix test would also accept
+ *  127.0.0.1:43170 or 127.0.0.1:4317@elsewhere. */
+function isOurs(url) {
+  if (!baseUrl || !url) return false;
+  try {
+    const u = new URL(url);
+    return u.origin === new URL(baseUrl).origin && !u.username && !u.password;
+  } catch {
+    return false;
+  }
+}
 let drag = null; // { cursor, win } at drag start
 let quitting = false;
 
@@ -77,7 +88,7 @@ function lockDown(win) {
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (e, url) => {
-    if (!url.startsWith(baseUrl)) e.preventDefault();
+    if (!isOurs(url)) e.preventDefault();
   });
 }
 
@@ -306,7 +317,7 @@ const hotkeyInfo = (extra = {}) => ({
 });
 
 // Only our own pages may use these channels.
-const fromUs = (e) => !!baseUrl && e.senderFrame?.url?.startsWith(baseUrl);
+const fromUs = (e) => isOurs(e.senderFrame?.url);
 const handle = (channel, fn) => ipcMain.handle(channel, (e, ...args) => (fromUs(e) ? fn(...args) : undefined));
 const on = (channel, fn) => ipcMain.on(channel, (e, ...args) => fromUs(e) && fn(...args));
 
@@ -384,8 +395,8 @@ app.whenReady().then(async () => {
   }
   // Microphone and notifications only, and only for our own page.
   const ALLOWED_PERMISSIONS = new Set(['media', 'notifications']);
-  session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => cb(ALLOWED_PERMISSIONS.has(permission) && wc.getURL().startsWith(baseUrl)));
-  session.defaultSession.setPermissionCheckHandler((wc, permission) => ALLOWED_PERMISSIONS.has(permission) && !!wc && wc.getURL().startsWith(baseUrl));
+  session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => cb(ALLOWED_PERMISSIONS.has(permission) && isOurs(wc.getURL())));
+  session.defaultSession.setPermissionCheckHandler((wc, permission) => ALLOWED_PERMISSIONS.has(permission) && !!wc && isOurs(wc.getURL()));
   app.on('web-contents-created', (_e, wc) => wc.on('will-attach-webview', (ev) => ev.preventDefault()));
 
   createMain();

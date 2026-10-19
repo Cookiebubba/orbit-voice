@@ -105,7 +105,8 @@ test('a configured path must exist and be named claude', () => {
   const good = path.join(dir, 'claude.exe');
   fs.writeFileSync(good, '');
   assert.deepEqual(findClaude(good), { path: good, source: 'settings' });
-  assert.ok(isClaudeFile('/usr/local/bin/claude') && !isClaudeFile('C:/x/claude.cmd') && !isClaudeFile('C:/x/powershell.exe'));
+  assert.ok(isClaudeFile('/usr/local/bin/claude', 'linux') && !isClaudeFile('C:/x/claude.cmd') && !isClaudeFile('C:/x/powershell.exe'));
+  assert.ok(!isClaudeFile('C:/x/claude', 'win32'), 'on Windows only claude.exe: a bare name would run claude.com/.exe instead');
 });
 
 // ---- Running it ----------------------------------------------------------------------------
@@ -172,9 +173,16 @@ test('the tool follows the settings: off, fixed model, no exploring', () => {
 
 function runnerWith(brainImpl) {
   const notes = [];
-  const runner = createToolRunner({ notify: (e) => notes.push(e), brain: brainImpl });
-  return { runner, notes };
+  let utterance = null;
+  const runner = createToolRunner({ notify: (e) => notes.push(e), brain: brainImpl, recentUtterance: () => utterance });
+  // The user says something (each second-brain question needs new words from the user).
+  const say = async (text = 'tell me more') => {
+    await new Promise((r) => setTimeout(r, 5)); // real speech never lands in the same millisecond
+    utterance = { text, at: Date.now() };
+  };
+  return { runner, notes, say };
 }
+const until = async (cond) => { for (let i = 0; i < 3000 && !cond(); i++) await new Promise((r) => setTimeout(r, 10)); assert.ok(cond(), 'timed out waiting'); };
 
 test('ask_second_brain: model choice, settings override, one question at a time, cancel on hang-up', async () => {
   updateSettings({ brainEnabled: true, brainModel: 'auto', brainExplore: true, brainConnection: 'claude-code', brainClaudePath: '' });
@@ -190,10 +198,11 @@ test('ask_second_brain: model choice, settings override, one question at a time,
   const fakeClaude = path.join(tmp('orbit-claude-'), 'claude.exe');
   fs.writeFileSync(fakeClaude, '');
   updateSettings({ brainClaudePath: fakeClaude });
-  const { runner } = runnerWith(brain);
+  const { runner, say } = runnerWith(brain);
 
+  await say('why is the build slow');
   const first = runner.run('ask_second_brain', JSON.stringify({ question: 'Why is the build slow?', model: 'opus', mode: 'explore', session: 'qqqzzxxqv' }));
-  await new Promise((r) => setTimeout(r, 20));
+  await until(() => seen.length === 1);
   const busy = await runner.run('ask_second_brain', JSON.stringify({ question: 'Another one?' }));
   assert.match(busy.error, /previous question/);
   release();
@@ -203,18 +212,22 @@ test('ask_second_brain: model choice, settings override, one question at a time,
   assert.equal(seen[0].model, 'opus');
   assert.equal(seen[0].explore, false, 'no project folder for that session, so it thinks instead');
   assert.match(r1.note, /without reading files/);
+  const again = await runner.run('ask_second_brain', JSON.stringify({ question: 'And now?' }));
+  assert.match(again.error, /after the user says something new/, 'no chaining questions without the user speaking');
   assert.match(r1.next_step, /own words/);
   assert.equal(seen[0].claudePath, fakeClaude);
 
   updateSettings({ brainModel: 'haiku' });
+  await say('quick one');
   const second = runner.run('ask_second_brain', JSON.stringify({ question: 'Quick one?', model: 'opus', session: 'qqqzzxxqv' }));
-  await new Promise((r) => setTimeout(r, 20));
+  await until(() => seen.length === 2);
   release();
   await second;
   assert.equal(seen[1].model, 'haiku', 'the settings win over Grok\x27s pick');
 
+  await say('long one');
   const third = runner.run('ask_second_brain', JSON.stringify({ question: 'Long one?', session: 'qqqzzxxqv' }));
-  await new Promise((r) => setTimeout(r, 20));
+  await until(() => seen.length === 3);
   runner.dispose(); // the user hung up
   assert.match((await third).error, /Cancelled/);
 });
@@ -242,4 +255,8 @@ test('settings accept only sane second-brain values', () => {
   assert.equal(getSetting('brainClaudePath'), '', 'only an absolute path to claude / claude.exe');
   updateSettings({ brainClaudePath: 'relative\\claude.exe' });
   assert.equal(getSetting('brainClaudePath'), '');
+  updateSettings({ brainClaudePath: '\\\\server\\share\\claude.exe' });
+  assert.equal(getSetting('brainClaudePath'), '', 'no network shares');
+  updateSettings({ brainClaudePath: 'C:\\tools\\claude' });
+  assert.equal(getSetting('brainClaudePath'), '', 'on Windows only claude.exe');
 });

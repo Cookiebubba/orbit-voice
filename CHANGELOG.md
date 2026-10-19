@@ -21,6 +21,25 @@
 - The session finder no longer shows "Loading…" before you type.
 - Settings has a thin pill scrollbar. Hovering or dragging it outlines the whole track.
 - `npm test` runs the new tests.
+- **Security review** ([report](docs/security/2026-10-19-review.md)): 13 issues fixed or documented (3 medium, 10 low).
+  - **Second brain:**
+    - It runs in Claude Code's restricted mode, so its file tools can't leave the project folder.
+    - It reads only the project of the session open in Claude, with more secret files blocked.
+    - Each question needs new words from you, with at most 10 per conversation.
+    - Stopped runs end everything they started, also when Orbit quits.
+  - **Copy to clipboard:**
+    - One request allows one copy, and "don't copy" isn't a request.
+    - The copied text is shown on screen.
+  - **Consent:** a "yes" must be under a minute old, and is timed from when that speech started.
+  - **Release builds:** npm code never holds a token that can write releases, and the CI actions are pinned to commit SHAs.
+  - **Electron 44** (was 33, out of support), with security fuses set.
+  - Window, IPC and permission checks match Orbit's exact origin.
+- **Robustness**, from a new fuzzer (`npm run fuzz`). Each of these no longer breaks or crashes anything:
+  - a damaged Claude session file
+  - odd transcript records
+  - unusual settings values
+  - oversized or malformed voice messages
+  - Transcript parsing also stays fast on huge pastes.
 
 ## 1.1.0 (2026-10-18)
 

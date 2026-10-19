@@ -4,21 +4,30 @@ name: Release
 # draft GitHub release with its SHA-256 checksum, plus latest.yml and the blockmap that the in-app
 # updater reads. Publish the draft by hand after checking it: installed copies only see published
 # releases.
+#
+# Two jobs, so build code never holds a token that can write releases: the build job (which runs
+# every npm package's install and build scripts) only has read access and keeps no credentials;
+# the release job only downloads the finished files and creates the draft. It runs no npm at all.
+# Actions are pinned to commit SHAs (the tag each one was is in the comment).
 on:
   push:
     tags: ['v*.*.*']
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-windows:
     runs-on: windows-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -34,32 +43,51 @@ jobs:
           npm audit --omit=dev --audit-level=high
           npm --prefix ui audit --omit=dev --audit-level=high
 
+      - name: Test
+        run: npm test
+
       - name: Build UI and installer
         run: npm run dist
 
       - name: Checksum
         shell: pwsh
         run: |
+          if (-not (Test-Path dist/latest.yml)) { throw 'latest.yml missing: installed copies could not update to this release' }
           $exe = Get-ChildItem dist/Orbit-Setup-*.exe | Select-Object -First 1
           $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
           "$hash  $($exe.Name)" | Out-File -Encoding ascii "dist/$($exe.Name).sha256"
           "Installer SHA-256: $hash"
+          Copy-Item RELEASE_NOTES.md dist/RELEASE_NOTES.md
 
-      - name: Draft release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: pwsh
-        run: |
-          if (-not (Test-Path dist/latest.yml)) { throw 'latest.yml missing: installed copies could not update to this release' }
-          $files = Get-ChildItem dist/Orbit-Setup-*.exe, dist/Orbit-Setup-*.exe.sha256, dist/Orbit-Setup-*.exe.blockmap, dist/latest.yml | ForEach-Object { $_.FullName }
-          gh release create "${{ github.ref_name }}" $files --draft --title "Orbit ${{ github.ref_name }}" --notes-file RELEASE_NOTES.md
-
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: orbit-installer
+          if-no-files-found: error
           path: |
             dist/Orbit-Setup-*.exe
             dist/Orbit-Setup-*.exe.sha256
             dist/Orbit-Setup-*.exe.blockmap
             dist/latest.yml
+            dist/RELEASE_NOTES.md
+
+  draft-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: orbit-installer
+          path: dist
+
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }} # passed as data, never pasted into the script
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Not a release tag: $TAG"; exit 1; }
+          gh release create "$TAG" dist/Orbit-Setup-*.exe dist/Orbit-Setup-*.exe.sha256 dist/Orbit-Setup-*.exe.blockmap dist/latest.yml \
+            --draft --title "Orbit $TAG" --notes-file dist/RELEASE_NOTES.md

@@ -21,7 +21,8 @@
     "check": "node src/selftest.js",
     "dist": "npm run build:ui && node scripts/fetch-model.mjs && electron-builder --win --publish never",
     "fetch-model": "node scripts/fetch-model.mjs",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js && node --import ./test/fuzz/register.mjs --test test/sandboxed/*.test.js",
+    "fuzz": "node --import ./test/fuzz/register.mjs test/fuzz/fuzz.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -31,8 +32,8 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "electron": "^33.2.1",
-    "electron-builder": "^25.1.8"
+    "electron": "44.5.1",
+    "electron-builder": "26.17.0"
   },
   "build": {
     "appId": "dev.orbit.voice",
@@ -94,6 +95,15 @@
           "*.tar.gz"
         ]
       }
-    ]
+    ],
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": false
+    }
   }
 }

@@ -229,8 +229,14 @@ export function useVoice(options: VoiceOptions) {
         case "bridge.draft":
           setDraft(evt.draft ? { id: evt.draft.id, text: evt.draft.text, targetTitle: evt.draft.targetTitle } : null);
           return;
-        case "bridge.copied":
-          caption({ id: `copied-${Date.now()}`, who: "note", text: `Copied to clipboard ✓ (${evt.chars} characters)` });
+        case "bridge.copied": {
+          // Show what was copied, so nothing lands on the clipboard unseen before you paste it.
+          const preview = String(evt.preview || "");
+          caption({ id: `copied-${Date.now()}`, who: "note", text: `Copied to clipboard ✓ (${evt.chars} characters): ${preview}${evt.chars > preview.length ? "…" : ""}` });
+          return;
+        }
+        case "bridge.brain":
+          caption({ id: `brain-${Date.now()}`, who: "note", text: `Claude is reading ${evt.project}…` });
           return;
         case "bridge.sent":
           caption({ id: `sent-${Date.now()}`, who: "sent", text: evt.text });
