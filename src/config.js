@@ -9,7 +9,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MAX_RULES, isExeName } from './mic-apps.js';
 
 export const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -24,11 +23,11 @@ export const DEFAULTS = Object.freeze({
   costPerMinute: 0.08, // USD, xAI's published voice-agent rate at the time of writing
   model: 'grok-voice-latest',
   orbPosition: null, // [x, y] of the floating orb
+  autoUpdate: true, // check GitHub Releases at launch and every 6 h, download, install on quit
   orbStick: false, // "Stick to Claude Code": the orb rides on the Claude window
   orbPulse: false, // "Pulse with your voice": the orb grows very slightly as you speak
-  micSteal: false, // mute other apps' microphones (Discord, Zoom...) while Grok listens
-  micStealDefault: 'mute', // apps you haven't chosen for: 'mute' (mute all except...) or 'leave' (mute only...)
-  micStealRules: {}, // per app, by program file: { "discord.exe": "mute", "obs64.exe": "leave" }
+  orbPulseGrok: false, // "Pulse with Grok's voice": the same while Grok speaks
+  orbPulseAmount: 0.05, // how much it grows at full volume: 0.01–0.1 (1–10%)
   orbStickAnchor: null, // { corner: 'tl'|'tr'|'bl'|'br', dx, dy } in DIPs from that corner of the Claude window
   // Second brain: Grok can hand hard questions to Claude through the user's Claude Code.
   brainEnabled: true,
@@ -124,17 +123,8 @@ function sanitize(input) {
         // Only ever an absolute path to a file named claude / claude.exe (see brain.js), or '' for automatic.
         if (val === '' || (typeof val === 'string' && val.length < 400 && path.isAbsolute(val) && ![...val].some((c) => c.charCodeAt(0) < 32 || '"<>|?*'.includes(c)) && ['claude', 'claude.exe'].includes(path.basename(val).toLowerCase()))) out.brainClaudePath = val;
         break;
-      case 'micStealDefault':
-        if (val === 'mute' || val === 'leave') out.micStealDefault = val;
-        break;
-      case 'micStealRules':
-        if (val && typeof val === 'object' && !Array.isArray(val)) {
-          const rules = {};
-          for (const [exe, action] of Object.entries(val).slice(0, MAX_RULES)) {
-            if (isExeName(exe) && (action === 'mute' || action === 'leave')) rules[exe.toLowerCase()] = action;
-          }
-          out.micStealRules = rules;
-        }
+      case 'orbPulseAmount':
+        if (Number.isFinite(val)) out.orbPulseAmount = Math.min(0.1, Math.max(0.01, Math.round(val * 1000) / 1000));
         break;
       case 'orbStickAnchor':
         if (val === null || (val && ['tl', 'tr', 'bl', 'br'].includes(val.corner) && [val.dx, val.dy].every((n) => Number.isFinite(n) && n >= 0 && n <= 10000))) {

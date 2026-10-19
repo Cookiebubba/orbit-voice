@@ -44,7 +44,11 @@ void main() {
   vec2 g = fract(gl_FragCoord.xy / cellPx); // 0..1 inside the tile
 
   vec2 suv = (2.0 * cellCentre - uRes) / min(uRes.x, uRes.y);
-  vec2 uv = suv / uP_radius;
+  // Orbit addition: a voice "bump". The ball grows with your voice (uInput) and/or the agent's
+  // (uOutput), drawn here at native resolution, so the tile grid stays crisp (scaling the canvas
+  // with CSS resampled the tiles and made the wall shimmer).
+  float radiusNow = uP_radius * (1.0 + uP_bumpIn * uInput + uP_bumpOut * uOutput);
+  vec2 uv = suv / radiusNow;
   float r2 = dot(uv, uv);
 
   // blocky silhouette, cut on the tile grid like the wall itself
@@ -160,7 +164,9 @@ export const shdr29Orb: OrbVariant = {
     { key: "contrast", label: "Contrast", min: 0.15, max: 10, step: 0.05, default: 1 },
     // Orbit additions (see the shader): 0 = the orb exactly as orbkit ships it.
     { key: "accent", label: "Accent confetti", min: 0, max: 1, step: 0.01, default: 0 },
-    { key: "tint", label: "Accent tint", min: 0, max: 1, step: 0.01, default: 0 }
+    { key: "tint", label: "Accent tint", min: 0, max: 1, step: 0.01, default: 0 },
+    { key: "bumpIn", label: "Bump with input", min: 0, max: 0.15, step: 0.005, default: 0 },
+    { key: "bumpOut", label: "Bump with output", min: 0, max: 0.15, step: 0.005, default: 0 }
   ],
   colors: [
     { key: "lit", label: "Lit tile", default: "#fff2dd" },

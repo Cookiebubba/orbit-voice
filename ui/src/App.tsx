@@ -5,8 +5,8 @@ import { cn } from "@/lib/utils";
 import DraftCard from "./components/DraftCard";
 import History from "./components/History";
 import SessionSwitcher from "./components/SessionSwitcher";
-import { ORB_PULSE_TRANSITION, desktop, orbOpacity, orbProps, orbScale } from "./desktop";
-import { orbLookParams } from "./orbLook";
+import { desktop, orbOpacity, orbProps } from "./desktop";
+import { PULSE_DEFAULT, orbParams } from "./orbLook";
 import Settings from "./Settings";
 import { playChime } from "./sounds";
 import { postJson, useAppState, type Finished } from "./useAppState";
@@ -42,6 +42,7 @@ export default function App() {
   const tap = settings?.listenMode === "tap";
   const workingTitles = new Set(app.claudeWorking.map((w) => w.title));
   const claudeWorking = app.claudeWorking.length > 0;
+  const pulse = { pulseMe: !!settings?.orbPulse, pulseGrok: !!settings?.orbPulseGrok, pulseAmount: settings?.orbPulseAmount ?? PULSE_DEFAULT };
 
   // Claude finished a turn somewhere: chime, note it, and pop a Windows notification if we're not in front.
   finishedRef.current = (f) => {
@@ -56,16 +57,10 @@ export default function App() {
     }
   };
 
-  // Tell the shell when Grok has the mic, so other apps' mics can be muted meanwhile (if enabled).
-  const micLive = v.phase !== "off" && !v.asleep;
-  useEffect(() => {
-    desktop?.micLive(micLive);
-  }, [micLive]);
-
   // Keep the floating orb in sync with this window.
   useEffect(() => {
-    desktop?.sendOrbState({ phase: v.phase, input: v.levels.input, output: v.levels.output, asleep: v.asleep, hearing: v.hearing, claudeWorking, pulse: !!settings?.orbPulse });
-  }, [v.phase, v.levels, v.asleep, v.hearing, claudeWorking, settings?.orbPulse]);
+    desktop?.sendOrbState({ phase: v.phase, input: v.levels.input, output: v.levels.output, asleep: v.asleep, hearing: v.hearing, claudeWorking, ...pulse });
+  }, [v.phase, v.levels, v.asleep, v.hearing, claudeWorking, pulse.pulseMe, pulse.pulseGrok, pulse.pulseAmount]);
 
   // Right-clicking the floating orb toggles sleep; the global hotkey starts / sleeps / wakes.
   const actions = useRef(v);
@@ -155,11 +150,10 @@ export default function App() {
                 className="block"
                 style={{
                   opacity: orbOpacity({ phase: v.phase, asleep: v.asleep, hearing: v.hearing, input: v.levels.input, claudeWorking }),
-                  transform: `scale(${orbScale(v.asleep ? 0 : v.levels.input, !!settings?.orbPulse)})`,
-                  transition: `opacity 300ms, ${ORB_PULSE_TRANSITION}`,
+                  transition: "opacity 300ms",
                 }}
               >
-                <Shdr29 size={190} {...orbProps(v.phase, v.levels.input, v.levels.output)} params={orbLookParams(claudeWorking)} pauseOffscreen={false} />
+                <Shdr29 size={190} {...orbProps(v.phase, v.levels.input, v.levels.output)} params={orbParams({ claudeWorking, phase: v.phase, asleep: v.asleep, ...pulse })} pauseOffscreen={false} />
               </span>
             </button>
             <div className="mt-5 text-[15px] font-medium tracking-tight">{v.asleep && on ? asleepLabel : PHASE_LABEL[v.phase]}</div>

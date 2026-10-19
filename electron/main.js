@@ -6,11 +6,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULTS, getSetting, onSettingsChange, updateSettings } from '../src/config.js';
 import { createClaudeWindowTracker } from './claude-window.js';
-import { createMicSteal } from './mic-steal.js';
-import { helperRules, rulesCommand } from '../src/mic-apps.js';
 import { DEFAULT_ANCHOR, anchorFor, isAnchor, orbPositionFor } from './orb-stick.js';
 import { getLogDir, logError, logInfo, logWarn } from '../src/log.js';
 import { authUrl, hotkeyLabel, startServer } from '../src/server.js';
+import { createUpdater } from './updater.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -244,19 +243,10 @@ onSettingsChange((changed) => {
   }
 });
 
-// ---------- mute other apps' mics while Grok listens ----------
-// While Grok has the mic (connected and awake), other apps' microphone streams (Discord, Zoom...)
-// are muted, so you don't have to mute yourself there; they get it back when Grok sleeps.
-let micLive = false; // reported by the main window
-let micSteal = null; // created when the app is ready (it needs the user data folder)
-const applyMicSteal = () => {
-  micSteal?.setRules(rulesCommand(helperRules({ micStealDefault: getSetting('micStealDefault'), micStealRules: getSetting('micStealRules') })));
-  micSteal?.set(!!getSetting('micSteal') && micLive);
-};
+// ---------- updates (GitHub Releases) ----------
+let updater = null; // created when the app is ready (the settings are loaded then)
 onSettingsChange((changed) => {
-  if (!changed.some((k) => k === 'micSteal' || k === 'micStealDefault' || k === 'micStealRules')) return;
-  if (getSetting('micSteal')) applyMicSteal();
-  else micSteal?.stop();
+  if (changed.includes('autoUpdate')) updater?.setAuto(!!getSetting('autoUpdate'));
 });
 
 // ---------- tray ----------
@@ -342,15 +332,14 @@ handle('hotkey:suspend', (suspended) => {
 handle('app:get-login', () => loginEnabled());
 handle('app:set-login', (enabled) => setLogin(enabled));
 handle('app:open-logs', () => getLogDir() && shell.openPath(getLogDir()));
+handle('update:get', () => updater?.state() ?? { status: 'idle' });
+handle('update:check', () => updater?.check());
+handle('update:install', () => updater?.install());
 
 on('win:minimize', () => showOrb());
 on('win:close', () => app.quit());
 on('orb:restore', () => showMain());
 on('orb:state', (s) => orb?.webContents.send('orb:state', s));
-on('mic:live', (live) => {
-  micLive = !!live;
-  applyMicSteal();
-});
 on('orb:action', (a) => main?.webContents.send('orb:action', a));
 on('orb:drag-start', () => {
   claudeTracker.pause(); // the user is moving the orb; the helper waits until they drop it
@@ -382,7 +371,6 @@ app.whenReady().then(async () => {
       secrets: encryptedKeyStore(dir),
       brainSecrets: encryptedKeyStore(dir, 'anthropic-key.bin'),
       clipboard: (text) => clipboard.writeText(text),
-      micApps: () => (micSteal ? micSteal.listApps() : Promise.resolve([])), // for Settings → mute my mic in other apps
       // Offline wake-word model: shipped next to the app (extraResources), or in the repo in dev.
       models: app.isPackaged ? path.join(process.resourcesPath, 'models') : path.join(ROOT, 'resources', 'models'),
     });
@@ -403,16 +391,13 @@ app.whenReady().then(async () => {
   createMain();
   createOrb();
   if (getSetting('orbStick')) claudeTracker.start();
-  micSteal = createMicSteal({
-    stateFile: path.join(app.getPath('userData'), 'mic-steal.state'),
-    onResult: (r) => {
-      if (r.muted || r.unmuted || r.recovered) logInfo('mic', r.recovered ? `Gave ${r.recovered} app(s) their mic back after an unclean exit` : r.muted ? `Muted the mic in ${r.muted} other app(s)` : `Unmuted the mic in ${r.unmuted} app(s)`);
-    },
-    onError: (message) => logWarn('mic', message),
-  });
-  micSteal.recover(); // undo anything a crashed run left muted
-  applyMicSteal();
   createTray();
+  updater = createUpdater({
+    isPackaged: app.isPackaged,
+    auto: !!getSetting('autoUpdate'),
+    onChange: (state) => main?.webContents.send('update:state', state),
+    log: { info: (m) => logInfo('update', m), warn: (m, d) => logWarn('update', m, d) },
+  });
   if (registerHotkey(getSetting('wakeHotkey'))) activeHotkey = getSetting('wakeHotkey');
   else logWarn('hotkey', `Could not register ${getSetting('wakeHotkey')}; another app may be using it`);
 
@@ -425,7 +410,7 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => {
   quitting = true;
   claudeTracker.stop();
-  micSteal?.stop();
+  updater?.stop();
 });
 app.on('window-all-closed', () => app.quit());
 app.on('will-quit', () => globalShortcut.unregisterAll());

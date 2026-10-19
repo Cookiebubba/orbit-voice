@@ -17,7 +17,6 @@ contextBridge.exposeInMainWorld('desktop', {
   },
   orbRestore: () => ipcRenderer.send('orb:restore'),
   orbAction: (a) => ipcRenderer.send('orb:action', a),
-  micLive: (live) => ipcRenderer.send('mic:live', !!live),
   orbDragStart: () => ipcRenderer.send('orb:drag-start'),
   orbDragMove: () => ipcRenderer.send('orb:drag-move'),
   orbDragEnd: () => ipcRenderer.send('orb:drag-end'),
@@ -30,6 +29,16 @@ contextBridge.exposeInMainWorld('desktop', {
     get: () => ipcRenderer.invoke('hotkey:get'),
     set: (accelerator) => ipcRenderer.invoke('hotkey:set', accelerator),
     suspend: (suspended) => ipcRenderer.invoke('hotkey:suspend', suspended),
+  },
+  updates: {
+    get: () => ipcRenderer.invoke('update:get'),
+    check: () => ipcRenderer.invoke('update:check'),
+    install: () => ipcRenderer.invoke('update:install'),
+    onChange: (cb) => {
+      const fn = (_e, s) => cb(s);
+      ipcRenderer.on('update:state', fn);
+      return () => ipcRenderer.removeListener('update:state', fn);
+    },
   },
   onHotkey: (cb) => {
     const fn = () => cb();

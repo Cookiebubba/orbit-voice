@@ -5,8 +5,8 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import { Shdr29 } from "@/components/ui/shdr-29";
-import { CLAUDE_WORKING_PARAMS } from "./orbLook";
-import { ORB_PULSE_TRANSITION, orbOpacity, orbScale } from "./desktop";
+import { CLAUDE_WORKING_PARAMS, PULSE_DEFAULT, PULSE_MAX, PULSE_MIN } from "./orbLook";
+import { orbOpacity } from "./desktop";
 
 type OrbState = "idle" | "thinking" | "speaking";
 
@@ -19,6 +19,7 @@ function Lab() {
   // "Pulse with your voice" preview: a speech-like level at 20 per second, like the real mic level.
   const [voice, setVoice] = useState(false);
   const [level, setLevel] = useState(0);
+  const [amount, setAmount] = useState(PULSE_DEFAULT);
   useEffect(() => {
     if (!voice) return setLevel(0);
     let t = 0;
@@ -31,7 +32,9 @@ function Lab() {
     }, 50);
     return () => clearInterval(id);
   }, [voice]);
-  const pulseStyle = { transform: `scale(${orbScale(level, voice)})`, transition: ORB_PULSE_TRANSITION };
+  // The bump happens inside the shader (bumpIn x the input level), exactly as in Orbit.
+  const voiceProps = voice ? { volumes: { input: level, output: 0 } } : {};
+  const withBump = (base?: Record<string, number>) => (voice ? { ...(base ?? {}), bumpIn: amount } : base);
   const dim = orbOpacity({ phase: grokOff ? "off" : "listening", asleep: false, hearing: false, input: 0, claudeWorking: working });
   const set = (k: string, v: number) => setP((x) => ({ ...x, [k]: v }));
   const colors = { accent: accentColor };
@@ -49,24 +52,29 @@ function Lab() {
       <label className="mt-2 flex items-center gap-2 text-[12.5px] text-white/70">
         <input type="checkbox" checked={voice} onChange={(e) => setVoice(e.target.checked)} />
         Pulse with your voice (simulated speech)
-        {voice && <span className="text-white/40 tabular-nums">level {level.toFixed(2)} · size {(orbScale(level, true) * 100).toFixed(1)}%</span>}
+        {voice && <span className="text-white/40 tabular-nums">level {level.toFixed(2)} · size {((1 + amount * level) * 100).toFixed(1)}%</span>}
+      </label>
+      <label className="mt-2 flex max-w-[420px] items-center gap-3 text-[12.5px] text-white/70">
+        Pulse amount
+        <input type="range" min={PULSE_MIN} max={PULSE_MAX} step={0.005} value={amount} onChange={(e) => setAmount(Number(e.target.value))} className="flex-1 accent-white" />
+        <span className="tabular-nums text-white/50">{Math.round(amount * 100)}%</span>
       </label>
       <div className="mt-4 flex flex-wrap items-end gap-10">
         <figure className="text-center">
           <div style={{ opacity: orbOpacity({ phase: grokOff ? "off" : "listening", asleep: false, hearing: false, input: 0 }), transition: "opacity .3s" }}>
-            <div style={pulseStyle}><Shdr29 size={220} state={state} pauseOffscreen={false} /></div>
+            <Shdr29 size={220} state={state} params={withBump()} {...voiceProps} pauseOffscreen={false} />
           </div>
           <figcaption className="mt-2 text-[12px] text-white/50">Normal</figcaption>
         </figure>
         <figure className="text-center">
           <div style={{ opacity: dim, transition: "opacity .3s" }}>
-            <div style={pulseStyle}><Shdr29 size={220} state={state} params={working ? p : undefined} colors={colors} pauseOffscreen={false} /></div>
+            <Shdr29 size={220} state={state} params={withBump(working ? p : undefined)} {...voiceProps} colors={colors} pauseOffscreen={false} />
           </div>
           <figcaption className="mt-2 text-[12px] text-white/50">{working ? "Claude is working" : "Claude is working (off)"}</figcaption>
         </figure>
         <figure className="text-center">
           <div style={{ opacity: dim, transition: "opacity .3s" }}>
-            <div style={pulseStyle}><Shdr29 size={96} state={state} params={working ? p : undefined} colors={colors} pauseOffscreen={false} /></div>
+            <Shdr29 size={96} state={state} params={withBump(working ? p : undefined)} {...voiceProps} colors={colors} pauseOffscreen={false} />
           </div>
           <figcaption className="mt-2 text-[12px] text-white/50">Floating orb size</figcaption>
         </figure>

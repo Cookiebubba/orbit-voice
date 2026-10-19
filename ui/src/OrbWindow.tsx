@@ -2,11 +2,11 @@
 // Click: open the main window. Drag: move it. Right-click: sleep / wake.
 import { useEffect, useRef, useState } from "react";
 import { Shdr29 } from "@/components/ui/shdr-29";
-import { ORB_PULSE_TRANSITION, desktop, orbOpacity, orbProps, orbScale, type OrbSync } from "./desktop";
-import { orbLookParams } from "./orbLook";
+import { desktop, orbOpacity, orbProps, type OrbSync } from "./desktop";
+import { PULSE_DEFAULT, orbParams } from "./orbLook";
 
 export default function OrbWindow() {
-  const [s, setS] = useState<OrbSync>({ phase: "off", input: 0, output: 0, asleep: false, hearing: false, claudeWorking: false, pulse: false });
+  const [s, setS] = useState<OrbSync>({ phase: "off", input: 0, output: 0, asleep: false, hearing: false, claudeWorking: false, pulseMe: false, pulseGrok: false, pulseAmount: PULSE_DEFAULT });
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
 
   useEffect(() => {
@@ -43,8 +43,8 @@ export default function OrbWindow() {
       title="Orbit: click to open · drag to move · right-click to sleep or wake"
     >
       {/* No glow or ring around the orb: its opacity (and colour) say everything about activity. */}
-      <div style={{ opacity: orbOpacity(s), transform: `scale(${orbScale(s.asleep ? 0 : s.input, s.pulse)})`, transition: `opacity .3s, ${ORB_PULSE_TRANSITION}` }}>
-        <Shdr29 size={96} {...orbProps(s.phase, s.input, s.output)} params={orbLookParams(s.claudeWorking)} pauseOffscreen={false} />
+      <div style={{ opacity: orbOpacity(s), transition: "opacity .3s" }}>
+        <Shdr29 size={96} {...orbProps(s.phase, s.input, s.output)} params={orbParams(s)} pauseOffscreen={false} />
       </div>
     </div>
   );

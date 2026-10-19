@@ -1,7 +1,9 @@
 name: Release
 
 # Builds the Windows installer when a version tag (v1.2.3) is pushed, and attaches it to a
-# draft GitHub release with its SHA-256 checksum. Publish the draft by hand after checking it.
+# draft GitHub release with its SHA-256 checksum, plus latest.yml and the blockmap that the in-app
+# updater reads. Publish the draft by hand after checking it: installed copies only see published
+# releases.
 on:
   push:
     tags: ['v*.*.*']
@@ -49,7 +51,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
-          $files = Get-ChildItem dist/Orbit-Setup-*.exe, dist/Orbit-Setup-*.exe.sha256 | ForEach-Object { $_.FullName }
+          if (-not (Test-Path dist/latest.yml)) { throw 'latest.yml missing: installed copies could not update to this release' }
+          $files = Get-ChildItem dist/Orbit-Setup-*.exe, dist/Orbit-Setup-*.exe.sha256, dist/Orbit-Setup-*.exe.blockmap, dist/latest.yml | ForEach-Object { $_.FullName }
           gh release create "${{ github.ref_name }}" $files --draft --title "Orbit ${{ github.ref_name }}" --notes-file RELEASE_NOTES.md
 
       - uses: actions/upload-artifact@v4
@@ -58,3 +61,5 @@ jobs:
           path: |
             dist/Orbit-Setup-*.exe
             dist/Orbit-Setup-*.exe.sha256
+            dist/Orbit-Setup-*.exe.blockmap
+            dist/latest.yml

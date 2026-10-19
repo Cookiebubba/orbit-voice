@@ -9,13 +9,15 @@
   - It stays on top of Claude without floating over other apps.
   - It hides while Claude is minimized.
   - Drag it to choose its spot, which is remembered from the nearest corner.
-- While Claude works, Claude-orange tiles flow through the orb, fading in and out smoothly, instead of a pulsing orange ring around it. The orb also brightens to at least 85% opacity, even when Grok is off or asleep (normally 55% and 30%). Otherwise it changes only with Grok's state and its opacity.
+- While Claude works and Grok is off or asleep, Claude-orange tiles flow through the orb, fading in and out smoothly, instead of a pulsing orange ring around it. While Grok is on, the orb keeps its own colors. Otherwise it changes only with Grok's state and its opacity.
+- The orb's brightness has one clear step per state: asleep 25%, off 35%, Claude working with Grok off 60%, Grok listening 80%, and full while you talk or Grok thinks or answers. Grok listening is always brighter than Claude working, so you can tell Grok is on.
+- Each Grok session's end is logged with its length, who ended it, and counts only (seconds of mic audio sent, loudest level, how often Grok heard you and replied, tool calls). No audio or words are logged.
 - The orb has no glow or ring around it any more: its brightness alone shows activity.
-- **Pulse with your voice** (Settings → App, optional): the orb grows up to 6% with your voice level.
-- **Mute my mic in other apps while Grok listens** (Settings → Listening, optional): the apps you choose get silence while Grok has your mic, and get it back when Grok sleeps.
-  - Choose "mute all apps except…" or "mute only…", and switch individual apps from the list of apps using your mic.
-  - Recording and audio-routing apps (OBS, Streamlabs, Cap, Voicemeeter, Krisp, NVIDIA Broadcast, Voicemod…) are left alone by default.
-  - Orbit only unmutes what it muted, and recovers after a crash.
+- **Pulse with your voice** and **Pulse with Grok's voice** (Settings → App, optional, separate): the orb grows with the voice level, by an amount you set (1–10%). It's drawn inside the shader, so the tile grid stays crisp and the animation isn't disturbed. Scaling the whole orb image made the tiles shimmer.
+- **Updates from GitHub Releases** (Settings → Updates).
+  - "Update automatically" (on by default) checks at launch and every 6 hours, downloads in the background, and installs when you quit, or right away with "Restart to update".
+  - With it off, Orbit checks only when you press "Check now".
+  - Each download is verified against the release's SHA-512 before installing. Releases now include `latest.yml` and a blockmap for this.
 - The session finder no longer shows "Loading…" before you type.
 - Settings has a thin pill scrollbar. Hovering or dragging it outlines the whole track.
 - `npm test` runs the new tests.

@@ -27,6 +27,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "electron-updater": "6.8.10",
     "ws": "^8.18.0"
   },
   "devDependencies": {
@@ -50,8 +51,7 @@
     ],
     "asarUnpack": [
       "src/desktop.ps1",
-      "electron/claude-window.ps1",
-      "electron/mic-steal.ps1"
+      "electron/claude-window.ps1"
     ],
     "directories": {
       "output": "dist",
@@ -78,7 +78,14 @@
       "shortcutName": "Orbit",
       "deleteAppDataOnUninstall": false
     },
-    "publish": null,
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Cookiebubba",
+        "repo": "orbit-voice",
+        "releaseType": "release"
+      }
+    ],
     "extraResources": [
       {
         "from": "resources/models",

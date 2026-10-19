@@ -32,7 +32,6 @@ import {
   updateSettings,
 } from './config.js';
 import { askBrain, findClaude } from './brain.js';
-import { BUILTIN_LEAVE, decide } from './mic-apps.js';
 import { setClipboardWriter } from './clipboard.js';
 import { getDesktopInfo, listSidebarSessions, switchSession } from './desktop.js';
 import { getLogDir, initLog, logError, logInfo, logWarn, recentLog } from './log.js';
@@ -217,7 +216,7 @@ function tokenMatches(value) {
  * Start the bridge. Resolves with its URL; rejects if the port is taken.
  * The desktop app passes its own config folder and encrypted key store.
  */
-export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, brainSecrets, clipboard, models, micApps } = {}) {
+export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, brainSecrets, clipboard, models } = {}) {
   initConfig({ dir: configDir, secrets, brainSecrets });
   if (clipboard) setClipboardWriter(clipboard);
   const modelsDir = models || path.join(PROJECT_ROOT, 'resources', 'models');
@@ -383,26 +382,6 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           return sendJson(res, result.ok ? 200 : 409, result);
         }
 
-        case 'GET /api/mic/apps': {
-          // For Settings → "Mute my mic in other apps": the apps using a microphone now, plus any
-          // the user has chosen for, each with what will happen to it while Grok listens.
-          if (!micApps) return sendJson(res, 404, { error: 'only available in the desktop app' });
-          const seen = new Map();
-          for (const s of await micApps()) {
-            if (!s.exe) continue; // a program we can't see (e.g. running as administrator): follows the default
-            const exe = path.win32.basename(s.exe).toLowerCase();
-            if (s.exe.toLowerCase() === process.execPath.toLowerCase()) continue; // Orbit itself
-            const prev = seen.get(exe);
-            seen.set(exe, { exe, name: s.name || prev?.name || exe, active: !!(s.active || prev?.active), running: true });
-          }
-          const settings = { micStealDefault: getSetting('micStealDefault'), micStealRules: getSetting('micStealRules') };
-          for (const exe of Object.keys(settings.micStealRules)) if (!seen.has(exe)) seen.set(exe, { exe, name: BUILTIN_LEAVE[exe] || exe.replace(/\.exe$/, ''), active: false, running: false });
-          const apps = [...seen.values()]
-            .map((a) => ({ ...a, ...decide(a.exe, settings) }))
-            .sort((a, b) => Number(b.active) - Number(a.active) || Number(b.running) - Number(a.running) || a.name.localeCompare(b.name));
-          return sendJson(res, 200, { apps });
-        }
-
         case 'GET /api/brain': {
           // Second brain status for Settings: is Claude Code found, and how it connects.
           const claude = findClaude(getSetting('brainClaudePath'));
@@ -515,7 +494,12 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
   wss.on('connection', (browser) => {
     const toBrowser = (obj) => browser.readyState === WebSocket.OPEN && browser.send(JSON.stringify(obj));
     const apiKey = getApiKey();
+    let connectedAt = Date.now();
+    let pageClosed = false; // Orbit hung up (sleep, hotkey, quit), as opposed to Grok closing
+    // For the log line when the session ends (no audio or words are kept, only counts).
+    const stats = { micBytes: 0, micPeak: 0, heard: 0, replies: 0, tools: 0 };
     if (!apiKey) {
+      logWarn('xai', 'Could not start Grok: no xAI API key saved');
       toBrowser({ type: 'bridge.error', message: 'No xAI API key yet. Add it on the setup screen.' });
       return browser.close();
     }
@@ -601,6 +585,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     };
 
     upstream.on('open', () => {
+      connectedAt = Date.now();
+      logInfo('xai', 'Grok session started');
       hooks.pushConfig();
       toBrowser({ type: 'bridge.ready', model: getSetting('model'), voice: getSetting('voice') });
       runTool('get_current_session').catch(() => {});
@@ -620,6 +606,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         logWarn('xai', evt.error?.message || 'Grok reported an error', evt.error?.code || evt.error?.type);
       } else if (evt.type === 'input_audio_buffer.speech_started') {
         speechStartedAt = Date.now();
+        stats.heard++;
       } else if (evt.type.startsWith('conversation.item.input_audio_transcription') && typeof evt.transcript === 'string') {
         setUtterance(evt.transcript, speechStartedAt || Date.now());
       } else if (evt.type === 'response.created') {
@@ -628,6 +615,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       } else if (evt.type === 'response.function_call_arguments.done') {
         callsInFlight++;
         callsThisResponse++;
+        stats.tools++;
         toBrowser({ type: 'bridge.tool', name: evt.name, args: evt.arguments });
         const result = await runTool(evt.name, evt.arguments);
         toBrowser({ type: 'bridge.tool_result', name: evt.name, result });
@@ -635,6 +623,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         callsInFlight--;
         maybeContinue();
       } else if (evt.type === 'response.done') {
+        stats.replies++;
         responding = false;
         responseDone = true;
         maybeContinue();
@@ -656,7 +645,14 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       toBrowser({ type: 'bridge.error', message: `xAI connection error: ${e.message}` });
     });
     upstream.on('close', (code, reason) => {
-      if (code !== 1000 && code !== 1005) logWarn('xai', `Grok connection closed (code ${code})`, reason.toString());
+      // Every end is logged: from the orb you can't see the window's error captions.
+      const secs = Math.round((Date.now() - connectedAt) / 1000);
+      const why = reason.toString();
+      const micSecs = (stats.micBytes / 2 / 24000).toFixed(1); // pcm16 mono at 24 kHz
+      const heard = `mic audio sent ${micSecs}s, loudest ${Math.round((stats.micPeak / 32768) * 100)}%, heard you ${stats.heard}x, replied ${stats.replies}x, tools ${stats.tools}`;
+      if (pageClosed) logInfo('xai', `Grok session ended by Orbit after ${secs}s (hang up / sleep)`, heard);
+      else if (code !== 1000 && code !== 1005) logWarn('xai', `Grok closed the connection after ${secs}s (code ${code})`, `${why} · ${heard}`);
+      else logWarn('xai', `Grok ended the session after ${secs}s (code ${code})`, `${why || 'no reason given'} · ${heard}`);
       toBrowser({ type: 'bridge.closed', code, reason: reason.toString() });
       browser.close();
     });
@@ -669,6 +665,11 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         return;
       }
       if (!msg || typeof msg.type !== 'string') return;
+      if (msg.type === 'input_audio_buffer.append' && typeof msg.audio === 'string') {
+        const pcm = Buffer.from(msg.audio, 'base64');
+        stats.micBytes += pcm.length;
+        for (let i = 0; i + 1 < pcm.length; i += 64) stats.micPeak = Math.max(stats.micPeak, Math.abs(pcm.readInt16LE(i)));
+      }
       if (FORWARDABLE.has(msg.type)) return toXai(msg);
       switch (msg.type) {
         case 'ui.send_draft': {
@@ -695,6 +696,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     });
 
     browser.on('close', () => {
+      pageClosed = true;
       tools.dispose();
       for (const w of utteranceWaiters) w();
       liveSessions.delete(hooks);
