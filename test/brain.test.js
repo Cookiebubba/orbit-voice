@@ -141,6 +141,9 @@ test('failures come back as plain words: not signed in, rate limit, garbage, tim
   const run = (reply, extra = {}) => askBrain({ question: 'q?', model: 'haiku', claudePath: 'claude', spawnImpl: fakeSpawn(reply, extra).impl, ...extra });
   let r = await run(JSON.stringify({ subtype: 'success', is_error: true, result: 'Invalid API key · Please run /login' }));
   assert.match(r.error, /not signed in/);
+  // The exact text Claude Code 2.1.303 prints when its saved login can't renew itself.
+  r = await run(JSON.stringify({ subtype: 'success', is_error: true, result: 'Failed to authenticate: OAuth session expired and could not be refreshed' }));
+  assert.match(r.error, /sign-in has expired.*\/login/);
   r = await run(JSON.stringify({ subtype: 'error_during_execution', is_error: true, result: 'Rate limit reached' }));
   assert.match(r.error, /rate-limited/);
   r = await run('this is not json', { code: 1 });

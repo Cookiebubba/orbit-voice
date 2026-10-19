@@ -223,6 +223,7 @@ process.on('exit', () => { for (const c of live) killTree(c, true); });
 
 function describeFailure(text, code) {
   const t = String(text || '').trim();
+  if (/session expired|could not be refreshed|token.*expired/i.test(t)) return 'Claude Code\x27s sign-in has expired. Open a terminal, run "claude", type /login and sign in again (or add an Anthropic API key in Orbit Settings).';
   if (/unknown option.*restricted/i.test(t)) return 'This Claude Code is too old for the second brain. Update Claude Code (run "claude update") and try again.';
   if (/log ?in|authenticat|api key|unauthori[sz]ed|401/i.test(t)) return 'Claude Code is not signed in. Open Claude Code once and sign in, or add an Anthropic API key in Orbit Settings.';
   if (/budget/i.test(t)) return 'The second brain hit its spending limit for one question.';
