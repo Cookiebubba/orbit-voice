@@ -1,13 +1,20 @@
-<p align="center"><img src="docs/hero.png" width="900" alt="Orbit: the floating orb over Claude Code Desktop, powered by Grok Voice"></p>
+<p align="center"><a href="docs/demo.mp4"><img src="docs/demo.gif" width="900" alt="Orbit demo: the Grok Voice orb floating over Claude Code Desktop, answering &quot;What's Claude doing?&quot;"></a></p>
 
 <h1 align="center"><img src="assets/icon.png" width="40" alt="" align="top"> Orbit</h1>
 
 <p align="center"><b>A hands-free voice companion for Claude Code Desktop, powered by Grok Voice.</b><br>
 Ask what Claude is doing, hear when it finishes, switch sessions, and dictate prompts, without touching the keyboard.</p>
 
-<p align="center"><a href="../../releases/latest"><b>Download for Windows</b></a> · <a href="#how-it-works">How it works</a> · <a href="SECURITY.md">Security</a></p>
+<p align="center">
+  <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/Cookiebubba/orbit-voice?label=release&color=D97757&style=flat-square" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0b0b0c?style=flat-square" alt="Windows 10 and 11">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Cookiebubba/orbit-voice?color=0b0b0c&style=flat-square" alt="MIT license"></a>
+  <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-reviewed-0b0b0c?style=flat-square" alt="Security reviewed"></a>
+</p>
 
-<p align="center"><img src="docs/screenshot.png" width="300" alt="Orbit main window"></p>
+<p align="center"><a href="../../releases/latest"><b>⬇ Download for Windows</b></a> · <a href="docs/demo.mp4">Watch the demo (MP4)</a> · <a href="#how-it-works">How it works</a> · <a href="SECURITY.md">Security</a></p>
+
+<p align="center"><img src="docs/screens.png" width="900" alt="Four Orbit screens: Ask (Grok answers out loud), Dictate (a draft waiting for your yes), Review (this run's conversation), Tune (voice, speed and listening settings)"></p>
 
 > Orbit is an independent open-source project. It is not affiliated with, endorsed by, or sponsored by xAI or Anthropic. Grok is a trademark of xAI; Claude is a trademark of Anthropic.
 
@@ -67,15 +74,20 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 
 ## How it works
 
-```
- Orbit (Electron)
-   ├── main window + floating orb (React; orb is orbkit SHDR-29)
-   └── local bridge on 127.0.0.1:4317 (inside the app)
-         ├── Grok Voice realtime API   wss://api.x.ai/v1/realtime  (your key)
-         ├── reads sessions            Claude's session list + ~/.claude/projects/**/*.jsonl  (read-only)
-         ├── watches for "finished"    stat()s recent transcripts every 2 s
-         ├── fills / sends / switches  Windows UI Automation on the Claude window (no keystrokes, no clipboard)
-         └── second brain              your Claude Code, headless (claude -p): read-only, isolated, nothing saved
+```mermaid
+flowchart LR
+  you(["🎙️ You"]) <--> ui
+  subgraph orbit["Orbit (Electron)"]
+    ui["Main window +<br/>floating orb"] <--> bridge["Local bridge<br/>127.0.0.1:4317"]
+    updater["Updater"]
+  end
+  bridge <-->|"realtime voice<br/>(your key)"| grok[("Grok Voice API<br/>api.x.ai")]
+  bridge -->|"reads, read-only"| files["Claude session list +<br/>~/.claude/projects/**/*.jsonl"]
+  bridge -->|"watches every 2 s"| files
+  bridge -->|"fill, send, switch<br/>(UI Automation, no keystrokes)"| claude["Claude Code Desktop"]
+  bridge -->|"hard questions<br/>(read-only, restricted)"| brain["Second brain:<br/>your Claude Code, headless"]
+  updater -->|"published releases<br/>(SHA-512 checked)"| releases[("GitHub Releases")]
+  wake["'Hey Grok' wake word<br/>(offline, on your PC)"] -.-> ui
 ```
 
 - Claude's **Microsoft Store** version keeps its session list in `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude`. The regular installer uses `%APPDATA%\Claude`. Orbit checks both.
