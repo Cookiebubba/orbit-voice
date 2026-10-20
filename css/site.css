@@ -21,7 +21,10 @@ html { font-size: clamp(13px, min(1.1111vw, 1.7778vh), 44px); }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; overflow: hidden; }
+html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+/* on phones the whole page is a touch surface for the wall: no panning, pinch, bounce or
+   pull-to-refresh, and no text selection while dragging. The docs scroller opts back in below. */
+body { touch-action: none; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 body { background: #000; color: var(--fg); font: 1rem/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
 a { color: inherit; }
 img { display: block; }
@@ -100,6 +103,7 @@ body[data-page="home"] .brand { opacity: 0; pointer-events: none; } /* the hero 
 
 /* the scroll area fills the whole view, so the wheel works anywhere; the text column sits centred inside it */
 .scroller { position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; outline: none;
+            touch-action: pan-y; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default;
             scrollbar-width: none;
             -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%);
                     mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%); }

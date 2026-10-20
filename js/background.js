@@ -105,6 +105,7 @@ uniform float uCellPx;
 uniform float uDrift, uChurn, uShuffle;          // integrated clocks
 uniform float uCoverage, uGain, uConfetti, uScale, uSwirl;
 uniform sampler2D uOff;
+uniform vec4 uRip[4];                            // click ripples: tile x, tile y, age (s), strength (0 = none)
 const vec3 LIT = vec3(1.0, 0.949, 0.867);
 const vec3 WALLC = vec3(0.086);
 
@@ -124,6 +125,21 @@ void main(){
   vec2 warp = vec2(fbm(p2 * 0.9 + f2), fbm(p2 * 0.9 + f2.yx + 13.7)) - 0.5;
   float field = fbm(p2 + f1 + warp * uSwirl * 2.4);
   float lum = smoothstep(1.0 - uCoverage, 1.14 - uCoverage, field + 0.15 * key) * uGain;
+
+  // ripples: a ring of tiles rolls out from each click, with a softer echo behind it, widening and
+  // fading as it travels. It lights tiles to the same level as the wall's own lit tiles (uGain), never brighter.
+  float rip = 0.0;
+  for (int i = 0; i < 4; i++) {
+    vec4 r = uRip[i];
+    if (r.w <= 0.0) continue;
+    float dist = length(cellIdx + 0.5 - r.xy);
+    float front = r.z * 11.0;                    // tiles per second
+    float width = 1.2 + r.z * 0.9;
+    float fade = exp(-r.z * 0.6) * r.w;
+    float ring = exp(-pow((dist - front) / width, 2.0)) + 0.5 * exp(-pow((dist - front + 5.0 + r.z * 1.5) / (width * 1.3), 2.0));
+    rip = max(rip, ring * fade);
+  }
+  lum = max(lum, min(rip, 1.0) * uGain);
 
   // tile geometry stays on the fixed grid (it's the hardware); only the light moves
   vec2 d2 = abs(g - 0.5);
@@ -228,8 +244,9 @@ export function startBackground(canvas) {
     }
     if (p.u.uGrid) gl.uniform2f(p.u.uGrid, grid[0], grid[1]);
     for (const [name, v] of Object.entries(uni)) {
-      const loc = p.u[name]; if (!loc) continue;
-      if (typeof v === "number") gl.uniform1f(loc, v);
+      const loc = p.u[name] ?? p.u[name + "[0]"]; if (!loc) continue;
+      if (v instanceof Float32Array) gl.uniform4fv(loc, v);
+      else if (typeof v === "number") gl.uniform1f(loc, v);
       else if (v.length === 2) gl.uniform2f(loc, v[0], v[1]);
       else gl.uniform3f(loc, v[0], v[1], v[2]);
     }
@@ -243,16 +260,21 @@ export function startBackground(canvas) {
     return [x * dpr / cellPx, (innerHeight - y) * dpr / cellPx];
   };
   let mouse = null, lastMouse = null, splash = null;
+  const ripples = []; // { x, y, age }
+  const ripBuf = new Float32Array(16);
   // mouse, finger or pen all stir it; a lifted finger ends its stroke so the next touch doesn't streak across
   addEventListener("pointermove", e => { mouse = toTile(e.clientX, e.clientY); });
   const lift = e => { if (e.pointerType !== "mouse") mouse = lastMouse = null; };
   addEventListener("pointerup", lift);
   addEventListener("pointercancel", lift);
   document.addEventListener("pointerleave", () => { mouse = lastMouse = null; });
-  // a click on empty space splashes; clicks on links, buttons and reading text don't
-  addEventListener("pointerdown", e => {
-    if (e.target.closest("a, button, .doc, .install")) return;
-    splash = toTile(e.clientX, e.clientY);
+  // a click or tap on open wall ripples out (a drag doesn't: no click fires); links, buttons, the video and docs text don't
+  addEventListener("click", e => {
+    if (e.target.closest("a, button, video, .doc, .install")) return;
+    const [x, y] = toTile(e.clientX, e.clientY);
+    ripples.push({ x, y, age: 0 });
+    if (ripples.length > 4) ripples.shift();
+    splash = [x, y];
   });
 
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -278,7 +300,7 @@ export function startBackground(canvas) {
         push = [vx * k, vy * k];
       }
       lastMouse = mouse;
-      const sp = splash ? [splash[0], splash[1], 60 * BG.force] : [0, 0, 0];
+      const sp = splash ? [splash[0], splash[1], 32 * BG.force] : [0, 0, 0]; // a gentle push to go with the ring
       splash = null;
 
       pass(prog.splat, T.vel.write, { uVel: T.vel.read }, { uA: a, uB: b, uPush: push, uRadius: BG.radius, uSplash: sp });
@@ -293,8 +315,13 @@ export function startBackground(canvas) {
       T.vel.swap();
     }
 
+    for (const r of ripples) r.age += dt;
+    while (ripples.length && ripples[0].age > 6) ripples.shift();
+    ripBuf.fill(0);
+    ripples.forEach((r, i) => ripBuf.set([r.x, r.y, r.age, 1], i * 4));
+
     pass(prog.wall, null, { uOff: T.off.read }, {
-      uRes: [canvas.width, canvas.height], uCellPx: cellPx,
+      uRes: [canvas.width, canvas.height], uCellPx: cellPx, uRip: ripBuf,
       uDrift: clock.drift, uChurn: clock.churn, uShuffle: clock.shuffle,
       uCoverage: BG.coverage, uGain: BG.gain, uConfetti: BG.confetti, uScale: BG.scale, uSwirl: BG.swirl,
     });
