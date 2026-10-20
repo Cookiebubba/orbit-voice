@@ -55,6 +55,17 @@ const SEED = Number(opt('seed', Math.floor(Math.random() * 1e6)));
 const ITERATIONS = Math.max(1, Number(opt('iterations', 3)));
 const PORT = Number(opt('port', 4403));
 const KEEP = process.argv.includes('--keep');
+// Earlier runs' profiles left behind (Chromium still holds some files while a run quits, so each
+// run's own folder is removed by a later run). A failed run's profile is kept 6 hours to look at.
+for (const d of fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('orbit-fuzz-e2e-'))) {
+  const p = path.join(os.tmpdir(), d);
+  try {
+    const age = Date.now() - fs.statSync(p).mtimeMs;
+    const result = path.join(p, 'result.txt');
+    const failed = fs.existsSync(result) && /RESULT FAIL|HARNESS/.test(fs.readFileSync(result, 'utf8'));
+    if (age > 600_000 && !(failed && age < 6 * 3_600_000)) fs.rmSync(p, { recursive: true, force: true });
+  } catch {}
+}
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-fuzz-e2e-'));
 const RESULT = path.join(tmp, 'result.txt');
 const out = (line) => {
@@ -618,9 +629,13 @@ function finish(code) {
   if (finished) return;
   finished = true;
   out(`RESULT ${code === 0 ? 'PASS' : 'FAIL'} seed ${SEED}: ${violations.length} violation(s)`);
-  if (!KEEP && code === 0) fs.rm(tmp, { recursive: true, force: true }, () => {});
-  else out(`profile kept at ${tmp}`);
-  setTimeout(() => app.exit(code), 300);
+  const keep = KEEP || code !== 0;
+  if (keep) out(`profile kept at ${tmp}`);
+  setTimeout(() => {
+    // Once Orbit has let go of its files (Chromium holds some until it quits).
+    if (!keep) for (let i = 0; i < 5; i++) try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 3 }); break; } catch {}
+    app.exit(code);
+  }, 500);
 }
 
 async function run() {
