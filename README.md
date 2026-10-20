@@ -99,8 +99,9 @@ flowchart LR
 ```
 
 - Claude's **Microsoft Store** version keeps its session list in `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude`. The regular installer uses `%APPDATA%\Claude`. Orbit checks both.
-- **Sending a prompt** fills Claude's prompt box through Windows accessibility and presses Claude's own Send button. There are no key presses, focus changes or clipboard use. It refuses if the box already has your own typing, if a different session is open than the one the draft was for, or if it can't confirm the text landed.
-- **Switching sessions** presses the session's sidebar button through accessibility, and confirms the window title changed.
+- **Sending a prompt** fills Claude's prompt box through Windows accessibility and presses Claude's own Send button. There are no key presses, focus changes or clipboard use. It goes into the one Claude window showing the session the draft was for, and refuses if no window or two windows show it, if the box already has your own typing, or if it can't confirm the text landed. The session is checked again just before Send is pressed.
+- **Several Claude windows** (sessions popped out into windows of their own, or more than one main window): Orbit works in the one you were in last, the same one the orb sits on. Grok's "current session" is that window's session.
+- **Switching sessions** brings forward the Claude window the session is already open in. Otherwise it presses the session's sidebar button through accessibility and confirms the window title changed. Bringing a window forward is the one focus change Orbit makes, and only when you ask to switch.
 - **Starting a new session** presses Claude's own **New** button in its sidebar (or **New session in *folder*** when you name a project), and confirms an empty new-session page appeared. Nothing is typed. Claude creates the session when you send the first prompt, which goes through the usual draft and "yes". That send checks the new, still-empty session is still the one open. Reading it back waits a few seconds for Claude to save it to disk, and never reads a different session in its place.
 - **Spoken updates while asleep** connect only when Claude finishes and the setting is on. The bridge itself drops all mic audio until Grok's update has been spoken and the window has opened, forwards it for about 3 seconds, and hangs up if you didn't speak. The window's page doesn't even open the microphone before then. Only speech that's transcribed into words carries on (a cough doesn't), and a conversation started this way hangs up after 20 seconds of quiet.
 - **The wake word** uses [Vosk](https://alphacephei.com/vosk/) (small English model, ~40 MB, shipped with the installer) running in a hidden helper page. "Grok" isn't in that model's vocabulary, so Orbit listens for close matches ("hey rock", "hey brock") and gives the model decoy names ("Brooke", "Rob", "Bob", "Rocky"...) so similar names don't trigger it. In testing it caught 10 of 10 "Hey Grok" clips across 9 voices and ignored 12 of 13 sound-alikes. The one miss was someone actually saying "Hey Brock".
@@ -112,7 +113,8 @@ flowchart LR
 
   It's capped at 1, 2.5 or 5 minutes for Haiku, Sonnet or Opus. With "Wake Grok when something you asked for is ready" on, it carries on to that limit if you hang up, and its answer is passed on later; otherwise it stops when you hang up. It answers in a fixed shape (`--json-schema`), with each field checked and trimmed.
 - **The resume note** is built by Orbit itself, with no model call, from what the bridge already has, and kept in memory for 30 minutes. It goes into the next call quietly, as Orbit's own labelled record, so Grok doesn't start talking about it, and it never counts as anything you said.
-- **Stick to Claude Code** runs a small helper that listens for Windows' own events: the Claude window moving, being minimized or changing virtual desktop, and another app coming to the front.
+- **Stick to Claude Code** runs a small helper that listens for Windows' own events: a Claude window moving, being minimized, closing or changing virtual desktop, and another app coming to the front.
+  - With several Claude windows, the orb docks on the one you were in last and moves when you switch windows. If that one is minimized, it moves to one that's still on screen.
   - The helper moves the orb itself the instant Claude moves, so the orb doesn't trail behind a dragged window. In a simulated drag it stayed in place for 39 of 40 steps.
   - It works in real pixels on every display (per-monitor DPI aware), and keeps the orb a fixed distance from the window's corner, in Orbit's own units, at any resolution or scaling.
   - It uses under 1% of one CPU core while idle.
@@ -149,6 +151,37 @@ npm run app
 `npm run dist` builds the installer into `dist/`. `npm run web` runs the same UI in a browser tab (no floating orb or hotkey). `npm run check` reads your sessions without needing a key.
 
 Project layout: `electron/` window shell, tray and hotkey · `src/` local bridge, Grok tools, session reader and watcher, Windows automation script · `ui/` React UI.
+
+### Testing
+
+None of these touch the real Claude app, xAI or Anthropic, and none use your `%APPDATA%\Orbit`.
+
+| Command | What it runs |
+| --- | --- |
+| `npm test` | Unit tests, plus `test/sandboxed/` with the Claude window and the second brain swapped for fakes. |
+| `npm run fuzz -- --seed N --port 4402` | In-process fuzzer: random tool calls, bridge messages and a fake Grok, against the bridge and tool runner. |
+| `npm run e2e:wake` | Real Orbit page in a hidden Electron window and a fake Grok: checks a spoken update's audio really plays. `E2E_PORT` picks the port (default 4391). |
+| `npm run fuzz:e2e -- --seed N --iterations M [--port 4403] [--keep]` | End-to-end fuzzer (below). |
+| `npm run check` | Reads your sessions from disk, no key needed. |
+
+`npm run fuzz:e2e` runs the real app, `electron/main.js`, hidden, against test doubles:
+
+- A fake Grok realtime server (`test/e2e/fake-grok.mjs`) sends realistic but random events: audio in steady, bursty or slow rhythms, transcripts, function calls, errors, slow starts and abrupt drops (1006).
+- A fake `claude.exe` (`test/e2e/FakeClaude.cs`) is built with .NET Framework's `csc.exe` into a temp folder. The real second brain spawns it for real. It checks every argument and answers valid, malformed, huge, hostile, signed-out, slow, hanging and crashing.
+- A fake Claude window (`test/e2e/fake-desktop.mjs`) with several windows, loaded through the dev-only `ORBIT_FAKE_DESKTOP` switch.
+- Claude sessions on disk in a throwaway profile, finished by appending to their transcripts, so the real watcher wakes Grok.
+
+The harness clicks, types, presses the hotkey and talks through the fake Grok at random. It fails on:
+
+- a crash or hang
+- a prompt sent without a fresh yes
+- a switch, new session or copy done because of a notification, or one you asked for being refused
+- a wake that's silent, opens the mic before Grok spoke, or breaks the gap or hourly cap
+- a key or your words in the logs
+- not recovering after Grok drops the call
+- a second-brain process left running
+
+Every socket, DNS lookup and fetch is limited to 127.0.0.1. Chromium resolves no host names. The only child processes allowed are the fake `claude.exe` and `taskkill` on its own processes. The clipboard, hotkey and dialogs are stubbed. The tray icon does show while it runs. Build the UI first (`npm --prefix ui run build`).
 
 ## Security
 

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Fixed: "switch to…" and "copy that" were refused although you'd asked.** Other Claude sessions finishing mid-call sent an app notification between your words and Grok acting on them, and that voided your request. Now your own words, when they ask for it ("switch to…", "open…", "go to…", "copy…", "start a new session", "tell Claude to…"), stay a request for 2 minutes, once each and never when negated. Words that don't ask, like "yes" to Grok's offer, still have to come after the latest notification, so a notification or transcript still can't make Grok switch, copy or start a session on its own. The bridge also holds an update back while Grok is still acting on what you asked.
+- **Several Claude windows.** Orbit now sees every Claude window: the main one and sessions popped out into their own.
+  - Grok's "current session" is the one in the window you were in last, the same window the orb sits on. Grok hears which sessions the other windows show.
+  - "Switch to…" brings forward the window a session is already open in, or opens it from the sidebar.
+  - A prompt goes into the one window showing its session, and is refused if two do. It's still checked again just before Send.
+- **The orb follows you between Claude windows** (Stick to Claude Code). It docks on the Claude window most recently in front, with the same spot and no lag. If that window is minimized, it moves to one that's still on screen, and it hides only when every Claude window is minimized.
+- Bugs found by the new end-to-end fuzzer, all fixed:
+  - Your words could reach the log. A failed tool logged its whole error, and some errors quote you back to Grok: "No session matched …" with your search words, or "your reply (…) isn't a clear yes". Quoted text is now left out of the log. A failed Claude-window script no longer logs its command line, which carried the prompt in base64.
+  - An expired Claude Code token ("OAuth token has expired") was reported as an expired sign-in, but Grok didn't offer to open the sign-in.
+  - A prompt you dictated ("tell Claude to…") was refused as a draft when a second-brain answer arrived before Grok drafted it.
+  - Orbit's window went blank, until a restart, if Grok called a tool named like `__proto__`. The page now only shows its own tool notes, and every caption is plain text.
+- **End-to-end fuzzer** (`npm run fuzz:e2e -- --seed N --iterations M`). It drives the real app, hidden, against a fake Grok, a fake `claude.exe` built from C# and a fake Claude window, with every connection outside 127.0.0.1 blocked. See README → Testing.
+- `npm run e2e:wake` takes its port from `E2E_PORT`.
+
 - **Fixed: Grok was silent on spoken updates.** The page's playback position carried over from the previous call. With nobody speaking first, as on a wake, Grok's audio was scheduled as many seconds late as the last call had lasted. It now starts on time, and a wake can't wedge on audio that never plays.
 - **Fixed: a spoken update could leave the mic shut.** That happened when Grok answered with a tool call and then a reply without audio, so you couldn't answer or say "go to sleep". The window now opens once Grok has spoken and gone quiet, or after 2 s if it never made a sound. Pressing the hotkey or clicking the orb hangs up a wake at once.
 - **Spoken updates come together.** One wake says everything that's due, and wakes are at least 30 s apart and at most 6 an hour. A busy session can't wake Grok again for 3 minutes, and a call Grok started by itself ends after 3 minutes unless you type to it. Updates name the session exactly, by id.
