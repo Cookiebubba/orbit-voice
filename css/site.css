@@ -26,10 +26,12 @@ body { background: #000; color: var(--fg); font: 1rem/1.6 var(--sans); -webkit-f
 a { color: inherit; }
 img { display: block; }
 
-#bg { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; transform-origin: 50% 50%; z-index: 0; }
+#bg { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; transform-origin: 50% 50%; z-index: 0; touch-action: none; }
 
 /* ---------------------------------- frame ---------------------------------- */
-.app { position: relative; z-index: 1; height: 100vh; display: grid; grid-template-rows: 4.75rem 1fr 4rem; }
+/* dvh: the screen that's actually visible on phones, between the browser's toolbars */
+.app { position: relative; z-index: 1; height: 100vh; height: 100dvh; display: grid; grid-template-rows: 4.75rem 1fr 4rem;
+       padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 
 .top, .bottom { display: flex; align-items: center; justify-content: space-between; padding: 0 var(--edge); }
 .brand { display: flex; align-items: center; gap: .5rem; font-weight: 600; font-size: 1.0625rem; letter-spacing: -.02em; text-decoration: none; transition: opacity .25s; }
@@ -66,6 +68,9 @@ body[data-page="home"] .brand { opacity: 0; pointer-events: none; } /* the hero 
         -webkit-mask: var(--src) center / contain no-repeat; mask: var(--src) center / contain no-repeat; }
 .logo-x { --src: url("https://cdn.jsdelivr.net/npm/simple-icons@13.21.0/icons/x.svg"); width: .95em; height: .95em; color: #fff; }
 .logo-claude { --src: url("https://cdn.jsdelivr.net/npm/simple-icons@13.21.0/icons/claude.svg"); color: var(--claude); }
+.whatis { display: inline-flex; align-items: center; gap: .4rem; margin-top: 1.1rem; font-size: .875rem; font-weight: 500; color: var(--text); text-decoration: none; transition: color .15s; }
+.whatis svg { width: .8rem; height: .8rem; }
+.whatis:hover { color: var(--fg); }
 .fine { margin-top: .9rem; font-size: .8125rem; color: var(--muted); }
 
 .install { width: 19rem; }
@@ -79,6 +84,16 @@ body[data-page="home"] .brand { opacity: 0; pointer-events: none; } /* the hero 
 .links { display: flex; justify-content: center; gap: 1.375rem; margin-top: 1.375rem; font-size: .875rem; }
 .links a { color: var(--text); text-decoration: none; transition: color .15s; }
 .links a:hover { color: var(--fg); }
+
+/* ---------------------------------- about ---------------------------------- */
+/* the video fills the view between header and footer, never taller than the space it has */
+.about { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; padding: 1rem var(--edge) 1.5rem;
+         container-type: size; }
+/* as large as fits: limited by the width, or by the height left after the caption, whichever is tighter */
+.player { flex: none; width: min(100%, calc((100cqh - 4.5rem) * 1540 / 1080)); aspect-ratio: 1540 / 1080; border-radius: 1rem; overflow: hidden;
+          border: 1px solid var(--line); background: #000; box-shadow: 0 2rem 5rem -2rem rgba(0, 0, 0, .9); }
+.player video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.caption { font-size: .8125rem; color: var(--muted); text-align: center; }
 
 /* --------------------------------- reader ---------------------------------- */
 .reader { height: 100%; position: relative; }
@@ -128,8 +143,29 @@ body[data-page="home"] .brand { opacity: 0; pointer-events: none; } /* the hero 
   .home { grid-template-columns: 1fr; align-content: center; gap: 2.5rem; }
   .wordmark { font-size: 5.5rem; }
   .install { width: 100%; max-width: 22rem; }
-  .nav { gap: 1.1rem; }
+  .nav { gap: 1rem; font-size: .8125rem; overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav a[target="_blank"] { display: none; } /* GitHub is in the hero's install links */
+  .player { border-radius: .6rem; }
   .doc { padding-left: var(--edge); padding-right: var(--edge); }
+}
+
+/* phones held sideways: short screens get a compact frame and hero */
+@media (max-height: 560px) and (min-width: 561px) {
+  .app { grid-template-rows: 3.25rem 1fr 3.25rem; }
+  .home { gap: 2rem; }
+  .wordmark { font-size: 4.5rem; }
+  .lockup { margin-top: .9rem; font-size: 1.1rem; }
+  .whatis { margin-top: .6rem; }
+  .fine { margin-top: .5rem; }
+  .install h2 { font-size: 1.35rem; margin-top: .5rem; }
+  .download { height: 2.75rem; margin-top: 1rem; }
+  .links { margin-top: .8rem; }
+  .handle { height: 2rem; }
+  .about { padding-top: .5rem; padding-bottom: .75rem; gap: .5rem; }
+  .caption { display: none; }
+  .player { width: min(100%, calc((100cqh - 1rem) * 1540 / 1080)); }
+  :root { --fade: 2.5rem; --edge: 2.5rem; }
 }
 
 @media (prefers-reduced-motion: reduce) { #view { transition: none; } }

@@ -195,7 +195,8 @@ export function startBackground(canvas) {
 
   let dpr = 1, cellPx = 18, grid = [0, 0], T = null, zoom = 1;
   function resize() {
-    dpr = Math.min(devicePixelRatio || 1, 2);
+    // phones: a lighter render (the tile wall is soft and blurred anyway) so the sim stays smooth
+    dpr = Math.min(devicePixelRatio || 1, matchMedia("(pointer: coarse)").matches ? 1.25 : 2);
     const W = Math.round(innerWidth * dpr), H = Math.round(innerHeight * dpr);
     // tile size is set at the 16px design size and scales with the page (see site.css)
     const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
@@ -242,7 +243,11 @@ export function startBackground(canvas) {
     return [x * dpr / cellPx, (innerHeight - y) * dpr / cellPx];
   };
   let mouse = null, lastMouse = null, splash = null;
-  addEventListener("pointermove", e => { if (e.pointerType === "mouse") mouse = toTile(e.clientX, e.clientY); });
+  // mouse, finger or pen all stir it; a lifted finger ends its stroke so the next touch doesn't streak across
+  addEventListener("pointermove", e => { mouse = toTile(e.clientX, e.clientY); });
+  const lift = e => { if (e.pointerType !== "mouse") mouse = lastMouse = null; };
+  addEventListener("pointerup", lift);
+  addEventListener("pointercancel", lift);
   document.addEventListener("pointerleave", () => { mouse = lastMouse = null; });
   // a click on empty space splashes; clicks on links, buttons and reading text don't
   addEventListener("pointerdown", e => {

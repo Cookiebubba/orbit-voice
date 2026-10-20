@@ -2,15 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
 <title>Orbit</title>
 <meta name="description" content="Orbit: a hands-free voice companion for Claude Code Desktop, powered by Grok Voice. Free and open source.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/site.css?v=3">
+<link rel="stylesheet" href="css/site.css?v=6">
 <!-- bump ?v= (here and the import in site.js) on each publish so browsers drop the old copy -->
-<script type="module" src="js/site.js?v=3"></script>
+<script type="module" src="js/site.js?v=6"></script>
 </head>
 <body data-page="home">
 
@@ -21,6 +22,7 @@
   <header class="top">
     <a class="brand" href="#/">Orbit</a>
     <nav class="nav" aria-label="Main">
+      <a href="#/about" data-route="about">What is Orbit?</a>
       <a href="#/docs" data-route="docs">Docs</a>
       <a href="#/security" data-route="security">Security</a>
       <a href="#/changelog" data-route="changelog">Changelog</a>
@@ -45,6 +47,7 @@
         <i class="bar" aria-hidden="true"></i>
         <span class="who"><i class="logo logo-claude" aria-hidden="true"></i>Claude</span>
       </p>
+      <a class="whatis" href="#/about"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>What is Orbit?</a>
       <p class="fine">Not affiliated with xAI or Anthropic.</p>
     </div>
     <aside class="install">
@@ -60,6 +63,15 @@
         <a href="https://github.com/Cookiebubba/orbit-voice/releases" target="_blank" rel="noopener">Releases <span aria-hidden="true">↗</span></a>
       </p>
     </aside>
+  </section>
+</template>
+
+<template id="tpl-about">
+  <section class="about">
+    <div class="player">
+      <video src="media/orbit-demo.mp4" poster="media/orbit-demo.jpg" autoplay muted loop playsinline controls preload="auto"></video>
+    </div>
+    <p class="caption">Orbit in use: asking what Claude is doing and shipping a release by voice. Sound is off until you turn it on.</p>
   </section>
 </template>
 

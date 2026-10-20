@@ -1,6 +1,6 @@
 import { marked } from "https://cdn.jsdelivr.net/npm/marked@12.0.2/lib/marked.esm.js";
 import DOMPurify from "https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.es.mjs";
-import { startBackground } from "./background.js?v=3";
+import { startBackground } from "./background.js?v=6";
 
 /* --------------------------------- config --------------------------------- */
 const REPO = "Cookiebubba/orbit-voice";
@@ -31,17 +31,18 @@ let release = null; // the latest release's installer, once known
 const cache = new Map(); // fetched markdown, by page
 
 /* --------------------------------- router --------------------------------- */
-// routes: #/  ·  #/docs  ·  #/docs/how-it-works
+// routes: #/  ·  #/about  ·  #/docs  ·  #/docs/how-it-works
+const VIEWS = { about: "What is Orbit?" }; // pages that aren't markdown
 function parse() {
   const [page = "", section = ""] = location.hash.replace(/^#\/?/, "").split("/");
-  return { page: PAGES[page] ? page : "", section };
+  return { page: PAGES[page] || VIEWS[page] ? page : "", section };
 }
 
 async function route() {
   const next = parse();
   if (current && current.page === next.page) {      // same page: just move to the section
     current = next;
-    if (next.page) scrollToSection(next.section, true);
+    if (PAGES[next.page]) scrollToSection(next.section, true);
     return;
   }
   const first = !current;
@@ -51,8 +52,10 @@ async function route() {
   document.querySelectorAll(".nav a[data-route]").forEach(a => {
     if (a.dataset.route === next.page) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
-  document.title = next.page ? `${PAGES[next.page].title} · Orbit` : "Orbit";
-  if (next.page) renderDoc(next.page, next.section); else renderHome();
+  document.title = next.page ? `${PAGES[next.page]?.title || VIEWS[next.page]} · Orbit` : "Orbit";
+  if (next.page === "about") renderAbout();
+  else if (next.page) renderDoc(next.page, next.section);
+  else renderHome();
   view.classList.remove("leaving");
 }
 addEventListener("hashchange", route);
@@ -83,6 +86,12 @@ function showRelease() {
   if (!btn || !release) return;
   btn.href = release.url;
   meta.textContent = `${release.version} · ${release.mb} MB · Windows 10 / 11`;
+}
+
+/* ---------------------------------- about --------------------------------- */
+function renderAbout() {
+  view.replaceChildren(document.getElementById("tpl-about").content.cloneNode(true));
+  view.querySelector("video").play?.().catch(() => {}); // muted autoplay; the poster stands in if a browser refuses
 }
 
 /* ---------------------------------- docs ---------------------------------- */
