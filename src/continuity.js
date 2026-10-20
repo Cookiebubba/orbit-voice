@@ -27,8 +27,11 @@ export const CONTINUITY_LIMITS = {
 export function quoteSafe(v, max = 300) {
   return String(typeof v === 'string' ? v : '')
     .replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, ' ')
-    .replace(/[[\]【】〔〕［］]/g, (c) => ('[【〔［'.includes(c) ? '(' : ')'))
-    .replace(/["“”„‟«»「」]/g, "'")
+    // Every kind of quote mark (initial/final punctuation, and the ones Unicode files elsewhere).
+    .replace(/[\p{Pi}\p{Pf}"＂〝〞〟‟„「」『』﹁﹂﹃﹄｢｣]/gu, "'")
+    // Every kind of bracket: opening ones become "(", closing ones ")".
+    .replace(/\p{Ps}/gu, '(')
+    .replace(/\p{Pe}/gu, ')')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max);
@@ -46,6 +49,9 @@ export function createContinuity({ now = () => Date.now(), limits = CONTINUITY_L
   const ready = []; // { id, kind, at, readyAt, ...payload, spoken }
   let nextId = 1;
   const fresh = (x) => now() - x.at < limits.maxAgeMs;
+  // Expired text is dropped on a timer too, not only the next time Orbit looks.
+  const sweeper = setInterval(() => sweep(), 60_000);
+  sweeper.unref?.();
 
   function sweep() {
     if (note && !fresh(note)) note = null;
@@ -130,7 +136,7 @@ export function createContinuity({ now = () => Date.now(), limits = CONTINUITY_L
     awaitPrompt({ text, sessionTitle = null, sessionId = null }) {
       sweep();
       const s = (v) => (typeof v === 'string' && v ? v : null);
-      const item = { id: nextId++, kind: 'prompt', at: now(), text: s(text) || '', sessionTitle: s(sessionTitle), sessionId: s(sessionId) };
+      const item = { id: nextId++, kind: 'prompt', at: now(), text: (s(text) || '').slice(0, 300), sessionTitle: s(sessionTitle)?.slice(0, 300) || null, sessionId: s(sessionId)?.slice(0, 200) || null };
       awaiting.push(item);
       while (awaiting.filter((a) => a.kind === 'prompt').length > limits.maxAwaited) awaiting.splice(awaiting.findIndex((a) => a.kind === 'prompt'), 1);
       return item;
@@ -152,7 +158,7 @@ export function createContinuity({ now = () => Date.now(), limits = CONTINUITY_L
 
     /** A second-brain question now runs on after its call ended. */
     holdBrain({ question, abort }) {
-      const item = { id: nextId++, kind: 'brain', at: now(), text: typeof question === 'string' ? question : '', abort: typeof abort === 'function' ? abort : () => {} };
+      const item = { id: nextId++, kind: 'brain', at: now(), text: typeof question === 'string' ? question.slice(0, 300) : '', abort: typeof abort === 'function' ? abort : () => {} };
       awaiting.push(item);
       return item;
     },
@@ -184,6 +190,10 @@ export function createContinuity({ now = () => Date.now(), limits = CONTINUITY_L
     markSpoken(items) {
       for (const r of items) r.spoken = true;
       sweep();
+    },
+    /** Drop second-brain answers not passed on yet (the second brain was turned off). */
+    clearBrainResults() {
+      for (let i = ready.length - 1; i >= 0; i--) if (ready[i].kind === 'brain') ready.splice(i, 1);
     },
     /** Drop the awaited prompts and unspoken results (the feature was turned off). */
     clearResults() {

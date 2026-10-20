@@ -22,7 +22,8 @@
     "dist": "npm run build:ui && node scripts/fetch-model.mjs && electron-builder --win --publish never",
     "fetch-model": "node scripts/fetch-model.mjs",
     "test": "node --test test/*.test.js && node --import ./test/fuzz/register.mjs --test test/sandboxed/*.test.js",
-    "fuzz": "node --import ./test/fuzz/register.mjs test/fuzz/fuzz.mjs"
+    "fuzz": "node --import ./test/fuzz/register.mjs test/fuzz/fuzz.mjs",
+    "e2e:wake": "electron scripts/wake-audio-e2e.mjs"
   },
   "engines": {
     "node": ">=20"

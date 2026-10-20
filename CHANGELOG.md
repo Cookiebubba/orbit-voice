@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Fixed: Grok was silent on spoken updates.** The page's playback position carried over from the previous call. With nobody speaking first, as on a wake, Grok's audio was scheduled as many seconds late as the last call had lasted. It now starts on time, and a wake can't wedge on audio that never plays.
+- **Fixed: a spoken update could leave the mic shut.** That happened when Grok answered with a tool call and then a reply without audio, so you couldn't answer or say "go to sleep". The window now opens once Grok has spoken and gone quiet, or after 2 s if it never made a sound. Pressing the hotkey or clicking the orb hangs up a wake at once.
+- **Spoken updates come together.** One wake says everything that's due, and wakes are at least 30 s apart and at most 6 an hour. A busy session can't wake Grok again for 3 minutes, and a call Grok started by itself ends after 3 minutes unless you type to it. Updates name the session exactly, by id.
+- **Picks up where you left off.** For 30 minutes after hanging up, the next call gets Orbit's short resume note: the last few exchanges, the session that was open, an unsent draft, and what you're waiting on. Grok uses it only when you refer back. It's memory only and never counts as your words or consent. A draft in it is just text: Grok drafts it again, reads it back and waits for a fresh yes.
+- **Wake Grok when something you asked for is ready** (Settings → When Claude finishes, on by default with "Grok tells me").
+  - Grok wakes when Claude finishes a prompt it sent for you, or when the second brain answers after you hung up. A question still running at hang-up keeps going to its usual limits.
+  - In a call that's on, it's said there instead.
+  - "Chime only" and "Off" never wake Grok. Results then wait for your next call.
+- **Second-brain answers built for voice.** Claude Code returns a structured answer (`--json-schema`): a short spoken answer, details and file references for follow-ups, and an optional suggested prompt. Grok offers that prompt and drafts it only if you say yes. Every field is checked and trimmed, and a plain-text answer still works.
+- A draft read back before a notification or a second-brain answer came in has to be read back again before a "yes" sends it.
+- The end of each call is logged with Grok's audio received, what the page scheduled and played, and why it hung up (counts and codes only).
+- **Security review (2026-10-20)** ([report](docs/security/2026-10-20-review.md)): 15 issues (6 medium, 9 low), 13 fixed and 2 accepted by design, plus the silent-wake root cause and 6 bugs found by testing.
+- The fuzzer gained `resume` and `wake` phases and hostile structured answers. `npm run e2e:wake` checks in Electron that a wake's audio really plays.
+
 - **Claude Code sign-in made easy.** Claude Code keeps its own sign-in, separate from the Claude desktop app's, and it can expire. Settings → Second brain now shows whether it's signed in, with a **Sign in** button that opens Claude Code's own sign-in. When a question fails because the sign-in expired, Grok says so and offers to open it; say yes and it opens. The message now says the sign-in expired, instead of a generic "not signed in".
 - **Sending is voice-only.** The draft card (Send / Edit / Discard) is gone from Orbit's window. Grok reads the draft back, and only your clear "yes" sends it; to change it, ask Grok to redraft. The bridge no longer accepts the old button messages, so there's one way to approve a send.
 - **Start a new session by voice:** "start a new session" or "new thread in castpilot".

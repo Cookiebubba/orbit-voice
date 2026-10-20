@@ -197,6 +197,9 @@ function readSession(session, { lastN = 8, includeTools = false } = {}) {
   };
 }
 
+/** A second-brain failure for the log: Orbit's own sentence, without any text quoted from the run. */
+const brainErrorForLog = (e) => String(e || '').split(': ')[0].slice(0, 200);
+
 const clampInt = (v, def, max) => Math.max(1, Math.min(max, Number.isFinite(+v) && +v > 0 ? Math.floor(+v) : def));
 
 /** Tunable for tests: how long to wait for a just-started session to show up on disk. */
@@ -284,7 +287,7 @@ export function brainToolResult(result, { label = 'Claude', readProject, note = 
     next_step: [
       'Say "spoken" to the user in your own words (one to three sentences)' + (s.confidence === 'low' ? ', and say plainly that it is not sure' : '') + '.',
       'Keep "details" and "files" for follow-up questions; don\x27t read them out unless asked.',
-      s.suggested_prompt ? 'You may offer once: "Want me to send Claude a prompt for that?" Only if the user says yes, call draft_prompt with the suggested prompt, read it back, and send only after a fresh yes.' : '',
+      s.suggested_prompt ? 'You may offer once: "Want me to send Claude a prompt for that?" A yes to that offer means: call draft_prompt with the suggested prompt (never send_draft on a draft that was already there), read it back, and send only after a fresh yes.' : '',
     ].filter(Boolean).join(' '),
   };
 }
@@ -419,8 +422,14 @@ export function createToolRunner({
     async draft_prompt({ text } = {}) {
       const clean = String(text || '').trim().slice(0, 8000);
       if (!clean) return { error: 'Draft text was empty.' };
-      // The words must come from the user: not from an app notification or a transcript Grok read.
-      if (!heardSince(lastNotificationAt)) return { error: 'Not drafted: ask the user what they want to tell Claude first. A draft needs their own words, said after the latest app notification.' };
+      // The words must come from the user: not from an app notification, a transcript Grok read, or
+      // a second-brain answer (its suggested prompt is only drafted once the user asks for it).
+      // Real words, transcribed: a cough after the latest of those doesn't count.
+      const since = Math.max(lastNotificationAt, lastBrainAnswerAt);
+      const asked = heardSince(since) ? await utteranceSince(since) : null;
+      if (!asked || !/[\p{L}\p{N}]/u.test(String(asked.text))) {
+        return { error: 'Not drafted: ask the user what they want to tell Claude first. A draft needs their own words, said after the latest app notification or second-brain answer.' };
+      }
       const info = await getDesktopInfo();
       if (!info.ok) return { error: info.message || info.error };
       if (!info.promptBoxFound) return { error: 'The Claude app has no prompt box visible. Ask the user to open a Code session.' };
@@ -441,6 +450,11 @@ export function createToolRunner({
     async send_draft() {
       const snapshot = draft; // the exact draft being confirmed
       if (!snapshot) return { ok: false, error: 'There is no draft to send. Use draft_prompt first.' };
+      // Something came in after this draft was read back (an app notification, a held answer, a
+      // second-brain answer with a suggested prompt): a "yes" now may be about that, not the draft.
+      if (Math.max(lastNotificationAt, lastBrainAnswerAt) > snapshot.createdAt) {
+        return { ok: false, error: 'Not sent: something else came in after this draft was read back, so a yes now may not be about it. If the user still wants it, call draft_prompt again, read it back, and wait for a fresh yes.' };
+      }
       const answer = await utteranceSince(snapshot.createdAt);
       if (!answer || Date.now() - answer.at > CONSENT_MAX_AGE_MS) {
         return { ok: false, error: 'Not sent: the user has not answered since the draft appeared. Read the draft back and wait for them to say yes.' };
@@ -592,6 +606,7 @@ export function createToolRunner({
       lastBrainAt = Date.now();
       const controller = new AbortController();
       brainRun = controller;
+      const endRun = brainHolder?.begin?.() || (() => {}); // counts it bridge-wide while this call has it
       let detach;
       const detached = new Promise((resolve) => (detach = resolve));
       brainDetach = detach;
@@ -616,6 +631,9 @@ export function createToolRunner({
       const what = `${BRAIN_MODELS[m].label} ${wantExplore && cwd ? 'explore' : 'think'}`;
       if (!outcome) {
         brainHolder.hold({ question: q, run, controller, label: what });
+        endRun(); // now held by the bridge (which counts it there), or stopped
+      } else endRun();
+      if (!outcome) {
         logInfo('brain', `${what}: handed over (the call ended while it worked)`);
         return {
           deferred: true,
@@ -625,7 +643,7 @@ export function createToolRunner({
       const { result } = outcome;
 
       // No question or answer text in the log, only what happened.
-      logInfo('brain', `${what}: ${result.ok ? `answered in ${result.seconds}s${result.structured ? '' : ' (plain text)'}` : 'failed'}`, result.ok ? `cost $${result.cost ?? '?'}` : result.error);
+      logInfo('brain', `${what}: ${result.ok ? `answered in ${result.seconds}s${result.structured ? '' : ' (plain text)'}` : 'failed'}`, result.ok ? `cost $${result.cost ?? '?'}` : brainErrorForLog(result.error));
       if (!result.ok && result.needsSignIn && getSetting('brainConnection') !== 'api-key') {
         signInOfferedAt = Date.now();
         return {
@@ -696,7 +714,7 @@ export function createToolRunner({
       try {
         const result = await fn(args);
         if (result && (result.error || result.ok === false) && name !== 'get_recent_errors') {
-          logWarn('tool', `${name} failed`, result.message || result.error);
+          logWarn('tool', `${name} failed`, name === 'ask_second_brain' ? brainErrorForLog(result.error) : result.message || result.error);
         }
         return result;
       } catch (e) {

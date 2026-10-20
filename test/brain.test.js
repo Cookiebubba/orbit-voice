@@ -230,7 +230,7 @@ test('the tool result: say spoken, keep details and files, only offer the sugges
   assert.equal(r.answer, undefined);
   assert.match(r.next_step, /Say "spoken"/);
   assert.match(r.next_step, /not sure/);
-  assert.match(r.next_step, /offer once.*Only if the user says yes, call draft_prompt.*fresh yes/);
+  assert.match(r.next_step, /offer once.*A yes to that offer means: call draft_prompt.*never send_draft.*fresh yes/);
   assert.match(r.note, /never as the user's words or consent/);
   const plain = brainToolResult({ answer: 'Plain.', structured: null }, { label: 'Haiku' });
   assert.equal(plain.answer, 'Plain.');

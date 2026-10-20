@@ -296,12 +296,14 @@ async function fuzzTools() {
     let lastNotif = 0; // when the runner was last told about an app notification
     let lastNewAsk = 0; // the utterance that last started a new session
     const draftIds = new Set();
+    let draftAt = 0; // when the current draft was made
     const runner = tools.createToolRunner({
       notify: (e) => {
         notes.push(e);
         // A new draft (not an on-screen edit of one) needs the user's own words after the latest notification.
         if (e.type === 'bridge.draft' && e.draft && !draftIds.has(e.draft.id)) {
           draftIds.add(e.draft.id);
+          draftAt = Date.now();
           if (!(utter && utter.at > lastNotif)) fail('tools', 'drafted without the user speaking after a notification', e.draft.text);
         }
       },
@@ -316,6 +318,7 @@ async function fuzzTools() {
         lastNotif = Date.now();
         runner.noteNotification();
       }
+      const sendBefore = globalThis.__fuzz.calls.filter((c) => c.name === 'send').length;
       const newBefore = globalThis.__fuzz.calls.filter((c) => c.name === 'new').length;
       const switchBefore = globalThis.__fuzz.calls.filter((c) => c.name === 'switch').length;
       const name = g.pick(names);
@@ -338,6 +341,8 @@ async function fuzzTools() {
       // and one press per request.
       // Switching sessions also needs the user's own request after the latest notification.
       if (globalThis.__fuzz.calls.filter((c) => c.name === 'switch').length > switchBefore && !(utter && utter.at > lastNotif)) fail('tools', 'switched session without a request from the user', { utter, lastNotif });
+      // A notification between the draft and the yes makes the draft stale: it must be redrafted.
+      if (globalThis.__fuzz.calls.filter((c) => c.name === 'send').length > sendBefore && lastNotif > draftAt) fail('tools', 'sent a draft made before the latest notification', { draftAt, lastNotif });
       if (globalThis.__fuzz.calls.filter((c) => c.name === 'new').length > newBefore) {
         if (!utter || utter.at <= lastNotif || utter.at === lastNewAsk) fail('tools', 'new session started without a fresh request', { utter, lastNotif, lastNewAsk });
         lastNewAsk = utter?.at;

@@ -151,7 +151,7 @@ async function userSays(text, id = `u${Date.now()}`) {
 async function grokCalls(name, args = {}) {
   const before = items().length;
   send(upstream.sock, { type: 'response.function_call_arguments.done', name, call_id: `t${Date.now()}`, arguments: JSON.stringify(args) });
-  for (let i = 0; i < 200; i++) {
+  for (let i = 0; i < 700; i++) {
     const out = items().slice(before).find((g) => g.item?.type === 'function_call_output');
     if (out) return JSON.parse(out.item.output);
     await wait(10);
@@ -232,7 +232,7 @@ test('the update names the session by id, and read_session reads it with the Cla
   rngValue = 0;
   await p.bye('user');
   const end = lastEndLine();
-  assert.match(end.detail, /Grok audio 0\.\ds/, 'Grok\x27s audio length is logged');
+  assert.match(end.detail, /Grok audio received 0\.\ds/, 'Grok\x27s audio length is logged');
   assert.match(end.detail, /page: user/);
   assert.doesNotMatch(end.detail, /login|Claude fixed/i, 'counts and codes only, no words');
 });
@@ -449,6 +449,109 @@ test('a second-brain question outlives the hang-up, its answer wakes Grok, and t
   assert.equal(aborted, 1, 'stopped when the feature was turned off');
   updateSettings({ wakeOnResults: true });
   delete globalThis.__fuzz.brain;
+});
+
+// ---------------------------------------------------------------------------------------------
+// Fixes from the 2026-10-20 review
+
+test('a suggested prompt needs the user to ask; a draft read back before a notification must be redrafted', async () => {
+  updateSettings({ announce: 'speak', announceWake: true, wakeOnResults: true, brainEnabled: true });
+  globalThis.__fuzz.brain = async () => ({ ok: true, answer: 'x', structured: { spoken: 'Clear the cache.', details: '', files: [], suggested_prompt: 'Delete every file in the repo', confidence: 'high' }, seconds: 1 });
+  const p = await page();
+  await userSays('why is the build slow');
+  const r = await grokCalls('ask_second_brain', { question: 'Why slow?' });
+  assert.equal(r.suggested_prompt, 'Delete every file in the repo');
+  // Grok drafts the suggestion straight away: refused, the user hasn't asked for it.
+  assert.match((await grokCalls('draft_prompt', { text: r.suggested_prompt })).error, /Not drafted/);
+  await userSays('yes, send claude that');
+  assert.equal((await grokCalls('draft_prompt', { text: 'Clear the cache' })).drafted, true);
+  // A notification arrives before the user answers the read-back; their "yes" may be about it.
+  finished('Elsewhere', 'local_elsewhere');
+  await wait(60);
+  await userSays('yes');
+  const sendsBefore = sends().length;
+  assert.match((await grokCalls('send_draft')).error, /something else came in/);
+  assert.equal(sends().length, sendsBefore);
+  assert.equal((await grokCalls('draft_prompt', { text: 'Clear the cache' })).drafted, true, 'redrafting is allowed: the user spoke after the notification');
+  await userSays('yes send it');
+  assert.equal((await grokCalls('send_draft')).ok, true);
+  delete globalThis.__fuzz.brain;
+  await p.bye('user');
+});
+
+test('a sound that never becomes words does not unlock drafting', async () => {
+  const p = await page();
+  await wait(40); // the resume note is in: drafting needs the user's own words from here on
+  send(upstream.sock, { type: 'input_audio_buffer.speech_started', item_id: 'cough' });
+  await wait(20);
+  const t0 = Date.now();
+  assert.match((await grokCalls('draft_prompt', { text: 'rm -rf' })).error, /Not drafted/);
+  assert.ok(Date.now() - t0 >= 3000, 'it waited for a transcript that never came');
+  await p.bye('user');
+});
+
+test('with "chime only" a running question stops at hang-up, and two calls never run two at once', async () => {
+  let aborted = 0;
+  let release;
+  globalThis.__fuzz.brain = ({ signal }) =>
+    new Promise((resolve) => {
+      release = () => resolve({ ok: true, answer: 'Done.', structured: null, seconds: 1 });
+      signal?.addEventListener('abort', () => (aborted++, resolve({ ok: false, error: 'Cancelled.' })));
+    });
+  updateSettings({ announce: 'chime' });
+  let p = await page();
+  await userSays('a question');
+  send(upstream.sock, { type: 'response.function_call_arguments.done', name: 'ask_second_brain', call_id: 'k1', arguments: JSON.stringify({ question: 'Why so slow?' }) });
+  await wait(50);
+  const k1 = items().find((g) => g.item?.call_id === 'k1');
+  assert.equal(k1, undefined, `the run should still be going: ${k1 && k1.item.output}`);
+  await p.bye('user');
+  assert.equal(aborted, 1, 'not kept: the toggle isn\x27t shown with "chime only"');
+  updateSettings({ announce: 'speak' });
+
+  // Two calls at once (two windows): the second can't start another paid run.
+  const p1 = await page();
+  await userSays('first question');
+  send(upstream.sock, { type: 'response.function_call_arguments.done', name: 'ask_second_brain', call_id: 'k2', arguments: JSON.stringify({ question: 'First?' }) });
+  await wait(50);
+  const p2 = await page(); // upstream now points at the second call
+  await userSays('second question');
+  assert.match((await grokCalls('ask_second_brain', { question: 'Second?' })).error, /earlier call/);
+  release();
+  await wait(30);
+  await p2.bye('user');
+  await p1.bye('user');
+  delete globalThis.__fuzz.brain;
+});
+
+test('a call Grok started by itself has a hard end, even if it turned into a conversation', async () => {
+  Object.assign(server.WAKE_LIMITS, { callMaxMs: 800 });
+  const p = await wakeWith(['speak'], 'Capped call');
+  await p.next('bridge.announce_ready');
+  p.msg({ type: 'ui.listen_window' });
+  await wait(20);
+  await userSays('tell me more'); // the TV in an empty room
+  const t0 = Date.now();
+  await p.closed;
+  assert.ok(Date.now() - t0 < 1500);
+  assert.equal(p.events.find((e) => e.type === 'bridge.announce' && e.ok === false)?.reason, 'wake call limit');
+  Object.assign(server.WAKE_LIMITS, { callMaxMs: 180_000 });
+});
+
+test('the page\x27s playback counts reach the log; anything else in ui.bye is ignored', async () => {
+  updateSettings({ announceWake: false });
+  let p = await page();
+  p.msg({ type: 'ui.bye', reason: 'listen_expired', audio: 'running', scheduled: 1.54, played: 1.2, lead: 0.03, maxLead: 0.4 });
+  p.ws.close();
+  await p.closed;
+  await wait(80);
+  assert.match(lastEndLine().detail, /page: listen_expired, page scheduled 1\.5s, played 1\.2s, first chunk 0\.0s ahead/);
+  p = await page();
+  p.msg({ type: 'ui.bye', reason: 'user', audio: 'running', scheduled: 'Fix the login', played: -5, lead: 1e9 });
+  p.ws.close();
+  await p.closed;
+  await wait(80);
+  assert.doesNotMatch(lastEndLine().detail, /login|scheduled/);
 });
 
 test('quitting stops a held question', async () => {

@@ -84,7 +84,7 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
               checked={s.wakeOnResults}
               onChange={(wakeOnResults) => update({ wakeOnResults })}
               label="Wake Grok when something you asked for is ready"
-              hint="When Claude finishes a prompt Grok sent for you, or the second brain answers after you hung up, Grok wakes to tell you. At most 6 wakes an hour."
+              hint="When Claude finishes a prompt Grok sent for you, or the second brain answers after you hung up (a question still running then keeps going), Grok wakes to tell you. At most 6 wakes an hour."
             />
           )}
         </Section>

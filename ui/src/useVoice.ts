@@ -14,6 +14,7 @@ const ANNOUNCE_MAX_MS = 45_000; // give up on a spoken update that never gets sa
 const ANNOUNCE_HEARD_MS = 8000; // you started talking in the window: this long for it to become words
 const ANNOUNCE_IDLE_MS = 20_000; // a conversation that began as a spoken update hangs up after this much quiet
 const ANNOUNCE_SILENT_OPEN_MS = 2000; // Grok is done but nothing played (or it was silent): open the window anyway
+const MAX_QUEUED_S = 120; // a play head this far ahead of the clock is stale, not a real queue
 
 /** Why the page hung up, told to the bridge for its log (codes only). */
 type ByeReason = "user" | "sleep" | "idle" | "tap_timeout" | "draft_hold" | "listen_expired" | "heard_no_words" | "announce_max" | "bridge" | "mic_error" | "closed" | "other";
@@ -90,7 +91,11 @@ export function useVoice(options: VoiceOptions) {
   // spoken update's mic shut, or a hang-up waiting, forever.
   const audioEndsAt = useRef(0);
   const isPlaying = () => playing.current.size > 0 && Date.now() < audioEndsAt.current + 250;
-  const playHead = useRef(0);
+  const playHead = useRef(0); // where the next chunk starts, on this call's AudioContext clock
+  // Counts only, told to the bridge at hang-up for its log: Grok audio scheduled and played (s),
+  // and how far ahead of the clock the first chunk was scheduled.
+  const audioStats = useRef({ scheduled: 0, played: 0, firstLead: 0, maxLead: 0, chunks: 0 });
+  const timing = useRef(new WeakMap<AudioBufferSourceNode, { at: number; dur: number }>());
   const inLevel = useRef(0);
   const thinking = useRef(false);
   const ready = useRef(false);
@@ -330,15 +335,30 @@ export function useVoice(options: VoiceOptions) {
     }, 1000);
   }, [sleep]);
 
+  /** Seconds of Grok audio actually played out so far, from what was scheduled and the clock. */
+  const playedSoFar = () => {
+    const ac = ctx.current;
+    let s = audioStats.current.played;
+    if (ac) for (const src of playing.current) {
+      const t = timing.current.get(src);
+      if (t) s += Math.min(t.dur, Math.max(0, ac.currentTime - t.at));
+    }
+    return s;
+  };
+
   const stopPlayback = useCallback(() => {
+    const ac = ctx.current;
     for (const s of playing.current) {
+      const t = timing.current.get(s);
+      if (t && ac) audioStats.current.played += Math.min(t.dur, Math.max(0, ac.currentTime - t.at));
       try {
+        s.onended = null;
         s.stop();
       } catch {}
     }
     playing.current.clear();
     audioEndsAt.current = 0;
-    if (ctx.current) playHead.current = ctx.current.currentTime;
+    if (ac) playHead.current = ac.currentTime;
   }, []);
 
   const playPcm = useCallback((b64: string) => {
@@ -347,19 +367,35 @@ export function useVoice(options: VoiceOptions) {
     const pcm = b64ToInt16(b64);
     if (!pcm.length) return;
     if (ac.state === "suspended") void ac.resume().catch(() => {});
-    const now = Date.now();
-    audioEndsAt.current = Math.max(audioEndsAt.current, now + 30) + (pcm.length / RATE) * 1000;
     const buffer = ac.createBuffer(1, pcm.length, RATE);
     const ch = buffer.getChannelData(0);
     for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 0x8000;
     const src = ac.createBufferSource();
     src.buffer = buffer;
     src.connect(outBus.current);
+    // The play head is this AudioContext's clock. (It used to carry over from the previous call's
+    // context, whose clock had run for that whole call: with nobody speaking first, as on a
+    // spoken update, Grok's audio was scheduled that many seconds into the future, so it was
+    // never heard. start() now resets it, and a head far ahead of the clock is pulled back.)
+    if (playHead.current > ac.currentTime + MAX_QUEUED_S) playHead.current = ac.currentTime;
     playHead.current = Math.max(playHead.current, ac.currentTime + 0.03);
-    src.start(playHead.current);
+    const at = playHead.current;
+    src.start(at);
     playHead.current += buffer.duration;
+    // Wall-clock end of everything queued (see isPlaying).
+    audioEndsAt.current = Date.now() + (playHead.current - ac.currentTime) * 1000;
+    const st = audioStats.current;
+    const lead = at - ac.currentTime;
+    if (st.chunks === 0) st.firstLead = lead;
+    st.maxLead = Math.max(st.maxLead, lead);
+    st.scheduled += buffer.duration;
+    st.chunks++;
+    timing.current.set(src, { at, dur: buffer.duration });
     playing.current.add(src);
-    src.onended = () => playing.current.delete(src);
+    src.onended = () => {
+      if (!playing.current.delete(src)) return;
+      st.played += Math.min(buffer.duration, Math.max(0, ac.currentTime - at));
+    };
   }, []);
 
   const sendText = useCallback(
@@ -532,8 +568,12 @@ export function useVoice(options: VoiceOptions) {
     toolsRunning.current = 0;
     responding.current = false;
     if (ws.current?.readyState === WebSocket.OPEN) {
+      const st = audioStats.current;
+      const r1 = (n: number) => Math.round(n * 10) / 10;
       try {
-        ws.current.send(JSON.stringify({ type: "ui.bye", reason, audio: ctx.current?.state ?? "none" }));
+        ws.current.send(
+          JSON.stringify({ type: "ui.bye", reason, audio: ctx.current?.state ?? "none", scheduled: r1(st.scheduled), played: r1(playedSoFar()), lead: r1(st.firstLead), maxLead: r1(st.maxLead) }),
+        );
       } catch {}
     }
     ws.current?.close();
@@ -543,6 +583,7 @@ export function useVoice(options: VoiceOptions) {
     worklet.current?.disconnect();
     ctx.current?.close();
     ctx.current = worklet.current = analyser.current = outBus.current = null;
+    playHead.current = 0; // the next call has a new AudioContext, whose clock starts at 0
     ready.current = false;
     thinking.current = false;
     asleepRef.current = false;
@@ -560,6 +601,11 @@ export function useVoice(options: VoiceOptions) {
     try {
       const ac = new AudioContext({ sampleRate: RATE });
       ctx.current = ac;
+      // Playback is timed on this context's own clock, from 0.
+      playHead.current = 0;
+      audioEndsAt.current = 0;
+      audioStats.current = { scheduled: 0, played: 0, firstLead: 0, maxLead: 0, chunks: 0 };
+      playing.current.clear();
       if (ac.state === "suspended") void ac.resume();
       outBus.current = ac.createGain();
       analyser.current = ac.createAnalyser();

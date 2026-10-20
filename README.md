@@ -24,7 +24,9 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 
 - **Talk to your sessions.** "What's Claude doing?", "Did it finish?", "Summarize my launchpad session." Orbit reads your Claude Code sessions from disk and Grok answers out loud.
 - **Hear when Claude is done.** Orbit watches your recent sessions and plays a chime, shows a Windows notification, and (optionally) has Grok tell you what Claude did.
-  - **Even while Grok sleeps (optional).** With "Wake Grok to say it" on (Settings → When Claude finishes, off by default), Grok connects just long enough to say what Claude finished and asks what you'd like to do. The mic opens only after Grok has spoken, for 3 seconds. Answer and the conversation carries on; stay quiet and it hangs up. There's no always-on listening. Each wake bills a few seconds of xAI time.
+  - **Even while Grok sleeps (optional).** With "Wake Grok to say it" on (Settings → When Claude finishes, off by default), Grok connects just long enough to say what Claude finished and asks what you'd like to do. The mic opens only after Grok has spoken, for 3 seconds. Answer and the conversation carries on; stay quiet and it hangs up. There's no always-on listening. Each wake bills a few seconds of xAI time. Press the hotkey or click the orb to hang up a wake at once.
+  - **When something you asked for is ready.** With "Wake Grok when something you asked for is ready" (on by default with "Grok tells me"), Grok also wakes when Claude finishes a prompt it sent for you, or when the second brain answers after you hung up. At most 6 wakes an hour, at least 30 s apart.
+- **Picks up where you left off.** Hanging up used to start the next call from scratch. Now, for 30 minutes, the next call gets a short note from Orbit: the last few things said, the session that was open, and what you're still waiting on. Grok uses it only when you refer back ("where were we?", "what did Claude say?"). It's kept in memory only, never on disk, and a draft in it is never sent without a new read-back and a fresh yes.
 - **Start a new session by voice.** "Start a new session", "new thread in castpilot". Orbit presses Claude's own New session button, then Grok asks what you want to say and drafts it as usual. You never touch the keyboard.
 - **Dictate prompts, safely.** "Tell Claude to run the tests." Grok drafts it and reads it back. It only types into Claude's prompt box after you say **yes**. Want it worded differently? Just say so and Grok redrafts it. It's all by voice: there's no card or button to click.
 - **Switch sessions by voice or click.** "Switch to my Ladder 6 session." Orbit opens it in Claude's sidebar, without moving your mouse.
@@ -35,11 +37,13 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
   - It hides while Claude is minimized.
   - Drag it to choose its spot on the window.
 - **You control the mic, and the bill.** Say "go to sleep" and Orbit hangs up, so nothing is billed while it sleeps. Or use **one question at a time** mode: press the hotkey (default **Ctrl+Alt+G**, changeable), ask, and it hangs up after answering.
-- **Say "Hey Grok" (optional).** A free, fully offline wake word starts Grok again after it has gone to sleep. It's recognized on your PC by a small speech model, so no audio leaves your computer until Grok is awake. Each wake starts a fresh conversation: Grok doesn't remember the previous one, but it can always re-read your Claude sessions.
+- **Say "Hey Grok" (optional).** A free, fully offline wake word starts Grok again after it has gone to sleep. It's recognized on your PC by a small speech model, so no audio leaves your computer until Grok is awake. Each wake starts a fresh connection, with Orbit's short note on the last call (see above), and Grok can always re-read your Claude sessions.
 - **Copy to clipboard.** "Copy Claude's last answer", "copy that command": Grok puts it on your clipboard, ready to paste.
 - **A second brain for hard questions.** When a question needs more thought, or needs a look at the code in your current project ("why would the hotkey stop working after sleep?"), Grok quietly asks Claude and tells you the answer.
   - Grok picks Haiku, Sonnet or Opus to fit the question.
   - Claude can read your project but can't change anything.
+  - Its answer comes back shaped for voice: a short spoken answer, with details and file references kept for follow-up questions. If Claude suggests a prompt to act on it, Grok offers to send it, and drafts it only if you say yes.
+  - Hang up while it's thinking, and the answer still reaches you: Grok wakes to tell you, or tells you in your next call.
   - Nothing shows up on screen. You choose the model and connection in Settings → Second brain.
 
 ## Requirements
@@ -106,7 +110,8 @@ flowchart LR
   - `.env` files and keys denied
   - nothing saved to your session history
 
-  It's capped at 1, 2.5 or 5 minutes for Haiku, Sonnet or Opus, and stops if you hang up.
+  It's capped at 1, 2.5 or 5 minutes for Haiku, Sonnet or Opus. With "Wake Grok when something you asked for is ready" on, it carries on to that limit if you hang up, and its answer is passed on later; otherwise it stops when you hang up. It answers in a fixed shape (`--json-schema`), with each field checked and trimmed.
+- **The resume note** is built by Orbit itself, with no model call, from what the bridge already has, and kept in memory for 30 minutes. It goes into the next call quietly, as Orbit's own labelled record, so Grok doesn't start talking about it, and it never counts as anything you said.
 - **Stick to Claude Code** runs a small helper that listens for Windows' own events: the Claude window moving, being minimized or changing virtual desktop, and another app coming to the front.
   - The helper moves the orb itself the instant Claude moves, so the orb doesn't trail behind a dragged window. In a simulated drag it stayed in place for 39 of 40 steps.
   - It works in real pixels on every display (per-monitor DPI aware), and keeps the orb a fixed distance from the window's corner, in Orbit's own units, at any resolution or scaling.
@@ -129,6 +134,7 @@ flowchart LR
 - Nothing else leaves your computer. There's no telemetry. Logs never contain keys or prompt text.
 - The wake word listens only on your PC, only while it's turned on and Grok is off or asleep. Its audio is never recorded or sent anywhere.
 - A spoken update ("Wake Grok to say it") sends xAI the finished session's title, and what Grok reads of that session to describe it. Your mic is sent only during the 3 seconds after Grok has spoken, and longer only if you answer.
+- For 30 minutes after a call, the next call also sends xAI Orbit's resume note: text from your recent calls that xAI already had. It's kept only in memory and forgotten when Orbit quits.
 
 ## Build from source
 
