@@ -16,7 +16,7 @@ process.env.LOCALAPPDATA = path.join(root, 'local');
 // getDesktopInfo's list: 0 = session "T", 4 = a new empty session, 5 = some other page.
 // newSession's list: 0 = created, 2 = project not in sidebar. sendToDesktop's: 0 = sent.
 const queue = [];
-const LIST_LEN = { info: 7, new: 6, send: 2, switch: 2, sidebar: 2 };
+const LIST_LEN = { info: 7, new: 6, send: 3, switch: 4, sidebar: 2 };
 let nextLen = 7;
 globalThis.__fuzz = {
   rng: () => {
@@ -173,6 +173,7 @@ test('no draft into a page that is not a Code session, or before the user speaks
   await say('tell claude x');
   answer(5); // info: a prompt box, but no Code session and no new session
   assert.match((await r.run('draft_prompt', JSON.stringify({ text: 'x' }))).error, /not showing a Code session/);
+  await say('what is it doing?');
   r.noteNotification(); // refused before the window is even looked at
   assert.match((await r.run('draft_prompt', JSON.stringify({ text: 'x' }))).error, /after the latest app notification/);
   await say('tell claude y');

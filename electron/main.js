@@ -3,10 +3,11 @@
 import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, safeStorage, screen, session, shell, Tray } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEFAULTS, getSetting, onSettingsChange, updateSettings } from '../src/config.js';
 import { createClaudeWindowTracker } from './claude-window.js';
 import { DEFAULT_ANCHOR, anchorFor, isAnchor, orbPositionFor } from './orb-stick.js';
+import { setDesktopDriver, setFrontWindowHint } from '../src/desktop.js';
 import { getLogDir, logError, logInfo, logWarn } from '../src/log.js';
 import { authUrl, hotkeyLabel, startServer, stopBackgroundWork } from '../src/server.js';
 import { createUpdater } from './updater.js';
@@ -175,7 +176,7 @@ function showMain() {
 // screen (closed, or on another virtual desktop). Dragging it picks a new spot on the window.
 let orbMode = false; // the orb is meant to be showing (the main window is hidden)
 let orbLayer = null; // 'free' | 'top' | 'above:<hwnd>'
-let claude = null; // last state from the watcher: { found, hwnd, min, front, x, y, w, h } in screen pixels
+let claude = null; // the Claude window the orb docks on (the one you were in last): { found, hwnd, min, front, x, y, w, h } in screen pixels
 let claudeDip = null; // the Claude window in DIPs, when sticking
 const claudeTracker = createClaudeWindowTracker({
   onChange: (s) => {
@@ -185,6 +186,8 @@ const claudeTracker = createClaudeWindowTracker({
   onError: (message) => logWarn('orb', message),
 });
 const sticking = () => getSetting('orbStick') && !!claude?.found;
+// Grok's tools act on the same Claude window the orb is on (see src/desktop.ps1 -FrontHwnd).
+setFrontWindowHint(() => (claudeTracker.running && claude?.found ? claude.hwnd : 0));
 
 function setOrbBounds({ x, y }) {
   const b = orb.getBounds();
@@ -375,6 +378,12 @@ on('orb:drag-end', () => {
 
 app.whenReady().then(async () => {
   if (quitting) return;
+  // Developer testing only (never in the installed app): a stand-in for Claude's window, so an
+  // end-to-end test (scripts/fuzz-e2e.mjs) never reads, clicks or types into the real Claude app.
+  if (!app.isPackaged && process.env.ORBIT_FAKE_DESKTOP) {
+    const fake = await import(pathToFileURL(path.resolve(process.env.ORBIT_FAKE_DESKTOP)).href);
+    setDesktopDriver(fake.default || fake);
+  }
   try {
     const dir = app.getPath('userData');
     baseUrl = await startServer({
@@ -385,6 +394,7 @@ app.whenReady().then(async () => {
       // Offline wake-word model: shipped next to the app (extraResources), or in the repo in dev.
       models: app.isPackaged ? path.join(process.resourcesPath, 'models') : path.join(ROOT, 'resources', 'models'),
     });
+    if (!app.isPackaged && process.env.ORBIT_FAKE_DESKTOP) logInfo('app', 'Developer mode: using a stand-in for the Claude window');
   } catch (e) {
     logError('app', 'Bridge failed to start', e?.message);
     dialog.showErrorBox(

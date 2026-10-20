@@ -83,20 +83,21 @@ function startWatcher(parentPid = 0) {
   return { child, lines };
 }
 
-test('the watcher reports the Claude window (or that there is none) as JSON', { skip: process.platform !== 'win32' }, async () => {
+test('the watcher reports every Claude window (or none) as JSON', { skip: process.platform !== 'win32' }, async () => {
   const { child, lines } = startWatcher();
   const t0 = Date.now();
   while (!lines.length && Date.now() - t0 < 15000) await new Promise((r) => setTimeout(r, 100));
   child.kill();
   assert.ok(lines.length, 'got a state line');
   const s = lines[0];
-  if (s.found) {
-    assert.deepEqual(Object.keys(s).sort(), ['found', 'front', 'h', 'hwnd', 'min', 'w', 'x', 'y']);
-    assert.ok(['claude', 'orbit', 'other'].includes(s.front));
-    assert.ok(s.min || (s.w > 100 && s.h > 100), JSON.stringify(s));
-  } else {
-    assert.deepEqual(s, { found: false });
+  assert.deepEqual(Object.keys(s).sort(), ['fg', 'front', 'wins']);
+  assert.ok(['claude', 'orbit', 'other'].includes(s.front));
+  assert.ok(Number.isSafeInteger(s.fg));
+  for (const w of s.wins) {
+    assert.deepEqual(Object.keys(w).sort(), ['h', 'hwnd', 'min', 'w', 'x', 'y']);
+    assert.ok(w.min || (w.w > 100 && w.h > 100), JSON.stringify(w));
   }
+  assert.ok(s.fg === 0 || s.wins.some((w) => w.hwnd === s.fg), 'the window in front is one of them');
 });
 
 test('the watcher exits on its own when Orbit is gone', { skip: process.platform !== 'win32' }, async () => {

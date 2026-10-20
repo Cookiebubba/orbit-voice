@@ -306,6 +306,23 @@ export function isClearYes(utterance) {
 }
 
 /**
+ * Does the user's own utterance ask for this action? Their words carry the request, so an app
+ * notification that arrives after them (another session finishing while Grok looks something up)
+ * doesn't void it. Words that don't ask (like "yes" to Grok's offer) only count when they came
+ * after the latest notification or second-brain answer, as before.
+ */
+const SWITCH_VERBS = String.raw`switch|swap|flip|jump|open|pull|bring|go|take|change|move|show`;
+const ASKS = {
+  switch: (w) =>
+    /\b(switch|swap|flip|jump|open|pull\s+(it\s+|that\s+)?up|bring\s+(it\s+|that\s+)?up|go\s+(back\s+|over\s+)?(to|into)|take\s+me|back\s+to|change\s+(over\s+)?to|move\s+(over\s+)?to)\b/i.test(w) ||
+    /\bshow\b.*\b(session|chat|conversation|thread|window)\b/i.test(w),
+  draft: (w) => /\b((tell|ask|let|have|get|make|instruct)\s+(claude|it)|(say|reply|respond|write|type|send|message)\s+(to\s+)?(claude|it|back)|prompt|draft|dictate)\b/i.test(w),
+};
+/** "don't switch", "I don't want you to open it": a negation shortly before the verb. */
+const negatesSwitch = (w) => new RegExp(String.raw`\b(don'?t|do\s+not|never|not|no\s+need\s+to|stop)\b(\s+\S+){0,3}?\s+(${SWITCH_VERBS})\b`, 'i').test(w);
+const NEGATION = /\b(don'?t|do not|not|never|no)\b/i;
+
+/**
  * Per-connection tool runner. `notify(event)` pushes UI updates to the page.
  *
  * Consent: Grok's own `send_draft` only goes through if the user's latest utterance (spoken or
@@ -337,7 +354,9 @@ export function createToolRunner({
   let nextDraftId = 1;
   let lastSentAt = 0;
   let lastNotificationAt = 0; // when the app last passed Grok a notification ("Claude finished")
+  let lastDataAt = 0; // ...one carrying text from elsewhere (a held answer, the resume note)
   let newSessionAskUsed = 0; // the `at` of the request that already started a new session
+  let switchAskUsed = 0; // the `at` of the request that already switched sessions
   let disposed = false; // the connection closed
   let newSessionSent = null; // { at, title }: the first prompt of a new session Orbit sent
   /** The open session, from disk; right after sending a new session its first prompt, only that new session. */
@@ -387,6 +406,9 @@ export function createToolRunner({
       const info = await getDesktopInfo();
       const open = await findOpenSessionNow(info);
       const app = { app_open: !!info.ok, open_in_app: info.ok ? info.sessionTitle : null, prompt_box_has_text: info.ok ? !!info.promptText : null };
+      // Claude can have several windows; the session above is the one in the window you're in.
+      const others = info.ok && Array.isArray(info.windows) ? info.windows.filter((w) => w && !w.front).map((w) => (typeof w.title === 'string' && w.title ? w.title.slice(0, 120) : 'a new session')).slice(0, 8) : [];
+      if (others.length) app.other_claude_windows = others;
       if (open.newSession) {
         notify({ type: 'bridge.session', title: 'New session' });
         return { ...app, open_in_app: 'a new, empty session', new_session: true, folder: open.folder, note: 'Nothing has been sent in it yet, so there is nothing to read. Ask the user what to tell Claude, then use draft_prompt.' };
@@ -424,9 +446,16 @@ export function createToolRunner({
       if (!clean) return { error: 'Draft text was empty.' };
       // The words must come from the user: not from an app notification, a transcript Grok read, or
       // a second-brain answer (its suggested prompt is only drafted once the user asks for it).
-      // Real words, transcribed: a cough after the latest of those doesn't count.
+      // Real words, transcribed: a cough after the latest of those doesn't count. A recent request
+      // in so many words ("tell Claude to…") still counts when a notification came in after it.
       const since = Math.max(lastNotificationAt, lastBrainAnswerAt);
-      const asked = heardSince(since) ? await utteranceSince(since) : null;
+      const recent = recentUtterance();
+      const asked =
+        recent && Date.now() - recent.at <= COPY_ASK_MAX_AGE_MS && ASKS.draft(String(recent.text)) && recent.at > lastBrainAnswerAt
+          ? recent
+          : heardSince(since)
+            ? await utteranceSince(since)
+            : null;
       if (!asked || !/[\p{L}\p{N}]/u.test(String(asked.text))) {
         return { error: 'Not drafted: ask the user what they want to tell Claude first. A draft needs their own words, said after the latest app notification or second-brain answer.' };
       }
@@ -479,13 +508,27 @@ export function createToolRunner({
       if (!query) return { error: 'Say which session to open.' };
       // Only for something the user just said: not an app notification, a transcript Grok read, or
       // a second-brain answer (a spoken update reads a session before anyone has said a word).
+      // Their own words asking to switch ("switch to…", "open…", "go to…") stay a request even if
+      // a notification arrives before Grok gets to it (other sessions keep finishing mid-call);
+      // other words ("yes" to Grok's offer) only count if said after the latest notification.
+      // One request, one switch; "don't switch" is never one.
       const asked = recentUtterance();
-      if (!asked || asked.at <= Math.max(lastNotificationAt, lastBrainAnswerAt) || Date.now() - asked.at > COPY_ASK_MAX_AGE_MS) {
-        return { ok: false, error: 'Not switched: only switch sessions when the user has just asked to.' };
+      const words = String(asked?.text || '');
+      if (
+        !asked ||
+        Date.now() - asked.at > COPY_ASK_MAX_AGE_MS ||
+        asked.at === switchAskUsed ||
+        negatesSwitch(words) ||
+        (!ASKS.switch(words) && asked.at <= Math.max(lastNotificationAt, lastBrainAnswerAt))
+      ) {
+        return { ok: false, error: 'Not switched: only switch sessions when the user has just asked to (each request switches once).' };
       }
       const known = resolveSession(query);
       const result = await switchSession(known?.title || query);
-      if (result.ok) notify({ type: 'bridge.session', title: result.sessionTitle });
+      if (result.ok) {
+        switchAskUsed = asked.at; // a switch that didn't happen leaves the request for a retry
+        notify({ type: 'bridge.session', title: result.sessionTitle });
+      }
       return result;
     },
 
@@ -493,15 +536,15 @@ export function createToolRunner({
       // Only when the user just asked for one, in their own words (one request, one new session):
       // never from a notification, a transcript Grok read or a second-brain answer. That would move
       // Claude's window away from what you're doing.
+      // The words themselves must ask, so a notification arriving after them doesn't void them.
       const asked = recentUtterance();
       const words = String(asked?.text || '');
       if (
         !asked ||
-        asked.at <= Math.max(lastNotificationAt, lastBrainAnswerAt) ||
         asked.at === newSessionAskUsed ||
         Date.now() - asked.at > COPY_ASK_MAX_AGE_MS ||
         !/\b(new|fresh|blank|another|scratch|over)\b/i.test(words) ||
-        /\b(don'?t|do not|not|never|no)\b/i.test(words)
+        NEGATION.test(words)
       ) {
         return { ok: false, error: 'Not started: only start a new session when the user has just asked for a new one in their own words (each request starts one).' };
       }
@@ -535,15 +578,17 @@ export function createToolRunner({
       // quietly put something (like a command) on the clipboard. One request allows one copy, a
       // "don't copy" isn't a request, and a request made before a second-brain answer came back
       // can't be used to copy text from that answer (or anything else Grok picks after it).
+      // Nor text Grok picks after a held answer or the resume note came in. A plain "Claude
+      // finished" notification after the request doesn't void it, and the exact draft or Claude's
+      // last reply (text Orbit picks, not Grok) can be copied whatever came in since.
       const asked = recentUtterance();
       if (
         !asked ||
         Date.now() - asked.at > COPY_ASK_MAX_AGE_MS ||
         asked.at === copyAskUsed ||
-        // Nor one made before an app notification (it can carry a held answer or a resume note).
-        asked.at < Math.max(lastBrainAnswerAt, lastNotificationAt) ||
+        (what !== 'draft' && what !== 'claude_last_message' && asked.at < Math.max(lastBrainAnswerAt, lastDataAt)) ||
         !/\b(copy|clipboard|paste)\b/i.test(asked.text) ||
-        /\b(don'?t|do not|not|never|no)\b/i.test(asked.text)
+        NEGATION.test(asked.text)
       ) {
         return { ok: false, error: 'Not copied: only copy when the user has just asked you to copy something (each request allows one copy).' };
       }
@@ -725,9 +770,14 @@ export function createToolRunner({
     // No on-screen Send/Edit/Discard: sending is voice-only. A draft is approved by the user's
     // own clear "yes" (spoken, or typed in Orbit's text box), changed by asking Grok to redraft.
     getDraft: () => publicDraft(draft),
-    /** The app just passed Grok a notification: what follows needs the user's own words again. */
-    noteNotification: () => {
+    /**
+     * The app just passed Grok a notification: what follows needs the user's own words again
+     * (unless those words already ask for it). `data`: it carried text from elsewhere (a held
+     * second-brain answer, the resume note), which Grok must not copy on an earlier request.
+     */
+    noteNotification: ({ data = false } = {}) => {
       lastNotificationAt = Date.now();
+      if (data) lastDataAt = lastNotificationAt;
     },
     /** The connection closed: hand a second-brain question still running to the bridge, or stop it. */
     dispose: () => {

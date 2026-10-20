@@ -13,7 +13,32 @@ const POWERSHELL = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32'
 const MAX_PROMPT_CHARS = 8000;
 const b64 = (s) => Buffer.from(String(s), 'utf8').toString('base64');
 
+// The Claude window Orbit's orb follows (the one most recently in front; see electron/claude-window.js),
+// so the orb, Grok and the tools agree on which window you're in. 0 = none (the script then takes
+// the highest Claude window in z-order, which is the same window in practice).
+let frontHint = () => 0;
+/** `fn()` returns that window's handle, or 0. */
+export function setFrontWindowHint(fn) {
+  frontHint = typeof fn === 'function' ? fn : () => 0;
+}
+const hintArgs = () => {
+  let h = 0;
+  try {
+    h = Number(frontHint());
+  } catch {}
+  return Number.isSafeInteger(h) && h > 0 ? ['-FrontHwnd', String(h)] : [];
+};
+
+// A stand-in for the Claude window, for Orbit's own end-to-end tests only (electron/main.js sets it
+// from ORBIT_FAKE_DESKTOP, and only when the app isn't packaged). null = the real window.
+let driver = null;
+export function setDesktopDriver(d) {
+  driver = d && typeof d === 'object' ? d : null;
+}
+
 function runPs(mode, args = [], timeoutMs = 20000) {
+  args = [...args, ...hintArgs()];
+  if (driver) return Promise.resolve().then(() => driver.run(mode, args)).catch((e) => ({ ok: false, error: 'script_failed', message: String(e?.message || e).slice(0, 200) }));
   if (process.platform !== 'win32') {
     return Promise.resolve({ ok: false, error: 'unsupported_platform', message: 'Controlling the Claude app is only implemented for Windows so far.' });
   }

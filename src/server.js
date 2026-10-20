@@ -927,7 +927,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     /** An item Orbit puts in the conversation: labelled, never the user's words (no response of its own). */
     const orbitItem = (text) => toXai({ type: 'conversation.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } });
     const sayNotification = (text) => {
-      tools.noteNotification(); // what Grok does next needs the user's own words again
+      // What Grok does next needs the user's own words again (or words that already asked for it).
+      tools.noteNotification({ data: pendingData.length > 0 });
       for (const d of pendingData.splice(0)) orbitItem(d);
       orbitItem(`[App notification] ${text}`);
       if (announce && !announce.noticeAt) announce.noticeAt = Date.now();
@@ -1027,7 +1028,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       const note = continuity.noteText({ untoldToo: getSetting('announce') !== 'speak' });
       if (note) {
         orbitItem(note);
-        tools.noteNotification();
+        tools.noteNotification({ data: true });
         stats.note = 1;
       }
       // Results the user was waiting on: a spoken update says them; an ordinary call passes them on.
