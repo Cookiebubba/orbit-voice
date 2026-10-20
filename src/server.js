@@ -613,7 +613,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
             res.off('close', stop);
             brainTest = null;
           });
-          if (!r.ok) logWarn('brain', 'Connection test failed', r.error);
+          if (!r.ok) logWarn('brain', 'Connection test failed', String(r.error || '').split(': ')[0].slice(0, 200)); // Orbit's sentence, not Claude Code's output
           if (r.needsSignIn) authCache = null;
           return sendJson(res, 200, r.ok ? { ok: true, seconds: r.seconds } : { ok: false, error: r.error, needsSignIn: !!r.needsSignIn });
         }
@@ -937,8 +937,12 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     };
     const flushPending = () => {
       // Kept until Grok is connected (a notice sent before that would be dropped), and until it
-      // has started the reply already asked for (two requests at once can't both be answered).
-      if (!responding && !waitingOnGrok() && pending.length && upstream.readyState === WebSocket.OPEN) sayNotification(pending.splice(0).join(' '));
+      // has started the reply already asked for (two requests at once can't both be answered),
+      // and not while Grok is still acting on what the user asked (a tool call running, the reply
+      // after it to come): an update arriving between those steps would come between the user's
+      // words and what Grok does with them. (A second-brain question, which can take minutes,
+      // doesn't hold updates back.)
+      if (!responding && !waitingOnGrok() && quickCalls === 0 && pending.length && upstream.readyState === WebSocket.OPEN) sayNotification(pending.splice(0).join(' '));
     };
     // Only the session title (or id) goes in here, never Claude's own words: those come back as
     // tool output (data) if Grok reads the session, not as something the user "said". The id makes
@@ -1005,6 +1009,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     liveSessions.add(hooks);
 
     let callsInFlight = 0;
+    let quickCalls = 0; // ...of them, the ones that aren't the second brain (see flushPending)
     let callsThisResponse = 0;
     let responseDone = false;
     const maybeContinue = () => {
@@ -1104,10 +1109,17 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         said('grok', evt.text);
       } else if (evt.type === 'response.function_call_arguments.done') {
         callsInFlight++;
+        const quick = evt.name !== 'ask_second_brain';
+        if (quick) quickCalls++;
         callsThisResponse++;
         stats.tools++;
         toBrowser({ type: 'bridge.tool', name: evt.name, args: evt.arguments });
-        const result = await runTool(evt.name, evt.arguments);
+        let result;
+        try {
+          result = await runTool(evt.name, evt.arguments);
+        } finally {
+          if (quick) quickCalls--;
+        }
         toBrowser({ type: 'bridge.tool_result', name: evt.name, result });
         toXai({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: evt.call_id, output: JSON.stringify(result) } });
         callsInFlight--;

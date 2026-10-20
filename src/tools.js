@@ -199,6 +199,18 @@ function readSession(session, { lastN = 8, includeTools = false } = {}) {
 
 /** A second-brain failure for the log: Orbit's own sentence, without any text quoted from the run. */
 const brainErrorForLog = (e) => String(e || '').split(': ')[0].slice(0, 200);
+/**
+ * A tool's error for the log, without anything it quotes: errors quote the user's words back to
+ * Grok ("your reply (…) isn't a clear yes", "No session matched …"), and those never go in the log.
+ * (Found by the end-to-end fuzzer.)
+ */
+export function toolErrorForLog(e) {
+  const s = String(e ?? '');
+  const i = s.search(/["“”]/); // everything from the first quote mark to the last
+  if (i < 0) return s.slice(0, 300);
+  const j = Math.max(s.lastIndexOf('"'), s.lastIndexOf('”'), s.lastIndexOf('“'));
+  return `${s.slice(0, i)}"…"${j > i ? s.slice(j + 1) : ''}`.slice(0, 300);
+}
 
 const clampInt = (v, def, max) => Math.max(1, Math.min(max, Number.isFinite(+v) && +v > 0 ? Math.floor(+v) : def));
 
@@ -447,11 +459,12 @@ export function createToolRunner({
       // The words must come from the user: not from an app notification, a transcript Grok read, or
       // a second-brain answer (its suggested prompt is only drafted once the user asks for it).
       // Real words, transcribed: a cough after the latest of those doesn't count. A recent request
-      // in so many words ("tell Claude to…") still counts when a notification came in after it.
+      // in so many words ("tell Claude to…") still counts when a notification or a second-brain
+      // answer came in after it (the draft is still read back and needs a fresh yes).
       const since = Math.max(lastNotificationAt, lastBrainAnswerAt);
       const recent = recentUtterance();
       const asked =
-        recent && Date.now() - recent.at <= COPY_ASK_MAX_AGE_MS && ASKS.draft(String(recent.text)) && recent.at > lastBrainAnswerAt
+        recent && Date.now() - recent.at <= COPY_ASK_MAX_AGE_MS && ASKS.draft(String(recent.text))
           ? recent
           : heardSince(since)
             ? await utteranceSince(since)
@@ -759,7 +772,7 @@ export function createToolRunner({
       try {
         const result = await fn(args);
         if (result && (result.error || result.ok === false) && name !== 'get_recent_errors') {
-          logWarn('tool', `${name} failed`, name === 'ask_second_brain' ? brainErrorForLog(result.error) : result.message || result.error);
+          logWarn('tool', `${name} failed`, name === 'ask_second_brain' ? brainErrorForLog(result.error) : toolErrorForLog(result.message || result.error));
         }
         return result;
       } catch (e) {

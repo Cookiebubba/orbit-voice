@@ -53,7 +53,9 @@ function runPs(mode, args = [], timeoutMs = 20000) {
         try {
           result = JSON.parse(line);
         } catch {
-          result = { ok: false, error: 'script_failed', message: (stderr || err?.message || stdout || 'unknown error').toString().slice(0, 500) };
+          // Not err.message: it repeats the command line, which carries the prompt (base64).
+          const why = err ? (err.killed ? 'timed out' : `exit ${err.code ?? '?'}`) : 'no result';
+          result = { ok: false, error: 'script_failed', message: `${why}${stderr ? `: ${String(stderr).trim().split(/\r?\n/)[0]}` : ''}`.slice(0, 500) };
         }
         if (!result.ok) {
           const log = ['script_failed', 'script_exception'].includes(result.error) ? logError : logWarn;

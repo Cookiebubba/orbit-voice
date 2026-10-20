@@ -321,7 +321,8 @@ export function askBrain({ question, model = 'sonnet', explore = false, cwd, con
 
 /** Claude Code's own sign-in is missing or expired (as opposed to a rate limit or a crash). */
 export function isSignInProblem(text) {
-  return /session expired|could not be refreshed|not logged in|please run \/login|log ?in|authenticat|unauthori[sz]ed|\b401\b/i.test(String(text || ''));
+  // (Also an expired OAuth token, which describeFailure already calls an expired sign-in.)
+  return /session expired|could not be refreshed|token.*expired|not logged in|please run \/login|log ?in|authenticat|unauthori[sz]ed|\b401\b/i.test(String(text || ''));
 }
 
 /** The environment for running Claude Code on the user's own Claude login (no API key). */
