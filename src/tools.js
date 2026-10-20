@@ -333,6 +333,11 @@ const ASKS = {
 /** "don't switch", "I don't want you to open it": a negation shortly before the verb. */
 const negatesSwitch = (w) => new RegExp(String.raw`\b(don'?t|do\s+not|never|not|no\s+need\s+to|stop)\b(\s+\S+){0,3}?\s+(${SWITCH_VERBS})\b`, 'i').test(w);
 const NEGATION = /\b(don'?t|do not|not|never|no)\b/i;
+/** For tests and the fuzzer: do these words themselves ask to switch sessions, or to draft? */
+export const asksFor = (what, words) => {
+  const w = String(words || '');
+  return what === 'switch' ? ASKS.switch(w) && !negatesSwitch(w) : what === 'draft' ? ASKS.draft(w) : false;
+};
 
 /**
  * Per-connection tool runner. `notify(event)` pushes UI updates to the page.
