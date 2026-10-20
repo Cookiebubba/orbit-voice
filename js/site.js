@@ -1,6 +1,6 @@
 import { marked } from "https://cdn.jsdelivr.net/npm/marked@12.0.2/lib/marked.esm.js";
 import DOMPurify from "https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.es.mjs";
-import { startBackground } from "./background.js";
+import { startBackground } from "./background.js?v=3";
 
 /* --------------------------------- config --------------------------------- */
 const REPO = "Cookiebubba/orbit-voice";
@@ -22,7 +22,7 @@ const FILE_ROUTES = Object.fromEntries(Object.entries(PAGES).map(([route, p]) =>
 startBackground(document.getElementById("bg"));
 
 const handle = document.getElementById("handle");
-handle.textContent = `@${X_HANDLE}`;
+handle.querySelector("span").textContent = `@${X_HANDLE}`;
 handle.href = `https://x.com/${X_HANDLE}`;
 
 const view = document.getElementById("view");

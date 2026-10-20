@@ -15,7 +15,8 @@ html { font-size: clamp(13px, min(1.1111vw, 1.7778vh), 44px); }
   --claude: #d97757;
   --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
-  --edge: 5rem;     /* page side margin */
+  /* page side margin: at least 9rem, and the content never spreads wider than 110rem (ultrawides keep it centred) */
+  --edge: max(9rem, calc((100vw - 110rem) / 2));
   --fade: 4.5rem;   /* scroll fade at the top and bottom of docs */
 }
 
@@ -41,6 +42,13 @@ body[data-page="home"] .brand { opacity: 0; pointer-events: none; } /* the hero 
 .bottom { font: .75rem/1 var(--mono); color: var(--muted); letter-spacing: .02em; }
 .bottom a { text-decoration: none; transition: color .15s; }
 .bottom a:hover { color: var(--fg); }
+
+/* the X handle: a black pill with the X mark */
+.handle { display: inline-flex; align-items: center; gap: .55rem; height: 2.25rem; padding: 0 1rem 0 .85rem; border-radius: 999px;
+          background: #000; border: 1px solid rgba(255, 255, 255, .14); color: var(--fg); font: 500 .8125rem/1 var(--sans); letter-spacing: -.005em;
+          transition: border-color .15s, background .15s; }
+.handle:hover { border-color: rgba(255, 255, 255, .35); background: #0a0a0a; }
+.handle .logo-x { width: .85rem; height: .85rem; }
 
 #view { min-height: 0; position: relative; transition: opacity .18s ease; }
 #view.leaving { opacity: 0; }
@@ -116,6 +124,7 @@ body[data-page="home"] .brand { opacity: 0; pointer-events: none; } /* the hero 
 /* narrow screens (phones, a slim window): stack the hero and tighten the frame */
 @media (max-width: 760px) {
   :root { --edge: 1.25rem; }
+  .app { grid-template-rows: 4.75rem 1fr 4.5rem; }
   .home { grid-template-columns: 1fr; align-content: center; gap: 2.5rem; }
   .wordmark { font-size: 5.5rem; }
   .install { width: 100%; max-width: 22rem; }

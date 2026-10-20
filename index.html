@@ -8,8 +8,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/site.css">
-<script type="module" src="js/site.js"></script>
+<link rel="stylesheet" href="css/site.css?v=3">
+<!-- bump ?v= (here and the import in site.js) on each publish so browsers drop the old copy -->
+<script type="module" src="js/site.js?v=3"></script>
 </head>
 <body data-page="home">
 
@@ -30,7 +31,7 @@
   <main id="view"></main>
 
   <footer class="bottom">
-    <a id="handle" href="https://x.com/" target="_blank" rel="noopener"></a>
+    <a id="handle" class="handle" href="https://x.com/" target="_blank" rel="noopener"><i class="logo logo-x" aria-hidden="true"></i><span></span></a>
     <span>MIT License</span>
   </footer>
 </div>
