@@ -31,6 +31,12 @@ import { ShaderOrb, type OrbVariant, type ShaderOrbProps } from "@/components/ui
 ---------------------------------------------------------------------------- */
 
 const MOSAIC_FRAG = `
+// Orbit addition: mouse stirring (see orbFlow.ts). An offset map, one texel per tile, says where
+// each tile's patch of light has been dragged from. Off (uFlowOn = 0) the orb is exactly as before.
+uniform sampler2D uFlow;
+uniform vec2 uFlowGrid;
+uniform float uFlowOn;
+
 void main() {
   // Volume coupling: user input widens the lit coverage, agent output turns
   // the panel brightness up.
@@ -57,12 +63,25 @@ void main() {
   float z = sqrt(max(1.0 - r2, 0.0));
   vec3 n = vec3(uv, z);
 
+  // Mouse stirring: the light this tile shows comes from where the flow dragged it from. The tile,
+  // the silhouette and the key light stay where they are; only the pattern moves.
+  vec2 srcCell = cellIdx + 0.5;
+  vec3 nSrc = n;
+  if (uFlowOn > 0.5) {
+    srcCell += texture2D(uFlow, (cellIdx + 0.5) / uFlowGrid).xy;
+    vec2 uvSrc = ((2.0 * srcCell * cellPx - uRes) / min(uRes.x, uRes.y)) / radiusNow;
+    float rs = dot(uvSrc, uvSrc);
+    if (rs > 0.995) uvSrc *= sqrt(0.995 / rs); // dragged in from past the rim: the rim's light
+    nSrc = vec3(uvSrc, sqrt(max(1.0 - dot(uvSrc, uvSrc), 0.0)));
+  }
+  vec2 srcIdx = floor(srcCell);
+
   // rotating dome, stereographic projection — the blobs roll around the
   // ball as the dome turns
   float rot = uP_spin; // integrated clock
   float cr = cos(rot);
   float sr = sin(rot);
-  vec3 sp = vec3(n.x * cr - n.z * sr, n.y, n.x * sr + n.z * cr);
+  vec3 sp = vec3(nSrc.x * cr - nSrc.z * sr, nSrc.y, nSrc.x * sr + nSrc.z * cr);
   vec2 p2 = sp.xy / (abs(sp.z) + 1.2) * uP_scale * 3.0;
 
   /*
@@ -116,8 +135,9 @@ void main() {
     saturated hue drawn from a second hash. Which tiles are coloured
     therefore reshuffles continuously — slowly at rest, fast in thought.
   */
-  float h1 = hash(cellIdx * 1.618 + 7.3);
-  float h2 = hash(cellIdx * 2.113 + 41.7);
+  // confetti rides with the flow too: hashed on the dragged-from tile (srcIdx = cellIdx when still)
+  float h1 = hash(srcIdx * 1.618 + 7.3);
+  float h2 = hash(srcIdx * 2.113 + 41.7);
   float cyc = fract(h1 + shuffleT * 0.06);
   float promoted = step(1.0 - uP_confetti, cyc);
   vec3 confetti = 0.5 + 0.5 * cos(6.2831 * (h2 + vec3(0.0, 0.33, 0.67)));
@@ -147,6 +167,9 @@ export const shdr29Orb: OrbVariant = {
   label: "SHDR-29",
   note: "an LED tile wall lighting up in flowing blobs, wrapped on the ball",
   frag: MOSAIC_FRAG,
+  // Orbit addition: the tile size in pixels, as the shader computes it, so mouse stirring (orbFlow)
+  // runs one fluid cell per tile.
+  flowCellPx: (w, h, p) => Math.max(Math.min(w, h) / Math.max(p.cells ?? 48, 8), 4),
   params: [
     { key: "drift", label: "Drift", min: 0, max: 10, step: 0.05, default: 0.45, integrate: true },
     { key: "churn", label: "Churn", min: 0, max: 10, step: 0.05, default: 0.5, integrate: true },

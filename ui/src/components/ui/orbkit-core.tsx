@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createFlow, type Flow } from "./orbFlow";
 
 /* ----------------------------------------------------------------------------
    Orbkit core — raw WebGL shader orb runtime. No dependencies.
@@ -129,6 +130,11 @@ export interface OrbVariant {
    * win, exactly as with params.
    */
   stateColors?: Partial<Record<OrbState, Record<string, string>>>;
+  /**
+   * Orbit addition: the shader's tile size in backing pixels, for mouse stirring (`interactive`).
+   * Only variants whose shader reads uFlow / uFlowGrid / uFlowOn define it.
+   */
+  flowCellPx?: (width: number, height: number, params: Record<string, number>) => number;
 }
 
 export type OrbParamValues = Partial<Record<string, number>>;
@@ -779,6 +785,11 @@ export interface ShaderOrbProps {
   style?: CSSProperties;
   /** Accessible label. When omitted the orb is hidden from assistive tech. */
   ariaLabel?: string;
+  /**
+   * Orbit addition: moving the mouse over the orb stirs its light like a liquid (the Orbit
+   * website's cursor fluid, see orbFlow.ts). Needs a variant with `flowCellPx`.
+   */
+  interactive?: boolean;
 }
 
 export function ShaderOrb({
@@ -798,7 +809,8 @@ export function ShaderOrb({
   wrapperColor,
   className,
   style,
-  ariaLabel
+  ariaLabel,
+  interactive = false
 }: ShaderOrbProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const spec = wrapper === "none" ? undefined : WRAPPER_SPECS[wrapper];
@@ -1003,6 +1015,60 @@ export function ShaderOrb({
       // smoothed frame time for the adaptive-resolution check
       let frameEma = 1 / 60;
 
+      /* --- Orbit addition: mouse stirring (see orbFlow.ts) ------------------ */
+      // One fluid cell per tile, simulated on the CPU, its offset map uploaded as a float texture
+      // only while something is moving. Off, or with no float textures, the orb is untouched.
+      const uFlow = gl.getUniformLocation(prog, "uFlow");
+      const uFlowGrid = gl.getUniformLocation(prog, "uFlowGrid");
+      const uFlowOn = gl.getUniformLocation(prog, "uFlowOn");
+      const flowOk = interactive && !!variant.flowCellPx && !!uFlow && !!uFlowOn && !reduceMotion && !!gl.getExtension("OES_texture_float");
+      let flow: Flow | null = null;
+      let flowTex: WebGLTexture | null = null;
+      let pointer: { x: number; y: number } | null = null;
+      const onPointerMove = (e: PointerEvent) => {
+        if (e.pointerType === "mouse") pointer = { x: e.clientX, y: e.clientY };
+      };
+      const onPointerGone = () => {
+        pointer = null;
+      };
+      if (flowOk) {
+        flowTex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, flowTex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.uniform1i(uFlow, 0);
+        window.addEventListener("pointermove", onPointerMove);
+        document.addEventListener("pointerleave", onPointerGone);
+        window.addEventListener("blur", onPointerGone);
+      }
+      if (uFlowOn) gl.uniform1f(uFlowOn, 0);
+      const stepFlow = (dt: number) => {
+        if (!flowOk || !flowTex) return;
+        const cellPx = variant.flowCellPx!(canvas.width, canvas.height, paramCur);
+        const gw = Math.max(1, Math.ceil(canvas.width / cellPx));
+        const gh = Math.max(1, Math.ceil(canvas.height / cellPx));
+        if (!flow || flow.w !== gw || flow.h !== gh) flow = createFlow(gw, gh);
+        if (pointer) {
+          const rect = canvas.getBoundingClientRect();
+          const sx = canvas.width / Math.max(rect.width, 1);
+          const sy = canvas.height / Math.max(rect.height, 1);
+          flow.setMouse(((pointer.x - rect.left) * sx) / cellPx, ((rect.bottom - pointer.y) * sy) / cellPx);
+        } else {
+          flow.setMouse(null);
+        }
+        flow.step(dt);
+        if (flow.active) {
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, flowTex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gw, gh, 0, gl.RGBA, gl.FLOAT, flow.rgba);
+          gl.uniform2f(uFlowGrid, gw, gh);
+        }
+        gl.uniform1f(uFlowOn!, flow.active ? 1 : 0);
+      };
+
       const uploadAndDraw = (dt: number, snap = false) => {
         // Synthesized from the state, unless a channel is pinned via
         // `volumes`. Pinned values still glide on the same easing, so dialing
@@ -1110,6 +1176,8 @@ export function ShaderOrb({
           gl.uniform3f(loc, curCol[0], curCol[1], curCol[2]);
         }
 
+        stepFlow(snap ? 0 : dt);
+
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -1138,6 +1206,12 @@ export function ShaderOrb({
       const releaseGL = () => {
         resizeObserver?.disconnect();
         intersectionObserver?.disconnect();
+        if (flowOk) {
+          window.removeEventListener("pointermove", onPointerMove);
+          document.removeEventListener("pointerleave", onPointerGone);
+          window.removeEventListener("blur", onPointerGone);
+          gl.deleteTexture(flowTex);
+        }
         gl.deleteProgram(prog);
         gl.deleteShader(vs);
         gl.deleteShader(fs);
@@ -1364,7 +1438,7 @@ export function ShaderOrb({
       wrappers: the canvas keeps its slot among the decoration layers, so
       glass -> ring reuses the context instead of rebuilding it.
     */
-  }, [variant, pauseOffscreen, maxDpr, wrapped]);
+  }, [variant, pauseOffscreen, maxDpr, wrapped, interactive]);
 
   const sizeStyle: CSSProperties =
     size === undefined ? {} : { width: size, height: size };

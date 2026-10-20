@@ -62,19 +62,19 @@ function Lab() {
       <div className="mt-4 flex flex-wrap items-end gap-10">
         <figure className="text-center">
           <div style={{ opacity: orbOpacity({ phase: grokOff ? "off" : "listening", asleep: false, hearing: false, input: 0 }), transition: "opacity .3s" }}>
-            <Shdr29 size={220} state={state} params={withBump()} {...voiceProps} pauseOffscreen={false} />
+            <Shdr29 size={220} state={state} params={withBump()} {...voiceProps} pauseOffscreen={false} interactive />
           </div>
           <figcaption className="mt-2 text-[12px] text-white/50">Normal</figcaption>
         </figure>
         <figure className="text-center">
           <div style={{ opacity: dim, transition: "opacity .3s" }}>
-            <Shdr29 size={220} state={state} params={withBump(working ? p : undefined)} {...voiceProps} colors={colors} pauseOffscreen={false} />
+            <Shdr29 size={220} state={state} params={withBump(working ? p : undefined)} {...voiceProps} colors={colors} pauseOffscreen={false} interactive />
           </div>
           <figcaption className="mt-2 text-[12px] text-white/50">{working ? "Claude is working" : "Claude is working (off)"}</figcaption>
         </figure>
         <figure className="text-center">
           <div style={{ opacity: dim, transition: "opacity .3s" }}>
-            <Shdr29 size={96} state={state} params={withBump(working ? p : undefined)} {...voiceProps} colors={colors} pauseOffscreen={false} />
+            <Shdr29 size={96} state={state} params={withBump(working ? p : undefined)} {...voiceProps} colors={colors} pauseOffscreen={false} interactive />
           </div>
           <figcaption className="mt-2 text-[12px] text-white/50">Floating orb size</figcaption>
         </figure>

@@ -159,7 +159,7 @@ export default function App() {
                   transition: "opacity 300ms",
                 }}
               >
-                <Shdr29 size={190} {...orbProps(v.phase, v.levels.input, v.levels.output)} params={orbParams({ claudeWorking, phase: v.phase, asleep: v.asleep, ...pulse })} pauseOffscreen={false} />
+                <Shdr29 size={190} {...orbProps(v.phase, v.levels.input, v.levels.output)} params={orbParams({ claudeWorking, phase: v.phase, asleep: v.asleep, ...pulse })} pauseOffscreen={false} interactive />
               </span>
             </button>
             <div className="mt-5 text-[15px] font-medium tracking-tight">{v.asleep && on ? asleepLabel : PHASE_LABEL[v.phase]}</div>

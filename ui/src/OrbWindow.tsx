@@ -44,7 +44,7 @@ export default function OrbWindow() {
     >
       {/* No glow or ring around the orb: its opacity (and colour) say everything about activity. */}
       <div style={{ opacity: orbOpacity(s), transition: "opacity .3s" }}>
-        <Shdr29 size={96} {...orbProps(s.phase, s.input, s.output)} params={orbParams(s)} pauseOffscreen={false} />
+        <Shdr29 size={96} {...orbProps(s.phase, s.input, s.output)} params={orbParams(s)} pauseOffscreen={false} interactive />
       </div>
     </div>
   );
