@@ -1,0 +1,126 @@
+/*
+  Scaling: every size is in rem, and the root size follows the viewport. It's
+  designed at 1440×900 (1rem = 16px) and scales by whichever of width or height
+  is tighter, so a 21:9 or 32:9 screen grows with its height instead of leaving
+  small text stranded at the edges. The tile wall reads the same root size, so
+  the background scales in step (see background.js).
+*/
+html { font-size: clamp(13px, min(1.1111vw, 1.7778vh), 44px); }
+
+:root {
+  --fg: #f2f3f4;
+  --text: #c6c9cd;
+  --muted: #7d8288;
+  --line: rgba(255, 255, 255, .12);
+  --claude: #d97757;
+  --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --edge: 5rem;     /* page side margin */
+  --fade: 4.5rem;   /* scroll fade at the top and bottom of docs */
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { background: #000; color: var(--fg); font: 1rem/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+img { display: block; }
+
+#bg { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; transform-origin: 50% 50%; z-index: 0; }
+
+/* ---------------------------------- frame ---------------------------------- */
+.app { position: relative; z-index: 1; height: 100vh; display: grid; grid-template-rows: 4.75rem 1fr 4rem; }
+
+.top, .bottom { display: flex; align-items: center; justify-content: space-between; padding: 0 var(--edge); }
+.brand { display: flex; align-items: center; gap: .5rem; font-weight: 600; font-size: 1.0625rem; letter-spacing: -.02em; text-decoration: none; transition: opacity .25s; }
+body[data-page="home"] .brand { opacity: 0; pointer-events: none; } /* the hero carries the full mark */
+
+.nav { display: flex; gap: 1.875rem; font-size: .875rem; }
+.nav a { color: var(--muted); text-decoration: none; transition: color .15s; }
+.nav a:hover, .nav a[aria-current="page"] { color: var(--fg); }
+
+.bottom { font: .75rem/1 var(--mono); color: var(--muted); letter-spacing: .02em; }
+.bottom a { text-decoration: none; transition: color .15s; }
+.bottom a:hover { color: var(--fg); }
+
+#view { min-height: 0; position: relative; transition: opacity .18s ease; }
+#view.leaving { opacity: 0; }
+
+/* ---------------------------------- home ----------------------------------- */
+.home { height: 100%; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 3rem; padding: 0 var(--edge); }
+
+.wordmark { font-size: 9.25rem; font-weight: 700; line-height: .9; letter-spacing: -.055em; }
+
+.lockup { display: flex; align-items: center; margin-top: 2rem; font-size: 1.375rem; font-weight: 600; letter-spacing: -.02em; }
+.lockup .who { display: inline-flex; align-items: center; gap: .55rem; }
+.lockup .bar { width: 1px; height: 1.6rem; margin: 0 1.25rem; background: rgba(255, 255, 255, .4); }
+/* the brands' own marks, from Simple Icons, tinted with a mask so each can carry its colour */
+.logo { width: 1.2em; height: 1.2em; flex: none; background: currentColor;
+        -webkit-mask: var(--src) center / contain no-repeat; mask: var(--src) center / contain no-repeat; }
+.logo-x { --src: url("https://cdn.jsdelivr.net/npm/simple-icons@13.21.0/icons/x.svg"); width: .95em; height: .95em; color: #fff; }
+.logo-claude { --src: url("https://cdn.jsdelivr.net/npm/simple-icons@13.21.0/icons/claude.svg"); color: var(--claude); }
+.fine { margin-top: .9rem; font-size: .8125rem; color: var(--muted); }
+
+.install { width: 19rem; }
+.eyebrow { font: 500 .75rem/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.install h2 { margin-top: .875rem; font-size: 1.75rem; font-weight: 600; line-height: 1.15; letter-spacing: -.03em; }
+.download { display: flex; align-items: center; justify-content: center; gap: .625rem; height: 3.375rem; margin-top: 1.625rem; border-radius: 999px;
+            background: #fff; color: #000; font-weight: 600; font-size: .9375rem; text-decoration: none; transition: transform .15s, background .15s; }
+.download:hover { background: #e4e4e4; transform: translateY(-1px); }
+.download svg { width: 1.125rem; height: 1.125rem; }
+.meta { margin-top: .75rem; text-align: center; font: .75rem/1.4 var(--mono); color: var(--muted); }
+.links { display: flex; justify-content: center; gap: 1.375rem; margin-top: 1.375rem; font-size: .875rem; }
+.links a { color: var(--text); text-decoration: none; transition: color .15s; }
+.links a:hover { color: var(--fg); }
+
+/* --------------------------------- reader ---------------------------------- */
+.reader { height: 100%; position: relative; }
+
+/* the scroll area fills the whole view, so the wheel works anywhere; the text column sits centred inside it */
+.scroller { position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; outline: none;
+            scrollbar-width: none;
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%);
+                    mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%); }
+.scroller::-webkit-scrollbar { display: none; }
+
+.toc { position: absolute; z-index: 2; top: var(--fade); left: var(--edge); width: 12rem; display: flex; flex-direction: column; gap: .125rem; }
+.toc a { padding: .3rem 0; font-size: .8125rem; color: var(--muted); text-decoration: none; line-height: 1.35; transition: color .15s; }
+.toc a:hover, .toc a.on { color: var(--fg); }
+@media (max-width: 1060px) { .toc { display: none; } } /* below the 13px floor the index no longer fits beside the column */
+
+.doc { max-width: 45rem; margin: 0 auto; padding: var(--fade) 2rem calc(var(--fade) + 5rem); color: var(--text); }
+.doc .status { color: var(--muted); }
+.doc .status a { color: var(--fg); }
+
+.doc h1 { color: var(--fg); font-size: 2.75rem; line-height: 1.05; letter-spacing: -.04em; margin-bottom: 1.75rem; }
+.doc h2 { color: var(--fg); font-size: 1.625rem; line-height: 1.2; letter-spacing: -.03em; margin: 4rem 0 1.125rem; }
+.doc h3 { color: var(--fg); font-size: 1.125rem; letter-spacing: -.015em; margin: 2.25rem 0 .75rem; }
+.doc h1 + h2 { margin-top: 1.5rem; }
+.doc p, .doc ul, .doc ol, .doc blockquote, .doc pre, .doc .table { margin-bottom: 1.125rem; }
+.doc ul, .doc ol { padding-left: 1.375rem; }
+.doc li { margin: .375rem 0; }
+.doc li > ul { margin: .375rem 0 0; }
+.doc strong { color: var(--fg); font-weight: 600; }
+.doc a { color: var(--fg); text-decoration-color: rgba(255, 255, 255, .35); text-underline-offset: .2em; }
+.doc a:hover { text-decoration-color: var(--fg); }
+.doc hr { border: 0; border-top: 1px solid var(--line); margin: 2.5rem 0; }
+.doc blockquote { padding-left: 1rem; border-left: 2px solid var(--line); color: var(--muted); }
+.doc code { font: .86em var(--mono); background: rgba(255, 255, 255, .08); padding: .125rem .375rem; border-radius: .3rem; color: var(--fg); }
+.doc pre { padding: 1rem 1.125rem; border: 1px solid var(--line); border-radius: .75rem; background: rgba(0, 0, 0, .55); overflow-x: auto; }
+.doc pre code { background: none; padding: 0; font-size: .8125rem; line-height: 1.6; }
+.doc img { max-width: 100%; height: auto; border-radius: .75rem; }
+.doc .table { overflow-x: auto; }
+.doc table { width: 100%; border-collapse: collapse; font-size: .875rem; line-height: 1.5; }
+.doc th { text-align: left; color: var(--fg); font-weight: 600; padding: .625rem .875rem .625rem 0; border-bottom: 1px solid rgba(255, 255, 255, .25); }
+.doc td { vertical-align: top; padding: .75rem .875rem .75rem 0; border-bottom: 1px solid var(--line); min-width: 8.5em; }
+
+/* narrow screens (phones, a slim window): stack the hero and tighten the frame */
+@media (max-width: 760px) {
+  :root { --edge: 1.25rem; }
+  .home { grid-template-columns: 1fr; align-content: center; gap: 2.5rem; }
+  .wordmark { font-size: 5.5rem; }
+  .install { width: 100%; max-width: 22rem; }
+  .nav { gap: 1.1rem; }
+  .doc { padding-left: var(--edge); padding-right: var(--edge); }
+}
+
+@media (prefers-reduced-motion: reduce) { #view { transition: none; } }

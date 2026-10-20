@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orbit</title>
+<meta name="description" content="Orbit: a hands-free voice companion for Claude Code Desktop, powered by Grok Voice. Free and open source.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/site.css">
+<script type="module" src="js/site.js"></script>
+</head>
+<body data-page="home">
+
+<!-- the background lives outside the routed view, so page switches never touch it -->
+<canvas id="bg" aria-hidden="true"></canvas>
+
+<div class="app">
+  <header class="top">
+    <a class="brand" href="#/">Orbit</a>
+    <nav class="nav" aria-label="Main">
+      <a href="#/docs" data-route="docs">Docs</a>
+      <a href="#/security" data-route="security">Security</a>
+      <a href="#/changelog" data-route="changelog">Changelog</a>
+      <a href="https://github.com/Cookiebubba/orbit-voice" target="_blank" rel="noopener">GitHub <span aria-hidden="true">↗</span></a>
+    </nav>
+  </header>
+
+  <main id="view"></main>
+
+  <footer class="bottom">
+    <a id="handle" href="https://x.com/" target="_blank" rel="noopener"></a>
+    <span>MIT License</span>
+  </footer>
+</div>
+
+<template id="tpl-home">
+  <section class="home">
+    <div class="mark">
+      <h1 class="wordmark">Orbit</h1>
+      <p class="lockup">
+        <span class="who"><i class="logo logo-x" aria-hidden="true"></i>Grok</span>
+        <i class="bar" aria-hidden="true"></i>
+        <span class="who"><i class="logo logo-claude" aria-hidden="true"></i>Claude</span>
+      </p>
+      <p class="fine">Not affiliated with xAI or Anthropic.</p>
+    </div>
+    <aside class="install">
+      <p class="eyebrow">Free and open source</p>
+      <h2>Get your install here.</h2>
+      <a class="download" id="download" href="https://github.com/Cookiebubba/orbit-voice/releases/latest">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
+        Download now
+      </a>
+      <p class="meta" id="dl-meta">Windows 10 / 11</p>
+      <p class="links">
+        <a href="https://github.com/Cookiebubba/orbit-voice" target="_blank" rel="noopener">GitHub <span aria-hidden="true">↗</span></a>
+        <a href="https://github.com/Cookiebubba/orbit-voice/releases" target="_blank" rel="noopener">Releases <span aria-hidden="true">↗</span></a>
+      </p>
+    </aside>
+  </section>
+</template>
+
+<template id="tpl-doc">
+  <section class="reader">
+    <nav class="toc" aria-label="On this page"></nav>
+    <div class="scroller" tabindex="-1"><article class="doc"><p class="status">Loading…</p></article></div>
+  </section>
+</template>
+
+</body>
+</html>
