@@ -11,6 +11,7 @@ export type Settings = {
   wakeWord: boolean;
   announce: "speak" | "chime" | "off";
   announceWake: boolean;
+  wakeOnResults: boolean;
   costPerMinute: number;
   model: string;
   brainEnabled: boolean;
@@ -32,12 +33,14 @@ export async function postJson(url: string, body: object) {
   return fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 }
 
-export function useAppState({ onFinished }: { onFinished: (f: Finished) => void }) {
+export function useAppState({ onFinished, onWake }: { onFinished: (f: Finished) => void; onWake: () => void }) {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [failed, setFailed] = useState(false);
   const [claudeWorking, setClaudeWorking] = useState<{ id: string; title: string }[]>([]);
   const finishedCb = useRef(onFinished);
   finishedCb.current = onFinished;
+  const wakeCb = useRef(onWake);
+  wakeCb.current = onWake;
 
   const reload = useCallback(() => {
     fetch("/api/config")
@@ -63,6 +66,8 @@ export function useAppState({ onFinished }: { onFinished: (f: Finished) => void 
       }
       if (evt.type === "claude.status") setClaudeWorking(evt.working || []);
       else if (evt.type === "claude.finished") finishedCb.current({ id: evt.id, title: evt.title, summary: evt.summary || "", at: Date.now() });
+      // The bridge decides when Grok wakes by itself (spoken updates, results you asked for).
+      else if (evt.type === "orbit.wake") wakeCb.current();
       else if (evt.type === "settings.changed") setConfig((c) => (c ? { ...c, settings: { ...c.settings, ...evt.settings, hotkeyLabel: hotkeyLabel(evt.settings.wakeHotkey) } } : c));
     };
     return () => es.close();

@@ -54,6 +54,8 @@ const { updateSettings } = await import('../../src/config.js');
 const server = await import('../../src/server.js');
 server.ANNOUNCE_TIMING.listenMs = 300;
 server.ANNOUNCE_TIMING.slackMs = 200;
+// These tests wake Grok back to back: no spacing or hourly cap here (tested on their own below).
+Object.assign(server.WAKE_LIMITS, { gapMs: 0, perHour: 1000, sessionCooldownMs: 0 });
 const mem = (v) => ({ kind: 'memory', get: () => v, set: (x) => (v = x) });
 await server.startServer({ port: PORT, configDir: path.join(root, 'cfg'), secrets: mem('xai-' + 'k'.repeat(40)), brainSecrets: mem(''), clipboard: () => {}, models: root, watcher });
 

@@ -24,7 +24,8 @@ type View = "main" | "settings" | "history";
 
 export default function App() {
   const finishedRef = useRef<(f: Finished) => void>(() => {});
-  const app = useAppState({ onFinished: (f) => finishedRef.current(f) });
+  const wakeRef = useRef<() => void>(() => {});
+  const app = useAppState({ onFinished: (f) => finishedRef.current(f), onWake: () => wakeRef.current() });
   const settings = app.config?.settings;
   const v = useVoice({ listenMode: settings?.listenMode ?? "always", halfDuplex: settings?.halfDuplex ?? false });
   // "Hey Grok": offline, and only while Grok is off or asleep. Same effect as the hotkey.
@@ -49,13 +50,17 @@ export default function App() {
     if (mode === "off") return;
     playChime("done", 0.1);
     v.note(`Claude finished in “${f.title}”`);
-    // "Wake Grok to say it": Grok is asleep (hung up), so connect just long enough to say it.
-    if (mode === "speak" && settings?.announceWake && v.phase === "off" && app.config?.hasKey) v.announce();
     if ((document.hidden || !document.hasFocus()) && "Notification" in window) {
       try {
         new Notification(`Claude finished: ${f.title}`, { body: f.summary.slice(0, 180), silent: true });
       } catch {}
     }
+  };
+
+  // The bridge asks Grok to wake by itself ("Wake Grok to say it", or something you asked for is
+  // ready). It checks the settings, spacing and hourly limit; this only connects if Grok is off.
+  wakeRef.current = () => {
+    if (app.config?.hasKey) v.announce();
   };
 
   // Keep the floating orb in sync with this window.
@@ -144,7 +149,7 @@ export default function App() {
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-5">
             <button
               aria-label={!on ? "Start talking" : v.asleep ? "Wake up" : "Voice is on"}
-              onClick={() => (!on ? v.start() : v.asleep && v.wake())}
+              onClick={() => (!on ? v.start() : v.endWake() || (v.asleep && v.wake()))}
               className={cn("relative rounded-full transition-opacity duration-300", (!on || v.asleep) && "cursor-pointer")}
             >
               <span

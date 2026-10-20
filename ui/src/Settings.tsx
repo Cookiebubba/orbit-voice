@@ -75,7 +75,16 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
               checked={s.announceWake}
               onChange={(announceWake) => update({ announceWake })}
               label="Wake Grok to say it"
-              hint="While Grok is asleep, it connects just long enough to tell you, then listens for 3 seconds in case you want something. The mic opens only after it has spoken. Each wake bills a few seconds of xAI time."
+              hint="While Grok is asleep, it connects just long enough to tell you, then listens for 3 seconds in case you want something. The mic opens only after it has spoken; press the hotkey to stop it. Each wake bills a few seconds of xAI time."
+            />
+          )}
+          {s.announce === "speak" && (
+            <Toggle
+              className="mt-4"
+              checked={s.wakeOnResults}
+              onChange={(wakeOnResults) => update({ wakeOnResults })}
+              label="Wake Grok when something you asked for is ready"
+              hint="When Claude finishes a prompt Grok sent for you, or the second brain answers after you hung up, Grok wakes to tell you. At most 6 wakes an hour."
             />
           )}
         </Section>

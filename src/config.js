@@ -24,6 +24,10 @@ export const DEFAULTS = Object.freeze({
   // With announce 'speak': while Grok is asleep, connect just long enough to say it, then listen
   // ~3 s for a reply. Off by default: each wake bills a few seconds of xAI time.
   announceWake: false,
+  // With announce 'speak': wake Grok when something the user asked for is ready (a prompt Orbit
+  // sent finished in Claude, or a second-brain answer that came back after hanging up). Only their
+  // own results, at most a few wakes an hour; a question still running at hang-up keeps going.
+  wakeOnResults: true,
   costPerMinute: 0.08, // USD, xAI's published voice-agent rate at the time of writing
   model: 'grok-voice-latest',
   orbPosition: null, // [x, y] of the floating orb

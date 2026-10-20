@@ -8,7 +8,7 @@ import { DEFAULTS, getSetting, onSettingsChange, updateSettings } from '../src/c
 import { createClaudeWindowTracker } from './claude-window.js';
 import { DEFAULT_ANCHOR, anchorFor, isAnchor, orbPositionFor } from './orb-stick.js';
 import { getLogDir, logError, logInfo, logWarn } from '../src/log.js';
-import { authUrl, hotkeyLabel, startServer } from '../src/server.js';
+import { authUrl, hotkeyLabel, startServer, stopBackgroundWork } from '../src/server.js';
 import { createUpdater } from './updater.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -420,6 +420,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   quitting = true;
+  stopBackgroundWork(); // second-brain questions kept past a hang-up stop with the app
   claudeTracker.stop();
   updater?.stop();
 });
