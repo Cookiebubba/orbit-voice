@@ -229,6 +229,36 @@ test('a spoken update hangs up when the setting is off or there is nothing new; 
   await p.closed;
 });
 
+test('an update waits while Grok is acting on what the user asked (between a tool call and its follow-up)', async () => {
+  await wait(100);
+  updateSettings({ announceWake: false });
+  onNotice = () => {};
+  const p = await page({ announce: false });
+  const sock = upstream.sock;
+  const got = () => upstream.got.map((g) => (g.type === 'conversation.item.create' ? (g.item?.type === 'function_call_output' ? 'output' : /\[App notification\]/.test(JSON.stringify(g)) ? 'notice' : 'item') : g.type));
+  // The user asked something; Grok looks the session up first (slow: nothing on disk to find).
+  send(sock, { type: 'response.created' });
+  send(sock, { type: 'response.function_call_arguments.done', call_id: 'c1', name: 'get_current_session', arguments: '{}' });
+  send(sock, { type: 'response.done' });
+  await wait(100);
+  finished('Another session'); // finishes while the tool runs
+  await wait(200);
+  assert.ok(!got().includes('notice'), 'not while the tool runs');
+  for (let i = 0; i < 100 && !got().includes('output'); i++) await wait(100);
+  await wait(50);
+  assert.ok(!got().includes('notice'), 'not before Grok has answered the tool result');
+  const at = got().lastIndexOf('response.create'); // the bridge asks for the follow-up
+  assert.ok(at > got().indexOf('output'));
+  send(sock, { type: 'response.created' });
+  send(sock, { type: 'response.done' }); // Grok's follow-up (where it would switch, copy, draft)
+  await wait(100);
+  const order = got();
+  assert.ok(order.includes('notice'), 'said once Grok is done');
+  assert.ok(order.indexOf('notice') > order.indexOf('output'));
+  p.ws.close();
+  await p.closed;
+});
+
 test.after(() => {
   fake.close();
   setTimeout(() => process.exit(0), 50).unref();

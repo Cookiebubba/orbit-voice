@@ -287,7 +287,11 @@ async function fuzzTools() {
     const consent = g.chance(0.5);
     const notes = [];
     let utter = null; // { text, at }
-    const sayPool = consent ? ['yes', 'yes send it', 'ok', 'sure', g.str(30)] : ['no', 'wait', g.str(30), 'what?', 'copy that'];
+    // Some words ask for an action themselves: those stay a request even if a notification comes
+    // in before Grok acts (see tools.js asksFor); others count only if said after it.
+    const sayPool = consent ? ['yes', 'yes send it', 'ok', 'sure', g.str(30)] : ['no', 'wait', g.str(30), 'what?', 'copy that', 'switch to the other one', "don't switch", 'tell claude to fix it', 'start a new session'];
+    const MAX_ASK_MS = 2 * 60 * 1000;
+    const fresh = () => !!utter && Date.now() - utter.at <= MAX_ASK_MS;
     const say = () => {
       let t = g.pick(sayPool);
       if (!consent && tools.isClearYes(t)) t = 'no';
@@ -304,7 +308,7 @@ async function fuzzTools() {
         if (e.type === 'bridge.draft' && e.draft && !draftIds.has(e.draft.id)) {
           draftIds.add(e.draft.id);
           draftAt = Date.now();
-          if (!(utter && utter.at > lastNotif)) fail('tools', 'drafted without the user speaking after a notification', e.draft.text);
+          if (!(utter && (utter.at > lastNotif || (fresh() && tools.asksFor('draft', utter.text))))) fail('tools', 'drafted without the user speaking after a notification (or asking for it)', e.draft.text);
         }
       },
       utteranceSince: async (since) => (utter && utter.at >= since ? utter : null),
@@ -339,12 +343,16 @@ async function fuzzTools() {
       if (!Object.prototype.hasOwnProperty.call({ ...Object.fromEntries(names.slice(0, -6).map((n) => [n, 1])) }, name) && !(r && /Unknown tool/.test(r.error || ''))) fail('tools', `unknown tool "${name}" was not refused`, { name, r });
       // Claude's New button is pressed only for a fresh request: after the latest notification,
       // and one press per request.
-      // Switching sessions also needs the user's own request after the latest notification.
-      if (globalThis.__fuzz.calls.filter((c) => c.name === 'switch').length > switchBefore && !(utter && utter.at > lastNotif)) fail('tools', 'switched session without a request from the user', { utter, lastNotif });
+      // Switching sessions also needs the user's own request: words asking to switch, or any words
+      // after the latest notification. Never "don't switch".
+      if (globalThis.__fuzz.calls.filter((c) => c.name === 'switch').length > switchBefore && !(utter && fresh() && (tools.asksFor('switch', utter.text) || (utter.at > lastNotif && !/\bdon'?t switch\b/i.test(utter.text)))))
+        fail('tools', 'switched session without a request from the user', { utter, lastNotif });
       // A notification between the draft and the yes makes the draft stale: it must be redrafted.
       if (globalThis.__fuzz.calls.filter((c) => c.name === 'send').length > sendBefore && lastNotif > draftAt) fail('tools', 'sent a draft made before the latest notification', { draftAt, lastNotif });
       if (globalThis.__fuzz.calls.filter((c) => c.name === 'new').length > newBefore) {
-        if (!utter || utter.at <= lastNotif || utter.at === lastNewAsk) fail('tools', 'new session started without a fresh request', { utter, lastNotif, lastNewAsk });
+        // Words asking for a new one, once each (a notification after them doesn't void them).
+        if (!utter || !fresh() || utter.at === lastNewAsk || !/\b(new|fresh|blank|another|scratch|over)\b/i.test(utter.text) || /\b(don'?t|do not|not|never|no)\b/i.test(utter.text))
+          fail('tools', 'new session started without a fresh request', { utter, lastNotif, lastNewAsk });
         lastNewAsk = utter?.at;
       }
     }

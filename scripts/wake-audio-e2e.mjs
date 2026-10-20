@@ -19,7 +19,7 @@ for (const k of ['APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'HOME']) process.env[
 app.setPath('userData', path.join(tmp, 'electron'));
 app.commandLine.appendSwitch('use-fake-device-for-media-stream');
 app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
-const PORT = 4391;
+const PORT = Number(process.env.E2E_PORT || 4391);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // Results go to stdout and, if E2E_OUT names a file, there too (Electron's stdout can be lost on Windows).
 const out = (line) => {

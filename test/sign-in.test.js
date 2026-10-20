@@ -84,4 +84,6 @@ test('a run that fails for sign-in is flagged; other failures are not', async ()
   assert.equal((await run('Rate limit reached')).needsSignIn, false);
   assert.equal(isSignInProblem('Not logged in · Please run /login'), true);
   assert.equal(isSignInProblem('Overloaded'), false);
+  // Found by the end-to-end fuzzer: told "sign-in has expired" but never offered the sign-in.
+  assert.equal(isSignInProblem('OAuth token has expired. Please obtain a new token or refresh your existing token.'), true);
 });

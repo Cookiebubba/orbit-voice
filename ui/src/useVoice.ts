@@ -114,7 +114,10 @@ export function useVoice(options: VoiceOptions) {
   const opts = useRef(options);
   opts.current = options;
 
-  const caption = useCallback((c: Omit<Caption, "at">, mode: "set" | "append" = "set") => {
+  const caption = useCallback((raw: Omit<Caption, "at">, mode: "set" | "append" = "set") => {
+    // Text only: Grok's events are passed through as they come, and anything but a string here
+    // would make React throw and blank the window.
+    const c = { ...raw, text: typeof raw.text === "string" ? raw.text : String(raw.text ?? "") };
     setCaptions((list) => {
       const i = list.findIndex((x) => x.id === c.id);
       if (i < 0) return [...list.slice(-(MAX_HISTORY - 1)), { ...c, at: Date.now() }];
@@ -472,13 +475,15 @@ export function useVoice(options: VoiceOptions) {
           thinking.current = true;
           toolsInFlight.current++;
           toolsRunning.current++;
-          if (TOOL_NOTES[evt.name]) caption({ id: `tool-${Date.now()}`, who: "note", text: TOOL_NOTES[evt.name] });
+          // Own keys only: a tool name like "__proto__" from Grok is not a note (it once blanked the
+          // window: an object as caption text made React throw; found by the end-to-end fuzzer).
+          if (typeof evt.name === "string" && Object.hasOwn(TOOL_NOTES, evt.name)) caption({ id: `tool-${Date.now()}`, who: "note", text: TOOL_NOTES[evt.name] });
           return;
         case "bridge.tool_result":
           toolsInFlight.current = Math.max(0, toolsInFlight.current - 1);
           toolsRunning.current = Math.max(0, toolsRunning.current - 1);
           if (evt.result && (evt.result.error || evt.result.ok === false))
-            caption({ id: `err-${Date.now()}`, who: "error", text: evt.result.message || evt.result.error });
+            caption({ id: `err-${Date.now()}`, who: "error", text: String(evt.result.message || evt.result.error || "That didn't work.") });
           if (evt.result?.open_in_app) setSessionTitle(evt.result.open_in_app);
           if (evt.result?.deferred) caption({ id: `brain-${Date.now()}`, who: "note", text: "Claude is still thinking. Grok will tell you when the answer is ready." });
           return;
