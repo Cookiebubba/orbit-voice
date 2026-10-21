@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 (2026-10-20)
 
 - **Fixed: "switch to…" and "copy that" were refused although you'd asked.** Other Claude sessions finishing mid-call sent an app notification between your words and Grok acting on them, and that voided your request. Now your own words, when they ask for it ("switch to…", "open…", "go to…", "copy…", "start a new session", "tell Claude to…"), stay a request for 2 minutes, once each and never when negated. Words that don't ask, like "yes" to Grok's offer, still have to come after the latest notification, so a notification or transcript still can't make Grok switch, copy or start a session on its own. The bridge also holds an update back while Grok is still acting on what you asked.
 - **Several Claude windows.** Orbit now sees every Claude window: the main one and sessions popped out into their own.
