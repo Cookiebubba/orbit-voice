@@ -24,13 +24,15 @@
     "test": "node --test test/*.test.js && node --import ./test/fuzz/register.mjs --test test/sandboxed/*.test.js",
     "fuzz": "node --import ./test/fuzz/register.mjs test/fuzz/fuzz.mjs",
     "e2e:wake": "electron scripts/wake-audio-e2e.mjs",
-    "fuzz:e2e": "electron scripts/fuzz-e2e.mjs"
+    "fuzz:e2e": "electron scripts/fuzz-e2e.mjs",
+    "latency:claude-voice": "node scripts/claude-voice-latency.mjs"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "electron-updater": "6.8.10",
+    "sherpa-onnx-node": "1.13.8",
     "ws": "^8.18.0"
   },
   "devDependencies": {
@@ -54,7 +56,9 @@
     ],
     "asarUnpack": [
       "src/desktop.ps1",
-      "electron/claude-window.ps1"
+      "electron/claude-window.ps1",
+      "node_modules/sherpa-onnx-node/**",
+      "node_modules/sherpa-onnx-win-x64/**"
     ],
     "directories": {
       "output": "dist",

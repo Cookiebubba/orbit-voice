@@ -32,6 +32,8 @@ import {
   updateSettings,
 } from './config.js';
 import { askBrain, claudeAuthStatus, findClaude, openClaudeSignIn, speakable } from './brain.js';
+import { createClaudeRealtime, keepSpare, loadSpeech, stopClaudeVoice, systemPrompt } from './claude-voice.js';
+import { downloadModels, downloadStatus, modelsReady, VOICE_MODELS_MB } from './voice-models.js';
 import { setClipboardWriter } from './clipboard.js';
 import { createContinuity, quoteSafe } from './continuity.js';
 import { getDesktopInfo, listSidebarSessions, switchSession } from './desktop.js';
@@ -88,6 +90,7 @@ export function stopBackgroundWork() {
   quitting = true;
   continuity.abortHeld();
   stopWakes();
+  stopClaudeVoice();
 }
 
 export const hotkeyLabel = (accel) => accel.replace(/CommandOrControl|Control/g, 'Ctrl').replace(/Super|Meta/g, 'Win');
@@ -279,6 +282,29 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
   const modelsDir = models || path.join(PROJECT_ROOT, 'resources', 'models');
   initLog(getConfigDir());
   logInfo('app', `Orbit ${VERSION} starting`);
+
+  // Claude voice (beta): speech models live with the settings, downloaded when it's turned on.
+  const voiceModelsDir = path.join(getConfigDir(), 'claude-voice-models');
+  const claudeVoiceOn = () => getSetting('voiceEngine') === 'claude';
+  /** Load the speech models and start a Claude Code process now, so the next call needn't wait. */
+  const prewarmClaudeVoice = () => {
+    if (!claudeVoiceOn() || !modelsReady(voiceModelsDir)) return;
+    const claude = findClaude(getSetting('brainClaudePath'));
+    if (!claude) return;
+    loadSpeech(voiceModelsDir).catch((e) => logWarn('voice', 'Claude voice: speech models failed to load', String(e?.message || e).slice(0, 200)));
+    keepSpare({ exe: claude.path, prompt: systemPrompt({ instructions: instructions(), tools: toolDefs() }) });
+  };
+  const claudeVoiceMetrics = (m) => {
+    if (!m.endedAt) return;
+    const s = (a, b) => (a && b ? `${((a - b) / 1000).toFixed(2)}s` : '–');
+    const total = m.firstAudioAt ? s(m.firstAudioAt, m.endedAt) : 'no audio';
+    logInfo(
+      'voice',
+      `Claude voice turn: you stopped → first audio ${total}`,
+      `end of turn ${s(m.heardAt, m.endedAt)}, speech to text ${s(m.textAt, m.heardAt)}, Claude first word ${s(m.firstTokenAt, m.textAt)}, first audio ${s(m.firstAudioAt, m.firstTokenAt)}${m.fillerAt ? `, filler at ${s(m.fillerAt, m.endedAt)}` : ''}${m.tool ? `, tool ${m.tool}` : ''}, ${m.status}`,
+    );
+  };
+  setImmediate(prewarmClaudeVoice);
 
   const allowedHosts = new Set([`${HOST}:${port}`, `localhost:${port}`]);
   const allowedOrigins = new Set([...allowedHosts].map((h) => `http://${h}`));
@@ -513,8 +539,20 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           delete patch.orbPosition;
           delete patch.orbStickAnchor;
           updateSettings(patch);
+          prewarmClaudeVoice();
           return sendJson(res, 200, publicSettings());
         }
+
+        case 'GET /api/claude-voice':
+          // Claude voice (beta) for Settings: the speech models' state, and whether Claude Code is here.
+          return sendJson(res, 200, { models: downloadStatus(voiceModelsDir), mb: VOICE_MODELS_MB, claudeFound: !!findClaude(getSetting('brainClaudePath')) });
+
+        case 'POST /api/claude-voice/download':
+          // Fetch the speech models (pinned checksums); Settings polls GET for progress.
+          downloadModels(voiceModelsDir, { log: (m) => logInfo('voice', m) })
+            .then(prewarmClaudeVoice)
+            .catch((e) => logWarn('voice', 'Claude voice: model download failed', String(e?.message || e).slice(0, 200)));
+          return sendJson(res, 200, { ok: true, models: downloadStatus(voiceModelsDir) });
 
         case 'GET /api/voice':
           return sendJson(res, 200, { voice: getSetting('voice'), speed: getSetting('speed'), ...LIMITS, voices: await listVoices() });
@@ -712,12 +750,19 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     } catch {}
     const toBrowser = (obj) => browser.readyState === WebSocket.OPEN && browser.send(JSON.stringify(obj));
     const apiKey = getApiKey();
+    // Claude voice (beta) stands in for Grok's socket; everything below works the same with it.
+    const useClaude = claudeVoiceOn();
     let connectedAt = Date.now();
     let pageClosed = false; // Orbit hung up (sleep, hotkey, quit), as opposed to Grok closing
     // For the log line when the session ends (no audio or words are kept, only counts).
     const stats = { micBytes: 0, micPeak: 0, heard: 0, replies: 0, tools: 0, grokAudioBytes: 0, note: 0 };
     let pageReason = ''; // why the page hung up, as it said (a code)
-    if (!apiKey) {
+    if (useClaude && !modelsReady(voiceModelsDir)) {
+      logWarn('voice', 'Could not start Claude voice: speech models not downloaded');
+      toBrowser({ type: 'bridge.error', message: "Claude voice's speech models aren't downloaded yet. Download them in Settings → Voice engine." });
+      return browser.close();
+    }
+    if (!useClaude && !apiKey) {
       logWarn('xai', 'Could not start Grok: no xAI API key saved');
       toBrowser({ type: 'bridge.error', message: 'No xAI API key yet. Add it on the setup screen.' });
       return browser.close();
@@ -908,10 +953,11 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       toolChain = job.catch(() => {});
       return job;
     };
-    const upstreamUrl = process.env.XAI_REALTIME_URL || `wss://api.x.ai/v1/realtime?model=${encodeURIComponent(getSetting('model'))}`;
-    const upstream = new WebSocket(upstreamUrl, { headers: { Authorization: `Bearer ${apiKey}` } });
+    const upstream = useClaude
+      ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), onMetrics: claudeVoiceMetrics })
+      : new WebSocket(process.env.XAI_REALTIME_URL || `wss://api.x.ai/v1/realtime?model=${encodeURIComponent(getSetting('model'))}`, { headers: { Authorization: `Bearer ${apiKey}` } });
     const toXai = (obj) => upstream.readyState === WebSocket.OPEN && upstream.send(JSON.stringify(obj));
-    const stopMeter = startMeter();
+    const stopMeter = useClaude ? () => {} : startMeter(); // Claude voice isn't billed by xAI
 
     const requestResponse = () => {
       awaitingResponse = Date.now();
@@ -1022,9 +1068,9 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
 
     upstream.on('open', () => {
       connectedAt = Date.now();
-      logInfo('xai', 'Grok session started');
+      logInfo('xai', useClaude ? 'Claude voice session started' : 'Grok session started');
       hooks.pushConfig();
-      toBrowser({ type: 'bridge.ready', model: getSetting('model'), voice: getSetting('voice') });
+      toBrowser({ type: 'bridge.ready', model: useClaude ? 'claude-haiku' : getSetting('model'), voice: getSetting('voice') });
       runTool('get_current_session').catch(() => {});
       // The resume note from recent calls goes in first, quietly: no response.create, so Grok
       // doesn't start talking about it. It's Orbit's record, so what Grok does next (drafting,

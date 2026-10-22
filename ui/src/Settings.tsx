@@ -22,6 +22,7 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
       <h2 className="mb-5 text-[17px] font-semibold tracking-tight">Settings</h2>
 
       <div className="space-y-3">
+        <VoiceEngineSection s={s} update={update} />
         <VoiceSettings />
 
         <Section title="Listening">
@@ -233,6 +234,72 @@ function PulseAmount({ value, update }: { value: number; update: Update }) {
 type MicApp = { exe: string; name: string; active: boolean; running: boolean; action: "mute" | "leave"; why: "you" | "recording-or-routing" | "default" };
 
 // ---------- second brain ----------
+type ClaudeVoiceStatus = { models: { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string }; mb: number; claudeFound: boolean };
+
+/** Grok, or (beta) Claude through your own Claude Code with speech models on this PC. */
+function VoiceEngineSection({ s, update }: { s: SettingsT; update: Update }) {
+  const [status, setStatus] = useState<ClaudeVoiceStatus | null>(null);
+  const refresh = () =>
+    fetch("/api/claude-voice")
+      .then((r) => r.json())
+      .then(setStatus)
+      .catch(() => {});
+  useEffect(() => {
+    refresh();
+  }, [s.voiceEngine]);
+  // While the models download, check progress every second.
+  useEffect(() => {
+    if (status?.models.state !== "downloading") return;
+    const id = setInterval(refresh, 1000);
+    return () => clearInterval(id);
+  }, [status?.models.state]);
+  const download = async () => {
+    const r = await (await postJson("/api/claude-voice/download", {})).json().catch(() => null);
+    if (r?.models) setStatus((st) => (st ? { ...st, models: r.models } : st));
+    else refresh();
+  };
+  const choose = (voiceEngine: "grok" | "claude") => {
+    update({ voiceEngine });
+    if (voiceEngine === "claude" && status && status.models.state !== "ready" && status.models.state !== "downloading") download();
+  };
+
+  const m = status?.models;
+  return (
+    <Section title="Voice engine">
+      <Segmented
+        value={s.voiceEngine}
+        onChange={choose}
+        options={[
+          { value: "grok", label: "Grok" },
+          { value: "claude", label: "Claude (beta)" },
+        ]}
+      />
+      <p className="mt-2 text-[12px] leading-snug text-white/45">
+        {s.voiceEngine === "grok"
+          ? "Grok's realtime voice, billed by xAI per minute."
+          : "Claude Haiku through your own Claude Code sign-in, with speech recognized and spoken on this PC. No xAI cost. Replies take a moment longer than Grok's. Takes effect on the next call."}
+      </p>
+      {s.voiceEngine === "claude" && status && (
+        <div className="mt-3 text-[12px] leading-snug">
+          {!status.claudeFound && <p className="text-amber-300/90">Claude Code wasn't found. Set it up under Second brain below.</p>}
+          {m?.state === "ready" && <p className="text-white/55">Speech models ready.</p>}
+          {m?.state === "downloading" && <p className="text-white/70">Downloading speech models… {m.percent}%</p>}
+          {(m?.state === "idle" || m?.state === "error") && (
+            <div className="flex items-center gap-3">
+              <p className={cn("flex-1", m.state === "error" ? "text-amber-300/90" : "text-white/55")}>
+                {m.state === "error" ? `Download failed: ${m.error}` : `Needs about ${status.mb} MB of speech models, kept on this PC.`}
+              </p>
+              <button onClick={download} className="shrink-0 rounded-lg border border-white/15 px-2.5 py-1 text-[12px] text-white/85 hover:bg-white/10">
+                {m.state === "error" ? "Retry" : "Download"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </Section>
+  );
+}
+
 type BrainStatus = { found: boolean; path: string | null; source: "settings" | "path" | "claude-desktop" | null; hasKey: boolean; signedIn: boolean | null };
 
 function SecondBrainSection({ s, update }: { s: SettingsT; update: Update }) {

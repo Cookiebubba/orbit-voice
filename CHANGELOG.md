@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Claude voice (beta, opt-in):** Settings → Voice engine → Claude. Claude Haiku is the voice, through your own Claude Code sign-in, with speech heard and spoken on your PC (Silero VAD, Moonshine and Kitten TTS via sherpa-onnx, about 170 MB downloaded when you first turn it on, each file checked against a pinned SHA-256). No xAI key or cost. All of Orbit's tools, consent checks, wakes and resume notes work as with Grok. Replies start about 2 s after you stop talking; a quick "One sec." covers tool calls. Per turn, the log keeps timings only. `npm run latency:claude-voice` measures it end to end.
+
 ## 1.2.0 (2026-10-20)
 
 - **Fixed: "switch to…" and "copy that" were refused although you'd asked.** Other Claude sessions finishing mid-call sent an app notification between your words and Grok acting on them, and that voided your request. Now your own words, when they ask for it ("switch to…", "open…", "go to…", "copy…", "start a new session", "tell Claude to…"), stay a request for 2 minutes, once each and never when negated. Words that don't ask, like "yes" to Grok's offer, still have to come after the latest notification, so a notification or transcript still can't make Grok switch, copy or start a session on its own. The bridge also holds an update back while Grok is still acting on what you asked.

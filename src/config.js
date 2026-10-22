@@ -43,6 +43,9 @@ export const DEFAULTS = Object.freeze({
   brainExplore: true, // may read (never change) the project of the open Claude session
   brainConnection: 'claude-code', // 'claude-code' = the user's Claude login; 'api-key' = an Anthropic API key
   brainClaudePath: '', // '' = find Claude Code automatically
+  // The voice itself: 'grok' (xAI realtime) or 'claude' (beta: local speech models + Claude Haiku
+  // through the user's own Claude Code; models are downloaded when it's first turned on).
+  voiceEngine: 'grok',
 });
 
 export const LIMITS = Object.freeze({ minSpeed: 0.7, maxSpeed: 1.5 });
@@ -129,6 +132,9 @@ function sanitize(input) {
         break;
       case 'brainConnection':
         if (val === 'claude-code' || val === 'api-key') out.brainConnection = val;
+        break;
+      case 'voiceEngine':
+        if (val === 'grok' || val === 'claude') out.voiceEngine = val;
         break;
       case 'brainClaudePath':
         // Only ever a local absolute path (no network share) to claude.exe on Windows, claude

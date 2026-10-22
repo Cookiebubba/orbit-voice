@@ -19,6 +19,7 @@ export type Settings = {
   brainExplore: boolean;
   brainConnection: "claude-code" | "api-key";
   brainClaudePath: string;
+  voiceEngine: "grok" | "claude";
   autoUpdate: boolean;
   orbStick: boolean;
   orbPulse: boolean;

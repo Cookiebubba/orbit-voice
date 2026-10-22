@@ -1,0 +1,225 @@
+// Claude voice (beta): the local stand-in for Grok's realtime socket. Fake speech models and a fake
+// Claude Code process: nothing is downloaded, spawned or billed.
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
+import { createClaudeRealtime, parseToolCall, speakableText, systemPrompt, takeChunks } from '../src/claude-voice.js';
+import { downloadModels, downloadStatus, modelsReady } from '../src/voice-models.js';
+
+test('streamed text is cut into speakable pieces: the first early, sentences whole, numbers intact', () => {
+  let r = takeChunks('Sure, I can help with that. It', { first: true, final: false });
+  assert.deepEqual(r.chunks, ['Sure, I can help with that.']);
+  assert.equal(r.rest, ' It');
+  r = takeChunks('The first line should stay short, under fifty characters, and', { first: true, final: false });
+  assert.deepEqual(r.chunks, ['The first line should stay short,']);
+  r = takeChunks('Version 3.5 is out', { first: false, final: false });
+  assert.deepEqual(r.chunks, [], 'a decimal point is not a sentence end');
+  r = takeChunks('Paris.', { first: true, final: false });
+  assert.deepEqual(r.chunks, [], 'the end of the buffer may not be the end of the sentence');
+  r = takeChunks('Paris.', { first: true, final: true });
+  assert.deepEqual(r.chunks, ['Paris.']);
+  r = takeChunks('a '.repeat(120), { first: false, final: false });
+  assert.ok(r.chunks.length >= 1 && r.chunks[0].length <= 180, 'a long run without punctuation still gets spoken');
+});
+
+test('tool calls are parsed strictly, and only the spoken text is said', () => {
+  assert.deepEqual(parseToolCall('{"name":"read_session","arguments":{"last_n":2}}'), { name: 'read_session', args: { last_n: 2 } });
+  assert.deepEqual(parseToolCall('{"name":"go_to_sleep"}'), { name: 'go_to_sleep', args: {} });
+  assert.equal(parseToolCall('{"name":"rm -rf"}'), null);
+  assert.equal(parseToolCall('not json'), null);
+  assert.equal(parseToolCall('{"arguments":{}}'), null);
+  assert.equal(speakableText('Run **`git status`** — see https://example.com/x'), 'Run git status — see a link');
+  assert.equal(speakableText('git reset --soft HEAD~1'), 'git reset --soft HEAD tilde 1');
+  const p = systemPrompt({ instructions: 'Be Orbit.', tools: [{ name: 'list_sessions', description: 'Lists sessions.', parameters: { type: 'object' } }] });
+  assert.match(p, /^Be Orbit\./);
+  assert.match(p, /<tool>\{"name": "tool_name"/);
+  assert.match(p, /- list_sessions: Lists sessions\./);
+});
+
+/** Speech models that hear nothing unless told to, and speak 10 ms of audio per piece. */
+function fakeSpeech({ transcript = 'hello' } = {}) {
+  const vad = { detected: false, segments: [], acceptWaveform() {}, isDetected() { return this.detected; }, isEmpty() { return !this.segments.length; }, front() { return this.segments[0]; }, pop() { this.segments.shift(); }, reset() { this.segments = []; } };
+  return {
+    vad,
+    said: [],
+    newVad: () => vad,
+    newResampler: () => ({ resample: (f) => f.subarray(0, Math.floor((f.length * 2) / 3)) }),
+    async transcribe() {
+      return transcript;
+    },
+    async speak(text) {
+      this.said.push(text);
+      return new Float32Array(240);
+    },
+  };
+}
+
+/** A fake `claude` process: records what it's sent and answers each user message with `script`. */
+function fakeClaude(script) {
+  const calls = [];
+  const spawnImpl = (exe, args, opts) => {
+    const child = new EventEmitter();
+    child.stdin = new PassThrough();
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.pid = undefined;
+    child.kill = () => child.emit('close', 0);
+    const call = { exe, args, opts, messages: [] };
+    calls.push(call);
+    let buf = '';
+    let chain = Promise.resolve(); // like the real CLI: one turn at a time, in order
+    child.stdin.on('data', (d) => {
+      buf += d;
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const msg = JSON.parse(buf.slice(0, i));
+        buf = buf.slice(i + 1);
+        call.messages.push(msg);
+        if (msg.type !== 'user') continue;
+        const reply = script(msg.message.content, call.messages.filter((m) => m.type === 'user').length);
+        const out = (o) => child.stdout.write(`${JSON.stringify(o)}\n`);
+        chain = chain.then(async () => {
+          await new Promise((r) => setImmediate(r));
+          for (const piece of reply) {
+            out({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: piece } } });
+            await new Promise((r) => setTimeout(r, 2));
+          }
+          out({ type: 'stream_event', event: { type: 'message_stop' } });
+          out({ type: 'result', subtype: 'success', is_error: false, result: reply.join('') });
+        });
+      }
+    });
+    return child;
+  };
+  return { calls, spawnImpl };
+}
+
+function collect(sock) {
+  const events = [];
+  sock.on('message', (d) => events.push(JSON.parse(d)));
+  return events;
+}
+const until = async (fn, ms = 2000) => {
+  const end = Date.now() + ms;
+  while (!fn()) {
+    if (Date.now() > end) throw new Error('timed out');
+    await new Promise((r) => setTimeout(r, 5));
+  }
+};
+const opened = (sock) => new Promise((r) => sock.once('open', r));
+
+test('Claude Code runs with no tools, no settings or MCP, and the user\x27s own login', async () => {
+  process.env.ANTHROPIC_API_KEY = 'sk-test-should-not-pass';
+  const fc = fakeClaude(() => ['Hi.']);
+  const sock = createClaudeRealtime({ claudePath: 'C:/x/claude.exe', speech: fakeSpeech(), spawnImpl: fc.spawnImpl });
+  await opened(sock);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'Be Orbit.', tools: [] } }));
+  delete process.env.ANTHROPIC_API_KEY;
+  const { args, opts } = fc.calls[0];
+  const val = (flag) => args[args.indexOf(flag) + 1];
+  assert.equal(val('--tools'), '');
+  assert.equal(val('--setting-sources'), '');
+  assert.ok(args.includes('--strict-mcp-config'));
+  assert.ok(args.includes('--no-session-persistence'));
+  assert.equal(val('--model'), 'haiku');
+  assert.equal(val('--effort'), 'low');
+  assert.equal(val('--input-format'), 'stream-json');
+  assert.equal(opts.env.ANTHROPIC_API_KEY, undefined, 'never an API key from the environment');
+  assert.equal(opts.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, '1');
+  assert.equal(opts.shell, undefined);
+  sock.close();
+});
+
+test('a reply is spoken piece by piece, and a tool call goes to the bridge and back to Claude', async () => {
+  const fc = fakeClaude((text, nth) => (nth === 1 ? ['Let me ', 'check. <to', 'ol>{"name":"get_current_session",', '"arguments":{}}</tool>'] : ['Claude is idle.']));
+  const speech = fakeSpeech();
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech, spawnImpl: fc.spawnImpl });
+  const ev = collect(sock);
+  await opened(sock);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [{ name: 'get_current_session', description: 'd', parameters: {} }] } }));
+  sock.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: "what's Claude doing?" }] } }));
+  sock.send(JSON.stringify({ type: 'response.create' }));
+  await until(() => ev.some((e) => e.type === 'response.done'));
+  const call = ev.find((e) => e.type === 'response.function_call_arguments.done');
+  assert.equal(call.name, 'get_current_session');
+  assert.equal(call.arguments, '{}');
+  assert.ok(speech.said.includes('Let me check.'), 'the words before the call are spoken');
+  assert.ok(!speech.said.some((s) => s.includes('tool')), 'the call itself is never spoken');
+  const types = ev.map((e) => e.type);
+  assert.ok(types.indexOf('response.output_audio.delta') < types.indexOf('response.function_call_arguments.done'));
+  assert.ok(types.indexOf('response.function_call_arguments.done') < types.indexOf('response.done'));
+
+  sock.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: call.call_id, output: '{"ok":true,"title":"Fix tests"}' } }));
+  sock.send(JSON.stringify({ type: 'response.create' }));
+  await until(() => ev.filter((e) => e.type === 'response.done').length === 2);
+  const sent = fc.calls[0].messages.filter((m) => m.type === 'user').map((m) => m.message.content);
+  assert.equal(sent[1], '[Tool result: get_current_session] {"ok":true,"title":"Fix tests"}');
+  assert.equal(ev.filter((e) => e.type === 'response.output_audio_transcript.done').at(-1).transcript, 'Claude is idle.');
+  sock.close();
+});
+
+test('speech in becomes a transcript and a reply; talking over a reply cancels it', async () => {
+  const fc = fakeClaude(() => ['This is a long answer, ', 'with many words. ', 'And more. '.repeat(50)]);
+  const speech = fakeSpeech({ transcript: 'What time is it?' });
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech, spawnImpl: fc.spawnImpl });
+  const ev = collect(sock);
+  await opened(sock);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [] } }));
+  const mic = Buffer.alloc(2048 * 2).toString('base64');
+  speech.vad.detected = true;
+  sock.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: mic }));
+  assert.ok(ev.some((e) => e.type === 'input_audio_buffer.speech_started'));
+  speech.vad.detected = false;
+  speech.vad.segments.push({ start: 0, samples: new Float32Array(1024) });
+  sock.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: mic }));
+  await until(() => ev.some((e) => e.type === 'conversation.item.input_audio_transcription.completed'));
+  assert.equal(ev.find((e) => e.type === 'conversation.item.input_audio_transcription.completed').transcript, 'What time is it?');
+  await until(() => ev.some((e) => e.type === 'response.output_audio.delta'));
+  // The user talks again: the reply stops, and Claude Code is told to stop writing it.
+  speech.vad.detected = true;
+  sock.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: mic }));
+  await until(() => ev.some((e) => e.type === 'response.done'));
+  assert.equal(ev.find((e) => e.type === 'response.done').response.status, 'cancelled');
+  assert.ok(fc.calls[0].messages.some((m) => m.type === 'control_request' && m.request.subtype === 'interrupt'));
+  sock.close();
+});
+
+test('a cough (no words) gets no reply', async () => {
+  const fc = fakeClaude(() => ['Hi.']);
+  const speech = fakeSpeech({ transcript: '' });
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech, spawnImpl: fc.spawnImpl });
+  const ev = collect(sock);
+  await opened(sock);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [] } }));
+  speech.vad.segments.push({ start: 0, samples: new Float32Array(1024) });
+  sock.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: Buffer.alloc(2048 * 2).toString('base64') }));
+  await until(() => ev.some((e) => e.type === 'conversation.item.input_audio_transcription.completed'));
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(!ev.some((e) => e.type === 'response.created'));
+  assert.equal(fc.calls[0].messages.filter((m) => m.type === 'user').length, 0);
+  sock.close();
+});
+
+test('without Claude Code it reports why and closes', async () => {
+  const sock = createClaudeRealtime({ claudePath: '', speech: fakeSpeech() });
+  const ev = collect(sock);
+  const closed = new Promise((r) => sock.once('close', (code, reason) => r({ code, reason: String(reason) })));
+  const c = await closed;
+  assert.equal(c.code, 1011);
+  assert.match(ev.find((e) => e.type === 'error').error.message, /Claude Code was not found/);
+});
+
+test('the model download refuses a file that fails its checksum, and keeps nothing', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-voice-models-'));
+  const fetchImpl = async () => new Response('not the model');
+  await assert.rejects(downloadModels(root, { fetchImpl }), /checksum/);
+  assert.equal(downloadStatus(root).state, 'error');
+  assert.equal(modelsReady(root), false);
+  assert.deepEqual(fs.readdirSync(root), [], 'no partial or unverified file left behind');
+  fs.rmSync(root, { recursive: true, force: true });
+});
