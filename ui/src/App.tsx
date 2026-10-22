@@ -209,22 +209,21 @@ export default function App() {
           )}
 
           {/* controls */}
-          <div className={cn("flex h-20 shrink-0 items-center gap-3", on ? "justify-between px-6" : "justify-center")}>
+          {/* Sleep in the middle (big), typing on its left, mute on its right. */}
+          <div className="flex h-20 shrink-0 items-center justify-center gap-4">
             {on ? (
               <>
-                <div className="flex items-center gap-3">
-                  <RoundButton label="Type instead" active={typing} onClick={() => setTyping((t) => !t)}>
-                    <Keyboard size={18} />
-                  </RoundButton>
-                  <RoundButton
-                    label={waitingForYes ? `Answer (${hotkey})` : `Go to sleep: hangs up (${hotkey})`}
-                    active={waitingForYes}
-                    onClick={v.toggleSleep}
-                    big
-                  >
-                    {waitingForYes ? <Mic size={22} /> : <Moon size={21} />}
-                  </RoundButton>
-                </div>
+                <RoundButton label="Type instead" active={typing} onClick={() => setTyping((t) => !t)}>
+                  <Keyboard size={18} />
+                </RoundButton>
+                <RoundButton
+                  label={waitingForYes ? `Answer (${hotkey})` : `Go to sleep: hangs up (${hotkey})`}
+                  active={waitingForYes}
+                  onClick={v.toggleSleep}
+                  big
+                >
+                  {waitingForYes ? <Mic size={22} /> : <Moon size={21} />}
+                </RoundButton>
                 <RoundButton label={v.muted ? "Unmute microphone" : "Mute microphone"} danger={v.muted} onClick={v.toggleMute}>
                   {v.muted ? <MicOff size={18} /> : <Mic size={18} />}
                 </RoundButton>
