@@ -2,7 +2,7 @@
 // second brain) driven through random sequences against test doubles, never a real endpoint.
 //
 //   npm --prefix ui run build          (once: the page it drives)
-//   npm run fuzz:e2e -- --seed 1 --iterations 4 [--port 4403]
+//   npm run fuzz:e2e -- --seed 1 --iterations 4 [--port 4403] [--avatar qubit]
 //
 // What's real and what's fake:
 //   - Orbit itself is real: electron/main.js is imported as-is, in this Electron process, hidden
@@ -55,6 +55,7 @@ const SEED = Number(opt('seed', Math.floor(Math.random() * 1e6)));
 const ITERATIONS = Math.max(1, Number(opt('iterations', 3)));
 const PORT = Number(opt('port', 4403));
 const KEEP = process.argv.includes('--keep');
+const AVATAR = opt('avatar', 'buddy') === 'qubit' ? 'qubit' : 'buddy'; // the avatar on the fake Claude window
 // Earlier runs' profiles left behind (Chromium still holds some files while a run quits, so each
 // run's own folder is removed by a later run). A failed run's profile is kept 6 hours to look at.
 for (const d of fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('orbit-fuzz-e2e-'))) {
@@ -201,7 +202,7 @@ const USER_DATA = path.join(process.env.APPDATA, 'Orbit'); // main.js puts userD
 fs.mkdirSync(USER_DATA, { recursive: true });
 fs.writeFileSync(
   path.join(USER_DATA, 'settings.json'),
-  JSON.stringify({ orbStick: false, announce: 'speak', announceWake: true, wakeOnResults: true, brainEnabled: true, brainModel: 'auto', brainExplore: true, brainConnection: 'claude-code', brainClaudePath: FAKE_CLAUDE, wakeWord: false, autoUpdate: false, listenMode: 'always' }),
+  JSON.stringify({ avatar: AVATAR, orbStick: false, announce: 'speak', announceWake: true, wakeOnResults: true, brainEnabled: true, brainModel: 'auto', brainExplore: true, brainConnection: 'claude-code', brainClaudePath: FAKE_CLAUDE, wakeWord: false, autoUpdate: false, listenMode: 'always' }),
 );
 // No real Claude Code on PATH, ever.
 process.env.PATH = [path.join(process.env.SystemRoot || 'C:\\Windows', 'System32'), process.env.SystemRoot || 'C:\\Windows'].join(path.delimiter);
@@ -259,11 +260,11 @@ app.on('web-contents-created', (_e, wc) => {
   wc.setAudioMuted(true);
   wc.on('render-process-gone', (_ev, d) => violate('a page crashed', d?.reason));
   wc.on('unresponsive', () => violate('a page stopped responding'));
-  // The pixel buddy's page (it follows the fake Claude window, off screen): any script error fails.
+  // The avatar's page (it follows the fake Claude window, off screen): any script error fails.
   wc.on('console-message', (e, level, message) => {
-    if (!/\/buddy\.html/.test(wc.getURL())) return;
+    if (!/\/(buddy|qubit)\.html/.test(wc.getURL())) return;
     const lvl = typeof e?.level === 'string' ? e.level : level === 3 ? 'error' : '';
-    if (lvl === 'error') violate('a script error on the pixel buddy\x27s page', String(e?.message ?? message ?? '').slice(0, 200));
+    if (lvl === 'error') violate('a script error on the avatar\x27s page', String(e?.message ?? message ?? '').slice(0, 200));
   });
 });
 app.on('child-process-gone', (_e, d) => ['crashed', 'oom', 'launch-failed', 'integrity-failure'].includes(d?.reason) && violate('an Electron process died', `${d?.type} ${d?.reason}`));
@@ -644,16 +645,17 @@ function finish(code) {
   }, 500);
 }
 
-/** The pixel buddy: its window follows the (fake) Claude window, its page loaded and drew. */
+/** The avatar (--avatar): its window follows the (fake) Claude window, its page loaded and drew. */
 async function checkBuddy() {
-  if (!desk.helperStarted) return violate('the Claude window watcher never started (the pixel buddy is on by default)');
-  const bw = BrowserWindow.getAllWindows().find((w) => /\/buddy\.html/.test(w.webContents.getURL()));
-  if (!bw) return violate('the pixel buddy window was never created');
-  const ok = await bw.webContents.executeJavaScript('!!document.querySelector("canvas") && innerWidth > 100').catch(() => false);
-  if (!ok) violate('the pixel buddy page did not load');
+  if (!desk.helperStarted) return violate('the Claude window watcher never started (an avatar is on)');
+  const bw = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes(`/${AVATAR}.html`));
+  if (!bw) return violate(`the ${AVATAR} window was never created`);
+  const drew = AVATAR === 'qubit' ? '!!(window.__qubit && window.__qubit.q && document.querySelector("svg path")) && innerWidth > 100' : '!!document.querySelector("canvas") && innerWidth > 100';
+  const ok = await bw.webContents.executeJavaScript(drew).catch(() => false);
+  if (!ok) violate(`the ${AVATAR} page did not load`);
   const b = bw.getBounds();
-  if (b.x > -3000) violate('the pixel buddy strip is not on the fake Claude window', JSON.stringify(b));
-  covered.buddy = (covered.buddy || 0) + 1;
+  if (b.x > -3000) violate(`the ${AVATAR} strip is not on the fake Claude window`, JSON.stringify(b));
+  covered[AVATAR] = (covered[AVATAR] || 0) + 1;
 }
 
 async function run() {

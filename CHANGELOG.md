@@ -12,6 +12,7 @@
   - A quiet call: his seeded idle wander (hops along the box and the floor, looks around, the odd flip practice). Anything Orbit does takes over at once.
   - He follows the Claude window, goes back to his spot when it resizes, and stops drawing while it's minimized. Asleep he runs at 30 fps; awake, at the display's full rate.
   - Click him for a small reaction; every other click goes through to Claude.
+- `npm run e2e:avatar`: the real Orbit with Qubit through a whole session against the fake Grok and Claude window, with pictures of each state, motion checks (no jumps, no sinking or floating), CPU, window moves and the live avatar switch.
 
 - **Pixel buddy:** a 16-pixel character lives along the bottom of your Claude window. It's on by default; Settings → Avatar can switch it off, or set it to Tiny, Small or Big.
   - It naps with drifting Z's while Orbit sleeps, and wakes with a stretch and a yawn.

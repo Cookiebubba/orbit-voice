@@ -58,7 +58,11 @@ export async function run(mode, args) {
   const windows = listWindows(st, front);
 
   if (mode === 'info') {
-    return { ok: true, sessionTitle: front.title, newSession: !!front.newPage, folder: front.newPage?.folder ?? null, promptBoxFound: true, promptText: front.promptText, windowId: front.hwnd, windows, promptBoxRect: { x: 300, y: 700, w: 600, h: 24 }, windowRect: { x: 0, y: 0, w: 1200, h: 800 } };
+    // Where the prompt box is, as UI Automation reports it (st.layout can change it), and with
+    // -Rects Claude's Send button, which (like the real one) is only there while the box has text.
+    const L = { promptBoxRect: { x: 300, y: 700, w: 600, h: 24 }, windowRect: { x: 0, y: 0, w: 1200, h: 800 }, sendButtonRect: { x: 868, y: 696, w: 32, h: 32 }, ...st.layout };
+    const sendButtonRect = args.includes('-Rects') && front.promptText ? L.sendButtonRect : null;
+    return { ok: true, sessionTitle: front.title, newSession: !!front.newPage, folder: front.newPage?.folder ?? null, promptBoxFound: !!L.promptBoxRect, promptText: front.promptText, windowId: front.hwnd, windows, promptBoxRect: L.promptBoxRect, windowRect: L.windowRect, sendButtonRect };
   }
   if (mode === 'list') {
     const open = new Map(st.windows.filter((w) => w.title).map((w) => [w.title, w.hwnd]));
@@ -161,8 +165,9 @@ export async function run(mode, args) {
 
 /**
  * A stand-in for electron/claude-window.ps1 (the Claude window watcher): reports this fake's windows
- * as if they were on screen (far off to the left, so the pixel buddy's strip that follows them is
- * never in sight), every second and on each command. Child-process shaped: stdin, stdout, 'exit'.
+ * as if they were on screen (far off to the left, so the avatar's strip that follows them is never
+ * in sight; a window's own `rect` overrides that), every second and on each command (and on
+ * `S().nudge()`, for a test that moved a window). Child-process shaped: stdin, stdout, 'exit'.
  */
 export function windowHelper() {
   const child = new EventEmitter();
@@ -171,7 +176,7 @@ export function windowHelper() {
   child.stdin = new PassThrough();
   const report = () => {
     const st = S();
-    const wins = st.windows.map((w, i) => ({ hwnd: w.hwnd, min: !!w.min, x: -4200 + i * 40, y: 120 + i * 30, w: 1200, h: 800 }));
+    const wins = st.windows.map((w, i) => ({ hwnd: w.hwnd, min: !!w.min, x: -4200 + i * 40, y: 120 + i * 30, w: 1200, h: 800, ...w.rect }));
     const fg = st.windows.find((w) => !w.min)?.hwnd || 0;
     if (!child.stdout.writableEnded) child.stdout.write(`${JSON.stringify({ wins, fg, front: fg ? 'claude' : 'other' })}
 `);
@@ -185,6 +190,7 @@ export function windowHelper() {
     setImmediate(() => child.emit('exit', 0));
   };
   S().helperStarted = (S().helperStarted || 0) + 1;
+  S().nudge = report;
   return child;
 }
 
