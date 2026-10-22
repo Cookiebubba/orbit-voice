@@ -21,6 +21,8 @@ export type Settings = {
   brainClaudePath: string;
   voiceEngine: "grok" | "claude";
   claudeVoice: number;
+  buddy: boolean;
+  buddySize: number;
   autoUpdate: boolean;
   orbStick: boolean;
   orbPulse: boolean;

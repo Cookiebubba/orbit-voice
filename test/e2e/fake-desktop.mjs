@@ -5,6 +5,9 @@
 // pages) with the same rules as desktop.ps1, and records every call in globalThis.__orbitE2E.
 // Nothing here looks at, clicks or types into the real Claude app.
 
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
+
 const S = () => {
   globalThis.__orbitE2E ??= {};
   const e = globalThis.__orbitE2E;
@@ -55,7 +58,7 @@ export async function run(mode, args) {
   const windows = listWindows(st, front);
 
   if (mode === 'info') {
-    return { ok: true, sessionTitle: front.title, newSession: !!front.newPage, folder: front.newPage?.folder ?? null, promptBoxFound: true, promptText: front.promptText, windowId: front.hwnd, windows };
+    return { ok: true, sessionTitle: front.title, newSession: !!front.newPage, folder: front.newPage?.folder ?? null, promptBoxFound: true, promptText: front.promptText, windowId: front.hwnd, windows, promptBoxRect: { x: 300, y: 700, w: 600, h: 24 }, windowRect: { x: 0, y: 0, w: 1200, h: 800 } };
   }
   if (mode === 'list') {
     const open = new Map(st.windows.filter((w) => w.title).map((w) => [w.title, w.hwnd]));
@@ -156,4 +159,33 @@ export async function run(mode, args) {
   return { ok: false, error: 'script_exception', message: `unknown mode ${mode}` };
 }
 
-export default { run };
+/**
+ * A stand-in for electron/claude-window.ps1 (the Claude window watcher): reports this fake's windows
+ * as if they were on screen (far off to the left, so the pixel buddy's strip that follows them is
+ * never in sight), every second and on each command. Child-process shaped: stdin, stdout, 'exit'.
+ */
+export function windowHelper() {
+  const child = new EventEmitter();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.stdin = new PassThrough();
+  const report = () => {
+    const st = S();
+    const wins = st.windows.map((w, i) => ({ hwnd: w.hwnd, min: !!w.min, x: -4200 + i * 40, y: 120 + i * 30, w: 1200, h: 800 }));
+    const fg = st.windows.find((w) => !w.min)?.hwnd || 0;
+    if (!child.stdout.writableEnded) child.stdout.write(`${JSON.stringify({ wins, fg, front: fg ? 'claude' : 'other' })}
+`);
+  };
+  child.stdin.on('data', () => setTimeout(report, 10)); // follow / pause
+  const timer = setInterval(report, 1000);
+  setTimeout(report, 50);
+  child.kill = () => {
+    clearInterval(timer);
+    child.stdout.end();
+    setImmediate(() => child.emit('exit', 0));
+  };
+  S().helperStarted = (S().helperStarted || 0) + 1;
+  return child;
+}
+
+export default { run, windowHelper };

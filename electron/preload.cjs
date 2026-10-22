@@ -20,6 +20,20 @@ contextBridge.exposeInMainWorld('desktop', {
   orbDragStart: () => ipcRenderer.send('orb:drag-start'),
   orbDragMove: () => ipcRenderer.send('orb:drag-move'),
   orbDragEnd: () => ipcRenderer.send('orb:drag-end'),
+  // The pixel buddy: the main window tells it what happened; its own window gets Orbit's state and
+  // says when the cursor is over it (so it can take clicks).
+  buddyEvent: (name) => ipcRenderer.send('buddy:event', name),
+  buddyHover: (on) => ipcRenderer.send('buddy:hover', !!on),
+  onBuddyState: (cb) => {
+    const fn = (_e, s) => cb(s);
+    ipcRenderer.on('buddy:state', fn);
+    return () => ipcRenderer.removeListener('buddy:state', fn);
+  },
+  onBuddyEvent: (cb) => {
+    const fn = (_e, s) => cb(s);
+    ipcRenderer.on('buddy:event', fn);
+    return () => ipcRenderer.removeListener('buddy:event', fn);
+  },
   openLogs: () => ipcRenderer.invoke('app:open-logs'),
   startWithWindows: {
     get: () => ipcRenderer.invoke('app:get-login'),

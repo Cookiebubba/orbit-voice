@@ -147,6 +147,25 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
               <Reveal show={s.orbPulse || s.orbPulseGrok}>
                 <PulseAmount value={s.orbPulseAmount} update={update} />
               </Reveal>
+              <Toggle
+                className="mt-4"
+                checked={s.buddy}
+                onChange={(buddy) => update({ buddy })}
+                label="Pixel buddy"
+                hint={`A little pixel character lives along the bottom of your Claude window. It naps while ${name} sleeps, listens and talks with it, hops onto the prompt box, carries your drafts in and stomps Send. Click it, or pick it up and drop it.`}
+              />
+              <Reveal show={s.buddy}>
+                <div className="mt-3 mb-1.5 text-[12px] text-white/50">Size</div>
+                <Segmented
+                  value={String(s.buddySize) as "1" | "2" | "3"}
+                  onChange={(v) => update({ buddySize: Number(v) })}
+                  options={[
+                    { value: "1", label: "Tiny" },
+                    { value: "2", label: "Small" },
+                    { value: "3", label: "Big" },
+                  ]}
+                />
+              </Reveal>
             </Section>
           </Reveal>
         )}

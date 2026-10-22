@@ -25,6 +25,8 @@ type DesktopApi = {
   minimize(): void;
   close(): void;
   sendOrbState(s: OrbSync): void;
+  /** Tell the pixel buddy something happened: "finished" | "draft" | "sent". */
+  buddyEvent?(name: "finished" | "draft" | "sent"): void;
   onOrbState(cb: (s: OrbSync) => void): () => void;
   onOrbAction(cb: (action: "toggle-sleep") => void): () => void;
   orbRestore(): void;

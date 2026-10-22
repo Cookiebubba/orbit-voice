@@ -46,6 +46,7 @@ export default function App() {
 
   // Claude finished a turn somewhere: chime, note it, and pop a Windows notification if we're not in front.
   finishedRef.current = (f) => {
+    desktop?.buddyEvent?.("finished"); // the pixel buddy celebrates (or jolts awake)
     const mode = settings?.announce ?? "speak";
     if (mode === "off") return;
     playChime("done", 0.1);
@@ -62,6 +63,14 @@ export default function App() {
   wakeRef.current = () => {
     if (app.config?.hasKey) v.announce();
   };
+
+  // The pixel buddy carries each new draft to Claude's box, and stomps Send when it goes.
+  useEffect(() => {
+    if (v.draft) desktop?.buddyEvent?.("draft");
+  }, [v.draft?.id]);
+  useEffect(() => {
+    if (v.sentCount) desktop?.buddyEvent?.("sent");
+  }, [v.sentCount]);
 
   // Keep the floating orb in sync with this window.
   useEffect(() => {

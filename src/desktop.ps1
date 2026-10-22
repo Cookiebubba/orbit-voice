@@ -398,7 +398,12 @@ try {
   if ($Mode -eq 'info') {
     $box = Get-PromptBox $root
     $page = Get-NewSessionPage $root $title
-    Out-Json @{ ok = $true; sessionTitle = $title; newSession = [bool]$page; folder = $(if ($page) { $page.folder } else { $null }); promptBoxFound = [bool]$box; promptText = $(if ($box) { Get-BoxText $box } else { $null }); windowId = $front.hwnd; windows = $windows }
+    # Where the prompt box is, with the window's own rect in the same coordinates (for the pixel
+    # buddy, which stands on it; Orbit measures it as a fraction of the window, so DPI doesn't matter).
+    $rectOf = { param($e) try { $r = $e.Current.BoundingRectangle; if ($r.Width -gt 0 -and $r.Height -gt 0) { @{ x = [int]$r.X; y = [int]$r.Y; w = [int]$r.Width; h = [int]$r.Height } } else { $null } } catch { $null } }
+    $boxRect = $(if ($box) { & $rectOf $box } else { $null }) # the text field (the box you see has padding around it)
+    $winRect = & $rectOf $root
+    Out-Json @{ ok = $true; sessionTitle = $title; newSession = [bool]$page; folder = $(if ($page) { $page.folder } else { $null }); promptBoxFound = [bool]$box; promptText = $(if ($box) { Get-BoxText $box } else { $null }); windowId = $front.hwnd; windows = $windows; promptBoxRect = $boxRect; windowRect = $winRect }
   }
 
   # ---- list ----

@@ -7,10 +7,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEFAULTS, getSetting, onSettingsChange, updateSettings } from '../src/config.js';
 import { createClaudeWindowTracker } from './claude-window.js';
 import { DEFAULT_ANCHOR, anchorFor, isAnchor, orbPositionFor } from './orb-stick.js';
-import { setDesktopDriver, setFrontWindowHint } from '../src/desktop.js';
+import { getDesktopInfo, setDesktopDriver, setFrontWindowHint } from '../src/desktop.js';
 import { getLogDir, logError, logInfo, logWarn } from '../src/log.js';
 import { authUrl, hotkeyLabel, startServer, stopBackgroundWork } from '../src/server.js';
 import { createUpdater } from './updater.js';
+import { createBuddy } from './buddy.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -31,6 +32,7 @@ app.setPath('userData', path.join(app.getPath('appData'), 'Orbit'));
 
 let main = null;
 let orb = null;
+let buddy = null; // the pixel buddy along the bottom of the Claude window (see buddy.js)
 let tray = null;
 let baseUrl = '';
 /** Is this URL Orbit's own page? An exact origin match: a prefix test would also accept
@@ -178,10 +180,13 @@ let orbMode = false; // the orb is meant to be showing (the main window is hidde
 let orbLayer = null; // 'free' | 'top' | 'above:<hwnd>'
 let claude = null; // the Claude window the orb docks on (the one you were in last): { found, hwnd, min, front, x, y, w, h } in screen pixels
 let claudeDip = null; // the Claude window in DIPs, when sticking
+let fakeWindowHelper = null; // developer testing only: a stand-in for claude-window.ps1 (see below)
 const claudeTracker = createClaudeWindowTracker({
+  spawnHelper: () => fakeWindowHelper?.() || null,
   onChange: (s) => {
     claude = s;
     placeOrb();
+    buddy?.onClaude(s);
   },
   onError: (message) => logWarn('orb', message),
 });
@@ -247,14 +252,20 @@ function nativeHandle(win) {
   return buf.length >= 8 ? buf.readBigUInt64LE(0).toString() : String(buf.readUInt32LE(0));
 }
 
+// The Claude window watcher runs while the orb sticks to Claude or the pixel buddy is on.
+const needTracker = () => !!getSetting('orbStick') || !!getSetting('buddy');
 onSettingsChange((changed) => {
-  if (!changed.includes('orbStick')) return;
-  if (getSetting('orbStick')) claudeTracker.start();
-  else {
+  if (changed.includes('buddy') || changed.includes('buddySize')) buddy?.setEnabled(getSetting('buddy'), getSetting('buddySize'));
+  if (!changed.includes('orbStick') && !changed.includes('buddy')) return;
+  if (needTracker()) {
+    claudeTracker.start();
+    if (claude) buddy?.onClaude(claude);
+  } else {
     claudeTracker.stop();
     claude = null;
-    placeOrb();
+    buddy?.onClaude({ found: false });
   }
+  placeOrb();
 });
 
 // ---------- updates (GitHub Releases) ----------
@@ -353,7 +364,12 @@ handle('update:install', () => updater?.install());
 on('win:minimize', () => showOrb());
 on('win:close', () => app.quit());
 on('orb:restore', () => showMain());
-on('orb:state', (s) => orb?.webContents.send('orb:state', s));
+on('orb:state', (s) => {
+  orb?.webContents.send('orb:state', s);
+  buddy?.onVoice(s);
+});
+on('buddy:event', (name) => buddy?.event(name));
+on('buddy:hover', (over) => buddy?.hover(over));
 on('orb:action', (a) => main?.webContents.send('orb:action', a));
 on('orb:drag-start', () => {
   claudeTracker.pause(); // the user is moving the orb; the helper waits until they drop it
@@ -383,6 +399,8 @@ app.whenReady().then(async () => {
   if (!app.isPackaged && process.env.ORBIT_FAKE_DESKTOP) {
     const fake = await import(pathToFileURL(path.resolve(process.env.ORBIT_FAKE_DESKTOP)).href);
     setDesktopDriver(fake.default || fake);
+    // ...and for the Claude window watcher too (the orb and the pixel buddy follow its windows).
+    fakeWindowHelper = (fake.default || fake).windowHelper || null;
   }
   try {
     const dir = app.getPath('userData');
@@ -411,7 +429,16 @@ app.whenReady().then(async () => {
 
   createMain();
   createOrb();
-  if (getSetting('orbStick')) claudeTracker.start();
+  buddy = createBuddy({
+    url: () => authUrl('buddy'),
+    webPreferences: secureWebPreferences,
+    lockDown,
+    getDesktopInfo,
+    log: (m) => logWarn('buddy', m),
+    info: (m) => logInfo('buddy', m),
+  });
+  buddy.setEnabled(getSetting('buddy'), getSetting('buddySize'));
+  if (needTracker()) claudeTracker.start();
   createTray();
   updater = createUpdater({
     isPackaged: app.isPackaged,
@@ -432,6 +459,7 @@ app.on('before-quit', () => {
   quitting = true;
   stopBackgroundWork(); // second-brain questions kept past a hang-up stop with the app
   claudeTracker.stop();
+  buddy?.stop();
   updater?.stop();
 });
 app.on('window-all-closed', () => app.quit());

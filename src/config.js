@@ -47,6 +47,8 @@ export const DEFAULTS = Object.freeze({
   // through the user's own Claude Code; models are downloaded when it's first turned on).
   voiceEngine: 'grok',
   claudeVoice: 0, // which of Kitten's 8 voices Claude voice speaks with (0–7)
+  buddy: true, // the pixel buddy that lives along the bottom of the Claude window
+  buddySize: 2, // screen pixels per buddy pixel: 1 (tiny, 16 px tall) to 3
 });
 
 export const LIMITS = Object.freeze({ minSpeed: 0.7, maxSpeed: 1.5 });
@@ -139,6 +141,9 @@ function sanitize(input) {
         break;
       case 'claudeVoice':
         if (Number.isInteger(val) && val >= 0 && val <= 7) out.claudeVoice = val;
+        break;
+      case 'buddySize':
+        if (Number.isInteger(val) && val >= 1 && val <= 3) out.buddySize = val;
         break;
       case 'brainClaudePath':
         // Only ever a local absolute path (no network share) to claude.exe on Windows, claude

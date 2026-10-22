@@ -72,6 +72,7 @@ export function useVoice(options: VoiceOptions) {
   const [hearing, setHearing] = useState(false); // Grok's voice detection says you are talking
   // Mute button: the call stays up and you still hear replies, but no mic audio is sent.
   const [muted, setMuted] = useState(false);
+  const [sentCount, setSentCount] = useState(0); // prompts sent to Claude in this app session
   const mutedRef = useRef(false);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
 
@@ -473,6 +474,7 @@ export function useVoice(options: VoiceOptions) {
           return;
         case "bridge.sent":
           caption({ id: `sent-${Date.now()}`, who: "sent", text: evt.text });
+          setSentCount((n) => n + 1);
           return;
         case "bridge.tool":
           thinking.current = true;
@@ -725,6 +727,7 @@ export function useVoice(options: VoiceOptions) {
     sleep: () => sleep(),
     wake,
     muted,
+    sentCount,
     /** Mute or unmute the mic for this call. Muting also drops any half-heard speech. */
     toggleMute: () => {
       const next = !mutedRef.current;

@@ -259,6 +259,12 @@ app.on('web-contents-created', (_e, wc) => {
   wc.setAudioMuted(true);
   wc.on('render-process-gone', (_ev, d) => violate('a page crashed', d?.reason));
   wc.on('unresponsive', () => violate('a page stopped responding'));
+  // The pixel buddy's page (it follows the fake Claude window, off screen): any script error fails.
+  wc.on('console-message', (e, level, message) => {
+    if (!/\/buddy\.html/.test(wc.getURL())) return;
+    const lvl = typeof e?.level === 'string' ? e.level : level === 3 ? 'error' : '';
+    if (lvl === 'error') violate('a script error on the pixel buddy\x27s page', String(e?.message ?? message ?? '').slice(0, 200));
+  });
 });
 app.on('child-process-gone', (_e, d) => ['crashed', 'oom', 'launch-failed', 'integrity-failure'].includes(d?.reason) && violate('an Electron process died', `${d?.type} ${d?.reason}`));
 process.on('uncaughtException', (e) => violate('uncaught exception in the main process', e?.stack || e));
@@ -638,6 +644,18 @@ function finish(code) {
   }, 500);
 }
 
+/** The pixel buddy: its window follows the (fake) Claude window, its page loaded and drew. */
+async function checkBuddy() {
+  if (!desk.helperStarted) return violate('the Claude window watcher never started (the pixel buddy is on by default)');
+  const bw = BrowserWindow.getAllWindows().find((w) => /\/buddy\.html/.test(w.webContents.getURL()));
+  if (!bw) return violate('the pixel buddy window was never created');
+  const ok = await bw.webContents.executeJavaScript('!!document.querySelector("canvas") && innerWidth > 100').catch(() => false);
+  if (!ok) violate('the pixel buddy page did not load');
+  const b = bw.getBounds();
+  if (b.x > -3000) violate('the pixel buddy strip is not on the fake Claude window', JSON.stringify(b));
+  covered.buddy = (covered.buddy || 0) + 1;
+}
+
 async function run() {
   // Orbit's main window (not the orb), signed in, with its "Start talking" button.
   const found = await waitFor(() => (page = BrowserWindow.getAllWindows().find((w) => /^http:\/\/127\.0\.0\.1:\d+\/(#?)$/.test(w.webContents.getURL()))), 20_000);
@@ -693,6 +711,7 @@ async function run() {
   }
   checkWakes();
   checkLogs();
+  await checkBuddy();
   const claudeRuns = fs.existsSync(path.join(CLAUDE_DIR, 'calls.log')) ? fs.readFileSync(path.join(CLAUDE_DIR, 'calls.log'), 'utf8').split('\n').filter(Boolean).length : 0;
   out(`isolation: ${network.allowed} loopback connections, ${network.blocked.length} blocked; child processes: ${spawns.claude} fake claude.exe, ${spawns.taskkill} taskkill; fake claude runs logged: ${claudeRuns}; window actions: ${desk.calls.length} (fake), clipboard writes: ${clipboardWrites.length} (stubbed)`);
   out(`checked: ${Object.entries(covered).map(([k, n]) => `${k} ${n}`).join(', ')}`);

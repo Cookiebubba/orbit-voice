@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Pixel buddy:** a 16-pixel character lives along the bottom of your Claude window. It's on by default and can be switched off, or set to Tiny, Small or Big, in Settings → App.
+  - It naps with drifting Z's while Orbit sleeps, and wakes with a stretch and a yawn.
+  - It cups an ear while you talk, paces with thought dots while Orbit thinks, and moves its mouth with Orbit's voice. Its antenna takes Orbit's colour.
+  - It hops up onto Claude's prompt box and over it, since the box is too low to walk under. It carries each draft in as a letter, and stomps Send with a paper plane flying off.
+  - While Claude works it types along on a tiny laptop, and it celebrates with sparkles when Claude finishes.
+  - On its own it wanders, sits and swings its legs off the box's edge, kicks a ball, dances, trips, waves at your cursor and dodges it.
+  - Click it for a reaction, or pick it up and drop it. A high drop leaves it seeing stars.
+  - It never takes clicks meant for Claude: only the character itself is clickable.
+- **Settings follow the voice engine:** Grok and Claude each show their own voice card (Claude voice has 8 voices with a local preview), wording, and costs. Sections open and close with smooth animations.
+- **Call bar:** the big sleep button is back in the middle, with typing on its left and mute on its right.
+
 - **Claude voice (beta, opt-in):** Settings → Voice engine → Claude. Claude Haiku is the voice, through your own Claude Code sign-in, with speech heard and spoken on your PC (Silero VAD, Moonshine and Kitten TTS via sherpa-onnx, about 170 MB downloaded when you first turn it on, each file checked against a pinned SHA-256). No xAI key or cost. All of Orbit's tools, consent checks, wakes and resume notes work as with Grok. Replies start about 2 s after you stop talking; a quick "One sec." covers tool calls. Per turn, the log keeps timings only. `npm run latency:claude-voice` measures it end to end.
 
 ## 1.2.0 (2026-10-20)

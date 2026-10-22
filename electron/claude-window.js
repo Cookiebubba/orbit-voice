@@ -51,7 +51,8 @@ export function createClaudeWindowTracker({ onChange, onError = () => {}, spawnH
 
   const start = () => {
     if (process.platform !== 'win32' && !spawnHelper) return;
-    child = (spawnHelper || (() => spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT, '-ParentPid', String(process.pid)], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })))();
+    // spawnHelper (tests) may return null to use the real helper.
+    child = spawnHelper?.() || spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT, '-ParentPid', String(process.pid)], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     child.stdin.on('error', () => {});
     child.stdin.write(`${command}\n`);
     let err = '';

@@ -10,8 +10,8 @@ export default defineConfig({
   build: {
     outDir: "../public",
     emptyOutDir: true,
-    // wake.html: hidden wake-word helper page (see src/wake.ts)
-    rollupOptions: { input: { main: path.resolve(__dirname, "index.html"), wake: path.resolve(__dirname, "wake.html") } },
+    // wake.html: hidden wake-word helper page (see src/wake.ts); buddy.html: the pixel buddy's strip
+    rollupOptions: { input: { main: path.resolve(__dirname, "index.html"), wake: path.resolve(__dirname, "wake.html"), buddy: path.resolve(__dirname, "buddy.html") } },
     chunkSizeWarningLimit: 6500,
   },
   server: { proxy: { "/voice": { target: "ws://127.0.0.1:4317", ws: true }, "/api": "http://127.0.0.1:4317" } },
