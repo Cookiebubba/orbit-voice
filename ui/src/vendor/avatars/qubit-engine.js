@@ -265,14 +265,14 @@
       const loop = (now) => {
         this._raf = requestAnimationFrame(loop);
         let dt = (now - this._last) / 1000;
+        this._last = now;
         if (this.lowPower) {
-          // 30 fps: skip every other frame (keep the time).
+          // 30 fps: skip every other frame (keep the time, counted once).
           this._acc += dt;
           if (this._acc < 1 / 31) return;
           dt = this._acc;
           this._acc = 0;
         }
-        this._last = now;
         dt = Math.min(dt, 1 / 20); // a hitch never makes him tunnel through the floor
         if (dt <= 0) return;
         this._frames++;
@@ -1094,7 +1094,8 @@
       const st = s.stretch.v;
       const sy = st;
       const sx = 1 + (1 - st) * 0.85;
-      const hov = s.hover.v + (this.M.hover ? Math.sin(this.t * TAU * 0.45) * 2.4 : 0);
+      // The float's bob grows and fades with the hover itself, so entering or leaving thinking never jumps.
+      const hov = s.hover.v + Math.sin(this.t * TAU * 0.45) * 2.4 * clamp(s.hover.v / 9, 0, 1);
       // The whole square is the body that meets the floor. Squash is along his own axes (a turning
       // square never skews), and whatever touches the floor, a face or a corner, stays on it.
       let hw = (S / 2) * sx;
