@@ -28,7 +28,7 @@ function parse(args) {
   const o = {};
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === '-ExpectNew' || a === '-DryRun') o[a.slice(1)] = true;
+    if (['-ExpectNew', '-DryRun', '-Fill', '-Filled', '-Clear'].includes(a)) o[a.slice(1)] = true;
     else if (a.startsWith('-')) o[a.slice(1)] = args[++i];
   }
   return o;
@@ -119,9 +119,32 @@ export async function run(mode, args) {
       if (m.length !== 1) return { ok: false, error: m.length ? 'session_ambiguous' : 'session_changed', message: 'x', sessionTitle: front.title };
       target = m[0];
     }
-    if (target.promptText) return { ok: false, error: 'prompt_box_not_empty', message: 'x', sessionTitle: target.title };
     if (!text.trim()) return { ok: false, error: 'empty_text' };
-    if (o.DryRun) return { ok: true, sent: false, dryRun: true, sessionTitle: target.title, windowId: target.hwnd };
+    // As desktop.ps1: -Clear empties the box only if it holds exactly the draft; -Fill types the
+    // draft in (replacing only Orbit's previous draft, PrevB64) and stops; -Filled sends only if
+    // the box still holds exactly the draft. Only a send is recorded in `sends`.
+    const same = (a, b) => String(a ?? '').replace(/\r/g, '').trim() === String(b ?? '').replace(/\r/g, '').trim();
+    if (o.Clear) {
+      const cleared = !!target.promptText && same(target.promptText, text);
+      if (cleared) target.promptText = '';
+      return { ok: true, cleared, sessionTitle: target.title };
+    }
+    if (o.Filled) {
+      if (!same(target.promptText, text)) return { ok: false, error: 'prompt_box_changed', message: 'x', sessionTitle: target.title };
+    } else {
+      const mayReplace = o.PrevB64 && target.promptText && same(target.promptText, decode(o.PrevB64));
+      if (target.promptText && !mayReplace) return { ok: false, error: 'prompt_box_not_empty', message: 'x', sessionTitle: target.title };
+      target.promptText = text;
+    }
+    if (o.Fill) {
+      st.fills = (st.fills || 0) + 1;
+      return { ok: true, filled: true, sent: false, sessionTitle: target.title, windowId: target.hwnd };
+    }
+    if (o.DryRun) {
+      target.promptText = '';
+      return { ok: true, sent: false, dryRun: true, sessionTitle: target.title, windowId: target.hwnd };
+    }
+    target.promptText = ''; // Claude empties the box once it accepts the message
     st.sends.push({ at: Date.now(), text, title: target.title, expectTitle: o.ExpectTitleB64 ? decode(o.ExpectTitleB64) : null, expectNew: !!o.ExpectNew });
     if (o.ExpectNew) {
       target.title = `Fresh session ${++st.newCount}`;
