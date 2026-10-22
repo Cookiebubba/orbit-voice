@@ -377,7 +377,7 @@ const SLOW_FILLERS = ['Hmm.', 'Let me think.'];
  * A realtime "socket" backed by local speech models and Claude Code. Same surface the bridge uses
  * on a ws WebSocket: readyState, send(json), close(), and 'open' / 'message' / 'close' / 'error'.
  */
-export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, onMetrics = () => {}, onWarn = () => {}, speech: injectedSpeech, spawnImpl, now = () => Date.now() }) {
+export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = CLAUDE_VOICE.sid, onMetrics = () => {}, onWarn = () => {}, speech: injectedSpeech, spawnImpl, now = () => Date.now() }) {
   const sock = new EventEmitter();
   sock.readyState = 0;
   const emit = (obj) => sock.readyState === OPEN && sock.emit('message', JSON.stringify(obj), false);
@@ -405,7 +405,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, onMetr
   let respondAgain = false;
   let n = 0;
   let fillerN = 0;
-  const fillerCache = new Map(); // `${speed}|${text}` -> pcm16 base64
+  const fillerCache = new Map(); // `${sid}|${speed}|${text}` -> pcm16 base64
   const id = (p) => `${p}_${++n}`;
 
   const fail = (message) => {
@@ -507,10 +507,10 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, onMetr
   };
 
   const fillerPcm = async (text) => {
-    const key = `${speed}|${text}`;
+    const key = `${sid}|${speed}|${text}`;
     let pcm = fillerCache.get(key);
     if (!pcm) {
-      pcm = floatToPcm16(await speech.speak(text, { speed })).toString('base64');
+      pcm = floatToPcm16(await speech.speak(text, { speed, sid })).toString('base64');
       fillerCache.set(key, pcm);
     }
     return pcm;
@@ -540,7 +540,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, onMetr
         if (t.cancelled) return;
         let samples;
         try {
-          samples = await speech.speak(say, { speed });
+          samples = await speech.speak(say, { speed, sid });
         } catch (e) {
           warnOnce('Claude voice: text to speech failed', e);
           return;
@@ -685,6 +685,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, onMetr
         const s = msg.session || {};
         if (typeof s.instructions === 'string') instructions = s.instructions;
         if (Array.isArray(s.tools)) tools = s.tools;
+        if (Number.isInteger(s.claude_voice) && s.claude_voice >= 0 && s.claude_voice <= 7) sid = s.claude_voice;
         const s2 = s.audio?.output?.speed;
         if (Number.isFinite(s2)) speed = s2;
         // A new prompt needs a new process; the first one starts here (or is the warm spare).

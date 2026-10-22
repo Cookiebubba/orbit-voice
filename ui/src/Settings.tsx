@@ -4,16 +4,27 @@ import { ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { desktop, type HotkeyInfo, type UpdateState } from "./desktop";
 import { postJson, type AppConfig, type Settings as SettingsT } from "./useAppState";
-import VoiceSettings from "./VoiceSettings";
+import VoiceSettings, { prefetchVoices } from "./VoiceSettings";
 import PillScroll from "./components/PillScroll";
+import Reveal from "./components/Reveal";
 import { PULSE_MAX, PULSE_MIN } from "./orbLook";
 
 export const REPO_URL = "https://github.com/Cookiebubba/orbit-voice";
 
 type Update = (patch: Partial<SettingsT>) => Promise<void>;
 
+const GAP = 12; // between sections (part of each section's open/close, so nothing jumps)
+
 export default function Settings({ config, update, onClose }: { config: AppConfig; update: Update; onClose: () => void }) {
   const s = config.settings;
+  // The assistant's name in the text: Grok, or Orbit when Claude is the voice ("Claude" is the coder).
+  const claude = s.voiceEngine === "claude";
+  const name = claude ? "Orbit" : "Grok";
+  // Both voice lists up front, so switching engines opens the other card at its real size.
+  useEffect(() => {
+    prefetchVoices("grok");
+    prefetchVoices("claude");
+  }, []);
   return (
     <PillScroll className="flex flex-col px-4 pb-6">
       <button onClick={onClose} className="mb-4 flex items-center gap-1.5 self-start rounded-md py-1 pr-2 text-[13px] text-white/60 hover:text-white">
@@ -21,112 +32,139 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
       </button>
       <h2 className="mb-5 text-[17px] font-semibold tracking-tight">Settings</h2>
 
-      <div className="space-y-3">
+      <div className="flex flex-col">
         <VoiceEngineSection s={s} update={update} />
-        <VoiceSettings />
+        {/* Each engine's own voice card: one closes as the other opens. */}
+        <Reveal show={!claude} gap={GAP}>
+          <VoiceSettings engine="grok" />
+        </Reveal>
+        <Reveal show={claude} gap={GAP}>
+          <VoiceSettings engine="claude" />
+        </Reveal>
 
-        <Section title="Listening">
-          <Segmented
-            value={s.listenMode}
-            onChange={(listenMode) => update({ listenMode })}
-            options={[
-              { value: "always", label: "Always on" },
-              { value: "tap", label: "One question at a time" },
-            ]}
-          />
-          <p className="mt-2 text-[12.5px] leading-relaxed text-white/50">
-            {s.listenMode === "always"
-              ? `Grok hears you until you say "go to sleep" or press ${s.hotkeyLabel}. Then it hangs up, so nothing is billed, until you press ${s.hotkeyLabel}${s.wakeWord ? ' or say “Hey Grok”' : ''} again.`
-              : `Press ${s.hotkeyLabel}${s.wakeWord ? ' or say “Hey Grok”' : ''}, ask one question, and Grok hangs up after answering (it waits up to a minute if a prompt needs your yes). Nothing in the background gets picked up.`}
-          </p>
-          <Toggle
-            className="mt-4"
-            checked={s.halfDuplex}
-            onChange={(halfDuplex) => update({ halfDuplex })}
-            label="Don't listen while Grok is talking"
-            hint="Turn on if you use speakers instead of headphones, so Grok doesn't hear itself. You can't interrupt it then."
-          />
-          <Toggle
-            className="mt-4"
-            checked={s.wakeWord}
-            onChange={(wakeWord) => update({ wakeWord })}
-            label="Wake word: say “Hey Grok”"
-            hint="Starts Grok hands-free after it has gone to sleep. Recognized entirely on this PC by a small offline speech model: no audio leaves your computer and it costs nothing. Each wake starts a fresh conversation."
-          />
-        </Section>
-
-        <Section title="When Claude finishes">
-          <Segmented
-            value={s.announce}
-            onChange={(announce) => update({ announce })}
-            options={[
-              { value: "speak", label: "Grok tells me" },
-              { value: "chime", label: "Chime only" },
-              { value: "off", label: "Off" },
-            ]}
-          />
-          <p className="mt-2 text-[12.5px] leading-relaxed text-white/50">
-            {s.announce === "off"
-              ? "Orbit won't tell you when Claude finishes."
-              : `Orbit watches your recent Claude sessions. When Claude finishes a task you get a chime and a Windows notification${s.announce === "speak" ? ", and if Grok is on, it says what Claude did." : "."}`}
-          </p>
-          {s.announce === "speak" && (
+        <Reveal show gap={GAP}>
+          <Section title="Listening">
+            <Segmented
+              value={s.listenMode}
+              onChange={(listenMode) => update({ listenMode })}
+              options={[
+                { value: "always", label: "Always on" },
+                { value: "tap", label: "One question at a time" },
+              ]}
+            />
+            <p className="mt-2 text-[12.5px] leading-relaxed text-white/50">
+              {s.listenMode === "always"
+                ? `${name} hears you until you say "go to sleep" or press ${s.hotkeyLabel}. Then it hangs up${claude ? "" : ", so nothing is billed,"} until you press ${s.hotkeyLabel}${s.wakeWord ? ' or say “Hey Grok”' : ""} again.`
+                : `Press ${s.hotkeyLabel}${s.wakeWord ? ' or say “Hey Grok”' : ""}, ask one question, and ${name} hangs up after answering (it waits up to a minute if a prompt needs your yes). Nothing in the background gets picked up.`}
+            </p>
             <Toggle
               className="mt-4"
-              checked={s.announceWake}
-              onChange={(announceWake) => update({ announceWake })}
-              label="Wake Grok to say it"
-              hint="While Grok is asleep, it connects just long enough to tell you, then listens for 3 seconds in case you want something. The mic opens only after it has spoken; press the hotkey to stop it. Each wake bills a few seconds of xAI time."
+              checked={s.halfDuplex}
+              onChange={(halfDuplex) => update({ halfDuplex })}
+              label={`Don't listen while ${name} is talking`}
+              hint={`Turn on if you use speakers instead of headphones, so ${name} doesn't hear itself. You can't interrupt it then.`}
             />
-          )}
-          {s.announce === "speak" && (
             <Toggle
               className="mt-4"
-              checked={s.wakeOnResults}
-              onChange={(wakeOnResults) => update({ wakeOnResults })}
-              label="Wake Grok when something you asked for is ready"
-              hint="When Claude finishes a prompt Grok sent for you, or the second brain answers after you hung up (a question still running then keeps going), Grok wakes to tell you. At most 6 wakes an hour."
+              checked={s.wakeWord}
+              onChange={(wakeWord) => update({ wakeWord })}
+              label="Wake word: say “Hey Grok”"
+              hint={`Starts ${name} hands-free after it has gone to sleep. Recognized entirely on this PC by a small offline speech model: no audio leaves your computer and it costs nothing. Each wake starts a fresh conversation.`}
             />
-          )}
-        </Section>
+          </Section>
+        </Reveal>
 
-        <SecondBrainSection s={s} update={update} />
+        <Reveal show gap={GAP}>
+          <Section title="When Claude finishes">
+            <Segmented
+              value={s.announce}
+              onChange={(announce) => update({ announce })}
+              options={[
+                { value: "speak", label: `${name} tells me` },
+                { value: "chime", label: "Chime only" },
+                { value: "off", label: "Off" },
+              ]}
+            />
+            <p className="mt-2 text-[12.5px] leading-relaxed text-white/50">
+              {s.announce === "off"
+                ? "Orbit won't tell you when Claude finishes."
+                : `Orbit watches your recent Claude sessions. When Claude finishes a task you get a chime and a Windows notification${s.announce === "speak" ? `, and if ${name} is on, it says what Claude did.` : "."}`}
+            </p>
+            <Reveal show={s.announce === "speak"}>
+              <Toggle
+                className="mt-4"
+                checked={s.announceWake}
+                onChange={(announceWake) => update({ announceWake })}
+                label={`Wake ${name} to say it`}
+                hint={`While ${name} is asleep, it connects just long enough to tell you, then listens for 3 seconds in case you want something. The mic opens only after it has spoken; press the hotkey to stop it.${claude ? " Each wake uses a little of your Claude plan." : " Each wake bills a few seconds of xAI time."}`}
+              />
+              <Toggle
+                className="mt-4"
+                checked={s.wakeOnResults}
+                onChange={(wakeOnResults) => update({ wakeOnResults })}
+                label={`Wake ${name} when something you asked for is ready`}
+                hint={`When Claude finishes a prompt ${name} sent for you, or the second brain answers after you hung up (a question still running then keeps going), ${name} wakes to tell you. At most 6 wakes an hour.`}
+              />
+            </Reveal>
+          </Section>
+        </Reveal>
 
-        {desktop && <HotkeySection />}
+        <Reveal show gap={GAP}>
+          <SecondBrainSection s={s} update={update} name={name} />
+        </Reveal>
 
         {desktop && (
-          <Section title="App">
-            <StartWithWindows />
-            <Toggle
-              className="mt-4"
-              checked={s.orbStick}
-              onChange={(orbStick) => update({ orbStick })}
-              label="Stick to Claude Code"
-              hint="The orb rides on the Claude window: it follows it around, stays on top of it, and hides while Claude is minimized. Drag the orb to choose its spot on the window."
-            />
-            <Toggle
-              className="mt-4"
-              checked={s.orbPulse}
-              onChange={(orbPulse) => update({ orbPulse })}
-              label="Pulse with your voice"
-              hint="The orb grows very slightly as you speak, so you can see it hearing you."
-            />
-            <Toggle
-              className="mt-4"
-              checked={s.orbPulseGrok}
-              onChange={(orbPulseGrok) => update({ orbPulseGrok })}
-              label="Pulse with Grok's voice"
-              hint="The same while Grok is talking."
-            />
-            {(s.orbPulse || s.orbPulseGrok) && <PulseAmount value={s.orbPulseAmount} update={update} />}
-          </Section>
+          <Reveal show gap={GAP}>
+            <HotkeySection />
+          </Reveal>
         )}
 
-        <UsageSection costPerMinute={s.costPerMinute} update={update} />
+        {desktop && (
+          <Reveal show gap={GAP}>
+            <Section title="App">
+              <StartWithWindows />
+              <Toggle
+                className="mt-4"
+                checked={s.orbStick}
+                onChange={(orbStick) => update({ orbStick })}
+                label="Stick to Claude Code"
+                hint="The orb rides on the Claude window: it follows it around, stays on top of it, and hides while Claude is minimized. Drag the orb to choose its spot on the window."
+              />
+              <Toggle
+                className="mt-4"
+                checked={s.orbPulse}
+                onChange={(orbPulse) => update({ orbPulse })}
+                label="Pulse with your voice"
+                hint="The orb grows very slightly as you speak, so you can see it hearing you."
+              />
+              <Toggle
+                className="mt-4"
+                checked={s.orbPulseGrok}
+                onChange={(orbPulseGrok) => update({ orbPulseGrok })}
+                label={`Pulse with ${name}'s voice`}
+                hint={`The same while ${name} is talking.`}
+              />
+              <Reveal show={s.orbPulse || s.orbPulseGrok}>
+                <PulseAmount value={s.orbPulseAmount} update={update} />
+              </Reveal>
+            </Section>
+          </Reveal>
+        )}
 
-        {desktop && <UpdatesSection version={config.version} auto={s.autoUpdate} update={update} />}
+        {/* What Grok costs: xAI bills by the minute. Claude voice has no xAI cost. */}
+        <Reveal show={!claude} gap={GAP}>
+          <UsageSection costPerMinute={s.costPerMinute} update={update} />
+        </Reveal>
 
-        <AboutSection config={config} />
+        {desktop && (
+          <Reveal show gap={GAP}>
+            <UpdatesSection version={config.version} auto={s.autoUpdate} update={update} />
+          </Reveal>
+        )}
+
+        <Reveal show gap={GAP}>
+          <AboutSection config={config} />
+        </Reveal>
       </div>
     </PillScroll>
   );
@@ -274,35 +312,47 @@ function VoiceEngineSection({ s, update }: { s: SettingsT; update: Update }) {
           { value: "claude", label: "Claude (beta)" },
         ]}
       />
-      <p className="mt-2 text-[12px] leading-snug text-white/45">
-        {s.voiceEngine === "grok"
-          ? "Grok's realtime voice, billed by xAI per minute."
-          : "Claude Haiku through your own Claude Code sign-in, with speech recognized and spoken on this PC. No xAI cost. Replies take a moment longer than Grok's. Takes effect on the next call."}
-      </p>
-      {s.voiceEngine === "claude" && status && (
-        <div className="mt-3 text-[12px] leading-snug">
-          {!status.claudeFound && <p className="text-amber-300/90">Claude Code wasn't found. Set it up under Second brain below.</p>}
-          {m?.state === "ready" && <p className="text-white/55">Speech models ready.</p>}
-          {m?.state === "downloading" && <p className="text-white/70">Downloading speech models… {m.percent}%</p>}
-          {(m?.state === "idle" || m?.state === "error") && (
-            <div className="flex items-center gap-3">
-              <p className={cn("flex-1", m.state === "error" ? "text-amber-300/90" : "text-white/55")}>
-                {m.state === "error" ? `Download failed: ${m.error}` : `Needs about ${status.mb} MB of speech models, kept on this PC.`}
-              </p>
-              <button onClick={download} className="shrink-0 rounded-lg border border-white/15 px-2.5 py-1 text-[12px] text-white/85 hover:bg-white/10">
-                {m.state === "error" ? "Retry" : "Download"}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      <Reveal show={s.voiceEngine === "grok"}>
+        <p className="mt-2 text-[12px] leading-snug text-white/45">Grok's realtime voice, billed by xAI per minute.</p>
+      </Reveal>
+      <Reveal show={s.voiceEngine === "claude"}>
+        <p className="mt-2 text-[12px] leading-snug text-white/45">
+          Claude Haiku through your own Claude Code sign-in, with speech recognized and spoken on this PC. No xAI cost. Replies take a moment longer than Grok's. Takes effect on the next call.
+        </p>
+        {status && (
+          <div className="mt-3 text-[12px] leading-snug">
+            <Reveal show={!status.claudeFound}>
+              <p className="mb-2 text-amber-300/90">Claude Code wasn't found. Set it up under Second brain below.</p>
+            </Reveal>
+            <Reveal show={m?.state === "ready"}>
+              <p className="text-white/55">Speech models ready.</p>
+            </Reveal>
+            <Reveal show={m?.state === "downloading"}>
+              <p className="text-white/70">Downloading speech models… {m?.percent ?? 0}%</p>
+              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-white transition-[width] duration-700 ease-out" style={{ width: `${m?.percent ?? 0}%` }} />
+              </div>
+            </Reveal>
+            <Reveal show={m?.state === "idle" || m?.state === "error"}>
+              <div className="flex items-center gap-3">
+                <p className={cn("flex-1", m?.state === "error" ? "text-amber-300/90" : "text-white/55")}>
+                  {m?.state === "error" ? `Download failed: ${m.error}` : `Needs about ${status.mb} MB of speech models, kept on this PC.`}
+                </p>
+                <button onClick={download} className="shrink-0 rounded-lg border border-white/15 px-2.5 py-1 text-[12px] text-white/85 hover:bg-white/10">
+                  {m?.state === "error" ? "Retry" : "Download"}
+                </button>
+              </div>
+            </Reveal>
+          </div>
+        )}
+      </Reveal>
     </Section>
   );
 }
 
 type BrainStatus = { found: boolean; path: string | null; source: "settings" | "path" | "claude-desktop" | null; hasKey: boolean; signedIn: boolean | null };
 
-function SecondBrainSection({ s, update }: { s: SettingsT; update: Update }) {
+function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update; name: string }) {
   const [status, setStatus] = useState<BrainStatus | null>(null);
   const [test, setTest] = useState<{ state: "idle" | "testing" | "ok" | "failed"; text?: string }>({ state: "idle" });
   const [key, setKey] = useState("");
@@ -367,17 +417,17 @@ function SecondBrainSection({ s, update }: { s: SettingsT; update: Update }) {
       <Toggle
         checked={s.brainEnabled}
         onChange={(brainEnabled) => update({ brainEnabled })}
-        label="Let Grok ask Claude when a question is hard"
-        hint="For deep questions, or questions about the code in your current project, Grok quietly asks Claude and tells you the answer. Only a short note appears when Claude reads your project."
+        label={`Let ${name} ask Claude when a question is hard`}
+        hint={`For deep questions, or questions about the code in your current project, ${name} quietly asks Claude and tells you the answer. Only a short note appears when Claude reads your project.`}
       />
-      {s.brainEnabled && (
+      <Reveal show={s.brainEnabled}>
         <>
           <div className="mt-4 mb-1.5 text-[12.5px] text-white/70">Model</div>
           <Segmented
             value={s.brainModel}
             onChange={(brainModel) => update({ brainModel })}
             options={[
-              { value: "auto", label: "Grok picks" },
+              { value: "auto", label: `${name} picks` },
               { value: "haiku", label: "Haiku" },
               { value: "sonnet", label: "Sonnet" },
               { value: "opus", label: "Opus" },
@@ -385,7 +435,7 @@ function SecondBrainSection({ s, update }: { s: SettingsT; update: Update }) {
           />
           <p className="mt-2 text-[12px] leading-snug text-white/45">
             {s.brainModel === "auto"
-              ? "Grok chooses per question: Haiku for quick lookups, Sonnet for most code questions, Opus only for hard problems."
+              ? `${name} chooses per question: Haiku for quick lookups, Sonnet for most code questions, Opus only for hard problems.`
               : `Every question goes to ${s.brainModel[0].toUpperCase() + s.brainModel.slice(1)}.`}
           </p>
           <Toggle
@@ -414,8 +464,8 @@ function SecondBrainSection({ s, update }: { s: SettingsT; update: Update }) {
               : "Questions are billed to your Anthropic API account. The key is encrypted on this PC."}
           </p>
 
-          {s.brainConnection === "claude-code" && status?.found && status.signedIn !== null && (
-            <div className="mt-2 flex items-center justify-between gap-3 text-[12.5px]">
+          <Reveal show={s.brainConnection === "claude-code" && !!status?.found && status.signedIn !== null}>
+            {status && <div className="mt-2 flex items-center justify-between gap-3 text-[12.5px]">
               <span className={cn("min-w-0 leading-snug", status.signedIn ? "text-white/70" : signingIn?.error ? "text-red-300" : "text-amber-200/90")}>
                 {status.signedIn
                   ? "Signed in to Claude Code ✓"
@@ -434,10 +484,10 @@ function SecondBrainSection({ s, update }: { s: SettingsT; update: Update }) {
                   {signingIn && !signingIn.error ? "Waiting…" : "Sign in"}
                 </button>
               )}
-            </div>
-          )}
+            </div>}
+          </Reveal>
 
-          {s.brainConnection === "api-key" && (
+          <Reveal show={s.brainConnection === "api-key"}>
             <div className="mt-2">
               {status?.hasKey && !key ? (
                 <div className="flex items-center justify-between gap-2 text-[12.5px] text-white/70">
@@ -469,7 +519,7 @@ function SecondBrainSection({ s, update }: { s: SettingsT; update: Update }) {
               )}
               {keyError && <p className="mt-1 text-[12px] text-red-300">{keyError}</p>}
             </div>
-          )}
+          </Reveal>
 
           <div className="mt-3 flex items-center gap-3">
             <button
@@ -487,7 +537,7 @@ function SecondBrainSection({ s, update }: { s: SettingsT; update: Update }) {
           <button onClick={() => setAdvanced((a) => !a)} className="mt-3 text-[12px] text-white/45 hover:text-white/80">
             {advanced ? "Hide location" : "Claude Code location…"}
           </button>
-          {advanced && (
+          <Reveal show={advanced}>
             <div className="mt-2">
               <input
                 value={path}
@@ -499,9 +549,9 @@ function SecondBrainSection({ s, update }: { s: SettingsT; update: Update }) {
               />
               <p className="mt-1 text-[11.5px] leading-snug text-white/40">Leave empty to find it automatically. Otherwise, the full path to claude.exe.</p>
             </div>
-          )}
+          </Reveal>
         </>
-      )}
+      </Reveal>
     </Section>
   );
 }

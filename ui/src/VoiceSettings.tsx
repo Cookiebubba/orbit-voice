@@ -1,4 +1,5 @@
-// Voice + speaking speed. Changes save right away and apply mid-conversation.
+// Voice + speaking speed, for either engine. Changes save right away and apply mid-conversation.
+// Grok: xAI's voices, previewed through xAI. Claude voice: Kitten's 8 voices, previewed on this PC.
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -10,22 +11,32 @@ async function post(url: string, body: object) {
   return fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 }
 
-export default function VoiceSettings() {
-  const [state, setState] = useState<VoiceState | null>(null);
-  const [speed, setSpeed] = useState(1);
+// Each engine's voice list, kept for the session: when Settings switches engines, the other card
+// opens at its real size instead of growing out of a "Loading voices…" box.
+type Engine = "grok" | "claude";
+const cache: Partial<Record<Engine, VoiceState>> = {};
+export function prefetchVoices(engine: Engine) {
+  return fetch(`/api/voice?engine=${engine}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((s: VoiceState | null) => (s ? (cache[engine] = s) : null))
+    .catch(() => null);
+}
+
+export default function VoiceSettings({ engine = "grok" }: { engine?: Engine }) {
+  const claude = engine === "claude";
+  const [state, setState] = useState<VoiceState | null>(cache[engine] ?? null);
+  const [speed, setSpeed] = useState(cache[engine]?.speed ?? 1);
   const [preview, setPreview] = useState<"idle" | "loading" | "playing">("idle");
   const [error, setError] = useState("");
   const audio = useRef<HTMLAudioElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
-    fetch("/api/voice")
-      .then((r) => r.json())
-      .then((s: VoiceState) => {
-        setState(s);
-        setSpeed(s.speed);
-      })
-      .catch(() => setError("Couldn't load voice settings."));
+    prefetchVoices(engine).then((s) => {
+      if (!s) return setError("Couldn't load voice settings.");
+      setState(s);
+      setSpeed(s.speed);
+    });
     return () => {
       audio.current?.pause();
       clearTimeout(saveTimer.current);
@@ -34,10 +45,15 @@ export default function VoiceSettings() {
 
   const save = async (change: { voice?: string; speed?: number }) => {
     setError("");
-    const r = await post("/api/settings", change);
+    const body = claude && change.voice !== undefined ? { claudeVoice: Number(change.voice) } : change;
+    const r = await post("/api/settings", body);
     if (r.ok) {
       const saved = await r.json();
-      setState((s) => (s ? { ...s, voice: saved.voice, speed: saved.speed } : s));
+      setState((s) => {
+        const next = s ? { ...s, voice: claude ? String(saved.claudeVoice) : saved.voice, speed: saved.speed } : s;
+        if (next) cache[engine] = next;
+        return next;
+      });
     } else setError("Couldn't save that setting.");
   };
 
@@ -56,7 +72,7 @@ export default function VoiceSettings() {
     setPreview("loading");
     setError("");
     try {
-      const r = await post("/api/voice/preview", { voice: state?.voice, speed });
+      const r = await post(claude ? "/api/claude-voice/preview" : "/api/voice/preview", { voice: state?.voice, speed });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Preview failed.");
       const url = URL.createObjectURL(await r.blob());
       audio.current?.pause();
@@ -92,8 +108,10 @@ export default function VoiceSettings() {
 
   return (
     <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-      <div className="text-[14px] font-medium">Grok's voice</div>
-      <p className="mt-1 text-[12.5px] leading-relaxed text-white/50">Changes apply right away, even mid-conversation.</p>
+      <div className="text-[14px] font-medium">{claude ? "Orbit's voice" : "Grok's voice"}</div>
+      <p className="mt-1 text-[12.5px] leading-relaxed text-white/50">
+        {claude ? "Spoken on this PC. Pick one by ear with Preview. Changes apply right away." : "Changes apply right away, even mid-conversation."}
+      </p>
 
       <label className="mt-4 mb-1.5 block text-[12px] text-white/50">Voice</label>
       <div className="flex gap-2">

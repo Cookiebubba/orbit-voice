@@ -226,3 +226,29 @@ test('the model download refuses a file that fails its checksum, and keeps nothi
   assert.deepEqual(fs.readdirSync(root), [], 'no partial or unverified file left behind');
   fs.rmSync(root, { recursive: true, force: true });
 });
+
+test('the chosen voice is the one spoken with, and a change applies mid-call', async () => {
+  const fc = fakeClaude(() => ['Hello there.']);
+  const speech = fakeSpeech();
+  const sids = [];
+  const speak = speech.speak.bind(speech);
+  speech.speak = (text, opts = {}) => (sids.push(opts.sid), speak(text, opts));
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech, spawnImpl: fc.spawnImpl, sid: 3 });
+  const ev = collect(sock);
+  await opened(sock);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [] } }));
+  const ask = async (n) => {
+    sock.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'hi' }] } }));
+    sock.send(JSON.stringify({ type: 'response.create' }));
+    await until(() => ev.filter((e) => e.type === 'response.done').length === n);
+  };
+  await ask(1);
+  assert.equal(sids.at(-1), 3);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [], claude_voice: 6 } }));
+  await ask(2);
+  assert.equal(sids.at(-1), 6);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [], claude_voice: 99 } }));
+  await ask(3);
+  assert.equal(sids.at(-1), 6, 'an out-of-range voice is ignored');
+  sock.close();
+});

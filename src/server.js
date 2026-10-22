@@ -104,6 +104,28 @@ const FALLBACK_VOICES = [
   { id: 'leo', name: 'Leo', gender: 'male' },
 ];
 let voiceCache = null; // { at, voices }
+// Claude voice's voices (Kitten TTS has eight; they're told apart by ear, with the preview).
+const CLAUDE_VOICES = Array.from({ length: 8 }, (_, i) => ({ id: String(i), name: `Voice ${i + 1}`, gender: 'other' }));
+
+/** Mono float samples as a 16-bit PCM WAV file. */
+function wavFile(samples, rate) {
+  const data = Buffer.alloc(samples.length * 2);
+  for (let i = 0; i < samples.length; i++) data.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(samples[i] * 32767))), i * 2);
+  const h = Buffer.alloc(44);
+  h.write('RIFF', 0);
+  h.writeUInt32LE(36 + data.length, 4);
+  h.write('WAVEfmt ', 8);
+  h.writeUInt32LE(16, 16);
+  h.writeUInt16LE(1, 20);
+  h.writeUInt16LE(1, 22);
+  h.writeUInt32LE(rate, 24);
+  h.writeUInt32LE(rate * 2, 28);
+  h.writeUInt16LE(2, 32);
+  h.writeUInt16LE(16, 34);
+  h.write('data', 36);
+  h.writeUInt32LE(data.length, 40);
+  return Buffer.concat([h, data]);
+}
 
 export const instructions = () => `
 You are Orbit, the user's voice for Claude Code. Claude Code is an AI coding agent running in the user's desktop app, in "sessions". It can do almost anything with their code and computer: edit files, run commands and tests, use git, search the web. The user talks to you hands-free; you are the go-between. Your jobs, in order:
@@ -468,7 +490,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
   onSettingsChange((changed, all) => {
     const { orbPosition, orbStickAnchor, ...visible } = all;
     broadcast({ type: 'settings.changed', changed, settings: visible });
-    if (changed.some((k) => ['voice', 'speed', 'wakeHotkey', 'brainEnabled', 'brainModel', 'brainExplore', 'brainConnection', 'wakeOnResults'].includes(k))) for (const s of liveSessions) s.pushConfig();
+    if (changed.some((k) => ['voice', 'claudeVoice', 'speed', 'wakeHotkey', 'brainEnabled', 'brainModel', 'brainExplore', 'brainConnection', 'wakeOnResults'].includes(k))) for (const s of liveSessions) s.pushConfig();
     // Turned off: held questions stop now, and nothing waits to wake Grok.
     const resultsOff = (changed.includes('wakeOnResults') && !all.wakeOnResults) || (changed.includes('announce') && all.announce !== 'speak');
     if (resultsOff || (changed.includes('brainEnabled') && !all.brainEnabled)) continuity.abortHeld();
@@ -567,7 +589,22 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           return sendJson(res, 200, { ok: true, models: downloadStatus(voiceModelsDir) });
 
         case 'GET /api/voice':
-          return sendJson(res, 200, { voice: getSetting('voice'), speed: getSetting('speed'), ...LIMITS, voices: await listVoices() });
+          // Grok's voices come from xAI; Claude voice's are Kitten's 8, on this PC.
+          // ?engine= asks for one engine's list (Settings shows both while switching between them).
+          if (url.searchParams.get('engine') === 'claude' || (url.searchParams.get('engine') !== 'grok' && claudeVoiceOn())) return sendJson(res, 200, { voice: String(getSetting('claudeVoice')), speed: getSetting('speed'), ...LIMITS, voices: CLAUDE_VOICES, engine: 'claude' });
+          return sendJson(res, 200, { voice: getSetting('voice'), speed: getSetting('speed'), ...LIMITS, voices: await listVoices(), engine: 'grok' });
+
+        case 'POST /api/claude-voice/preview': {
+          // A short sample of one of Claude voice's voices, made on this PC (no network, no cost).
+          if (!modelsReady(voiceModelsDir)) return sendJson(res, 409, { error: 'Download the speech models first (Voice engine, above).' });
+          const body = await readJson(req);
+          const sid = Number.isInteger(Number(body.voice)) && Number(body.voice) >= 0 && Number(body.voice) <= 7 ? Number(body.voice) : getSetting('claudeVoice');
+          const speed = Math.min(LIMITS.maxSpeed, Math.max(LIMITS.minSpeed, Number(body.speed) || getSetting('speed')));
+          const speech = await loadSpeech(voiceModelsDir);
+          const samples = await speech.speak("Hi, I'm Orbit. Tell me what you need, and I'll pass it on to Claude.", { speed, sid });
+          res.writeHead(200, { 'content-type': 'audio/wav', 'cache-control': 'no-store', ...SECURITY_HEADERS });
+          return res.end(wavFile(samples, 24000));
+        }
 
         case 'POST /api/voice/preview': {
           // A short spoken sample of a voice at a speed, via xAI text-to-speech.
@@ -970,7 +1007,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       return job;
     };
     const upstream = useClaude
-      ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d) })
+      ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), sid: getSetting('claudeVoice'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d) })
       : new WebSocket(process.env.XAI_REALTIME_URL || `wss://api.x.ai/v1/realtime?model=${encodeURIComponent(getSetting('model'))}`, { headers: { Authorization: `Bearer ${apiKey}` } });
     const toXai = (obj) => upstream.readyState === WebSocket.OPEN && upstream.send(JSON.stringify(obj));
     const stopMeter = useClaude ? () => {} : startMeter(); // Claude voice isn't billed by xAI
@@ -1050,7 +1087,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     };
 
     const hooks = {
-      pushConfig: () => toXai({ type: 'session.update', session: sessionConfig() }),
+      // Claude voice also takes its own voice choice (Grok would reject an unknown field).
+      pushConfig: () => toXai({ type: 'session.update', session: useClaude ? { ...sessionConfig(), claude_voice: getSetting('claudeVoice') } : sessionConfig() }),
       /** A spoken update (a session finished). Returns true if this conversation will speak it. */
       announce: (entry) => {
         if (getSetting('announce') !== 'speak') return false;

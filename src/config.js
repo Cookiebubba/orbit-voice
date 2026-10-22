@@ -46,6 +46,7 @@ export const DEFAULTS = Object.freeze({
   // The voice itself: 'grok' (xAI realtime) or 'claude' (beta: local speech models + Claude Haiku
   // through the user's own Claude Code; models are downloaded when it's first turned on).
   voiceEngine: 'grok',
+  claudeVoice: 0, // which of Kitten's 8 voices Claude voice speaks with (0–7)
 });
 
 export const LIMITS = Object.freeze({ minSpeed: 0.7, maxSpeed: 1.5 });
@@ -135,6 +136,9 @@ function sanitize(input) {
         break;
       case 'voiceEngine':
         if (val === 'grok' || val === 'claude') out.voiceEngine = val;
+        break;
+      case 'claudeVoice':
+        if (Number.isInteger(val) && val >= 0 && val <= 7) out.claudeVoice = val;
         break;
       case 'brainClaudePath':
         // Only ever a local absolute path (no network share) to claude.exe on Windows, claude
