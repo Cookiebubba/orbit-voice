@@ -176,8 +176,9 @@ export function loadSpeech(root, { threads = CLAUDE_VOICE.threads } = {}) {
         return String(recognizer.getResult(s).text || '').trim();
       },
       async speak(text, { speed = 1, sid = CLAUDE_VOICE.sid } = {}) {
-        const a = await tts.generateAsync({ text, sid, speed });
-        return a.sampleRate === IN_RATE ? a.samples : new sherpa.LinearResampler(a.sampleRate, IN_RATE).resample(a.samples, true);
+        // No external buffers: Electron's memory cage refuses them (the audio would never arrive).
+        const a = await tts.generateAsync({ text, sid, speed, enableExternalBuffer: false });
+        return a.sampleRate === IN_RATE ? a.samples : new sherpa.LinearResampler(a.sampleRate, IN_RATE).flush(a.samples);
       },
     };
   })();
@@ -353,10 +354,17 @@ const SLOW_FILLERS = ['Hmm.', 'Let me think.'];
  * A realtime "socket" backed by local speech models and Claude Code. Same surface the bridge uses
  * on a ws WebSocket: readyState, send(json), close(), and 'open' / 'message' / 'close' / 'error'.
  */
-export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, onMetrics = () => {}, speech: injectedSpeech, spawnImpl, now = () => Date.now() }) {
+export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, onMetrics = () => {}, onWarn = () => {}, speech: injectedSpeech, spawnImpl, now = () => Date.now() }) {
   const sock = new EventEmitter();
   sock.readyState = 0;
   const emit = (obj) => sock.readyState === OPEN && sock.emit('message', JSON.stringify(obj), false);
+  const warned = new Set();
+  /** A failure goes to the log once per call (the error's message only, never what was said). */
+  const warnOnce = (what, e) => {
+    if (warned.has(what)) return;
+    warned.add(what);
+    onWarn(what, String(e?.message || e).slice(0, 200));
+  };
 
   let speech = null;
   let vad = null;
@@ -451,7 +459,8 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, onMetr
     let text = '';
     try {
       text = await speech.transcribe(samples);
-    } catch {
+    } catch (e) {
+      warnOnce('Claude voice: speech to text failed', e);
       text = '';
     }
     if (sock.readyState !== OPEN) return;
@@ -494,7 +503,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, onMetr
         t.audioSent = true;
         sendAudio(t, pcm, true);
       })
-      .catch(() => {});
+      .catch((e) => warnOnce('Claude voice: text to speech failed', e));
   };
 
   const queueSpeech = (t, pieces) => {
@@ -508,7 +517,8 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, onMetr
         let samples;
         try {
           samples = await speech.speak(say, { speed });
-        } catch {
+        } catch (e) {
+          warnOnce('Claude voice: text to speech failed', e);
           return;
         }
         if (t.cancelled) return;

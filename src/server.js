@@ -954,7 +954,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       return job;
     };
     const upstream = useClaude
-      ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), onMetrics: claudeVoiceMetrics })
+      ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d) })
       : new WebSocket(process.env.XAI_REALTIME_URL || `wss://api.x.ai/v1/realtime?model=${encodeURIComponent(getSetting('model'))}`, { headers: { Authorization: `Bearer ${apiKey}` } });
     const toXai = (obj) => upstream.readyState === WebSocket.OPEN && upstream.send(JSON.stringify(obj));
     const stopMeter = useClaude ? () => {} : startMeter(); // Claude voice isn't billed by xAI
