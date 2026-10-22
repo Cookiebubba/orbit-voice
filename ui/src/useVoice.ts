@@ -70,6 +70,9 @@ export function useVoice(options: VoiceOptions) {
   const [captions, setCaptions] = useState<Caption[]>([]);
   const [draft, setDraft] = useState<Draft>(null);
   const [hearing, setHearing] = useState(false); // Grok's voice detection says you are talking
+  // Mute button: the call stays up and you still hear replies, but no mic audio is sent.
+  const [muted, setMuted] = useState(false);
+  const mutedRef = useRef(false);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
 
   const ws = useRef<WebSocket | null>(null);
@@ -160,7 +163,7 @@ export function useVoice(options: VoiceOptions) {
         // Not listening: asleep, a spoken update whose listening window isn't open, or
         // (half-duplex) Grok is talking and might hear itself.
         const a = announceRef.current;
-        const deaf = asleepRef.current || (!!a && a.stage === "speaking") || (opts.current.halfDuplex && isPlaying());
+        const deaf = mutedRef.current || asleepRef.current || (!!a && a.stage === "speaking") || (opts.current.halfDuplex && isPlaying());
         const pcm = new Int16Array(e.data);
         let sum = 0;
         for (let i = 0; i < pcm.length; i++) sum += (pcm[i] / 0x8000) ** 2;
@@ -603,6 +606,8 @@ export function useVoice(options: VoiceOptions) {
   const start = useCallback(async ({ announce = false }: { announce?: boolean } = {}) => {
     if (ws.current) return;
     setPhase("connecting");
+    mutedRef.current = false; // every call starts with the mic live
+    setMuted(false);
     try {
       const ac = new AudioContext({ sampleRate: RATE });
       ctx.current = ac;
@@ -719,6 +724,17 @@ export function useVoice(options: VoiceOptions) {
     },
     sleep: () => sleep(),
     wake,
+    muted,
+    /** Mute or unmute the mic for this call. Muting also drops any half-heard speech. */
+    toggleMute: () => {
+      const next = !mutedRef.current;
+      mutedRef.current = next;
+      setMuted(next);
+      if (next) {
+        setHearing(false);
+        if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+      }
+    },
     toggleSleep: hotkey,
     hotkey,
     sendText,

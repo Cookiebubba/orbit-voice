@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { History as HistoryIcon, Keyboard, Mic, Minus, Moon, SendHorizontal, Settings as SettingsIcon, X } from "lucide-react";
+import { History as HistoryIcon, Keyboard, Mic, MicOff, Minus, Moon, SendHorizontal, Settings as SettingsIcon, X } from "lucide-react";
 import { Shdr29 } from "@/components/ui/shdr-29";
 import { cn } from "@/lib/utils";
 import History from "./components/History";
@@ -162,7 +162,7 @@ export default function App() {
                 <Shdr29 size={190} {...orbProps(v.phase, v.levels.input, v.levels.output)} params={orbParams({ claudeWorking, phase: v.phase, asleep: v.asleep, ...pulse })} pauseOffscreen={false} interactive />
               </span>
             </button>
-            <div className="mt-5 text-[15px] font-medium tracking-tight">{v.asleep && on ? asleepLabel : PHASE_LABEL[v.phase]}</div>
+            <div className="mt-5 text-[15px] font-medium tracking-tight">{v.asleep && on ? asleepLabel : v.muted && on && v.phase === "listening" ? "Muted" : PHASE_LABEL[v.phase]}</div>
             {desktop && hint && <div className="mt-1 text-[12px] text-white/40">{hint}</div>}
             {claudeWorking && (
               <div className="mt-2 flex max-w-full items-center gap-1.5 text-[12px] text-white/50">
@@ -209,19 +209,24 @@ export default function App() {
           )}
 
           {/* controls */}
-          <div className="flex h-20 shrink-0 items-center justify-center gap-3">
+          <div className={cn("flex h-20 shrink-0 items-center gap-3", on ? "justify-between px-6" : "justify-center")}>
             {on ? (
               <>
-                <RoundButton label="Type instead" active={typing} onClick={() => setTyping((t) => !t)}>
-                  <Keyboard size={18} />
-                </RoundButton>
-                <RoundButton
-                  label={waitingForYes ? `Answer (${hotkey})` : `Go to sleep: hangs up (${hotkey})`}
-                  active={waitingForYes}
-                  onClick={v.toggleSleep}
-                  big
-                >
-                  {waitingForYes ? <Mic size={22} /> : <Moon size={21} />}
+                <div className="flex items-center gap-3">
+                  <RoundButton label="Type instead" active={typing} onClick={() => setTyping((t) => !t)}>
+                    <Keyboard size={18} />
+                  </RoundButton>
+                  <RoundButton
+                    label={waitingForYes ? `Answer (${hotkey})` : `Go to sleep: hangs up (${hotkey})`}
+                    active={waitingForYes}
+                    onClick={v.toggleSleep}
+                    big
+                  >
+                    {waitingForYes ? <Mic size={22} /> : <Moon size={21} />}
+                  </RoundButton>
+                </div>
+                <RoundButton label={v.muted ? "Unmute microphone" : "Mute microphone"} danger={v.muted} onClick={v.toggleMute}>
+                  {v.muted ? <MicOff size={18} /> : <Mic size={18} />}
                 </RoundButton>
               </>
             ) : (
