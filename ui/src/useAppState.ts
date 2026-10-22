@@ -21,7 +21,7 @@ export type Settings = {
   brainClaudePath: string;
   voiceEngine: "grok" | "claude";
   claudeVoice: number;
-  buddy: boolean;
+  avatar: "buddy" | "qubit" | "none";
   buddySize: number;
   autoUpdate: boolean;
   orbStick: boolean;

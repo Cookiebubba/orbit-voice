@@ -287,11 +287,11 @@ let baseUrl = '';
 
 /**
  * The one-time link that signs a window in: it sets the session cookie and redirects to the UI.
- * `view` is 'main', 'orb' or 'buddy' (the pixel buddy's strip). Only the desktop shell (or the
- * terminal, in browser mode) has it.
+ * `view` is 'main', 'orb', or an avatar's strip along the Claude window: 'buddy' (the pixel buddy)
+ * or 'qubit'. Only the desktop shell (or the terminal, in browser mode) has it.
  */
 export function authUrl(view = 'main') {
-  return `${baseUrl}/auth?t=${accessToken}${view === 'orb' || view === 'buddy' ? `&view=${view}` : ''}`;
+  return `${baseUrl}/auth?t=${accessToken}${['orb', 'buddy', 'qubit'].includes(view) ? `&view=${view}` : ''}`;
 }
 
 function hasValidSession(req) {
@@ -534,7 +534,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       }
       res.writeHead(302, {
         'set-cookie': `${SESSION_COOKIE}=${accessToken}; HttpOnly; SameSite=Strict; Path=/`,
-        location: { orb: '/#orb', buddy: '/buddy.html' }[url.searchParams.get('view')] || '/',
+        location: { orb: '/#orb', buddy: '/buddy.html', qubit: '/qubit.html' }[url.searchParams.get('view')] || '/',
         'cache-control': 'no-store',
         'referrer-policy': 'no-referrer',
       });

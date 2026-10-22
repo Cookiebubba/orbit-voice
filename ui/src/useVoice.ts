@@ -73,6 +73,8 @@ export function useVoice(options: VoiceOptions) {
   // Mute button: the call stays up and you still hear replies, but no mic audio is sent.
   const [muted, setMuted] = useState(false);
   const [sentCount, setSentCount] = useState(0); // prompts sent to Claude in this app session
+  const [sending, setSending] = useState(false); // a prompt is on its way to Claude (send_draft is running)
+  const [errorCount, setErrorCount] = useState(0); // errors shown (a tool that failed, a failed send, Grok's errors)
   const mutedRef = useRef(false);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
 
@@ -444,9 +446,11 @@ export function useVoice(options: VoiceOptions) {
           return;
         case "bridge.error":
           caption({ id: `err-${Date.now()}`, who: "error", text: evt.message });
+          setErrorCount((n) => n + 1);
           return;
         case "bridge.closed":
           caption({ id: `err-${Date.now()}`, who: "error", text: `Grok disconnected${evt.reason ? `: ${evt.reason}` : "."}` });
+          setErrorCount((n) => n + 1);
           return;
         case "bridge.sleep":
           sleep("grok");
@@ -483,17 +487,22 @@ export function useVoice(options: VoiceOptions) {
           // Own keys only: a tool name like "__proto__" from Grok is not a note (it once blanked the
           // window: an object as caption text made React throw; found by the end-to-end fuzzer).
           if (typeof evt.name === "string" && Object.hasOwn(TOOL_NOTES, evt.name)) caption({ id: `tool-${Date.now()}`, who: "note", text: TOOL_NOTES[evt.name] });
+          if (evt.name === "send_draft") setSending(true);
           return;
         case "bridge.tool_result":
           toolsInFlight.current = Math.max(0, toolsInFlight.current - 1);
           toolsRunning.current = Math.max(0, toolsRunning.current - 1);
-          if (evt.result && (evt.result.error || evt.result.ok === false))
+          if (evt.name === "send_draft") setSending(false);
+          if (evt.result && (evt.result.error || evt.result.ok === false)) {
             caption({ id: `err-${Date.now()}`, who: "error", text: String(evt.result.message || evt.result.error || "That didn't work.") });
+            setErrorCount((n) => n + 1);
+          }
           if (evt.result?.open_in_app) setSessionTitle(evt.result.open_in_app);
           if (evt.result?.deferred) caption({ id: `brain-${Date.now()}`, who: "note", text: "Claude is still thinking. Grok will tell you when the answer is ready." });
           return;
         case "error":
           caption({ id: `err-${Date.now()}`, who: "error", text: evt.error?.message || "Grok reported an error." });
+          setErrorCount((n) => n + 1);
           return;
         case "response.output_audio.delta":
         case "response.audio.delta":
@@ -601,6 +610,7 @@ export function useVoice(options: VoiceOptions) {
     setPhase("off");
     setLevels({ input: 0, output: 0 });
     setHearing(false);
+    setSending(false);
   }, [stopPlayback]);
   stopRef.current = stop;
 
@@ -728,6 +738,8 @@ export function useVoice(options: VoiceOptions) {
     wake,
     muted,
     sentCount,
+    sending,
+    errorCount,
     /** Mute or unmute the mic for this call. Muting also drops any half-heard speech. */
     toggleMute: () => {
       const next = !mutedRef.current;

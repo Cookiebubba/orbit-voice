@@ -46,7 +46,7 @@ export default function App() {
 
   // Claude finished a turn somewhere: chime, note it, and pop a Windows notification if we're not in front.
   finishedRef.current = (f) => {
-    desktop?.buddyEvent?.("finished"); // the pixel buddy celebrates (or jolts awake)
+    desktop?.buddyEvent?.("finished"); // the avatar celebrates (or jolts awake)
     const mode = settings?.announce ?? "speak";
     if (mode === "off") return;
     playChime("done", 0.1);
@@ -64,18 +64,23 @@ export default function App() {
     if (app.config?.hasKey) v.announce();
   };
 
-  // The pixel buddy carries each new draft to Claude's box, and stomps Send when it goes.
+  // The avatar (pixel buddy or Qubit) carries each new draft to Claude's box, stomps Send when it
+  // goes, and (Qubit) shivers at an error.
   useEffect(() => {
     if (v.draft) desktop?.buddyEvent?.("draft");
   }, [v.draft?.id]);
   useEffect(() => {
     if (v.sentCount) desktop?.buddyEvent?.("sent");
   }, [v.sentCount]);
-
-  // Keep the floating orb in sync with this window.
   useEffect(() => {
-    desktop?.sendOrbState({ phase: v.phase, input: v.levels.input, output: v.levels.output, asleep: v.asleep, hearing: v.hearing, claudeWorking, ...pulse });
-  }, [v.phase, v.levels, v.asleep, v.hearing, claudeWorking, pulse.pulseMe, pulse.pulseGrok, pulse.pulseAmount]);
+    if (v.errorCount) desktop?.buddyEvent?.("error");
+  }, [v.errorCount]);
+
+  // Keep the floating orb (and the avatar) in sync with this window.
+  const draftWaiting = !!v.draft;
+  useEffect(() => {
+    desktop?.sendOrbState({ phase: v.phase, input: v.levels.input, output: v.levels.output, asleep: v.asleep, hearing: v.hearing, claudeWorking, muted: v.muted, draft: draftWaiting, sending: v.sending, ...pulse });
+  }, [v.phase, v.levels, v.asleep, v.hearing, claudeWorking, v.muted, draftWaiting, v.sending, pulse.pulseMe, pulse.pulseGrok, pulse.pulseAmount]);
 
   // Right-clicking the floating orb toggles sleep; the global hotkey starts / sleeps / wakes.
   const actions = useRef(v);

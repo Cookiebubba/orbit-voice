@@ -2,7 +2,18 @@
 
 ## Unreleased
 
-- **Pixel buddy:** a 16-pixel character lives along the bottom of your Claude window. It's on by default and can be switched off, or set to Tiny, Small or Big, in Settings → App.
+- **Avatar choice: Pixel buddy, Qubit or None** (Settings → Avatar, with the size). It switches live: the new one comes in (Qubit drops onto the prompt box) while the old one fades out. The pixel buddy stays the default; "Pixel buddy" off from before means None.
+- **Qubit, a square with one eye, as an avatar on your Claude window.** He uses only his own moods and moves (his engine and pathing are vendored in `ui/src/vendor/avatars/`):
+  - Asleep (night blue, slow breathing) on the prompt box while Orbit sleeps; the hotkey or wake word wakes him (the lid lifts, a little hop).
+  - Listening (cyan): his eye stretches taller with your mic level. Thinking (violet): he floats and his eye spins. Speaking (amber): his eye opens with Orbit's voice level.
+  - A draft: he reads it as it goes into the box. "Send it?": he waits by Claude's Send button (curious, orange). A yes: he goes to Send (happy) and stomps it when it's sent. Claude's Send button is found with the same UI Automation script, only while the box has text.
+  - Claude working: Claude's orange, watching the messages with a nod now and then. Claude finished: a celebration (asleep, he jolts awake for it and dozes off again).
+  - An error or a failed send: red and a shiver. Muted: indigo and a head shake (a nod when you unmute).
+  - A quiet call: his seeded idle wander (hops along the box and the floor, looks around, the odd flip practice). Anything Orbit does takes over at once.
+  - He follows the Claude window, goes back to his spot when it resizes, and stops drawing while it's minimized. Asleep he runs at 30 fps; awake, at the display's full rate.
+  - Click him for a small reaction; every other click goes through to Claude.
+
+- **Pixel buddy:** a 16-pixel character lives along the bottom of your Claude window. It's on by default; Settings → Avatar can switch it off, or set it to Tiny, Small or Big.
   - It naps with drifting Z's while Orbit sleeps, and wakes with a stretch and a yawn.
   - It cups an ear while you talk, paces with thought dots while Orbit thinks, and moves its mouth with Orbit's voice. Its antenna takes Orbit's colour.
   - It hops up onto Claude's prompt box and over it, since the box is too low to walk under. It carries each draft in as a letter, and stomps Send with a paper plane flying off.

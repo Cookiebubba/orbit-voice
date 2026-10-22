@@ -67,9 +67,12 @@ function runPs(mode, args = [], timeoutMs = 20000) {
   });
 }
 
-/** Which session is open in the Claude window, and is anything typed in its prompt box? */
-export function getDesktopInfo() {
-  return runPs('info');
+/**
+ * Which session is open in the Claude window, and is anything typed in its prompt box?
+ * `rects`: also where Claude's Send button is (sendButtonRect; for the avatar, which stomps it).
+ */
+export function getDesktopInfo({ rects = false } = {}) {
+  return runPs('info', rects ? ['-Rects'] : []);
 }
 
 /** Sessions listed in Claude's sidebar: [{ title, label, open }]. */

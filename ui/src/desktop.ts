@@ -5,6 +5,8 @@ export type OrbSync = {
   phase: Phase; input: number; output: number; asleep: boolean; hearing: boolean; claudeWorking: boolean;
   // Voice "bump" (see orbLook.ts): with your voice, with Grok's, and how much.
   pulseMe: boolean; pulseGrok: boolean; pulseAmount: number;
+  // For the avatar: the mic is muted, a draft waits for a yes, a prompt is being sent.
+  muted?: boolean; draft?: boolean; sending?: boolean;
 };
 
 export type HotkeyInfo = {
@@ -25,8 +27,8 @@ type DesktopApi = {
   minimize(): void;
   close(): void;
   sendOrbState(s: OrbSync): void;
-  /** Tell the pixel buddy something happened: "finished" | "draft" | "sent". */
-  buddyEvent?(name: "finished" | "draft" | "sent"): void;
+  /** Tell the avatar (pixel buddy or Qubit) something happened. */
+  buddyEvent?(name: "finished" | "draft" | "sent" | "error"): void;
   onOrbState(cb: (s: OrbSync) => void): () => void;
   onOrbAction(cb: (action: "toggle-sleep") => void): () => void;
   orbRestore(): void;

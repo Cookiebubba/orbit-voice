@@ -10,7 +10,8 @@
 # z-order that isn't minimized (the most recently active one).
 #
 #   -Mode info   : which session is open in the front window, whether its prompt box has text,
-#                  and every Claude window with the session it shows
+#                  and every Claude window with the session it shows (-Rects: and where its Send
+#                  button is)
 #   -Mode list   : the sessions listed in Claude's sidebar(s), with the window each is open in
 #   -Mode switch : open a session by title (-TitleB64): bring forward the window it's already open
 #                  in, or click it in the sidebar (of the front window, else of the window whose
@@ -43,7 +44,9 @@ param(
   [switch]$Fill,
   [switch]$Filled,
   [switch]$Clear,
-  [string]$PrevB64 = ''
+  [string]$PrevB64 = '',
+  # info: also find where Claude's Send button is (for Orbit's avatar, which stomps it).
+  [switch]$Rects
 )
 
 $ErrorActionPreference = 'Stop'
@@ -264,14 +267,15 @@ function Get-BoxText($box) {
   } catch { return '' }
 }
 
-# Claude's Send button sits on the prompt box's row, at its right end.
-function Get-SendButton($root, $box) {
+# Claude's Send button sits on the prompt box's row, at its right end. -AnyState: also while it's
+# disabled (an empty box), for where it is rather than to press it.
+function Get-SendButton($root, $box, [switch]$AnyState) {
   $boxRect = $box.Current.BoundingRectangle
   $best = $null
   $bestDist = [double]::MaxValue
   foreach ($b in $root.FindAll($Scope::Descendants, $ButtonCond)) {
     $c = $b.Current
-    if ($c.Name -ne 'Send' -or -not $c.IsEnabled) { continue }
+    if ($c.Name -ne 'Send' -or (-not $AnyState -and -not $c.IsEnabled)) { continue }
     $r = $c.BoundingRectangle
     $dy = [Math]::Abs(($r.Y + $r.Height / 2) - ($boxRect.Y + $boxRect.Height / 2))
     $dx = [Math]::Abs($r.X - $boxRect.Right)
@@ -403,7 +407,10 @@ try {
     $rectOf = { param($e) try { $r = $e.Current.BoundingRectangle; if ($r.Width -gt 0 -and $r.Height -gt 0) { @{ x = [int]$r.X; y = [int]$r.Y; w = [int]$r.Width; h = [int]$r.Height } } else { $null } } catch { $null } }
     $boxRect = $(if ($box) { & $rectOf $box } else { $null }) # the text field (the box you see has padding around it)
     $winRect = & $rectOf $root
-    Out-Json @{ ok = $true; sessionTitle = $title; newSession = [bool]$page; folder = $(if ($page) { $page.folder } else { $null }); promptBoxFound = [bool]$box; promptText = $(if ($box) { Get-BoxText $box } else { $null }); windowId = $front.hwnd; windows = $windows; promptBoxRect = $boxRect; windowRect = $winRect }
+    # -Rects: Claude's Send button too (Qubit stomps it). Only rects; never pressed here.
+    $sendRect = $null
+    if ($Rects -and $box) { $sb = Get-SendButton $root $box -AnyState; if ($sb) { $sendRect = & $rectOf $sb } }
+    Out-Json @{ ok = $true; sessionTitle = $title; newSession = [bool]$page; folder = $(if ($page) { $page.folder } else { $null }); promptBoxFound = [bool]$box; promptText = $(if ($box) { Get-BoxText $box } else { $null }); windowId = $front.hwnd; windows = $windows; promptBoxRect = $boxRect; windowRect = $winRect; sendButtonRect = $sendRect }
   }
 
   # ---- list ----

@@ -11,7 +11,7 @@ import { getDesktopInfo, setDesktopDriver, setFrontWindowHint } from '../src/des
 import { getLogDir, logError, logInfo, logWarn } from '../src/log.js';
 import { authUrl, hotkeyLabel, startServer, stopBackgroundWork } from '../src/server.js';
 import { createUpdater } from './updater.js';
-import { createBuddy } from './buddy.js';
+import { createAvatar } from './avatar.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -32,7 +32,8 @@ app.setPath('userData', path.join(app.getPath('appData'), 'Orbit'));
 
 let main = null;
 let orb = null;
-let buddy = null; // the pixel buddy along the bottom of the Claude window (see buddy.js)
+let avatar = null; // the avatar along the bottom of the Claude window: the pixel buddy or Qubit (see avatar.js)
+let lastOrbState = null; // Orbit's voice state, for an avatar that turns up later
 let tray = null;
 let baseUrl = '';
 /** Is this URL Orbit's own page? An exact origin match: a prefix test would also accept
@@ -186,7 +187,7 @@ const claudeTracker = createClaudeWindowTracker({
   onChange: (s) => {
     claude = s;
     placeOrb();
-    buddy?.onClaude(s);
+    avatar?.onClaude(s);
   },
   onError: (message) => logWarn('orb', message),
 });
@@ -252,18 +253,45 @@ function nativeHandle(win) {
   return buf.length >= 8 ? buf.readBigUInt64LE(0).toString() : String(buf.readUInt32LE(0));
 }
 
-// The Claude window watcher runs while the orb sticks to Claude or the pixel buddy is on.
-const needTracker = () => !!getSetting('orbStick') || !!getSetting('buddy');
+// ---------- the avatar ----------
+// Settings -> Avatar: the pixel buddy, Qubit or none. Switching is live: the new one's window comes
+// up with an entrance while the old one fades out (see avatar.js).
+const avatarKind = () => (['buddy', 'qubit'].includes(getSetting('avatar')) ? getSetting('avatar') : null);
+function setAvatar({ live = false } = {}) {
+  const kind = avatarKind();
+  const size = getSetting('buddySize');
+  if (avatar && avatar.kind === kind) return avatar.setEnabled(true, size);
+  const old = avatar;
+  avatar = null;
+  if (kind) {
+    avatar = createAvatar({
+      kind,
+      url: () => authUrl(kind),
+      webPreferences: secureWebPreferences,
+      lockDown,
+      getDesktopInfo,
+      log: (m) => logWarn('avatar', m),
+      info: (m) => logInfo('avatar', m),
+    });
+    if (lastOrbState) avatar.onVoice(lastOrbState);
+    if (claude) avatar.onClaude(claude);
+    avatar.setEnabled(true, size, { entrance: live });
+  }
+  old?.leave();
+}
+
+// The Claude window watcher runs while the orb sticks to Claude or an avatar is on.
+const needTracker = () => !!getSetting('orbStick') || !!avatarKind();
 onSettingsChange((changed) => {
-  if (changed.includes('buddy') || changed.includes('buddySize')) buddy?.setEnabled(getSetting('buddy'), getSetting('buddySize'));
-  if (!changed.includes('orbStick') && !changed.includes('buddy')) return;
+  if (changed.includes('avatar') || changed.includes('buddySize')) setAvatar({ live: true });
+  if (!changed.includes('orbStick') && !changed.includes('avatar')) return;
   if (needTracker()) {
     claudeTracker.start();
-    if (claude) buddy?.onClaude(claude);
+    if (claude) avatar?.onClaude(claude);
   } else {
     claudeTracker.stop();
     claude = null;
-    buddy?.onClaude({ found: false });
+    avatar?.onClaude({ found: false });
   }
   placeOrb();
 });
@@ -366,10 +394,12 @@ on('win:close', () => app.quit());
 on('orb:restore', () => showMain());
 on('orb:state', (s) => {
   orb?.webContents.send('orb:state', s);
-  buddy?.onVoice(s);
+  lastOrbState = s;
+  avatar?.onVoice(s);
 });
-on('buddy:event', (name) => buddy?.event(name));
-on('buddy:hover', (over) => buddy?.hover(over));
+on('buddy:event', (name) => avatar?.event(name));
+// From the avatar's own page (not one that is fading out after a switch).
+ipcMain.on('buddy:hover', (e, over) => fromUs(e) && avatar?.window && e.sender === avatar.window.webContents && avatar.hover(!!over));
 on('orb:action', (a) => main?.webContents.send('orb:action', a));
 on('orb:drag-start', () => {
   claudeTracker.pause(); // the user is moving the orb; the helper waits until they drop it
@@ -399,7 +429,7 @@ app.whenReady().then(async () => {
   if (!app.isPackaged && process.env.ORBIT_FAKE_DESKTOP) {
     const fake = await import(pathToFileURL(path.resolve(process.env.ORBIT_FAKE_DESKTOP)).href);
     setDesktopDriver(fake.default || fake);
-    // ...and for the Claude window watcher too (the orb and the pixel buddy follow its windows).
+    // ...and for the Claude window watcher too (the orb and the avatar follow its windows).
     fakeWindowHelper = (fake.default || fake).windowHelper || null;
   }
   try {
@@ -429,15 +459,7 @@ app.whenReady().then(async () => {
 
   createMain();
   createOrb();
-  buddy = createBuddy({
-    url: () => authUrl('buddy'),
-    webPreferences: secureWebPreferences,
-    lockDown,
-    getDesktopInfo,
-    log: (m) => logWarn('buddy', m),
-    info: (m) => logInfo('buddy', m),
-  });
-  buddy.setEnabled(getSetting('buddy'), getSetting('buddySize'));
+  setAvatar();
   if (needTracker()) claudeTracker.start();
   createTray();
   updater = createUpdater({
@@ -459,7 +481,7 @@ app.on('before-quit', () => {
   quitting = true;
   stopBackgroundWork(); // second-brain questions kept past a hang-up stop with the app
   claudeTracker.stop();
-  buddy?.stop();
+  avatar?.stop();
   updater?.stop();
 });
 app.on('window-all-closed', () => app.quit());

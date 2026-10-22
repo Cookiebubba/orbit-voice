@@ -17,7 +17,8 @@ const DEMO = params.get('demo') === '1';
 const GROUND = 2; // art pixels between the feet and the window's bottom edge
 
 const canvas = document.createElement('canvas');
-Object.assign(canvas.style, { position: 'fixed', inset: '0', width: '100vw', height: '100vh', imageRendering: 'pixelated' });
+// It fades in when it turns up and out when you switch to another avatar (Settings -> Avatar).
+Object.assign(canvas.style, { position: 'fixed', inset: '0', width: '100vw', height: '100vh', imageRendering: 'pixelated', opacity: DEMO ? '1' : '0', transition: 'opacity 280ms ease' });
 document.documentElement.style.background = 'transparent';
 document.body.style.cssText = 'margin:0;background:transparent;overflow:hidden';
 document.body.appendChild(canvas);
@@ -155,14 +156,20 @@ addEventListener('blur', () => {
 });
 
 // ---------- from Orbit ----------
+let leaving = false; // switched to another avatar: fading out
 desktop?.onBuddyState?.((s) => {
   if (!s || typeof s !== 'object') return;
+  if (!leaving) canvas.style.opacity = '1';
   if (s.voice) voice = s.voice;
   if ('box' in s) box = s.box && Number.isFinite(s.box.x) ? s.box : null;
   if (Number.isFinite(s.scale)) scale = Math.max(1, Math.min(4, s.scale));
 });
 desktop?.onBuddyEvent?.((name) => {
-  if (typeof name === 'string') events.push(name);
+  if (name === 'leave') {
+    leaving = true;
+    canvas.style.opacity = '0';
+    desktop?.buddyHover?.(false);
+  } else if (typeof name === 'string') events.push(name);
 });
 
 // ---------- demo (no Orbit) ----------

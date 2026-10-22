@@ -47,9 +47,14 @@ export const DEFAULTS = Object.freeze({
   // through the user's own Claude Code; models are downloaded when it's first turned on).
   voiceEngine: 'grok',
   claudeVoice: 0, // which of Kitten's 8 voices Claude voice speaks with (0–7)
-  buddy: true, // the pixel buddy that lives along the bottom of the Claude window
-  buddySize: 2, // screen pixels per buddy pixel: 1 (tiny, 16 px tall) to 3
+  // The avatar that lives along the bottom of the Claude window: 'buddy' (the pixel buddy), 'qubit'
+  // (a square with one eye) or 'none'. (Settings saved before there was a choice have buddy: false
+  // for none; see initConfig.)
+  avatar: 'buddy',
+  buddySize: 2, // the avatar's size: 1 (tiny) to 3 (big); the pixel buddy is 16 px tall per step
 });
+
+export const AVATARS = Object.freeze(['buddy', 'qubit', 'none']);
 
 export const LIMITS = Object.freeze({ minSpeed: 0.7, maxSpeed: 1.5 });
 
@@ -142,6 +147,9 @@ function sanitize(input) {
       case 'claudeVoice':
         if (Number.isInteger(val) && val >= 0 && val <= 7) out.claudeVoice = val;
         break;
+      case 'avatar':
+        if (AVATARS.includes(val)) out.avatar = val;
+        break;
       case 'buddySize':
         if (Number.isInteger(val) && val >= 1 && val <= 3) out.buddySize = val;
         break;
@@ -186,6 +194,8 @@ export function initConfig({ dir, secrets, brainSecrets } = {}) {
   try {
     fromFile = JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8'));
   } catch {}
+  // Before the avatar choice, the pixel buddy was an on/off switch: off means no avatar.
+  if (fromFile && typeof fromFile === 'object' && fromFile.avatar === undefined && fromFile.buddy === false) fromFile.avatar = 'none';
   settings = { ...DEFAULTS, ...sanitize(fromEnv), ...sanitize(fromFile) };
 
   // First run of the desktop app on a machine that used the dev version: bring the key over.

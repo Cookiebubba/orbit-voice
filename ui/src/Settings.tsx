@@ -147,26 +147,13 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
               <Reveal show={s.orbPulse || s.orbPulseGrok}>
                 <PulseAmount value={s.orbPulseAmount} update={update} />
               </Reveal>
-              <Toggle
-                className="mt-4"
-                checked={s.buddy}
-                onChange={(buddy) => update({ buddy })}
-                label="Pixel buddy"
-                hint={`A little pixel character lives along the bottom of your Claude window. It naps while ${name} sleeps, listens and talks with it, hops onto the prompt box, carries your drafts in and stomps Send. Click it, or pick it up and drop it.`}
-              />
-              <Reveal show={s.buddy}>
-                <div className="mt-3 mb-1.5 text-[12px] text-white/50">Size</div>
-                <Segmented
-                  value={String(s.buddySize) as "1" | "2" | "3"}
-                  onChange={(v) => update({ buddySize: Number(v) })}
-                  options={[
-                    { value: "1", label: "Tiny" },
-                    { value: "2", label: "Small" },
-                    { value: "3", label: "Big" },
-                  ]}
-                />
-              </Reveal>
             </Section>
+          </Reveal>
+        )}
+
+        {desktop && (
+          <Reveal show gap={GAP}>
+            <AvatarSection s={s} update={update} name={name} />
           </Reveal>
         )}
 
@@ -250,6 +237,50 @@ function StartWithWindows() {
       label="Start with Windows"
       hint="Orbit starts quietly as the floating orb when you sign in."
     />
+  );
+}
+
+// ---------- avatar ----------
+/** Who lives along the bottom of the Claude window: the pixel buddy, Qubit, or nobody. Switches live. */
+function AvatarSection({ s, update, name }: { s: SettingsT; update: Update; name: string }) {
+  const avatar = s.avatar ?? "buddy";
+  return (
+    <Section title="Avatar">
+      <Segmented
+        value={avatar}
+        onChange={(v) => update({ avatar: v })}
+        options={[
+          { value: "buddy", label: "Pixel buddy" },
+          { value: "qubit", label: "Qubit" },
+          { value: "none", label: "None" },
+        ]}
+      />
+      <Reveal show={avatar === "buddy"}>
+        <p className="mt-2 text-[12px] leading-snug text-white/45">
+          A little pixel character lives along the bottom of your Claude window. It naps while {name} sleeps, listens and talks with it, hops onto the prompt box, carries your drafts in and stomps Send. Click it, or pick it up and drop it.
+        </p>
+      </Reveal>
+      <Reveal show={avatar === "qubit"}>
+        <p className="mt-2 text-[12px] leading-snug text-white/45">
+          A square with one eye lives on your Claude window. He sleeps while {name} sleeps, wakes when you call, his eye stretches as you talk and opens with {name}'s voice. He waits by Send for your yes, stomps it, watches Claude work and celebrates when it's done. His colour shows what's going on.
+        </p>
+      </Reveal>
+      <Reveal show={avatar === "none"}>
+        <p className="mt-2 text-[12px] leading-snug text-white/45">Nothing on your Claude window.</p>
+      </Reveal>
+      <Reveal show={avatar !== "none"}>
+        <div className="mt-3 mb-1.5 text-[12px] text-white/50">Size</div>
+        <Segmented
+          value={String(s.buddySize) as "1" | "2" | "3"}
+          onChange={(v) => update({ buddySize: Number(v) })}
+          options={[
+            { value: "1", label: "Tiny" },
+            { value: "2", label: "Small" },
+            { value: "3", label: "Big" },
+          ]}
+        />
+      </Reveal>
+    </Section>
   );
 }
 
