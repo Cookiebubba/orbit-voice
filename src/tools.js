@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { listDesktopSessions, resolveSession, findSessionByTitle, findTranscript, readTranscriptTail, ago } from './sessions.js';
-import { getDesktopInfo, newSession, sendToDesktop, switchSession } from './desktop.js';
+import { clearDesktop, fillDesktop, getDesktopInfo, newSession, sendToDesktop, switchSession } from './desktop.js';
 import { logError, logInfo, logWarn, recentLog } from './log.js';
 import { MAX_CLIPBOARD_CHARS, writeClipboard } from './clipboard.js';
 import { getBrainKey, getSetting } from './config.js';
@@ -50,13 +50,18 @@ export const TOOL_DEFS = [
     type: 'function',
     name: 'draft_prompt',
     description:
-      'Prepare a prompt to type into the Claude Code session that is open in the desktop app. This does NOT send it: it shows the draft to the user. After calling this, read the draft back briefly and ask the user to confirm.',
+      'Prepare a prompt to type into the Claude Code session that is open in the desktop app. This does NOT send it. After calling this, read the draft back briefly and ask the user to confirm.',
     parameters: {
       type: 'object',
       properties: {
         text: {
           type: 'string',
-          description: 'The prompt, in the user\'s own words (light cleanup of filler words is fine; do not add your own ideas or instructions).',
+          description:
+            'The prompt: exactly the words the user said for Claude, as transcribed. Copy them; do not rephrase, summarize, reorder, correct, shorten or add anything. Leave out only what they said to you about it (like "tell Claude to", "send this:", "verbatim"). Keep filler words like "um": Orbit removes those itself. Orbit refuses a draft with words the user did not say.',
+        },
+        verbatim: {
+          type: 'boolean',
+          description: 'True when the user asks for their words exactly ("verbatim", "word for word"): then even filler words stay.',
         },
       },
       required: ['text'],
@@ -324,6 +329,56 @@ export function isClearYes(utterance) {
  * after the latest notification or second-brain answer, as before.
  */
 const SWITCH_VERBS = String.raw`switch|swap|flip|jump|open|pull|bring|go|take|change|move|show`;
+// --- Dictated prompts are the user's own words -------------------------------------------------
+// The voice model passes along what the user said; Orbit itself takes out filler sounds (never when
+// the user asks for it verbatim), and refuses a draft with words the user didn't say.
+
+const FILLER = /^(?:u+h*m+|u+h+|e+r+m*|a+h+|h+m+|m{2,})$/i;
+/** "um", "uh", "erm", "ah", "hmm"; not "ER" or "UM" written as capitals (likely meant). */
+const isFiller = (core) => FILLER.test(core) && !(core.length <= 3 && core === core.toUpperCase());
+
+/** The text with filler sounds removed, and nothing else changed (spacing and line breaks kept). */
+export function removeFillers(text) {
+  const parts = String(text).split(/(\s+)/); // words at even indexes, the space before each at odd
+  const out = []; // { word, sep }
+  let capNext = false;
+  let lineBreak = null; // a filler that began a line: its line break goes to the next word
+  for (let i = 0; i < parts.length; i += 2) {
+    const word = parts[i];
+    if (!word) continue;
+    const [, core, punct] = word.match(/^(.*?)([,.;:!?…]*)$/su);
+    if (isFiller(core)) {
+      const prev = out.at(-1);
+      // "fix it, um." keeps its full stop; "Um, fix it" becomes "Fix it".
+      if (prev && /[.!?…]/.test(punct) && !/[.!?…]$/.test(prev.word)) prev.word = prev.word.replace(/[,;:]+$/, '') + punct.replace(/[,;:]/g, '');
+      if (!prev || /[.!?…]$/.test(prev.word)) capNext = true;
+      if (/\n/.test(parts[i - 1] || '')) lineBreak = parts[i - 1];
+      continue;
+    }
+    out.push({ word: capNext ? word.charAt(0).toUpperCase() + word.slice(1) : word, sep: out.length ? lineBreak || parts[i - 1] || ' ' : '' });
+    capNext = false;
+    lineBreak = null;
+  }
+  return out.map((o) => o.sep + o.word).join('').trim();
+}
+
+const wordsOf = (text) =>
+  String(text)
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[’']/g, '')
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+
+/** Words in `draft` that never appear in `said` (case, punctuation and apostrophes ignored). */
+export function wordsNotSaid(draft, said) {
+  const have = new Set(wordsOf(said));
+  return wordsOf(draft).filter((w) => !have.has(w));
+}
+
+/** Did the user ask for their words exactly? */
+export const asksVerbatim = (text) => /\b(verbatim|word for word|exactly as I said|exactly what I said)\b/i.test(String(text));
+
 const ASKS = {
   switch: (w) =>
     /\b(switch|swap|flip|jump|open|pull\s+(it\s+|that\s+)?up|bring\s+(it\s+|that\s+)?up|go\s+(back\s+|over\s+)?(to|into)|take\s+me|back\s+to|change\s+(over\s+)?to|move\s+(over\s+)?to)\b/i.test(w) ||
@@ -352,9 +407,10 @@ export const asksFor = (what, words) => {
  */
 export function createToolRunner({
   notify,
-  wakeHint = 'clicking the orb',
   utteranceSince = async () => null,
   recentUtterance = () => null,
+  // Everything the user has said (or typed) in this call lately, for checking a draft's words.
+  userWords = () => recentUtterance()?.text || '',
   // Has the user spoken (or typed) after `ts`? The bridge also counts speech still being transcribed.
   heardSince = (ts) => (recentUtterance()?.at || 0) > ts,
   brain = askBrain,
@@ -392,6 +448,9 @@ export function createToolRunner({
   let brainRuns = 0;
   let lastBrainAt = 0; // when the last second-brain question was asked
   let lastBrainAnswerAt = 0; // when its answer came back (text Grok may now repeat)
+  // Prompts the user may have drafted though they didn't say them in this call: one the second
+  // brain suggested, or one drafted in a recent call and never sent (once the user asks for it).
+  const suggestions = [];
   let copyAskUsed = 0; // the `at` of the copy request already used: one request, one copy
 
   const publicDraft = (d) => d && { id: d.id, text: d.text, targetTitle: d.targetNew ? 'a new session' : d.targetTitle };
@@ -400,13 +459,21 @@ export function createToolRunner({
     notify({ type: 'bridge.draft', draft: publicDraft(d) });
   };
 
+  const boxOf = (d) => ({ expectTitle: d.targetTitle, expectNew: !!d.targetNew, expectFolder: d.targetFolder });
+  /** Drop the draft, and take it out of Claude's prompt box if Orbit typed it there (only if unchanged). */
+  const dropDraft = async () => {
+    const d = draft;
+    setDraft(null);
+    if (d?.filled) await clearDesktop(d.text, boxOf(d)).catch(() => {});
+  };
+
   async function doSend(snapshot) {
     if (!snapshot) return { ok: false, error: 'There is no draft to send. Use draft_prompt first.' };
     if (draft !== snapshot) return { ok: false, error: 'The draft changed before it was sent, so nothing was sent. Read the current draft back and ask again.' };
     if (Date.now() - lastSentAt < MIN_GAP_BETWEEN_SENDS_MS) return { ok: false, error: 'Just sent one. Wait a moment.' };
     lastSentAt = Date.now();
     const sentAt = Date.now();
-    const result = await sendToDesktop(snapshot.text, { expectTitle: snapshot.targetTitle, expectNew: !!snapshot.targetNew, expectFolder: snapshot.targetFolder });
+    const result = await sendToDesktop(snapshot.text, { ...boxOf(snapshot), filled: !!snapshot.filled });
     if (result.ok) {
       notify({ type: 'bridge.sent', text: snapshot.text, sessionTitle: result.sessionTitle });
       if (snapshot.targetNew && result.sessionTitle) notify({ type: 'bridge.session', title: result.sessionTitle });
@@ -458,9 +525,9 @@ export function createToolRunner({
       return readSession(open.session, opts);
     },
 
-    async draft_prompt({ text } = {}) {
-      const clean = String(text || '').trim().slice(0, 8000);
-      if (!clean) return { error: 'Draft text was empty.' };
+    async draft_prompt({ text, verbatim = false } = {}) {
+      const raw = String(text || '').trim().slice(0, 8000);
+      if (!raw) return { error: 'Draft text was empty.' };
       // The words must come from the user: not from an app notification, a transcript Grok read, or
       // a second-brain answer (its suggested prompt is only drafted once the user asks for it).
       // Real words, transcribed: a cough after the latest of those doesn't count. A recent request
@@ -477,6 +544,19 @@ export function createToolRunner({
       if (!asked || !/[\p{L}\p{N}]/u.test(String(asked.text))) {
         return { error: 'Not drafted: ask the user what they want to tell Claude first. A draft needs their own words, said after the latest app notification or second-brain answer.' };
       }
+      // ...and they are the user's own words: every word in the draft is one they said (or typed) in
+      // this call, or comes from a prompt the second brain suggested. Verbatim, none may differ;
+      // otherwise one in ten may (a number written as digits, a name the transcript split).
+      const said = userWords();
+      verbatim = verbatim === true || asksVerbatim(said);
+      const notSaid = wordsNotSaid(raw, [said, ...suggestions].join(' '));
+      const allowed = verbatim ? 0 : Math.max(1, Math.floor(wordsOf(raw).length / 10));
+      if (notSaid.length > allowed) {
+        return {
+          error: `Not drafted: the draft has words the user didn't say (${[...new Set(notSaid)].slice(0, 8).map((w) => `"${w}"`).join(', ')}). Pass their words for Claude exactly as transcribed, leaving out only what they said to you (like "tell Claude to"). Don't rephrase, correct or add anything.`,
+        };
+      }
+      const clean = verbatim ? raw : removeFillers(raw) || raw;
       const info = await getDesktopInfo();
       if (!info.ok) return { error: info.message || info.error };
       if (!info.promptBoxFound) return { error: 'The Claude app has no prompt box visible. Ask the user to open a Code session.' };
@@ -485,12 +565,29 @@ export function createToolRunner({
       const targetNew = !info.sessionTitle && !!info.newSession;
       const targetFolder = targetNew && typeof info.folder === 'string' && info.folder ? info.folder : null;
       if (targetNew && !targetFolder) return { error: 'The new session has no project folder chosen yet. Ask the user to pick one in Claude, or start one with new_session and a project name.' };
-      setDraft({ id: nextDraftId++, text: clean, targetTitle: targetNew ? null : info.sessionTitle, targetNew, targetFolder, createdAt: Date.now() });
+      const next = { id: nextDraftId++, text: clean, targetTitle: targetNew ? null : info.sessionTitle, targetNew, targetFolder, createdAt: Date.now() };
+      // The draft is typed into Claude's prompt box too (not sent), so the user can read it there.
+      // It replaces Orbit's earlier draft in the same box; the user's own typing is never touched.
+      const prev = draft;
+      const sameBox = !!prev?.filled && prev.targetTitle === next.targetTitle && !!prev.targetNew === !!next.targetNew;
+      if (prev?.filled && !sameBox) await clearDesktop(prev.text, boxOf(prev)).catch(() => {});
+      const shown = await fillDesktop(clean, { ...boxOf(next), replace: sameBox ? prev.text : null }).catch((e) => ({ ok: false, error: String(e?.message || e) }));
+      next.filled = !!shown?.ok;
+      setDraft(next);
       return {
         drafted: true,
+        text: clean,
+        verbatim: verbatim || undefined,
+        in_prompt_box: next.filled,
         target_session: targetNew ? `a new session${typeof info.folder === 'string' && info.folder ? ` in ${info.folder}` : ''}` : info.sessionTitle,
-        note: info.promptText ? 'Warning: the prompt box already has text typed in it; sending will be refused until the user clears it.' : undefined,
-        next_step: 'Read the draft back in a sentence and ask the user to confirm before calling send_draft.',
+        note: next.filled
+          ? undefined
+          : shown?.error === 'prompt_box_not_empty'
+            ? 'The prompt box already has the user\x27s own text in it, so the draft isn\x27t shown there, and sending will be refused until they clear it.'
+            : `It couldn't be shown in Claude's prompt box (${String(shown?.message || shown?.error || 'unknown').slice(0, 120)}), so read it out in full.`,
+        next_step: next.filled
+          ? 'It\x27s typed into Claude\x27s prompt box (not sent) for the user to read. Say so in a few words and ask "Send it?"; don\x27t read it all out unless they ask. Call send_draft only after a clear yes.'
+          : 'Read the drafted text back as it is, without rewording it (if it\x27s long, its start and that there\x27s more), and ask the user to confirm before calling send_draft.',
       };
     },
 
@@ -517,7 +614,7 @@ export function createToolRunner({
 
     async cancel_draft() {
       const had = !!draft;
-      setDraft(null);
+      await dropDraft();
       return { cancelled: had };
     },
 
@@ -574,7 +671,7 @@ export function createToolRunner({
         return result;
       }
       const hadDraft = !!draft;
-      if (hadDraft) setDraft(null); // it was meant for the session that was open before
+      if (hadDraft) await dropDraft(); // it was meant for the session that was open before
       notify({ type: 'bridge.session', title: 'New session' });
       const folder = typeof result.folder === 'string' && result.folder ? result.folder : null;
       return {
@@ -716,6 +813,7 @@ export function createToolRunner({
         };
       }
       if (!result.ok) return { error: result.error };
+      if (result.structured?.suggested_prompt) suggestions.push(String(result.structured.suggested_prompt));
       return brainToolResult(result, {
         label: BRAIN_MODELS[m].label,
         readProject: result.explore ? path.basename(cwd) : undefined,
@@ -757,7 +855,7 @@ export function createToolRunner({
       notify({ type: 'bridge.sleep' });
       return {
         sleeping: true,
-        next_step: `Say a very short goodbye (a few words) and mention that ${typeof wakeHint === 'function' ? wakeHint() : wakeHint} starts you again. Then the app hangs up.`,
+        next_step: 'Say a very short goodbye (two or three words), nothing more: don\x27t explain how to start you again. Then the app hangs up.',
       };
     },
   };
@@ -796,6 +894,10 @@ export function createToolRunner({
     noteNotification: ({ data = false } = {}) => {
       lastNotificationAt = Date.now();
       if (data) lastDataAt = lastNotificationAt;
+    },
+    /** A prompt that may be drafted without the user saying it: a held answer's suggestion, an unsent draft. */
+    allowDraft: (text) => {
+      if (typeof text === 'string' && text.trim()) suggestions.push(text.slice(0, 2000));
     },
     /** The connection closed: hand a second-brain question still running to the bridge, or stop it. */
     dispose: () => {

@@ -95,7 +95,6 @@ export function stopBackgroundWork() {
 
 export const hotkeyLabel = (accel) => accel.replace(/CommandOrControl|Control/g, 'Ctrl').replace(/Super|Meta/g, 'Win');
 const wakeLabel = () => hotkeyLabel(getSetting('wakeHotkey'));
-const wakeHint = () => (getSetting('wakeWord') ? `saying "Hey Grok" or pressing ${wakeLabel()}` : `pressing ${wakeLabel()}`);
 
 const FALLBACK_VOICES = [
   { id: 'eve', name: 'Eve', gender: 'female' },
@@ -112,10 +111,11 @@ You are a hands-free voice companion for the user's Claude Code desktop app. Cla
 You DO have access to the user's sessions through your tools. Never say you can't see them: call get_current_session, list_sessions or read_session and answer from what they return.
 
 Sleeping:
-- When the user says "go to sleep", "stop listening", "sleep", "goodnight", "hang up" or similar, call go_to_sleep, then say a very short goodbye. The app then hangs up; the user can say "Hey Grok" or press ${wakeLabel()} to start a fresh conversation.
+- When the user says "go to sleep", "stop listening", "sleep", "goodnight", "hang up" or similar, call go_to_sleep, then say a very short goodbye (two or three words). The app then hangs up.
 
 How to talk:
 - This is a spoken conversation. Keep replies short: one to three sentences unless asked for more.
+- The user knows how Orbit works. Never explain how to wake you, put you to sleep, use the hotkey or the wake word, and don't suggest what they could say next, unless they ask.
 - Summarize what Claude did or said in plain language. Do not read code, long file paths, or logs aloud unless the user asks.
 - If a tool returns an error, say what went wrong simply and what the user can do.
 
@@ -142,8 +142,9 @@ Starting a new session:
 - When the user wants a brand-new conversation with Claude ("start a new session", "new thread", "start fresh"), call new_session (with project if they named a folder). Then ask what they want to say to Claude, and follow the steps below. Nothing is sent until they confirm.
 
 Sending prompts (important):
-- When the user wants to tell Claude something, call draft_prompt with what they want said, in their words. Do not invent extra instructions or change the meaning.
-- Then read the draft back in one sentence, name the session it will go to, and ask "Send it?".
+- When the user wants to tell Claude something, call draft_prompt with exactly the words they said for Claude, as transcribed. Don't rephrase, summarize, reorder, correct, shorten or add anything; leave out only what they said to you about it ("tell Claude to", "send this:"). Keep filler words like "um": Orbit removes those itself. Orbit refuses a draft with words the user didn't say.
+- If they ask for it "verbatim" or "word for word", set verbatim to true: then even filler words stay. (Don't put the word "verbatim" itself in the prompt when it was said to you.)
+- Orbit types the draft into Claude's prompt box (not sent) so the user can read it there. Say it's there and which session, and ask "Send it?". If it couldn't be typed in, read it back as it is instead.
 - Only call send_draft after the user clearly says yes in their latest reply. If they change the wording, draft again. If they say no, call cancel_draft.
 - Never send a prompt on your own initiative, and never send more than one prompt per confirmation.
 ${getSetting('brainEnabled') ? `
@@ -842,9 +843,13 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         }
         toBrowser(e);
       },
-      wakeHint,
       utteranceSince,
       recentUtterance: () => (utterance.text ? utterance : null),
+      // What the user said or typed in the last 10 minutes of this call (a draft's words come from here).
+      userWords: () =>
+        [...exchanges.filter((x) => x.who === 'user' && Date.now() - x.at < 10 * 60_000).map((x) => x.text), utterance.text]
+          .filter(Boolean)
+          .join(' '),
       heardSince: (ts) => speechStartedAt > ts || utterance.at > ts,
       brainHolder,
     });
@@ -1020,6 +1025,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           const details = s ? s.details : res.answer && res.answer !== spoken ? res.answer : '';
           if (details) lines.push(`Details, for follow-ups: "${quoteSafe(details, 1500)}"`);
           if (s?.files?.length) lines.push(`Files: ${s.files.map((f) => quoteSafe(f, 200)).join('; ')}`);
+          if (s?.suggested_prompt) tools.allowDraft(s.suggested_prompt); // may be drafted, on a yes
           if (s?.suggested_prompt) lines.push(`Suggested prompt (only offer it; if the user says yes, call draft_prompt with it, read it back, and send only after a fresh yes): "${quoteSafe(s.suggested_prompt, 800)}"`);
           if (s?.confidence) lines.push(`Confidence: ${s.confidence}`);
         }
@@ -1078,6 +1084,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       // (Results that will be said in this call aren't listed in it as well.)
       const note = continuity.noteText({ untoldToo: getSetting('announce') !== 'speak' });
       if (note) {
+        const unsent = continuity.unsentDraft();
+        if (unsent) tools.allowDraft(unsent); // "send that one again" redrafts it (read back, fresh yes)
         orbitItem(note);
         tools.noteNotification({ data: true });
         stats.note = 1;

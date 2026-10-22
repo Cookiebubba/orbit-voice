@@ -36,7 +36,14 @@ param(
   [switch]$ExpectNew,
   [string]$ExpectFolderB64 = '',
   [long]$FrontHwnd = 0,
-  [switch]$DryRun
+  [switch]$DryRun,
+  # send variants: -Fill types the draft into the box and stops (the user reads it there; PrevB64 is
+  # Orbit's earlier draft, which may be replaced); -Filled presses Send only if the box still holds
+  # exactly the draft; -Clear empties the box only if it still holds exactly the draft.
+  [switch]$Fill,
+  [switch]$Filled,
+  [switch]$Clear,
+  [string]$PrevB64 = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -541,19 +548,34 @@ try {
   if (-not $box) { Out-Json @{ ok = $false; error = 'prompt_box_not_found'; message = 'No prompt box is visible. Open a Code session in the Claude app.'; sessionTitle = $title } }
   $text = Decode $TextB64
   if (-not $text.Trim()) { Out-Json @{ ok = $false; error = 'empty_text' } }
-  if (Get-BoxText $box) { Out-Json @{ ok = $false; error = 'prompt_box_not_empty'; message = 'The prompt box already has text in it, so nothing was sent (to avoid wiping a draft).'; sessionTitle = $title } }
-
   $vp = $box.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
-  if ($vp.Current.IsReadOnly) { Out-Json @{ ok = $false; error = 'prompt_box_read_only'; message = "Claude's prompt box isn't accepting input right now."; sessionTitle = $title } }
-  $vp.SetValue($text)
-  Start-Sleep -Milliseconds 250
+  # The same text, whatever the line endings or trailing space.
+  $same = { param($a, $b) (([string]$a -replace "`r", '').Trim()) -ceq (([string]$b -replace "`r", '').Trim()) }
+  $inBox = Get-BoxText $box
 
-  $landed = Get-BoxText $box
-  $probe = ($text.Trim() -split "`n")[0].Trim()
-  if ($probe.Length -gt 30) { $probe = $probe.Substring(0, 30) }
-  if (-not ($landed -and $landed.Contains($probe))) {
-    try { $vp.SetValue('') } catch {}
-    Out-Json @{ ok = $false; error = 'fill_not_verified'; message = "Couldn't confirm the text reached Claude's prompt box, so nothing was sent."; sessionTitle = $title }
+  if ($Clear) {
+    # Orbit's own draft only: anything the user typed or changed stays.
+    if ($inBox -and (& $same $inBox $text)) { $vp.SetValue(''); Out-Json @{ ok = $true; cleared = $true; sessionTitle = $title } }
+    Out-Json @{ ok = $true; cleared = $false; sessionTitle = $title }
+  }
+
+  if ($Filled) {
+    # The draft was typed in when it was made: send it only if it's still exactly that.
+    if (-not (& $same $inBox $text)) { Out-Json @{ ok = $false; error = 'prompt_box_changed'; message = "The text in Claude's prompt box isn't the draft any more (it was edited or cleared), so nothing was sent."; sessionTitle = $title } }
+  } else {
+    $mayReplace = $PrevB64 -and $inBox -and (& $same $inBox (Decode $PrevB64))
+    if ($inBox -and -not $mayReplace) { Out-Json @{ ok = $false; error = 'prompt_box_not_empty'; message = 'The prompt box already has text in it, so nothing was typed there (to avoid wiping a draft).'; sessionTitle = $title } }
+    if ($vp.Current.IsReadOnly) { Out-Json @{ ok = $false; error = 'prompt_box_read_only'; message = "Claude's prompt box isn't accepting input right now."; sessionTitle = $title } }
+    $vp.SetValue($text)
+    Start-Sleep -Milliseconds 250
+
+    $landed = Get-BoxText $box
+    $probe = ($text.Trim() -split "`n")[0].Trim()
+    if ($probe.Length -gt 30) { $probe = $probe.Substring(0, 30) }
+    if (-not ($landed -and $landed.Contains($probe))) {
+      try { $vp.SetValue('') } catch {}
+      Out-Json @{ ok = $false; error = 'fill_not_verified'; message = "Couldn't confirm the text reached Claude's prompt box, so nothing was sent."; sessionTitle = $title }
+    }
   }
 
   # The same session still open in this window, right before Send.
@@ -563,6 +585,8 @@ try {
     try { $vp.SetValue('') } catch {}
     Out-Json @{ ok = $false; error = 'session_changed'; message = 'The session changed while the prompt was being typed in, so nothing was sent.'; sessionTitle = $still }
   }
+
+  if ($Fill) { Out-Json @{ ok = $true; filled = $true; sent = $false; sessionTitle = $title; windowId = $target.hwnd } }
 
   if ($DryRun) {
     $vp.SetValue('')

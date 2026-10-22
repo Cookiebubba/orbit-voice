@@ -91,6 +91,12 @@ export function createContinuity({ now = () => Date.now(), limits = CONTINUITY_L
       return !!note || awaiting.length > 0;
     },
 
+    /** The prompt drafted in a recent call and never sent (the user may ask for it again), or null. */
+    unsentDraft() {
+      sweep();
+      return note?.draftText || null;
+    },
+
     /** The note for the next call, as one Orbit-labelled item, or '' when there's nothing. */
     noteText({ untoldToo = true } = {}) {
       sweep();

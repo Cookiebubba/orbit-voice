@@ -106,15 +106,33 @@ export function newSession({ project = '' } = {}) {
  * Put `text` into the open session's prompt box and press Claude's Send button.
  * `expectTitle`: refuse unless that session is the one open right now.
  * `expectNew`: refuse unless a new, not yet started session is open (it has no title yet), in
- * folder `expectFolder` when given.
+ * folder `expectFolder` when given. `filled`: fillDesktop already typed it in; send only if the
+ * box still holds exactly it.
  */
-export function sendToDesktop(text, { dryRun = false, expectTitle = null, expectNew = false, expectFolder = null } = {}) {
+export function sendToDesktop(text, { dryRun = false, expectTitle = null, expectNew = false, expectFolder = null, filled = false } = {}) {
+  return promptBox(text, { expectTitle, expectNew, expectFolder, extra: [...(filled ? ['-Filled'] : []), ...(dryRun || process.env.ORBIT_DRY_RUN_SENDS === '1' ? ['-DryRun'] : [])] });
+}
+
+/**
+ * Type a draft into the target session's prompt box without sending it, so the user can read it
+ * there. `replace`: Orbit's earlier draft, which may be overwritten (anything else in the box is
+ * left alone and the fill is refused). Sending it later: sendToDesktop with `filled`.
+ */
+export function fillDesktop(text, { expectTitle = null, expectNew = false, expectFolder = null, replace = null } = {}) {
+  return promptBox(text, { expectTitle, expectNew, expectFolder, extra: ['-Fill', ...(replace ? ['-PrevB64', b64(String(replace).trim())] : [])] });
+}
+
+/** Empty the prompt box only if it still holds exactly `text` (Orbit's draft): never the user's typing. */
+export function clearDesktop(text, { expectTitle = null, expectNew = false, expectFolder = null } = {}) {
+  return promptBox(text, { expectTitle, expectNew, expectFolder, extra: ['-Clear'] });
+}
+
+// ORBIT_DRY_RUN_SENDS=1 (for testing) fills and clears the box instead of sending.
+function promptBox(text, { expectTitle, expectNew, expectFolder, extra }) {
   const clean = String(text || '').trim();
   if (!clean) return Promise.resolve({ ok: false, error: 'empty_text' });
   if (clean.length > MAX_PROMPT_CHARS) return Promise.resolve({ ok: false, error: 'too_long', message: `Prompt is over ${MAX_PROMPT_CHARS} characters.` });
-  const args = ['-TextB64', b64(clean)];
-  // ORBIT_DRY_RUN_SENDS=1 (for testing) fills and clears the box instead of sending.
-  if (dryRun || process.env.ORBIT_DRY_RUN_SENDS === '1') args.push('-DryRun');
+  const args = ['-TextB64', b64(clean), ...extra];
   if (expectTitle) args.push('-ExpectTitleB64', b64(expectTitle));
   else if (expectNew) {
     args.push('-ExpectNew');

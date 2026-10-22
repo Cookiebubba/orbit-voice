@@ -122,3 +122,32 @@ test('the second brain needs new words from the user each time, and has a cap', 
   await say('one more');
   assert.match((await r.run('ask_second_brain', JSON.stringify({ question: 'one more?' }))).error, /limit/);
 });
+
+test('a draft is typed into Claude\x27s prompt box unsent; yes sends what is there; cancel takes it out', async () => {
+  globalThis.__fuzz.calls = [];
+  const { r, say } = runner();
+  const named = (n) => globalThis.__fuzz.calls.filter((c) => c.name === n);
+  await say('tell claude to um add a retry to the login call');
+  const d = await r.run('draft_prompt', JSON.stringify({ text: 'um add a retry to the login call' }));
+  assert.equal(d.drafted, true);
+  assert.equal(d.text, 'Add a retry to the login call', 'Orbit took out the "um", nothing else');
+  assert.equal(d.in_prompt_box, true);
+  assert.equal(named('fill').length, 1);
+  assert.equal(named('fill')[0].args.text, 'Add a retry to the login call');
+  assert.equal(sends().length, 0, 'drafting sends nothing');
+  // Redrafted in the same session: it replaces Orbit's own earlier draft in the box.
+  await say('make it add a retry to the login call twice');
+  await r.run('draft_prompt', JSON.stringify({ text: 'add a retry to the login call twice' }));
+  assert.equal(named('fill')[1].args.replace, 'Add a retry to the login call');
+  await say('yes send it', Date.now() + 1);
+  assert.equal((await r.run('send_draft', '{}')).ok, true);
+  assert.equal(sends()[0].args.filled, true, 'Send is pressed on the text already in the box');
+  // Words the user never said are refused; "verbatim" keeps every word, fillers too.
+  await say('tell claude to fix the parser');
+  assert.match((await r.run('draft_prompt', JSON.stringify({ text: 'Please fix the parser and add tests' }))).error, /words the user didn't say/);
+  await say('send this verbatim: um fix the parser uh now');
+  const v = await r.run('draft_prompt', JSON.stringify({ text: 'um fix the parser uh now', verbatim: true }));
+  assert.equal(v.text, 'um fix the parser uh now');
+  assert.equal((await r.run('cancel_draft', '{}')).cancelled, true);
+  assert.equal(named('clear').at(-1).args.text, 'um fix the parser uh now', 'cancelling takes Orbit\x27s draft out of the box');
+});

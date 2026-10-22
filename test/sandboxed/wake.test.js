@@ -464,7 +464,7 @@ test('a suggested prompt needs the user to ask; a draft read back before a notif
   // Grok drafts the suggestion straight away: refused, the user hasn't asked for it.
   assert.match((await grokCalls('draft_prompt', { text: r.suggested_prompt })).error, /Not drafted/);
   await userSays('yes, send claude that');
-  assert.equal((await grokCalls('draft_prompt', { text: 'Clear the cache' })).drafted, true);
+  assert.equal((await grokCalls('draft_prompt', { text: r.suggested_prompt })).drafted, true);
   // A notification arrives before the user answers the read-back; their "yes" may be about it.
   finished('Elsewhere', 'local_elsewhere');
   await wait(60);
@@ -472,7 +472,9 @@ test('a suggested prompt needs the user to ask; a draft read back before a notif
   const sendsBefore = sends().length;
   assert.match((await grokCalls('send_draft')).error, /something else came in/);
   assert.equal(sends().length, sendsBefore);
-  assert.equal((await grokCalls('draft_prompt', { text: 'Clear the cache' })).drafted, true, 'redrafting is allowed: the user spoke after the notification');
+  assert.equal((await grokCalls('draft_prompt', { text: r.suggested_prompt })).drafted, true, 'redrafting is allowed: the user spoke after the notification');
+  // Words that are neither the user's nor the suggestion's are refused.
+  assert.match((await grokCalls('draft_prompt', { text: 'Clear the cache' })).error, /words the user didn't say/);
   await userSays('yes send it');
   assert.equal((await grokCalls('send_draft')).ok, true);
   delete globalThis.__fuzz.brain;

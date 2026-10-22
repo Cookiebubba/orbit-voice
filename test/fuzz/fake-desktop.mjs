@@ -59,8 +59,19 @@ export function newSession(opts = {}) {
 }
 
 export function sendToDesktop(text, opts = {}) {
-  record('send', { text, expectTitle: opts.expectTitle, expectNew: !!opts.expectNew, expectFolder: opts.expectFolder ?? null });
-  return Promise.resolve(pick([{ ok: true, sessionTitle: opts.expectTitle || (opts.expectNew ? fz().str() : 't') }, { ok: false, error: 'prompt_box_not_empty', message: 'x' }, { ok: false, error: 'session_ambiguous', message: 'x' }]));
+  record('send', { text, expectTitle: opts.expectTitle, expectNew: !!opts.expectNew, expectFolder: opts.expectFolder ?? null, filled: !!opts.filled });
+  return Promise.resolve(pick([{ ok: true, sessionTitle: opts.expectTitle || (opts.expectNew ? fz().str() : 't') }, { ok: false, error: 'prompt_box_not_empty', message: 'x' }, { ok: false, error: 'session_ambiguous', message: 'x' }, { ok: false, error: 'prompt_box_changed', message: 'x' }]));
+}
+
+// Typing a draft into the box (not sent), and taking it out again: never a send.
+export function fillDesktop(text, opts = {}) {
+  record('fill', { text, expectTitle: opts.expectTitle, expectNew: !!opts.expectNew, replace: opts.replace ?? null });
+  return Promise.resolve(pick([{ ok: true, filled: true }, { ok: false, error: 'prompt_box_not_empty', message: 'x' }, { ok: false, error: 'fill_not_verified', message: 'x' }]));
+}
+
+export function clearDesktop(text, opts = {}) {
+  record('clear', { text, expectTitle: opts.expectTitle, expectNew: !!opts.expectNew });
+  return Promise.resolve({ ok: true, cleared: true });
 }
 
 // The real module's setup hooks (electron/main.js), unused here.
