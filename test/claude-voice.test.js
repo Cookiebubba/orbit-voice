@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { createClaudeRealtime, parseToolCall, speakableText, systemPrompt, takeChunks } from '../src/claude-voice.js';
+import { createClaudeRealtime, isJunk, parseToolCall, speakableText, systemPrompt, takeChunks } from '../src/claude-voice.js';
 import { downloadModels, downloadStatus, modelsReady } from '../src/voice-models.js';
 
 test('streamed text is cut into speakable pieces: the first early, sentences whole, numbers intact', () => {
@@ -35,8 +35,11 @@ test('tool calls are parsed strictly, and only the spoken text is said', () => {
   assert.equal(parseToolCall('{"arguments":{}}'), null);
   assert.equal(speakableText('Run **`git status`** — see https://example.com/x'), 'Run git status — see a link');
   assert.equal(speakableText('git reset --soft HEAD~1'), 'git reset --soft HEAD tilde 1');
+  for (const junk of ['_check', '="">', '<invoke', '...', '']) assert.equal(isJunk(junk), true, junk);
+  for (const words of ['Paris.', 'OK.', 'Hmm.', '"Fix it" is drafted.', '42 tests passed.']) assert.equal(isJunk(words), false, words);
   const p = systemPrompt({ instructions: 'Be Orbit.', tools: [{ name: 'list_sessions', description: 'Lists sessions.', parameters: { type: 'object' } }] });
-  assert.match(p, /^Be Orbit\./);
+  assert.match(p, /^Where you run/, 'first: the environment Claude Code adds is not the user\x27s project');
+  assert.match(p, /\n\nBe Orbit\./);
   assert.match(p, /<tool>\{"name": "tool_name"/);
   assert.match(p, /- list_sessions: Lists sessions\./);
 });

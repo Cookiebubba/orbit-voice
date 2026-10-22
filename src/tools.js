@@ -50,7 +50,7 @@ export const TOOL_DEFS = [
     type: 'function',
     name: 'draft_prompt',
     description:
-      'Prepare a prompt to type into the Claude Code session that is open in the desktop app. This does NOT send it. After calling this, read the draft back briefly and ask the user to confirm.',
+      'Your main tool. Turn what the user wants done (in their code, project, terminal, git...) into a prompt for the Claude Code session open in the desktop app: Claude does the work. Use it whenever the user asks for something to be done, even if they said it to you rather than "tell Claude". It types the draft into Claude\x27s prompt box but does NOT send it: then ask the user "Send it?".',
     parameters: {
       type: 'object',
       properties: {
@@ -71,7 +71,7 @@ export const TOOL_DEFS = [
     type: 'function',
     name: 'send_draft',
     description:
-      'Send the current draft into the Claude desktop prompt box and press Enter. Only call this when the user has clearly said yes / send it in their most recent turn.',
+      'Send the current draft to Claude (presses Send on it in the Claude desktop app). Only call this when the user has clearly said yes / send it in their most recent turn.',
     parameters: { type: 'object', properties: {}, required: [] },
   },
   {

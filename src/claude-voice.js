@@ -47,6 +47,15 @@ const IN_RATE = 24000; // what the page sends and plays
 const VAD_RATE = 16000;
 const WINDOW = 512;
 
+// Claude Code appends its own "Environment" block (a working directory, shell, advice on running
+// code) to every system prompt, and there's no switch for it here: without this, the model takes
+// itself for a coding agent stuck in a temp folder and says it "can't do that from here".
+const WHERE_YOU_RUN = `
+Where you run (read this first):
+- You are the voice of Orbit, not a coding agent. You have no shell, file, code or web tools of your own and you never work in a folder.
+- Any "Environment" details further down (a working directory, a shell, a platform, git, advice about running code or downloaded files) describe Orbit's helper process. They are not the user's project and not your job: ignore them.
+- The user's project lives in their Claude Code session. Work on it gets done by Claude, through the prompt you draft with draft_prompt.`.trim();
+
 const VOICE_RULES = `
 How you speak (important):
 - Everything you write is read aloud by a text-to-speech voice. Write only what should be said: plain spoken sentences. No markdown, lists, emoji, code, file paths or links.
@@ -70,7 +79,7 @@ ${list}`.trim();
 }
 
 export function systemPrompt({ instructions = '', tools = [] }) {
-  return [String(instructions).trim(), VOICE_RULES, toolRules(tools)].filter(Boolean).join('\n\n');
+  return [WHERE_YOU_RUN, String(instructions).trim(), VOICE_RULES, toolRules(tools)].filter(Boolean).join('\n\n');
 }
 
 /** Text that's fine to say aloud: markdown, links and code marks dropped. */
@@ -122,6 +131,15 @@ export function takeChunks(buf, { first, final }) {
   }
   return { chunks, rest: s };
 }
+
+/**
+ * A stray fragment, not words to say: one "word" that starts with a symbol ("_check", '="">'),
+ * which Haiku sometimes writes just before a tool call. "Paris." or "OK." are words.
+ */
+export const isJunk = (piece) => {
+  const s = String(piece).trim();
+  return !s || (/^[^\p{L}\p{N}]/u.test(s) && !/\s/.test(s)) || !/[\p{L}\p{N}]/u.test(s);
+};
 
 /** Pulls a <tool>{...}</tool> call out of what Claude wrote: { name, args } or null. */
 export function parseToolCall(text) {
@@ -217,7 +235,12 @@ export class ClaudeProc {
     // Without this, each answer's end comes 0.7–2 s after its last word (background requests),
     // and the next turn waits for it.
     env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1';
-    this.child = spawnImpl(exe, args, { cwd: os.tmpdir(), env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    // An empty folder whose name says what it is, since Claude Code tells the model its working directory.
+    const cwd = path.join(os.tmpdir(), 'orbit-voice-not-a-project');
+    try {
+      fs.mkdirSync(cwd, { recursive: true });
+    } catch {}
+    this.child = spawnImpl(exe, args, { cwd: fs.existsSync(cwd) ? cwd : os.tmpdir(), env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     liveProcs.add(this);
     let buf = '';
     this.child.stdout?.on('data', (d) => {
@@ -508,6 +531,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, onMetr
 
   const queueSpeech = (t, pieces) => {
     for (const piece of pieces) {
+      if (isJunk(piece)) continue;
       const say = speakableText(piece);
       if (!say) continue;
       t.spoken += (t.spoken ? ' ' : '') + say;
