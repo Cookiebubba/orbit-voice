@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ANTENNA, createBuddy, modeFor } from '../ui/src/buddy/engine.js';
 import { BASE_POSE, GLYPH_NAMES, PALETTE, drawBuddy, glyph } from '../ui/src/buddy/sprite.js';
-import { BOX_PADDING, BUDDY_HEIGHT, boxInStrip, buddyBoundsFor } from '../electron/buddy-geometry.js';
+import { BOX_PADDING, BUDDY_HEIGHT, FREE_STRIP_MAX_WIDTH, boxInStrip, buddyBoundsFor, freeStripFor } from '../electron/buddy-geometry.js';
 
 /** A seeded random number generator, so every run does the same things. */
 const seeded = (seed) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -322,4 +322,16 @@ test('asleep in the middle when the box turns up late, it sleepwalks to its spot
   assert.equal(f.on, 'box');
   assert.ok(Math.abs(f.x - 306) < 2);
   assert.equal(f.mode, 'sleep');
+});
+
+test('free-floating avatar: a strip along the bottom of the work area (above the Dock), centred, capped', () => {
+  const mac = { x: 0, y: 25, width: 1512, height: 870 }; // under the menu bar, above the Dock
+  const s = freeStripFor(mac);
+  assert.equal(s.width, FREE_STRIP_MAX_WIDTH);
+  assert.equal(s.y + s.height, mac.y + mac.height, 'stands on the top of the Dock');
+  assert.equal(s.x, Math.round((1512 - FREE_STRIP_MAX_WIDTH) / 2));
+  const small = freeStripFor({ x: 100, y: 0, width: 600, height: 300 });
+  assert.equal(small.width, 552, '24 px margin each side');
+  assert.equal(small.height, 180, 'at most 60% of a short screen');
+  assert.equal(small.x, 124);
 });

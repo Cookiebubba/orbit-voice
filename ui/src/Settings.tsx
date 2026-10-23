@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { desktop, type HotkeyInfo, type UpdateState } from "./desktop";
+import { desktop, isMac, thisComputer, type HotkeyInfo, type UpdateState } from "./desktop";
 import { postJson, type AppConfig, type Settings as SettingsT } from "./useAppState";
 import VoiceSettings, { prefetchVoices } from "./VoiceSettings";
 import PillScroll from "./components/PillScroll";
@@ -69,7 +69,7 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
               checked={s.wakeWord}
               onChange={(wakeWord) => update({ wakeWord })}
               label="Wake word: say “Hey Orbit” (or “Hey Grok”)"
-              hint={`Starts ${name} hands-free after it has gone to sleep. Recognized entirely on this PC by a small offline speech model: no audio leaves your computer and it costs nothing. Each wake starts a fresh conversation.`}
+              hint={`Starts ${name} hands-free after it has gone to sleep. Recognized entirely on ${thisComputer} by a small offline speech model: no audio leaves your computer and it costs nothing. Each wake starts a fresh conversation.`}
             />
           </Section>
         </Reveal>
@@ -88,7 +88,7 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
             <p className="mt-2 text-[12.5px] leading-relaxed text-white/50">
               {s.announce === "off"
                 ? "Orbit won't tell you when Claude finishes."
-                : `Orbit watches your recent Claude sessions. When Claude finishes a task you get a chime and a Windows notification${s.announce === "speak" ? `, and if ${name} is on, it says what Claude did.` : "."}`}
+                : `Orbit watches your recent Claude sessions. When Claude finishes a task you get a chime and a ${isMac ? "" : "Windows "}notification${s.announce === "speak" ? `, and if ${name} is on, it says what Claude did.` : "."}`}
             </p>
             <Reveal show={s.announce === "speak"}>
               <Toggle
@@ -128,7 +128,11 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
                 checked={s.orbStick}
                 onChange={(orbStick) => update({ orbStick })}
                 label="Stick to Claude Code"
-                hint="The orb rides on the Claude window: it follows it around, stays on top of it, and hides while Claude is minimized. Drag the orb to choose its spot on the window."
+                hint={
+                  isMac
+                    ? "Not on Mac yet: the orb floats freely wherever you drag it. (On Windows it rides on the Claude window.)"
+                    : "The orb rides on the Claude window: it follows it around, stays on top of it, and hides while Claude is minimized. Drag the orb to choose its spot on the window."
+                }
               />
               <Toggle
                 className="mt-4"
@@ -234,7 +238,7 @@ function StartWithWindows() {
     <Toggle
       checked={on}
       onChange={async (v) => setOn((await desktop?.startWithWindows.set(v)) ?? v)}
-      label="Start with Windows"
+      label={isMac ? "Open at login" : "Start with Windows"}
       hint="Orbit starts quietly as the floating orb when you sign in."
     />
   );
@@ -257,16 +261,16 @@ function AvatarSection({ s, update, name }: { s: SettingsT; update: Update; name
       />
       <Reveal show={avatar === "buddy"}>
         <p className="mt-2 text-[12px] leading-snug text-white/45">
-          A little pixel character lives along the bottom of your Claude window. It naps while {name} sleeps, listens and talks with it, hops onto the prompt box, carries your drafts in and stomps Send. Click it, or pick it up and drop it.
+          A little pixel character lives along the bottom of your {isMac ? "screen" : "Claude window"}. It naps while {name} sleeps, listens and talks with it, hops onto the prompt box, carries your drafts in and stomps Send. Click it, or pick it up and drop it.
         </p>
       </Reveal>
       <Reveal show={avatar === "qubit"}>
         <p className="mt-2 text-[12px] leading-snug text-white/45">
-          A square with one eye lives on your Claude window. He sleeps while {name} sleeps, wakes when you call, his eye stretches as you talk and opens with {name}'s voice. He waits by Send for your yes, stomps it, watches Claude work and celebrates when it's done. His colour shows what's going on.
+          A square with one eye lives on your {isMac ? "screen, just above the Dock" : "Claude window"}. He sleeps while {name} sleeps, wakes when you call, his eye stretches as you talk and opens with {name}'s voice. He waits by Send for your yes, stomps it, watches Claude work and celebrates when it's done. His colour shows what's going on.
         </p>
       </Reveal>
       <Reveal show={avatar === "none"}>
-        <p className="mt-2 text-[12px] leading-snug text-white/45">Nothing on your Claude window.</p>
+        <p className="mt-2 text-[12px] leading-snug text-white/45">Nothing on your {isMac ? "screen" : "Claude window"}.</p>
       </Reveal>
       <Reveal show={avatar !== "none"}>
         <div className="mt-3 mb-1.5 text-[12px] text-white/50">Size</div>
@@ -284,7 +288,7 @@ function AvatarSection({ s, update, name }: { s: SettingsT; update: Update; name
           checked={s.showOrb !== false}
           onChange={(showOrb) => update({ showOrb })}
           label="Show the orb"
-          hint={`Off: ${avatar === "qubit" ? "Qubit" : "the pixel buddy"} stands in for the orb when ${name} is minimized. Open ${name} again from its tray icon.`}
+          hint={`Off: ${avatar === "qubit" ? "Qubit" : "the pixel buddy"} stands in for the orb when ${name} is minimized. Open ${name} again from its ${isMac ? "menu bar" : "tray"} icon.`}
         />
       </Reveal>
     </Section>
@@ -374,7 +378,7 @@ function VoiceEngineSection({ s, update }: { s: SettingsT; update: Update }) {
       </Reveal>
       <Reveal show={s.voiceEngine === "claude"}>
         <p className="mt-2 text-[12px] leading-snug text-white/45">
-          Claude Haiku through your own Claude Code sign-in, with speech recognized and spoken on this PC. No xAI cost. Replies take a moment longer than Grok's. Takes effect on the next call.
+          Claude Haiku through your own Claude Code sign-in, with speech recognized and spoken on {thisComputer}. No xAI cost. Replies take a moment longer than Grok's. Takes effect on the next call.
         </p>
         {status && (
           <div className="mt-3 text-[12px] leading-snug">
@@ -393,7 +397,7 @@ function VoiceEngineSection({ s, update }: { s: SettingsT; update: Update }) {
             <Reveal show={m?.state === "idle" || m?.state === "error"}>
               <div className="flex items-center gap-3">
                 <p className={cn("flex-1", m?.state === "error" ? "text-amber-300/90" : "text-white/55")}>
-                  {m?.state === "error" ? `Download failed: ${m.error}` : `Needs about ${status.mb} MB of speech models, kept on this PC.`}
+                  {m?.state === "error" ? `Download failed: ${m.error}` : `Needs about ${status.mb} MB of speech models, kept on ${thisComputer}.`}
                 </p>
                 <button onClick={download} className="shrink-0 rounded-lg border border-white/15 px-2.5 py-1 text-[12px] text-white/85 hover:bg-white/10">
                   {m?.state === "error" ? "Retry" : "Download"}
@@ -468,7 +472,7 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
     refresh();
   };
 
-  const where = status?.source === "claude-desktop" ? "the copy inside the Claude app" : status?.source === "settings" ? "the path below" : "Claude Code on this PC";
+  const where = status?.source === "claude-desktop" ? "the copy inside the Claude app" : status?.source === "settings" ? "the path below" : `Claude Code on ${thisComputer}`;
   return (
     <Section title="Second brain">
       <Toggle
@@ -529,7 +533,7 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
           <p className="mt-2 text-[12px] leading-snug text-white/45">
             {s.brainConnection === "claude-code"
               ? "Uses your Claude Code sign-in, so questions count toward your Claude plan. No setup if you use Claude Code."
-              : "Questions are billed to your Anthropic API account. The key is encrypted on this PC."}
+              : `Questions are billed to your Anthropic API account. The key is encrypted on ${thisComputer}.`}
           </p>
 
           <Reveal show={s.brainConnection === "claude-code" && !!status?.found && status.signedIn !== null}>
@@ -615,7 +619,7 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
                 spellCheck={false}
                 className="h-8 w-full rounded-lg border border-white/15 bg-black/40 px-2 text-[12px] outline-none select-text focus:border-white/40"
               />
-              <p className="mt-1 text-[11.5px] leading-snug text-white/40">Leave empty to find it automatically. Otherwise, the full path to claude.exe.</p>
+              <p className="mt-1 text-[11.5px] leading-snug text-white/40">Leave empty to find it automatically. Otherwise, the full path to {isMac ? "claude" : "claude.exe"}.</p>
             </div>
           </Reveal>
         </>
@@ -735,7 +739,11 @@ function AboutSection({ config }: { config: AppConfig }) {
   const [key, setKey] = useState("");
   const [msg, setMsg] = useState("");
   const storage =
-    config.keyStorage === "windows-dpapi" ? "encrypted with your Windows account" : config.keyStorage === "env-file" ? "in the .env file (developer mode)" : "not available";
+    config.keyStorage === "windows-dpapi"
+      ? "encrypted with your Windows account"
+      : config.keyStorage === "macos-keychain"
+        ? "encrypted with a key in your macOS Keychain"
+        : config.keyStorage === "env-file" ? "in the .env file (developer mode)" : "not available";
 
   return (
     <Section title="About">
@@ -810,7 +818,7 @@ function toAccelerator(e: KeyboardEvent): { accel?: string; partial: string[]; e
   if (e.ctrlKey) mods.push("Control");
   if (e.altKey) mods.push("Alt");
   if (e.shiftKey) mods.push("Shift");
-  if (e.metaKey) mods.push("Super");
+  if (e.metaKey) mods.push(isMac ? "Command" : "Super");
   if (MODIFIER_CODES.test(e.code)) return { partial: mods };
 
   let key: string | undefined;
@@ -823,12 +831,13 @@ function toAccelerator(e: KeyboardEvent): { accel?: string; partial: string[]; e
   if (!key) return { partial: mods, error: "That key can't be used. Try a letter, number or F-key." };
 
   const isFKey = /^F\d+$/.test(key);
-  if (!mods.some((x) => x !== "Shift") && !isFKey) return { partial: mods, error: "Hold Ctrl, Alt or Win too, so it doesn't fire while you type." };
+  if (!mods.some((x) => x !== "Shift") && !isFKey) return { partial: mods, error: isMac ? "Hold ⌃, ⌥ or ⌘ too, so it doesn't fire while you type." : "Hold Ctrl, Alt or Win too, so it doesn't fire while you type." };
   return { accel: [...mods, key].join("+"), partial: mods };
 }
 
+const MAC_KEYS: Record<string, string> = { Control: "⌃", Alt: "⌥", Shift: "⇧", Command: "⌘", CommandOrControl: "⌘", Super: "⌘", Meta: "⌘" };
 const labelParts = (accel: string) =>
-  accel.split("+").map((p) => (p === "Control" || p === "CommandOrControl" ? "Ctrl" : p === "Super" || p === "Meta" ? "Win" : p));
+  accel.split("+").map((p) => (isMac ? MAC_KEYS[p] || p : p === "Control" || p === "CommandOrControl" ? "Ctrl" : p === "Super" || p === "Meta" ? "Win" : p));
 
 function Keys({ parts, dim }: { parts: string[]; dim?: boolean }) {
   return (

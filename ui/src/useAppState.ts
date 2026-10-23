@@ -1,4 +1,5 @@
 // App-wide state from the local bridge: settings (kept in sync live) and what Claude is doing.
+import { isMac } from "./desktop";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type Settings = {
@@ -91,4 +92,12 @@ export function useAppState({ onFinished, onWake }: { onFinished: (f: Finished) 
   return { config, failed, reload, claudeWorking, updateSettings, setHasKey: () => setConfig((c) => (c ? { ...c, hasKey: true } : c)) };
 }
 
-export const hotkeyLabel = (accel = "") => accel.replace(/CommandOrControl|Control/g, "Ctrl").replace(/Super|Meta/g, "Win");
+const MAC_MODS: Record<string, string> = { Control: "⌃", Ctrl: "⌃", Alt: "⌥", Option: "⌥", Shift: "⇧", Command: "⌘", Cmd: "⌘", CommandOrControl: "⌘", CmdOrCtrl: "⌘", Super: "⌘", Meta: "⌘" };
+/** "Ctrl+Alt+G" on Windows, "⌃⌥G" on a Mac (the same as src/platform.js hotkeyLabel). */
+export const hotkeyLabel = (accel = "") => {
+  if (!isMac) return accel.replace(/CommandOrControl|CmdOrCtrl|Control/g, "Ctrl").replace(/Super|Meta/g, "Win");
+  const parts = accel.split("+").filter(Boolean);
+  const mods = new Set(parts.filter((p) => MAC_MODS[p]).map((p) => MAC_MODS[p]));
+  const keys = parts.filter((p) => !MAC_MODS[p]).map((p) => (p.length === 1 ? p.toUpperCase() : p));
+  return ["⌃", "⌥", "⇧", "⌘"].filter((m) => mods.has(m)).join("") + keys.join("+");
+};

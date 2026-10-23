@@ -2,7 +2,14 @@
 // phase (listening / thinking / speaking), live volume levels for the orb, history, draft.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playChime } from "./sounds";
-import { desktop } from "./desktop";
+import { desktop, isMac } from "./desktop";
+
+/** A plain reason the mic didn't open (on a Mac, where to allow it). */
+function micProblem(e: any) {
+  if (e?.name === "NotAllowedError" && isMac) return "Orbit isn't allowed to use the microphone. Turn it on in System Settings → Privacy & Security → Microphone, then quit and reopen Orbit.";
+  if (e?.name === "NotFoundError") return "No microphone found. Plug one in or pick one in your system's sound settings.";
+  return `Microphone problem: ${e?.message || e}`;
+}
 import { createEmoteSync } from "./emote-sync.js";
 
 const RATE = 24000;
@@ -431,7 +438,7 @@ export function useVoice(options: VoiceOptions) {
       if (announceRef.current) {
         // Typing during a spoken update answers it: carry on as a normal conversation.
         answeredAnnounce();
-        openMic().catch((e) => caption({ id: `err-${Date.now()}`, who: "error", text: `Microphone problem: ${e.message}` }));
+        openMic().catch((e) => caption({ id: `err-${Date.now()}`, who: "error", text: micProblem(e) }));
       }
       lastActivity.current = Date.now();
       caption({ id: `typed-${Date.now()}`, who: "you", text });

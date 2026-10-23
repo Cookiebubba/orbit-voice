@@ -4,11 +4,11 @@ import { Shdr29 } from "@/components/ui/shdr-29";
 import { cn } from "@/lib/utils";
 import History from "./components/History";
 import SessionSwitcher from "./components/SessionSwitcher";
-import { desktop, orbOpacity, orbProps } from "./desktop";
+import { desktop, isMac, orbOpacity, orbProps } from "./desktop";
 import { PULSE_DEFAULT, orbParams } from "./orbLook";
 import Settings from "./Settings";
 import { playChime } from "./sounds";
-import { postJson, useAppState, type Finished } from "./useAppState";
+import { hotkeyLabel, postJson, useAppState, type Finished } from "./useAppState";
 import { useVoice, type Phase } from "./useVoice";
 import { useWakeWord } from "./useWakeWord";
 
@@ -38,13 +38,13 @@ export default function App() {
   const [typing, setTyping] = useState(false);
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const hotkey = settings?.hotkeyLabel ?? "Ctrl+Alt+G";
+  const hotkey = settings?.hotkeyLabel ?? hotkeyLabel("Control+Alt+G");
   const tap = settings?.listenMode === "tap";
   const workingTitles = new Set(app.claudeWorking.map((w) => w.title));
   const claudeWorking = app.claudeWorking.length > 0;
   const pulse = { pulseMe: !!settings?.orbPulse, pulseGrok: !!settings?.orbPulseGrok, pulseAmount: settings?.orbPulseAmount ?? PULSE_DEFAULT };
 
-  // Claude finished a turn somewhere: chime, note it, and pop a Windows notification if we're not in front.
+  // Claude finished a turn somewhere: chime, note it, and pop a system notification if we're not in front.
   finishedRef.current = (f) => {
     desktop?.buddyEvent?.("finished"); // the avatar celebrates (or jolts awake)
     const mode = settings?.announce ?? "speak";
@@ -119,8 +119,8 @@ export default function App() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-black text-white select-none">
       {wakeFrame}
-      {/* title bar: draggable in the desktop app */}
-      <div className="flex h-10 shrink-0 items-center gap-1 pr-1 pl-4 [-webkit-app-region:drag]">
+      {/* title bar: draggable in the desktop app (on a Mac the traffic lights sit at its left) */}
+      <div className={cn("flex h-10 shrink-0 items-center gap-1 pr-1 [-webkit-app-region:drag]", desktop && isMac ? "pl-[78px]" : "pl-4")}>
         <span className="mr-1 text-[13px] font-semibold tracking-tight">Orbit</span>
         <SessionSwitcher
           current={v.sessionTitle}
@@ -138,7 +138,7 @@ export default function App() {
           <TitleButton label="Settings" active={view === "settings"} onClick={() => setView((x) => (x === "settings" ? "main" : "settings"))}>
             <SettingsIcon size={14} />
           </TitleButton>
-          {desktop && (
+          {desktop && !isMac && (
             <>
               <TitleButton label="Shrink to orb" onClick={() => desktop?.minimize()}>
                 <Minus size={15} />

@@ -19,6 +19,8 @@ export type HotkeyInfo = {
 };
 
 type DesktopApi = {
+  /** process.platform of the desktop app ('win32', 'darwin', ...). */
+  platform?: string;
   hotkey: {
     get(): Promise<HotkeyInfo>;
     set(accelerator: string): Promise<HotkeyInfo>;
@@ -67,6 +69,12 @@ declare global {
 }
 
 export const desktop = typeof window !== "undefined" ? window.desktop : undefined;
+
+/** Running on a Mac (the desktop app says so; in a browser, the browser's platform). */
+export const isMac =
+  desktop?.platform === "darwin" || (!desktop?.platform && typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || navigator.userAgent || ""));
+/** "this Mac" or "this PC", for "kept on this PC" and the like. */
+export const thisComputer = isMac ? "this Mac" : "this PC";
 
 /**
  * How visible the orb is. With no glow around it, brightness is the only sign of activity, so

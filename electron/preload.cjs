@@ -2,6 +2,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('desktop', {
+  // 'win32' | 'darwin' | 'linux': for platform-aware words (hotkey symbols, "Open at login").
+  platform: process.platform,
   minimize: () => ipcRenderer.send('win:minimize'),
   close: () => ipcRenderer.send('win:close'),
   sendOrbState: (s) => ipcRenderer.send('orb:state', s),

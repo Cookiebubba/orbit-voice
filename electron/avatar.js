@@ -15,12 +15,17 @@
 //     full looks the Send button keeps its place from the box's right end and bottom (it sits on the
 //     box's row), so it moves with the box.
 //
+// Free-floating (`free`, macOS for now, where there's no Claude window tracker yet): the strip
+// lives along the bottom of the screen the cursor is on, just above the Dock, always on top and on
+// every Space. There's no prompt box or Send button to stand on there, so the avatar has the
+// floor (the top of the Dock) to itself; it moves when the screen layout changes.
+//
 // Switching avatars is a handover: the new one's window comes up (its page plays an entrance) while
 // the old one's page fades out (leave()), and then the old window closes.
 
 import { BrowserWindow, screen } from 'electron';
 
-import { BUDDY_HEIGHT, boxInStrip, buddyBoundsFor, sendAtOffset, sendInStrip, sendOffsetFor, usableBox } from './buddy-geometry.js';
+import { BUDDY_HEIGHT, boxInStrip, buddyBoundsFor, freeStripFor, sendAtOffset, sendInStrip, sendOffsetFor, usableBox } from './buddy-geometry.js';
 import { isAvatarAction } from '../src/avatar-commands.js';
 import { cueName } from '../src/emote-cues.js';
 
@@ -32,7 +37,7 @@ export const AVATAR_KINDS = Object.freeze({
 });
 const LEAVE_MS = 450; // the page's fade-out, and a little more
 
-export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, getDesktopInfo, log = () => {}, info: info_ = () => {} }) {
+export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, getDesktopInfo, log = () => {}, info: info_ = () => {}, free = false, onWindow = () => {} }) {
   const K = AVATAR_KINDS[kind];
   if (!K) throw new Error(`unknown avatar ${kind}`);
   let win = null;
@@ -73,6 +78,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     });
     lockDown(win);
     win.setIgnoreMouseEvents(true, { forward: true }); // clicks go through to Claude
+    onWindow(win); // (macOS: on every Space)
     win.loadURL(url());
     win.webContents.on('did-finish-load', () => {
       send();
@@ -131,9 +137,51 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     return true;
   }
 
+  /** Free-floating: the strip along the bottom of the work area, nothing to stand on but the floor. */
+  function placeFree() {
+    ensure();
+    claudeDip = null;
+    let area;
+    try {
+      area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+    } catch {
+      area = screen.getPrimaryDisplay().workArea;
+    }
+    const b = freeStripFor(area);
+    const cur = win.getBounds();
+    if (cur.x !== b.x || cur.y !== b.y || cur.width !== b.width || cur.height !== b.height) win.setBounds(b);
+    if (!boxKnown || lastBox || lastSend) {
+      lastBox = null;
+      lastSend = null;
+      boxKnown = true; // the page doesn't wait for a prompt box that will never come
+    }
+    if (!win.isVisible()) {
+      win.showInactive();
+      layer = null;
+    }
+    if (layer !== 'top') {
+      layer = 'top';
+      win.setAlwaysOnTop(true, 'screen-saver');
+    }
+    send();
+  }
+  // The screen layout changed (a display added or removed, the Dock moved): re-place the strip.
+  let screenHooked = false;
+  function hookScreen() {
+    if (screenHooked || !free) return;
+    screenHooked = true;
+    const again = () => enabled && !leaving && place();
+    for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, again);
+  }
+
   /** Re-place (or hide) the strip for the current Claude window. */
   function place() {
     if (leaving) return;
+    if (free) {
+      if (!enabled) return hide();
+      hookScreen();
+      return placeFree();
+    }
     if (!enabled || !claude?.found || claude.min) return hide();
     ensure();
     claudeDip = screen.screenToDipRect(null, { x: claude.x, y: claude.y, width: claude.w, height: claude.h });
@@ -161,7 +209,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   }
 
   async function findBox() {
-    if (boxBusy || !enabled || leaving || !visible() || !claudeDip) return;
+    if (free || boxBusy || !enabled || leaving || !visible() || !claudeDip) return;
     boxBusy = true;
     const askedAt = Date.now();
     try {
@@ -226,14 +274,14 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
         }, visible() ? LEAVE_MS : 0),
       );
     },
-    /** The Claude window changed (from the tracker). */
+    /** The Claude window changed (from the tracker). Free-floating, it doesn't follow one. */
     onClaude(state) {
       claude = state;
-      place();
+      if (!free) place();
     },
     /** Where the window helper sees the prompt box now ({ hwnd, rect, win }; see claude-window.ps1). */
     onBoxRect(b) {
-      if (!b || leaving || !enabled || !claude?.found || Number(b.hwnd) !== Number(claude.hwnd)) return;
+      if (free || !b || leaving || !enabled || !claude?.found || Number(b.hwnd) !== Number(claude.hwnd)) return;
       const ok = (r) => r && [r.x, r.y, r.w, r.h].every(Number.isFinite);
       lastRaw = { rect: ok(b.rect) ? b.rect : null, win: ok(b.win) ? b.win : null };
       if (!lastRaw.win) return;
@@ -242,7 +290,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     },
     /** It's on screen and wants the box watched: the Claude window it's on (hwnd), or 0. */
     get boxWindow() {
-      return !leaving && enabled && visible() && claude?.found && !claude.min ? claude.hwnd : 0;
+      return !free && !leaving && enabled && visible() && claude?.found && !claude.min ? claude.hwnd : 0;
     },
     /** Orbit's voice state (as the orb gets it, plus a few things only the avatars use). */
     onVoice(state) {
@@ -280,7 +328,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
      */
     command(cmd) {
       if (!cmd || !isAvatarAction(kind, cmd.action)) return { ok: false, error: 'not something this avatar does' };
-      if (leaving || !enabled || !visible()) return { ok: false, error: "The avatar isn't on screen right now (the Claude window is minimized or closed)." };
+      if (leaving || !enabled || !visible()) return { ok: false, error: free ? "The avatar isn't on screen right now." : "The avatar isn't on screen right now (the Claude window is minimized or closed)." };
       win.webContents.send('buddy:command', { action: cmd.action, ...(cmd.dir === 'left' || cmd.dir === 'right' ? { dir: cmd.dir } : {}) });
       return { ok: true };
     },
@@ -293,6 +341,10 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     },
     get enabled() {
       return enabled;
+    },
+    /** Floating along the bottom of the screen (no Claude window to live on). */
+    get free() {
+      return free;
     },
     stop() {
       clearInterval(boxTimer);

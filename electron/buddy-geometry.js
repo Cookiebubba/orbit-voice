@@ -9,6 +9,20 @@ export function buddyBoundsFor(win, height = BUDDY_HEIGHT) {
   return { x: Math.round(win.x), y: Math.round(win.y + win.height - h), width: Math.max(80, Math.round(win.width)), height: h };
 }
 
+/** Widest a free-floating strip gets (DIPs): room to roam without spanning a whole wide screen. */
+export const FREE_STRIP_MAX_WIDTH = 900;
+
+/**
+ * The free-floating strip (no Claude window to live on, e.g. macOS for now): along the bottom of a
+ * display's work area (so just above the Dock or taskbar), centred, at most FREE_STRIP_MAX_WIDTH
+ * wide with a margin each side.
+ */
+export function freeStripFor(area, height = BUDDY_HEIGHT, maxWidth = FREE_STRIP_MAX_WIDTH) {
+  const h = Math.max(60, Math.min(height, Math.round(area.height * 0.6)));
+  const w = Math.max(80, Math.min(maxWidth, Math.round(area.width - 48)));
+  return { x: Math.round(area.x + (area.width - w) / 2), y: Math.round(area.y + area.height - h), width: w, height: h };
+}
+
 /**
  * A rect UI Automation reported (in its own coordinate space, whatever its DPI awareness, with the
  * window's rect in the same space) relative to the strip, in its CSS px. Measured as fractions of

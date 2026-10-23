@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { thisComputer } from "./desktop";
 
 type Voice = { id: string; name: string; gender: string };
 type VoiceState = { voice: string; speed: number; minSpeed: number; maxSpeed: number; voices: Voice[] };
@@ -110,7 +111,7 @@ export default function VoiceSettings({ engine = "grok" }: { engine?: Engine }) 
     <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
       <div className="text-[14px] font-medium">{claude ? "Orbit's voice" : "Grok's voice"}</div>
       <p className="mt-1 text-[12.5px] leading-relaxed text-white/50">
-        {claude ? "Spoken on this PC. Pick one by ear with Preview. Changes apply right away." : "Changes apply right away, even mid-conversation."}
+        {claude ? `Spoken on ${thisComputer}. Pick one by ear with Preview. Changes apply right away.` : "Changes apply right away, even mid-conversation."}
       </p>
 
       <label className="mt-4 mb-1.5 block text-[12px] text-white/50">Voice</label>
