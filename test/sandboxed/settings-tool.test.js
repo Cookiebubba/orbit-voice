@@ -73,7 +73,7 @@ test('the user\x27s own words change the brain once; nothing else does', async (
   off();
 });
 
-test('volume by voice: small steps on the user\x27s own words, within 0â€“100%', async () => {
+test('volume by voice: small steps on the user\x27s own words, within 0–100%', async () => {
   updateSettings({ voiceVolume: 0.75 });
   for (const w of ['talk quieter', "you're too loud", 'can you turn it down a bit', 'not so loud please', "don't talk so loud"]) assert.equal(asksSetting(w, 'volume', 'quieter'), true, w);
   for (const w of ['louder', 'speak up', "I can't hear you", 'turn the volume up']) assert.equal(asksSetting(w, 'volume', 'louder'), true, w);

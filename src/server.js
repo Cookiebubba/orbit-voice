@@ -1425,7 +1425,10 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         const reason = typeof msg.reason === 'string' && PAGE_REASONS.has(msg.reason) ? msg.reason : 'other';
         const audio = typeof msg.audio === 'string' && /^(running|suspended|closed|interrupted|none)$/.test(msg.audio) ? msg.audio : 'unknown';
         const [sched, played, lead] = [secs(msg.scheduled), secs(msg.played), secs(msg.lead)];
-        pageReason = `${reason}${audio !== 'running' ? ` (audio ${audio})` : ''}${sched !== null ? `, page scheduled ${sched}s, played ${played ?? '?'}s, first chunk ${lead ?? '?'}s ahead` : ''}`;
+        // Replies cut short by talking over them, and ones only their last moments were talked over (let finish).
+        const count = (v) => (Number.isInteger(v) && v >= 0 && v < 100_000 ? v : 0);
+        const [cut, kept] = [count(msg.cut), count(msg.kept)];
+        pageReason = `${reason}${audio !== 'running' ? ` (audio ${audio})` : ''}${sched !== null ? `, page scheduled ${sched}s, played ${played ?? '?'}s, first chunk ${lead ?? '?'}s ahead` : ''}${cut || kept ? `, talked over: cut ${cut}x, let finish ${kept}x` : ''}`;
         return;
       }
       if (hungUp) return;

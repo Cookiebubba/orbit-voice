@@ -2,7 +2,7 @@
 // phase (listening / thinking / speaking), live volume levels for the orb, history, draft.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playChime, setChimeVolume } from "./sounds";
-import { volumeGain } from "./playback.js";
+import { letItFinish, releaseTail, volumeGain } from "./playback.js";
 import { desktop, isMac } from "./desktop";
 
 /** A plain reason the mic didn't open (on a Mac, where to allow it). */
@@ -109,9 +109,19 @@ export function useVoice(options: VoiceOptions) {
   const audioEndsAt = useRef(0);
   const isPlaying = () => playing.current.size > 0 && Date.now() < audioEndsAt.current + 250;
   const playHead = useRef(0); // where the next chunk starts, on this call's AudioContext clock
+  /** How long after it's scheduled audio really comes out (Bluetooth earbuds: 0.1–0.3 s). */
+  const outLatency = () => {
+    const ac = ctx.current;
+    const l = ac ? ac.outputLatency || ac.baseLatency || 0 : 0;
+    return Number.isFinite(l) && l > 0 && l < 1 ? l : 0;
+  };
+  // The last chunk scheduled, for the release at the end of its reply (see addRelease).
+  const lastChunk = useRef<{ pcm: Int16Array; endAt: number; released: boolean } | null>(null);
   // Counts only, told to the bridge at hang-up for its log: Grok audio scheduled and played (s),
   // and how far ahead of the clock the first chunk was scheduled.
-  const audioStats = useRef({ scheduled: 0, played: 0, firstLead: 0, maxLead: 0, chunks: 0 });
+  // cut: replies stopped with audio still to play (you talked over them); kept: talked over just
+  // their last moments, so they were let finish.
+  const audioStats = useRef({ scheduled: 0, played: 0, firstLead: 0, maxLead: 0, chunks: 0, cut: 0, kept: 0 });
   const timing = useRef(new WeakMap<AudioBufferSourceNode, { at: number; dur: number }>());
   const inLevel = useRef(0);
   const thinking = useRef(false);
@@ -381,6 +391,8 @@ export function useVoice(options: VoiceOptions) {
 
   const stopPlayback = useCallback(() => {
     const ac = ctx.current;
+    if (ac && playHead.current - ac.currentTime > 0.05 && playing.current.size) audioStats.current.cut++;
+    lastChunk.current = null;
     for (const s of playing.current) {
       const t = timing.current.get(s);
       if (t && ac) audioStats.current.played += Math.min(t.dur, Math.max(0, ac.currentTime - t.at));
@@ -417,8 +429,9 @@ export function useVoice(options: VoiceOptions) {
     const at = playHead.current;
     src.start(at);
     playHead.current += buffer.duration;
-    // Wall-clock end of everything queued (see isPlaying).
-    audioEndsAt.current = Date.now() + (playHead.current - ac.currentTime) * 1000;
+    // Wall-clock end of everything queued (see isPlaying), when it is actually heard.
+    audioEndsAt.current = Date.now() + (playHead.current - ac.currentTime + outLatency()) * 1000;
+    lastChunk.current = { pcm, endAt: playHead.current, released: false };
     const st = audioStats.current;
     const lead = at - ac.currentTime;
     if (st.chunks === 0) st.firstLead = lead;
@@ -432,6 +445,32 @@ export function useVoice(options: VoiceOptions) {
       st.played += Math.min(buffer.duration, Math.max(0, ac.currentTime - at));
     };
     return { at, dur: buffer.duration, pcm };
+  }, []);
+
+  /**
+   * The reply's audio is all here: if it ends abruptly (still sounding in its last 10 ms, as a TTS
+   * clip or Grok's last chunk can), let it fall away naturally over ~120 ms right after its real
+   * end (see releaseTail), instead of stopping dead. Never before that end, and only if nothing
+   * else is queued after it and it hasn't finished playing yet.
+   */
+  const addRelease = useCallback(() => {
+    const ac = ctx.current;
+    const lc = lastChunk.current;
+    if (!ac || !outBus.current || !lc || lc.released) return;
+    lc.released = true;
+    if (Math.abs(playHead.current - lc.endAt) > 1e-6 || lc.endAt < ac.currentTime + 0.005) return;
+    const tail = releaseTail(lc.pcm, RATE);
+    if (!tail) return;
+    const buffer = ac.createBuffer(1, tail.length, RATE);
+    buffer.getChannelData(0).set(tail);
+    const src = ac.createBufferSource();
+    src.buffer = buffer;
+    src.connect(outBus.current);
+    src.start(lc.endAt);
+    playHead.current = lc.endAt + buffer.duration;
+    audioEndsAt.current = Date.now() + (playHead.current - ac.currentTime + outLatency()) * 1000;
+    playing.current.add(src);
+    src.onended = () => void playing.current.delete(src);
   }, []);
 
   const sendText = useCallback(
@@ -558,6 +597,7 @@ export function useVoice(options: VoiceOptions) {
         case "response.output_audio.done":
         case "response.audio.done":
           emotes.current.audioDone(replyKey(evt));
+          addRelease();
           return;
         case "bridge.emote":
           // A cue in the reply's transcript (Grok): placed on the reply's audio when its words play.
@@ -594,7 +634,16 @@ export function useVoice(options: VoiceOptions) {
           clearTimeout(tapTimer.current);
           setHearing(true);
           thinking.current = false;
-          stopPlayback(); // you started talking: let Grok be interrupted
+          // You started talking: Grok is interrupted. Except over the very end of a reply that has all
+          // arrived ("yes" over "...send it?"): that's you answering it, so its last word plays out.
+          // (The voice detector only says so a quarter second into your words, which used to clip
+          // the end of nearly every reply you answered quickly.)
+          {
+            const ac = ctx.current;
+            const remainingS = ac && playing.current.size ? playHead.current - ac.currentTime + outLatency() : 0;
+            if (letItFinish({ remainingS, replyDone: !responding.current })) audioStats.current.kept++;
+            else stopPlayback();
+          }
           return;
         }
         case "input_audio_buffer.speech_stopped":
@@ -611,6 +660,7 @@ export function useVoice(options: VoiceOptions) {
           return;
         case "response.done":
           emotes.current.audioDone(replyKey({ response_id: evt.response?.id }));
+          if (evt.response?.status !== "cancelled") addRelease();
           thinking.current = false;
           responding.current = false;
     toolsInFlight.current = 0;
@@ -631,7 +681,7 @@ export function useVoice(options: VoiceOptions) {
         else if (t.endsWith(".done")) emotes.current.textDone(replyKey(evt), typeof evt.transcript === "string" ? evt.transcript : undefined);
       }
     },
-    [caption, playPcm, stopPlayback, sleep, sendText, armTapTimeout, hangUpWhenQuiet, watchAnnounce, answeredAnnounce],
+    [caption, playPcm, addRelease, stopPlayback, sleep, sendText, armTapTimeout, hangUpWhenQuiet, watchAnnounce, answeredAnnounce],
   );
 
   /** Hang up now. `reason` goes to the bridge's log (a code, nothing else). */
@@ -648,7 +698,7 @@ export function useVoice(options: VoiceOptions) {
       const r1 = (n: number) => Math.round(n * 10) / 10;
       try {
         ws.current.send(
-          JSON.stringify({ type: "ui.bye", reason, audio: ctx.current?.state ?? "none", scheduled: r1(st.scheduled), played: r1(playedSoFar()), lead: r1(st.firstLead), maxLead: r1(st.maxLead) }),
+          JSON.stringify({ type: "ui.bye", reason, audio: ctx.current?.state ?? "none", scheduled: r1(st.scheduled), played: r1(playedSoFar()), lead: r1(st.firstLead), maxLead: r1(st.maxLead), cut: st.cut, kept: st.kept }),
         );
       } catch {}
     }
@@ -683,7 +733,7 @@ export function useVoice(options: VoiceOptions) {
       // Playback is timed on this context's own clock, from 0.
       playHead.current = 0;
       audioEndsAt.current = 0;
-      audioStats.current = { scheduled: 0, played: 0, firstLead: 0, maxLead: 0, chunks: 0 };
+      audioStats.current = { scheduled: 0, played: 0, firstLead: 0, maxLead: 0, chunks: 0, cut: 0, kept: 0 };
       playing.current.clear();
       if (ac.state === "suspended") void ac.resume();
       // The voice -> outBus -> volume -> speakers. The level the orb and the avatar move with is read

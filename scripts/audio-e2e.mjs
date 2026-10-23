@@ -81,7 +81,8 @@ const TAP = `(() => {
   const orig = AudioNode.prototype.connect;
   AudioNode.prototype.connect = function (dest, ...rest) {
     const ac = this.context;
-    if (dest === ac.destination && !(this instanceof ScriptProcessorNode)) {
+    // Only the voice's own context (24 kHz; the chimes have one of their own at the device rate).
+    if (dest === ac.destination && ac.sampleRate === 24000 && !(this instanceof ScriptProcessorNode)) {
       tap.ctx = ac;
       const rec = ac.createScriptProcessor(1024, 1, 1);
       rec.onaudioprocess = (e) => tap.chunks.push({ t: e.playbackTime, d: Float32Array.from(e.inputBuffer.getChannelData(0)) });
@@ -143,6 +144,86 @@ async function run() {
   check((await heard(t2, t2 + 1)).pk < 0.002, 'volume 0 is silent');
   updateSettings({ voiceVolume: 0.75 });
   await wait(400);
+  const t2b = await now();
+  reply([tone(0.6, 440, 0.5)]);
+  await wait(1200);
+  const back = await heard(t2b, t2b + 1);
+  check(Math.abs(back.pk - 0.5 * 0.5625) < 0.03, 'and from 0 back to the default it plays again', `peak ${back.pk.toFixed(3)}, want 0.281`);
+
+  // ---- 2. The end of a reply ----
+  // A reply whose last 300 ms is a different tone (880 Hz), ending abruptly at full level. What
+  // reached the speakers is cut into 10 ms frames and each is checked for that tone (Goertzel).
+  out('2. The end of a reply');
+  const G = 0.75 * 0.75; // the gain at the default volume
+  /** Per 10 ms frame from context time t: [880 Hz level, overall RMS], each relative to the tail tone's RMS at this gain. */
+  const frames = (t, secs) =>
+    js(`(() => {
+      const from = ${t}, to = ${t} + ${secs}, R = 24000, W = 240, n = Math.round((to - from) * R);
+      const buf = new Float32Array(n);
+      for (const c of window.__tap.chunks) for (let i = 0; i < c.d.length; i++) { const k = Math.round((c.t - from) * R) + i; if (k >= 0 && k < n) buf[k] = c.d[i]; }
+      const ref = (0.5 * ${G}) / Math.SQRT2, w = (2 * Math.PI * 880) / R, cw = 2 * Math.cos(w), out = [];
+      for (let f = 0; f + W <= n; f += W) {
+        let s1 = 0, s2 = 0, e = 0;
+        for (let i = 0; i < W; i++) { const x = buf[f + i]; const s0 = x + cw * s1 - s2; s2 = s1; s1 = s0; e += x * x; }
+        const p = Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - cw * s1 * s2)) / (W / 2) / Math.SQRT2;
+        out.push([p / ref, Math.sqrt(e / W) / ref]);
+      }
+      return out;
+    })()`);
+  /** Play a reply ending in the 880 Hz tail, optionally with the user starting to talk `talkBeforeEnd` s before its end. */
+  const tailReply = async ({ talkBeforeEnd = null, tailAmp = 0.5 } = {}) => {
+    const t = await now();
+    const r = reply([tone(0.7, 440, 0.5), tone(0.3, 880, tailAmp, 0.7 * 24000)]);
+    if (talkBeforeEnd !== null) {
+      await wait((r.secs - talkBeforeEnd) * 1000 + 30);
+      send({ type: 'input_audio_buffer.speech_started', item_id: `talk_${rid}`, audio_start_ms: 0 });
+    }
+    await wait(2000);
+    const f = await frames(t, 2.2);
+    if (process.env.E2E_DEBUG) out(`debug: t ${t} heard ${JSON.stringify(await heard(t, t + 2.2))} chunks ${await js('window.__tap.chunks.length')} last ${await js('JSON.stringify(window.__tap.chunks.at(-1).t)')} now ${await now()}`);
+    const tail = f.map((x, i) => [i, x[0], x[1]]).filter((x) => x[1] > 0.5);
+    const last = tail.length ? tail.at(-1)[0] : -1;
+    return { f, tailMs: tail.length * 10, last };
+  };
+  const plain = await tailReply();
+  if (process.env.E2E_DEBUG) out(`debug: ${JSON.stringify(plain.f.filter((_, i) => i % 10 === 0).map((x) => x.map((v) => +v.toFixed(2))))} heard ${JSON.stringify(await heard(0))}`);
+  check(plain.tailMs >= 280, 'the whole 300 ms tail plays', `${plain.tailMs} ms of it`);
+  // Answering right as it ends ("yes" over "...send it?") is not an interruption: it plays out.
+  const over = await tailReply({ talkBeforeEnd: 0.25 });
+  check(over.tailMs >= 280, 'talking over the last 250 ms lets the tail finish', `${over.tailMs} ms of it`);
+  // The release: after the last full-level frame, the sound falls away over ~120 ms instead of
+  // stopping dead, and only after the end (the last 50 ms before it are still at full level).
+  const rel = plain.f.slice(plain.last + 1, plain.last + 16).map((x) => x[1]);
+  const before = plain.f.slice(plain.last - 4, plain.last).map((x) => x[1]); // (the last frame may straddle the end)
+  check(before.every((x) => x > 0.8), 'nothing is faded before the audio ends', before.map((x) => x.toFixed(2)).join(' '));
+  check(rel.length >= 12 && rel[0] > 0.2 && rel[3] > 0.02 && rel[11] < rel[0] / 10 && rel.every((x, i) => i === 0 || x <= rel[i - 1] * 1.3 + 0.01), 'a gentle release of ~120 ms follows the real end', rel.map((x) => x.toFixed(2)).join(' '));
+  // Audio that already ends in quiet gets nothing added.
+  const quiet = await tailReply({ tailAmp: 0.001 });
+  check(quiet.f.slice(110, 140).every((x) => x[1] < 0.02), 'audio that ends in quiet gets no release added');
+  // A real interruption (2 s of the reply still to come) still stops it at once.
+  const t3 = await now();
+  reply([tone(3.0, 440, 0.5)]);
+  await wait(800);
+  send({ type: 'input_audio_buffer.speech_started', item_id: 'talk_barge', audio_start_ms: 0 });
+  await wait(2800);
+  const f3 = await frames(t3, 3.4);
+  const loud = f3.filter((x) => x[1] > 0.5).length * 10;
+  check(loud < 1300, 'talking over the middle of a reply still stops it', `${loud} ms of a 3 s reply played`);
+
+  // ---- 3. Hanging up ----
+  // "Go to sleep" while Orbit is still talking: it finishes what it was saying, then hangs up; and
+  // the bridge's log says how often a reply was talked over (counts only).
+  out('3. Hanging up');
+  const t4 = await now();
+  reply([tone(1.2, 440, 0.5), tone(0.3, 880, 0.5, 1.2 * 24000)]);
+  await wait(300);
+  check(await click('Go to sleep'), 'pressed Go to sleep while it talks');
+  await wait(3500);
+  const f4 = await frames(t4, 1.8);
+  check(f4.filter((x) => x[0] > 0.5).length * 10 >= 280, 'the reply plays to its end before the hang-up');
+  const { recentLog } = await import('../src/log.js');
+  const end = recentLog({ limit: 50, minLevel: 'info' }).find((e) => /session ended by Orbit/.test(e.message));
+  check(/talked over: cut 1x, let finish 1x/.test(end?.detail || ''), 'the log counts replies cut and let finish', (end?.detail || 'no log line').replace(/^.*page: /, ''));
 
   out(failures ? `RESULT FAIL: ${failures} failure(s)` : 'RESULT PASS: 0 failure(s)');
   fake.close();
