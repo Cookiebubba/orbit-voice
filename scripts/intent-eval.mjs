@@ -17,6 +17,12 @@ const prompt = systemPrompt({ instructions: instructions(), tools: toolDefs() })
 
 // [what the user says, the first tool expected (null = just answer), optional earlier context]
 const CLAUDE_ASKED = '[App notification] Claude just finished in the session titled "Database setup". Its last message asks: "Should I use option one, Redis, or option two, Postgres?"';
+// Claude blocked on the user: the notification, and what read_claude_prompt returned.
+const WAITING = '[App notification] Claude is waiting for the user in the session titled "Database setup": it needs their OK to go on (a permission prompt). Call read_claude_prompt with session "Database setup", then tell the user in one short sentence what it asks and ask what they want to do. Answer it only on their own words.';
+const PERM_READ = '[Tool result: read_claude_prompt] {"waiting":true,"session":"Database setup","kind":"permission","asks":"Allow Claude to run a command?","command":"npm install pg","answers":["allow","deny"],"labels":["Allow once","Deny"]}';
+const QUESTION_READ = '[Tool result: read_claude_prompt] {"waiting":true,"session":"Database setup","kind":"question","question":"Which database should I use?","options":[{"number":1,"label":"Redis"},{"number":2,"label":"Postgres"}],"can_skip":true}';
+const PERM_CTX = [WAITING, PERM_READ];
+const QUESTION_CTX = [WAITING.replace('it needs their OK to go on (a permission prompt)', 'it asked them a question with options'), QUESTION_READ];
 const CASES = [
   ['fix the login bug', 'draft_prompt'],
   ['can you run the tests', 'draft_prompt'],
@@ -36,6 +42,12 @@ const CASES = [
   ['stop listening', 'go_to_sleep'],
   ["don't stop, keep going", [null, 'draft_prompt', 'get_current_session']],
   ['tell Claude to add a stop button', 'draft_prompt'],
+  // Answering Claude when it's blocked (clicking its own buttons), and what isn't that.
+  ['allow it', 'answer_claude_prompt', PERM_CTX],
+  ['deny that', 'answer_claude_prompt', PERM_CTX],
+  ['go with the second option', 'answer_claude_prompt', QUESTION_CTX],
+  ["what's it asking", 'read_claude_prompt'],
+  ['use MongoDB instead', 'draft_prompt', QUESTION_CTX],
 ];
 const CANT = /\b(can'?t|cannot|unable to|don'?t have (access|the ability))\b/i;
 
@@ -47,7 +59,7 @@ async function runCase([said, want, context]) {
       proc.ask(text, { onText: (d) => (out += d), onResult: () => resolve(out), onFail: (w) => resolve(`FAILED ${w}`) });
     });
   try {
-    if (context) await ask(context);
+    for (const turn of [context].flat().filter(Boolean)) await ask(turn);
     const out = await ask(said);
     // Read the call as the engine does: a <tool> line, or the XML Haiku sometimes writes instead.
     const m = out.match(/<tool>([\s\S]*?)<\/tool>/);

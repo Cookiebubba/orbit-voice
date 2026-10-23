@@ -18,6 +18,12 @@ const { instructions, tools } = agentContext({ face: 'orbit', avatar: null, orb:
 const prompt = systemPrompt({ instructions, tools });
 
 const CLAUDE_ASKED = '[App notification] Claude just finished in the session titled "Database setup". Its last message asks: "Should I use option one, Redis, or option two, Postgres?"';
+// Claude blocked on the user: the notification, and what read_claude_prompt returned.
+const WAITING = '[App notification] Claude is waiting for the user in the session titled "Database setup": it needs their OK to go on (a permission prompt). Call read_claude_prompt with session "Database setup", then tell the user in one short sentence what it asks and ask what they want to do. Answer it only on their own words.';
+const PERM_READ = '[Tool result: read_claude_prompt] {"waiting":true,"session":"Database setup","kind":"permission","asks":"Allow Claude to run a command?","command":"npm install pg","answers":["allow","deny"],"labels":["Allow once","Deny"]}';
+const QUESTION_READ = '[Tool result: read_claude_prompt] {"waiting":true,"session":"Database setup","kind":"question","question":"Which database should I use?","options":[{"number":1,"label":"Redis"},{"number":2,"label":"Postgres"}],"can_skip":true}';
+const PERM_CTX = [WAITING, PERM_READ];
+const QUESTION_CTX = [WAITING.replace('it needs their OK to go on (a permission prompt)', 'it asked them a question with options'), QUESTION_READ];
 // [what the user says, the tool expected (null = just talk), checks on the draft text, context]
 const D = 'draft_prompt';
 const CASES = [
@@ -51,6 +57,12 @@ const CASES = [
   ["stop it Claude's going the wrong way", 'stop_claude'],
   ['stop listening', 'go_to_sleep'],
   ['tell Claude to add a stop button', D, [/^add a stop button\.?$/i]],
+  // Answering Claude's own prompt: the answer the user said, nothing else (checks on the call's arguments).
+  ['allow it', 'answer_claude_prompt', [/"answer":"allow"/], PERM_CTX],
+  ['deny that', 'answer_claude_prompt', [/"answer":"deny"/], PERM_CTX],
+  ['go with the second option', 'answer_claude_prompt', [/"answer":"option"/, /"option":2\b/], QUESTION_CTX],
+  ["what's it asking", 'read_claude_prompt'],
+  ['use MongoDB instead', D, [/mongodb/i], QUESTION_CTX],
 ];
 const BAD = /\b(tell|ask|let)\s+(claude|it|him)\b|\bclaude\b/i;
 
@@ -62,7 +74,7 @@ async function runCase([said, want, checks = [], context]) {
       proc.ask(text, { onText: (d) => (out += d), onResult: () => resolve(out), onFail: (w) => resolve(`FAILED ${w}`) });
     });
   try {
-    if (context) await ask(context);
+    for (const turn of [context].flat().filter(Boolean)) await ask(turn);
     const out = await ask(said);
     // Read the call as the engine does: a <tool> line, or the XML Haiku sometimes writes instead.
     const m = out.match(/<tool>([\s\S]*?)<\/tool>/);
@@ -81,7 +93,9 @@ async function runCase([said, want, checks = [], context]) {
       if (extra.length > allowed) why.push(`words not said: ${extra.join(', ')}`);
       return { said, ok: !why.length, why, text };
     }
-    return { said, ok: !why.length, why, text: out.replace(/<tool>[\s\S]*$/, '').trim().slice(0, 140) };
+    // Another tool: its checks are on the call's arguments ("answer": "allow", ...).
+    if (tool && tool === want) for (const c of checks) if (!c.test(JSON.stringify(call?.args || {}))) why.push(`call fails ${c}`);
+    return { said, ok: !why.length, why, text: tool ? `${tool} ${JSON.stringify(call?.args || {})}` : out.replace(/<tool>[\s\S]*$/, '').trim().slice(0, 140) };
   } finally {
     proc.kill();
   }

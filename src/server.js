@@ -36,7 +36,7 @@ import { createClaudeRealtime, keepSpare, loadSpeech, stopClaudeVoice, systemPro
 import { downloadModels, downloadStatus, modelsReady, VOICE_MODELS_MB } from './voice-models.js';
 import { setClipboardWriter } from './clipboard.js';
 import { createContinuity, quoteSafe } from './continuity.js';
-import { getDesktopInfo, listSidebarSessions, switchSession } from './desktop.js';
+import { getDesktopInfo, getPendingPrompt, listSidebarSessions, switchSession } from './desktop.js';
 import { getLogDir, initLog, logError, logInfo, logWarn, recentLog } from './log.js';
 import { listDesktopSessions, ago, findSessionByTitle } from './sessions.js';
 import { createToolRunner } from './tools.js';
@@ -346,8 +346,10 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
   let wakeTimer = null;
   const wokeForSession = new Map(); // sessionKey -> when a wake last spoke about it
   /** What a wake would be for now: spoken updates allowed to wake Grok, and results. */
+  /** Updates a wake may say: all of them, or (with only "wake on results") Claude waiting on the user. */
+  const sayableUpdates = () => (announceAllowed() ? dueUpdates() : resultWakeAllowed() ? dueUpdates().filter((e) => e.urgent) : []);
   const wakeReasons = () => ({
-    updates: announceAllowed() ? dueUpdates().filter((e) => e.wakes) : [],
+    updates: sayableUpdates().filter((e) => e.wakes),
     results: resultWakeAllowed() ? dueResults() : [],
   });
   const wakeBlocked = () => {
@@ -392,8 +394,36 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     scheduleWake({ fresh: true });
   }
 
+  // Claude blocked on the user (a permission prompt, a question, a plan to approve): said like a
+  // finish, and urgent (it waits until they answer), so it may wake Grok with "wake on results" on
+  // too. A tool call that has merely stalled is checked in the Claude window first: a long build
+  // looks the same in the log. Each tool call is told once.
+  const waitingTold = new Set();
+  async function onWaiting(evt) {
+    const toolKey = `${sessionKey(evt)}|${typeof evt.toolId === 'string' ? evt.toolId : ''}`;
+    if (waitingTold.has(toolKey)) return;
+    let what = evt.kind === 'question' ? 'question' : evt.kind === 'plan' ? 'plan' : null;
+    // Is a card really showing? Only the window showing that session can say (its title is checked).
+    const r = await getPendingPrompt({ expectTitle: typeof evt.title === 'string' ? evt.title : null }).catch(() => null);
+    if (r?.ok && r.pending) what = r.pending.kind === 'question' ? 'question' : what || 'permission';
+    else if (r?.ok && evt.kind === 'tool') return; // nothing showing: it's just running
+    if (!what || waitingTold.has(toolKey)) return;
+    waitingTold.add(toolKey);
+    if (waitingTold.size > 200) waitingTold.delete(waitingTold.values().next().value);
+    const title = notifyTitle(evt.title);
+    const key = sessionKey(evt);
+    const cooling = Date.now() - (wokeForSession.get(key) || 0) < WAKE_LIMITS.sessionCooldownMs;
+    const entry = { kind: 'waiting', what, title, ref: sessionRef(evt, title), key, at: Date.now(), spoken: false, wakes: !cooling, urgent: true };
+    logInfo('watcher', `Claude is waiting on the user (${what})`);
+    recentFinished.push(entry);
+    if (recentFinished.length > 10) recentFinished.shift();
+    for (const s of liveSessions) if (s.announce(entry)) entry.spoken = true;
+    if (!entry.spoken) scheduleWake({ fresh: true });
+  }
+
   watcher.on((evt) => {
     broadcast(evt);
+    if (evt.type === 'claude.waiting') return void onWaiting(evt).catch((e) => logWarn('watcher', 'Checking what Claude waits on failed', String(e?.message || e).slice(0, 200)));
     if (evt.type !== 'claude.finished') return;
     const title = notifyTitle(evt.title);
     const key = sessionKey(evt);
@@ -930,7 +960,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
      */
     const startAnnounce = () => {
       if (!announce || announce.stage !== 'waiting') return; // the user typed something meanwhile
-      const updates = announceAllowed() ? dueUpdates() : [];
+      const updates = sayableUpdates();
       const results = dueResults();
       if (!updates.length && !results.length) return hangUpAnnounce(announceAllowed() || resultWakeAllowed() ? 'nothing to say' : 'turned off');
       for (const e of updates) {
@@ -1065,7 +1095,11 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     // tool output (data) if Grok reads the session, not as something the user "said". The id makes
     // read_session find exactly that session, even when two share a title.
     const readIt = (ref) => `Call read_session with session "${ref}" and last_n 2, then tell the user in one short sentence what Claude did. If it can't be read, just say Claude finished there.`;
-    const finishedText = (e) => `Claude just finished in the session titled "${e.title}". ${readIt(e.ref)}`;
+    const WAITS_FOR = { permission: 'it needs their OK to go on (a permission prompt)', question: 'it asked them a question with options', plan: 'it wants them to approve its plan' };
+    const finishedText = (e) =>
+      e.kind === 'waiting'
+        ? `Claude is waiting for the user in the session titled "${e.title}": ${WAITS_FOR[e.what] || WAITS_FOR.permission}. Call read_claude_prompt with session "${e.ref}", then tell the user in one short sentence what it asks and ask what they want to do. Answer it only on their own words.`
+        : `Claude just finished in the session titled "${e.title}". ${readIt(e.ref)}`;
     /** Results the user was waiting on, as Orbit-held data plus the notice that passes them on. */
     const queueResults = (results) => {
       for (const r of results) {

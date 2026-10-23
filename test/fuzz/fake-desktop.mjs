@@ -69,6 +69,21 @@ export function stopClaude(opts = {}) {
   return Promise.resolve(pick([{ ok: true, stopped: true, confirmed: true, sessionTitle: fz().windowTitle() }, { ok: false, error: 'not_working', message: "Claude isn't working in this session (there's no Stop button), so there was nothing to stop." }, { ok: false, error: 'script_failed', message: 'x' }]));
 }
 
+// What Claude waits on: fz().pending() when a test sets it (null = nothing), else a permission
+// prompt, a question, or nothing. Answers are recorded (the fuzzer checks each one was the user's).
+const FUZZ_PERMISSION = { kind: 'permission', title: 'Allow Claude to run a command?', detail: 'npm test', options: [{ id: 'allow_once', label: 'Allow once' }, { id: 'allow_always', label: 'Always allow' }, { id: 'deny', label: 'Deny' }], key: 'perm0000000000001' };
+const FUZZ_QUESTION = { kind: 'question', question: 'Which one?', choices: [{ n: 1, label: 'Redis', description: '', selected: true }, { n: 2, label: 'Postgres', description: '', selected: false }], multiSelect: false, page: null, canSkip: true, key: 'ques0000000000001' };
+const pendingNow = () => (typeof fz().pending === 'function' ? fz().pending() : pick([FUZZ_PERMISSION, FUZZ_QUESTION, null]));
+export function getPendingPrompt(opts = {}) {
+  record('pending', { expectTitle: opts.expectTitle ?? null });
+  const p = pendingNow();
+  return Promise.resolve({ ok: true, sessionTitle: opts.expectTitle || fz().windowTitle(), pending: p, count: p ? 1 : 0 });
+}
+export function answerPrompt(opts = {}) {
+  record('answer', { key: opts.key, choice: opts.choice, option: opts.option ?? 0, expectTitle: opts.expectTitle ?? null });
+  return Promise.resolve({ ok: true, answered: true, pressed: String(opts.choice), confirmed: true, sessionTitle: opts.expectTitle || fz().windowTitle(), next: null });
+}
+
 // Typing a draft into the box (not sent), and taking it out again: never a send.
 export function fillDesktop(text, opts = {}) {
   record('fill', { text, expectTitle: opts.expectTitle, expectNew: !!opts.expectNew, replace: opts.replace ?? null });

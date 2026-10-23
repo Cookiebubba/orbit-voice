@@ -29,13 +29,22 @@
 #   -Mode stop   : press Claude's own Stop button (it replaces Send while Claude works) in the front
 #                  window (-ExpectTitleB64: only in the one window showing that session), and confirm
 #                  it went away. Never "Stop this task" (a background task's own button).
+#   -Mode pending: what Claude is waiting on the user for in the front window (-ExpectTitleB64: the
+#                  one window showing that session): a tool-permission card or a question card,
+#                  with what it asks and its options, and a key (a hash of all that).
+#   -Mode answer : answer that card (-KeyB64: only if it is still exactly that one) by pressing one
+#                  of its own buttons: -Choice allow_once | allow_session | allow_always | deny, or
+#                  for a question -Choice option -Option <n> (then Submit / Next), or -Choice skip.
 # Everything is looked up only inside Claude's own page, never in a web page shown in its window.
 # -OnlyPid (Orbit's own tests): look only at that process's windows (a stand-in Claude window,
 # test/e2e/FakeClaude.cs --window), never at the real Claude app.
 # Always prints one line of JSON.
 param(
-  [ValidateSet('info', 'list', 'switch', 'new', 'send', 'stop')][string]$Mode = 'info',
+  [ValidateSet('info', 'list', 'switch', 'new', 'send', 'stop', 'pending', 'answer')][string]$Mode = 'info',
   [long]$OnlyPid = 0,
+  [string]$KeyB64 = '',
+  [ValidateSet('', 'allow_once', 'allow_session', 'allow_always', 'deny', 'option', 'skip')][string]$Choice = '',
+  [int]$Option = 0,
   [string]$TextB64 = '',
   [string]$TitleB64 = '',
   [string]$ExpectTitleB64 = '',
@@ -394,6 +403,193 @@ function Get-NewSessionPage($root, $title) {
   return $null # no folder chosen yet: not a page a prompt can be sent from
 }
 
+# ---- what Claude is waiting on the user for ----
+# A tool-permission card ("Allow Claude to run a command?" with Allow once / Always allow / Deny) or
+# a question card (Claude's AskUserQuestion: options, Skip, then Submit, or Next before the last
+# question). From the app's own code (read-only, 2026-10): cards carry the class
+# "epitaxy-approval-card" (questions also "epitaxy-question-card", their options
+# "epitaxy-answer-option", toggle buttons), the command sits in a region named "The command Claude
+# wants to run", and a question card is a group named after the question. Chromium reports an
+# element's class attribute as its UI Automation ClassName. Matched by class first, then by
+# structure (an allow button and a deny button side by side), so a renamed class doesn't hide one.
+$Apos = [string][char]0x2019
+$AllowOnceNames = @('Allow once', 'Allow', 'Yes', 'Approve', 'Accept', 'Run', 'Continue')
+$AllowSessionNames = @('Allow for this session', 'Allow for this chat', 'Allow for this task', 'Yes, for this session', 'Allow all for this website')
+$AllowAlwaysNames = @('Always allow', 'Allow always', 'Always allow for this website', "Yes, and don't ask again", "Yes, and don${Apos}t ask again", 'Allow for all scheduled runs')
+$DenyNames = @('Deny', "Don't allow", "Don${Apos}t allow", 'Reject', 'Decline', 'No', 'Keep planning', 'Stay in background')
+# Names that mark a permission card even when its class is unknown (never a bare Yes / No / Run).
+$StrongNames = @('Allow once', 'Allow', 'Always allow', 'Allow always', 'Allow for this session', 'Approve', 'Deny', "Don't allow", "Don${Apos}t allow", 'Reject')
+$QuestionActionNames = @('Submit', 'Next', 'Skip')
+$CommandRegionNames = @('The command Claude wants to run', "Claude${Apos}s description and the command Claude wants to run", "Claude's description and the command Claude wants to run", 'What Claude is asking to do')
+$TextCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Text)
+$GroupCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Group)
+
+function Get-ClassName($el) { try { return [string]$el.Current.ClassName } catch { return '' } }
+function Test-Class($el, $cls) { return (' ' + (Get-ClassName $el) + ' ').Contains(" $cls ") }
+function Clip($s, $n) { $s = ([string]$s -replace '\s+', ' ').Trim(); if ($s.Length -gt $n) { return $s.Substring(0, $n) + '...' }; return $s }
+function Get-Parent($el) { try { return $Walker.GetParent($el) } catch { return $null } }
+function Same($a, $b) { return [bool]($a -and $b -and [System.Windows.Automation.Automation]::Compare($a, $b)) }
+function Get-Key($s) {
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes([string]$s))) -replace '-', '').Substring(0, 16).ToLower()
+}
+
+# How a button answers a permission card: allow_once | allow_session | allow_always | deny | $null.
+function Get-AnswerKind($name) {
+  $n = ([string]$name).Trim()
+  if (-not $n) { return $null }
+  if ($AllowAlwaysNames -contains $n -or $n -like 'Always allow*' -or $n -like 'Accept and *') { return 'allow_always' }
+  if ($AllowSessionNames -contains $n -or $n -like 'Allow for *') { return 'allow_session' }
+  if ($AllowOnceNames -contains $n) { return 'allow_once' }
+  if ($DenyNames -contains $n -or $n -like 'Deny*' -or $n -like 'No, *') { return 'deny' }
+  return $null
+}
+
+# Text inside an element, in order, leaving out button labels (those are its options).
+function Get-Texts($el, $max = 12) {
+  $skip = @{}
+  foreach ($b in $el.FindAll($Scope::Descendants, $ButtonCond)) { $skip[[string]$b.Current.Name] = $true }
+  $out = New-Object System.Collections.ArrayList
+  foreach ($t in $el.FindAll($Scope::Descendants, $TextCond)) {
+    $n = Clip $t.Current.Name 400
+    if ($n -and -not $skip.ContainsKey($n)) { [void]$out.Add($n) }
+    if ($out.Count -ge $max) { break }
+  }
+  return , $out
+}
+function Test-Toggle($b) { $p = $null; return $b.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$p) }
+function Test-Pressed($b) {
+  $p = $null
+  if ($b.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$p)) { return $p.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On }
+  return $false
+}
+# Press a button: Invoke, or Toggle for a toggle button that can't be invoked. $true if pressed.
+function Press($b) {
+  $p = $null
+  if ($b.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$p)) { $p.Invoke(); return $true }
+  if ($b.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$p)) { $p.Toggle(); return $true }
+  return $false
+}
+
+# The cards on Claude's page that wait on the user, in page order.
+function Find-Cards($root) {
+  $cards = New-Object System.Collections.ArrayList
+  foreach ($b in $root.FindAll($Scope::Descendants, $ButtonCond)) {
+    $name = [string]$b.Current.Name
+    $mine = Get-AnswerKind $name
+    if (-not ($mine -or ($QuestionActionNames -contains $name) -or (Test-Class $b 'epitaxy-answer-option'))) { continue }
+    $card = $null
+    $p = Get-Parent $b
+    for ($i = 0; $p -and $i -lt 14; $i++) {
+      if ($p.Current.ControlType -eq $CT::Document) { break }
+      if (Test-Class $p 'epitaxy-approval-card') { $card = $p; break }
+      $p = Get-Parent $p
+    }
+    if (-not $card -and $StrongNames -contains $name) {
+      # By structure: the nearest container holding this button and one that answers the other way.
+      $p = Get-Parent $b
+      for ($i = 0; $p -and $i -lt 4 -and -not $card; $i++) {
+        if ($p.Current.ControlType -eq $CT::Document) { break }
+        foreach ($o in $p.FindAll($Scope::Descendants, $ButtonCond)) {
+          $on = [string]$o.Current.Name
+          if ($StrongNames -contains $on -and (((Get-AnswerKind $on) -eq 'deny') -ne ($mine -eq 'deny'))) { $card = $p; break }
+        }
+        if (-not $card) { $p = Get-Parent $p }
+      }
+      # That is the row of buttons. The card around it is the nearest container above it (up to
+      # three levels) with text of its own (the request, the command) and no other answer buttons.
+      if ($card -and -not (Get-Texts $card 1).Count) {
+        $count = @($card.FindAll($Scope::Descendants, $ButtonCond) | Where-Object { Get-AnswerKind $_.Current.Name }).Count
+        $up = Get-Parent $card
+        for ($i = 0; $up -and $i -lt 3; $i++) {
+          if ($up.Current.ControlType -eq $CT::Document) { break }
+          if (@($up.FindAll($Scope::Descendants, $ButtonCond) | Where-Object { Get-AnswerKind $_.Current.Name }).Count -ne $count) { break }
+          if ((Get-Texts $up 1).Count) { $card = $up; break }
+          $up = Get-Parent $up
+        }
+      }
+    }
+    if (-not $card -and ($QuestionActionNames -contains $name)) {
+      # A question by structure: the nearest container above Skip / Submit / Next holding two or
+      # more toggle buttons (its options).
+      $p = Get-Parent $b
+      for ($i = 0; $p -and $i -lt 5 -and -not $card; $i++) {
+        if ($p.Current.ControlType -eq $CT::Document) { break }
+        $toggles = @($p.FindAll($Scope::Descendants, $ButtonCond) | Where-Object { $_.Current.Name -ne 'Other' -and (Test-Toggle $_) })
+        if ($toggles.Count -ge 2) { $card = $p } else { $p = Get-Parent $p }
+      }
+    }
+    if (-not $card -or (Test-SidebarButton $b) -or -not (Test-InApp $card)) { continue }
+    $dup = $false
+    foreach ($x in $cards) { if (Same $x $card) { $dup = $true; break } }
+    if (-not $dup) { [void]$cards.Add($card) }
+  }
+  return , $cards
+}
+
+# A card as Orbit reports it. Permission: { kind, title, detail, options [{ id, label }], key }.
+# Question: { kind, question, choices [{ n, label, description, selected }], multiSelect, page, canSkip, key }.
+function Read-Card($card) {
+  $buttons = @($card.FindAll($Scope::Descendants, $ButtonCond))
+  $isQ = Test-Class $card 'epitaxy-question-card'
+  $opts = @($buttons | Where-Object { Test-Class $_ 'epitaxy-answer-option' })
+  if (-not $opts.Count) {
+    # A question card whose classes changed: toggle buttons above a Skip / Submit / Next row.
+    $names = @($buttons | ForEach-Object { [string]$_.Current.Name })
+    $toggles = @($buttons | Where-Object { $_.Current.Name -ne 'Other' -and (Test-Toggle $_) })
+    if ($toggles.Count -ge 2 -and ($names -contains 'Skip' -or $names -contains 'Submit' -or $names -contains 'Next')) { $isQ = $true; $opts = $toggles }
+  }
+  if ($isQ -or $opts.Count) {
+    $q = Clip $card.Current.Name 400
+    $texts = Get-Texts $card 40
+    if (-not $q -and $texts.Count) { $q = $texts[0] }
+    $page = @($texts | Where-Object { $_ -match '^\d+ of \d+$' } | Select-Object -First 1)
+    $choices = New-Object System.Collections.ArrayList
+    $n = 0
+    foreach ($o in $opts) {
+      $n++
+      $t = Get-Texts $o 3
+      $label = $(if ($t.Count) { $t[0] } else { Clip $o.Current.Name 200 })
+      $desc = $(if ($t.Count -gt 1) { $t[1] } else { '' })
+      [void]$choices.Add(@{ n = $n; label = $label; description = $desc; selected = (Test-Pressed $o) })
+    }
+    $radio = $false
+    foreach ($x in $card.FindAll($Scope::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) { if (Test-Class $x 'epitaxy-radio-mark') { $radio = $true; break } }
+    $acts = @($buttons | Where-Object { $QuestionActionNames -contains $_.Current.Name } | ForEach-Object { [string]$_.Current.Name })
+    $p = $(if ($page.Count) { $page[0] } else { '' })
+    $sig = "question|$q|$p|" + (($choices | ForEach-Object { $_.label }) -join '|')
+    # Single choice shows a radio mark by each option (class epitaxy-radio-mark); several, a checkbox.
+    $multi = $choices.Count -gt 0 -and -not $radio -and [bool](@($opts | Where-Object { Test-Class $_ 'epitaxy-answer-option' }).Count)
+    return @{ kind = 'question'; question = $q; choices = @($choices); multiSelect = $multi; page = $(if ($p) { $p } else { $null }); canSkip = ($acts -contains 'Skip'); key = (Get-Key $sig) }
+  }
+  $options = New-Object System.Collections.ArrayList
+  foreach ($b in $buttons) {
+    $k = Get-AnswerKind $b.Current.Name
+    if ($k -and $b.Current.IsEnabled) { [void]$options.Add(@{ id = $k; label = (Clip $b.Current.Name 80) }) }
+  }
+  $detail = ''
+  foreach ($g in $card.FindAll($Scope::Descendants, $GroupCond)) {
+    if ($CommandRegionNames -contains [string]$g.Current.Name) { $detail = Clip ((Get-Texts $g 20) -join ' ') 600; break }
+  }
+  $texts = @((Get-Texts $card 20) | Where-Object { $_ -and -not ($detail -and $detail.Contains($_)) })
+  $title = Clip (($texts | Select-Object -First 3) -join ' ') 300
+  if (-not $detail -and $texts.Count -gt 3) { $detail = Clip (($texts | Select-Object -Skip 3) -join ' ') 600 }
+  $sig = "permission|$title|$detail|" + (($options | ForEach-Object { $_.label }) -join '|')
+  return @{ kind = 'permission'; title = $title; detail = $detail; options = @($options); key = (Get-Key $sig) }
+}
+
+# The card waiting now (the last one on the page: the newest), read, with its element: @{ card; info } or $null.
+function Get-Pending($root) {
+  $cards = Find-Cards $root
+  if (-not $cards.Count) { return $null }
+  $c = $cards[$cards.Count - 1]
+  return @{ card = $c; info = (Read-Card $c); count = $cards.Count }
+}
+function Find-CardByKey($root, $key) {
+  foreach ($c in (Find-Cards $root)) { $i = Read-Card $c; if ($i.key -eq $key) { return @{ card = $c; info = $i } } }
+  return $null
+}
+
 try {
   if ($OnlyPid) {
     # Tests only: a stand-in window. Never a process named like Claude (the real app is claude.exe).
@@ -550,6 +746,78 @@ try {
       }
     }
     Out-Json @{ ok = $false; error = 'new_session_not_confirmed'; message = "Pressed New session, but Claude didn't show an empty new session."; sessionTitle = (Get-SessionTitle) }
+  }
+
+  # ---- pending / answer ----
+  if ($Mode -eq 'pending' -or $Mode -eq 'answer') {
+    # The front window, or the one window showing the expected session.
+    $target = $front
+    if ($ExpectTitleB64) {
+      $expect = Decode $ExpectTitleB64
+      $targets = @($wins | Where-Object { $_.title -ceq $expect })
+      if ($targets.Count -ne 1) { Out-Json @{ ok = $false; error = $(if ($targets.Count) { 'session_ambiguous' } else { 'session_not_open' }); message = $(if ($targets.Count) { 'That session is open in more than one Claude window.' } else { 'That session is not open in a Claude window.' }); sessionTitle = $title } }
+      $target = $targets[0]
+    }
+    [void](Use-Window $target)
+    $root = $script:App
+    $title = $target.title
+    if ($Mode -eq 'pending') {
+      $p = Get-Pending $root
+      Out-Json @{ ok = $true; sessionTitle = $title; windowId = $target.hwnd; pending = $(if ($p) { $p.info } else { $null }); count = $(if ($p) { $p.count } else { 0 }) }
+    }
+    # answer: only the card that was read (same key), only with one of its own buttons.
+    $key = $(if ($KeyB64) { Decode $KeyB64 } else { '' })
+    $hit = $(if ($key) { Find-CardByKey $root $key } else { $null })
+    if (-not $hit) {
+      $now = Get-Pending $root
+      Out-Json @{ ok = $false; error = $(if ($now) { 'prompt_changed' } else { 'nothing_pending' }); message = $(if ($now) { "What Claude is asking changed since it was read, so nothing was pressed." } else { "Claude isn't waiting on anything in this session now." }); pending = $(if ($now) { $now.info } else { $null }); sessionTitle = $title }
+    }
+    $card = $hit.card
+    $info = $hit.info
+    $pressed = ''
+    if ($info.kind -eq 'permission') {
+      if (@('allow_once', 'allow_session', 'allow_always', 'deny') -notcontains $Choice) { Out-Json @{ ok = $false; error = 'bad_choice'; message = 'This is a permission request: allow or deny it.'; sessionTitle = $title } }
+      $btn = $null
+      foreach ($b in $card.FindAll($Scope::Descendants, $ButtonCond)) { if ($b.Current.IsEnabled -and (Get-AnswerKind $b.Current.Name) -eq $Choice) { $btn = $b; break } }
+      if (-not $btn) { Out-Json @{ ok = $false; error = 'choice_not_offered'; message = 'Claude does not offer that answer here.'; options = $info.options; sessionTitle = $title } }
+      $pressed = [string]$btn.Current.Name
+      if (-not (Press $btn)) { Out-Json @{ ok = $false; error = 'not_pressable'; message = "That button can't be pressed from here."; sessionTitle = $title } }
+    } else {
+      if ($Choice -eq 'skip') {
+        $btn = @($card.FindAll($Scope::Descendants, (ButtonNamed 'Skip')))[0]
+        if (-not $btn) { Out-Json @{ ok = $false; error = 'choice_not_offered'; message = 'This question has no Skip.'; sessionTitle = $title } }
+        $pressed = 'Skip'
+        [void](Press $btn)
+      } elseif ($Choice -eq 'option') {
+        if ($Option -lt 1 -or $Option -gt $info.choices.Count) { Out-Json @{ ok = $false; error = 'bad_option'; message = "There's no option $Option."; choices = $info.choices; sessionTitle = $title } }
+        $opts = @($card.FindAll($Scope::Descendants, $ButtonCond) | Where-Object { Test-Class $_ 'epitaxy-answer-option' })
+        if (-not $opts.Count) { $opts = @($card.FindAll($Scope::Descendants, $ButtonCond) | Where-Object { $_.Current.Name -ne 'Other' -and (Test-Toggle $_) }) }
+        $o = $opts[$Option - 1]
+        $pressed = $info.choices[$Option - 1].label
+        if (-not (Test-Pressed $o)) { [void](Press $o) }
+        # Then Submit (Next before the last question), once it's enabled; the card may be redrawn.
+        $sent = $false
+        for ($i = 0; $i -lt 20 -and -not $sent; $i++) {
+          $again = Find-CardByKey $root $key
+          if (-not $again) { break }
+          foreach ($b in $again.card.FindAll($Scope::Descendants, $ButtonCond)) {
+            if (@('Submit', 'Next') -contains $b.Current.Name -and $b.Current.IsEnabled) { [void](Press $b); $sent = $true; break }
+          }
+          if (-not $sent) { Start-Sleep -Milliseconds 100 }
+        }
+        if (-not $sent) { Out-Json @{ ok = $false; error = 'submit_not_found'; message = "Picked the option, but couldn't press Submit."; sessionTitle = $title } }
+      } else {
+        Out-Json @{ ok = $false; error = 'bad_choice'; message = 'This is a question: pick an option, or skip it.'; choices = $info.choices; sessionTitle = $title }
+      }
+    }
+    # Claude takes the card away (or shows the next question) once it has the answer.
+    $gone = $false
+    for ($i = 0; $i -lt 30; $i++) {
+      Start-Sleep -Milliseconds 100
+      if (-not (Find-CardByKey $root $key)) { $gone = $true; break }
+    }
+    $next = Get-Pending $root
+    Out-Json @{ ok = $true; answered = $true; pressed = $pressed; confirmed = $gone; sessionTitle = $title; next = $(if ($next) { $next.info } else { $null }) }
   }
 
   # ---- stop ----

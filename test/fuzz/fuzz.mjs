@@ -130,6 +130,7 @@ const log = await import('../../src/log.js');
 const sessions = await import('../../src/sessions.js');
 const tools = await import('../../src/tools.js');
 const { asksToStop } = await import('../../src/stop-command.js');
+const { decisionFrom } = await import('../../src/claude-prompt.js');
 const brain = await import('../../src/brain.js?real'); // the real parser (the loader fakes only askBrain's process)
 const continuity = await import('../../src/continuity.js');
 const stick = await import('../../electron/orb-stick.js');
@@ -290,7 +291,7 @@ async function fuzzTools() {
     let utter = null; // { text, at }
     // Some words ask for an action themselves: those stay a request even if a notification comes
     // in before Grok acts (see tools.js asksFor); others count only if said after it.
-    const sayPool = consent ? ['yes', 'yes send it', 'ok', 'sure', g.str(30), 'stop it'] : ['no', 'wait', g.str(30), 'what?', 'copy that', 'switch to the other one', "don't switch", 'tell claude to fix it', 'start a new session', "don't stop", 'stop listening', 'stop'];
+    const sayPool = consent ? ['yes', 'yes send it', 'ok', 'sure', g.str(30), 'stop it', 'allow it', 'the second one'] : ['no', 'wait', g.str(30), 'what?', 'copy that', 'switch to the other one', "don't switch", 'tell claude to fix it', 'start a new session', "don't stop", 'stop listening', 'stop', 'deny that', 'should I allow it?'];
     const MAX_ASK_MS = 2 * 60 * 1000;
     const fresh = () => !!utter && Date.now() - utter.at <= MAX_ASK_MS;
     const say = () => {
@@ -327,6 +328,7 @@ async function fuzzTools() {
       const newBefore = globalThis.__fuzz.calls.filter((c) => c.name === 'new').length;
       const switchBefore = globalThis.__fuzz.calls.filter((c) => c.name === 'switch').length;
       const stopBefore = globalThis.__fuzz.calls.filter((c) => c.name === 'stop').length;
+      const answerBefore = globalThis.__fuzz.calls.filter((c) => c.name === 'answer').length;
       const name = g.pick(names);
       const args = g.chance(0.2) ? g.str(50) : g.json(name === 'draft_prompt' && g.chance(0.6) ? { text: g.str(200) } : g.value());
       if (name === 'draft_prompt') {
@@ -352,6 +354,12 @@ async function fuzzTools() {
       // Claude's Stop is pressed only on the user's own words asking to stop, said in the last minute.
       if (globalThis.__fuzz.calls.filter((c) => c.name === 'stop').length > stopBefore && !(utter && Date.now() - utter.at <= 60_000 && asksToStop(utter.text)))
         fail('tools', 'stopped Claude without the user saying stop', { utter });
+      // Claude's prompts are answered only as the user's own fresh words say.
+      for (const a of globalThis.__fuzz.calls.filter((c) => c.name === 'answer').slice(answerBefore)) {
+        const prompt = String(a.args.key).startsWith('perm') ? { kind: 'permission' } : { kind: 'question', choices: [{ n: 1, label: 'Redis' }, { n: 2, label: 'Postgres' }] };
+        const d = utter && Date.now() - utter.at <= 60_000 ? decisionFrom(utter.text, prompt) : null;
+        if (!d || d.choice !== a.args.choice || (d.choice === 'option' && d.option !== a.args.option)) fail('tools', 'answered a prompt of Claude the way the user did not say', { utter, a: a.args });
+      }
       // A notification between the draft and the yes makes the draft stale: it must be redrafted.
       if (globalThis.__fuzz.calls.filter((c) => c.name === 'send').length > sendBefore && lastNotif > draftAt) fail('tools', 'sent a draft made before the latest notification', { draftAt, lastNotif });
       if (globalThis.__fuzz.calls.filter((c) => c.name === 'new').length > newBefore) {

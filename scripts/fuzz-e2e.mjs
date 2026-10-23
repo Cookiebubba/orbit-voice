@@ -369,6 +369,23 @@ function finish_(s) {
   }, 2600 + g.int(1500));
 }
 
+/**
+ * Claude blocks on the user in the open session: a tool call in its log, and its card in the window
+ * (a question, or a permission prompt). `question`: which (default: either).
+ */
+function claudeAsks(question = g.chance(0.4)) {
+  const w = desk.windows[0];
+  const s = sessions.find((x) => x.title === w?.title);
+  if (!w || !s || s.busy) return 'claude asks (no session)';
+  w.pending = question
+    ? { kind: 'question', question: 'Which store?', choices: [{ n: 1, label: 'Redis', description: '', selected: true }, { n: 2, label: 'Postgres', description: '', selected: false }], multiSelect: false, page: null, canSkip: true, key: `q${g.int(1e9)}` }
+    : { kind: 'permission', title: 'Allow Claude to run a command?', detail: 'npm test', options: [{ id: 'allow_once', label: 'Allow once' }, ...(g.chance(0.5) ? [{ id: 'allow_always', label: 'Always allow' }] : []), { id: 'deny', label: 'Deny' }], key: `p${g.int(1e9)}` };
+  w.working = true;
+  fs.appendFileSync(s.file, `${JSON.stringify({ type: 'assistant', timestamp: new Date().toISOString(), message: { role: 'assistant', content: [{ type: 'tool_use', id: `toolu_${g.int(1e9)}`, name: question ? 'AskUserQuestion' : 'Bash', input: {} }] } })}
+`);
+  return `claude asks (${question ? 'question' : 'permission'})`;
+}
+
 /** With chance `p`, Claude starts working in the sessions shown in the (fake) Claude windows. */
 function workInOpenWindows(p) {
   if (!g.chance(p)) return;
@@ -417,6 +434,15 @@ function scenario() {
     },
     // Words that are not a stop: the model's stop_claude must be refused.
     () => ({ text: g.pick(['stop listening please', "don't stop", `tell claude to add a stop button for ${m}`]), kind: 'other', tools: [{ name: 'stop_claude' }] }),
+    // Answering what Claude waits on (a permission prompt or a question, see "claude asks"): the
+    // model reads it, then answers as the user said. Kinds name the answer the words mean.
+    () => (g.chance(0.6) && claudeAsks(false), { text: g.pick(['allow it', 'yes allow it', 'go ahead and allow that']), kind: 'allow', tools: [{ name: 'read_claude_prompt' }], followUps: [[{ name: 'answer_claude_prompt', args: { answer: 'allow' } }]] }),
+    () => (g.chance(0.6) && claudeAsks(false), { text: g.pick(['deny that', 'no, deny it', "don't allow it"]), kind: 'deny', tools: [{ name: 'answer_claude_prompt', args: { answer: 'deny' } }] }),
+    () => (g.chance(0.6) && claudeAsks(true), { text: g.pick(['go with the second option', 'option two', 'the second one']), kind: 'option2', tools: [{ name: 'read_claude_prompt' }], followUps: [[{ name: 'answer_claude_prompt', args: { answer: 'option', option: 2 } }]] }),
+    () => ({ text: "what's it asking", kind: 'other', tools: [{ name: 'read_claude_prompt' }] }),
+    // Grok answering on its own (or swapping the user's answer): never pressed.
+    () => ({ text: g.pick(['hmm', 'what was that', "what's it asking"]), kind: 'other', tools: [{ name: 'answer_claude_prompt', args: g.pick([{ answer: 'allow' }, { answer: 'always_allow' }, { answer: 'option', option: 1 }, { answer: 'deny' }]) }] }),
+    () => ({ text: 'allow it', kind: 'allow', tools: [{ name: 'answer_claude_prompt', args: { answer: g.pick(['always_allow', 'deny']) } }] }),
     // A command for the avatar: Orbit does it itself and cancels Grok's answer (the fast path);
     // Grok's own avatar call is there in case it doesn't. No marker: it would make the words more
     // than a command (and Orbit logs only the action's name).
@@ -436,7 +462,7 @@ function scenario() {
 }
 
 // After an injected notification, Grok tries things on its own (none may go through).
-const injected = () => g.pick([[{ name: 'send_draft' }], [{ name: 'switch_session', args: { session: g.pick(TITLES) } }], [{ name: 'new_session' }], [{ name: 'copy_to_clipboard', args: { what: 'text', text: 'evil' } }], [{ name: 'stop_claude' }], []]);
+const injected = () => g.pick([[{ name: 'send_draft' }], [{ name: 'switch_session', args: { session: g.pick(TITLES) } }], [{ name: 'new_session' }], [{ name: 'copy_to_clipboard', args: { what: 'text', text: 'evil' } }], [{ name: 'stop_claude' }], [{ name: 'answer_claude_prompt', args: { answer: 'allow' } }], []]);
 
 let yesNext = false; // after a draft, usually answer it next
 async function say(viaTyping) {
@@ -509,6 +535,7 @@ const ACTIONS = [
     if (s) finish_(s);
     return 'claude finishes';
   }],
+  [3, 'claude asks', async () => claudeAsks()],
   [1, 'grok drops', async () => {
     const c = fake.current();
     if (!c) return 'grok drops (no call)';
@@ -602,6 +629,23 @@ function checkCancels(conns) {
       // An avatar command, or a bare "stop" (Orbit pressed Claude's Stop itself, then asks for a reply).
       if (x.kind !== 'avatar' && x.kind !== 'stop') violate('Orbit cancelled the answer Grok gave to words that were neither an avatar command nor a stop', `last words: ${x.kind}`);
     }
+  }
+}
+
+/**
+ * Every answer pressed on Claude's prompts was the user's own, and exactly what their words said
+ * (said within the last minute): allow once for "allow it", deny for "deny that", option 2 for
+ * "the second option". Never always-allow (nobody here says "always").
+ */
+const ANSWER_FOR = { allow: { choice: 'allow_once' }, deny: { choice: 'deny' }, option2: { choice: 'option', option: 2 } };
+function checkAnswers(since) {
+  for (const a of (desk.answers || []).filter((x) => x.at >= since)) {
+    covered.answers = (covered.answers || 0) + 1;
+    const c = fake.conns.filter((x) => x.openedAt <= a.at).at(-1);
+    const u = c && heardBefore(c, a.at);
+    const want = u && ANSWER_FOR[u.kind];
+    if (!want || a.at - u.speechAt > 60_000) violate('a prompt of Claude\x27s was answered without the user saying so', `last words: ${u ? u.kind : 'none'}, pressed ${a.choice}`);
+    else if (want.choice !== a.choice || (want.option && want.option !== a.option)) violate('a prompt of Claude\x27s was answered differently from what the user said', `${u.kind} -> ${a.choice}${a.option ? ` ${a.option}` : ''}`);
   }
 }
 
@@ -770,6 +814,7 @@ async function run() {
     checkSends(since);
     checkActsOnRequest(since);
     checkStops(since);
+    checkAnswers(since);
     checkFalseRefusals(fake.conns.slice(firstConn));
     checkCancels(fake.conns.slice(firstConn));
     checkBrainProcesses();

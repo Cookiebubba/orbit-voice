@@ -12,6 +12,12 @@ const RELIST_MS = 15_000;
 const HOT_WINDOW_MS = 3 * 60 * 60 * 1000; // only watch sessions active in the last 3 hours
 const MAX_WATCHED = 12;
 const SETTLE_MS = 6000; // without a stop marker, wait this long after Claude's last text before calling it done
+// Claude waiting on the user: its last word is a tool call that hasn't run. A question
+// (AskUserQuestion) or a plan to approve (ExitPlanMode) always waits; any other tool may be waiting
+// for permission, or just running (a build): those are checked in the Claude window at these ages.
+const QUESTION_TOOLS = new Set(['AskUserQuestion']);
+const PLAN_TOOLS = new Set(['ExitPlanMode']);
+const WAIT_CHECKS_MS = [2500, 12_000];
 
 export function createSessionWatcher() {
   const listeners = new Set();
@@ -42,7 +48,7 @@ export function createSessionWatcher() {
     if (!t) {
       const file = findTranscript(s.cliSessionId, s.cwd);
       if (!file) return;
-      t = { file, mtime: 0, size: 0, working: false, kind: null, changedAt: 0, lastText: '', first: true };
+      t = { file, mtime: 0, size: 0, working: false, kind: null, changedAt: 0, lastText: '', first: true, lastTool: null, waitChecks: 0 };
       tracked.set(s.id, t);
     }
     t.title = s.title;
@@ -59,6 +65,9 @@ export function createSessionWatcher() {
       try {
         const tail = readTranscriptTail(t.file, { lastN: 4, maxBytes: 256 * 1024, maxCharsPerMessage: 600 });
         t.kind = tail.lastKind;
+        const tool = tail.lastTool;
+        if (!tool || tool.id !== t.lastTool?.id) t.waitChecks = 0; // a new call (or none): check it afresh
+        t.lastTool = tool;
         const lastClaude = [...tail.turns].reverse().find((x) => x.role === 'claude');
         if (lastClaude) t.lastText = lastClaude.text;
         const busy = tail.state === 'working';
@@ -68,6 +77,18 @@ export function createSessionWatcher() {
       t.first = false;
     }
     if (!t.working) return;
+    // Blocked on the user? Reported once for a question or a plan, twice at most for any other tool.
+    if (t.kind === 'tool_use' && t.lastTool) {
+      const name = t.lastTool.name;
+      const kind = QUESTION_TOOLS.has(name) ? 'question' : PLAN_TOOLS.has(name) ? 'plan' : 'tool';
+      const checks = kind === 'tool' ? WAIT_CHECKS_MS : WAIT_CHECKS_MS.slice(0, 1);
+      // A session that never asks permission (bypass mode) only waits on questions and plans.
+      const asks = kind !== 'tool' || s.permissionMode !== 'bypassPermissions';
+      if (asks && t.waitChecks < checks.length && now - t.changedAt >= checks[t.waitChecks]) {
+        t.waitChecks++;
+        emit({ type: 'claude.waiting', id: s.id, title: s.title, kind, tool: name, toolId: t.lastTool.id, check: t.waitChecks });
+      }
+    }
     const finished = t.kind === 'stopped' || (t.kind === 'assistant_text' && now - t.changedAt >= SETTLE_MS);
     if (finished) {
       t.working = false;

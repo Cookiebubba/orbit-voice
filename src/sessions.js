@@ -88,6 +88,8 @@ function readSessionRoot(root, includeArchived) {
           project: path.basename(str(meta.originCwd) || cwd) || '(no folder)',
           branch: str(meta.branch) || null,
           model: str(meta.model) || null,
+          // 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions' ...: bypass never asks permission.
+          permissionMode: str(meta.permissionMode) || null,
           lastFocusedAt: num(meta.lastFocusedAt),
           lastActivityAt: num(meta.lastActivityAt) || num(meta.createdAt),
           createdAt: num(meta.createdAt),
@@ -221,6 +223,7 @@ export function readTranscriptTail(file, { lastN = 8, includeTools = false, maxC
   const turns = [];
   let lastKind = null;
   let lastAt = null;
+  let lastTool = null; // { name, id, at } of the latest tool call
   for (const line of lines) {
     if (!line.trim()) continue;
     let rec;
@@ -261,6 +264,7 @@ export function readTranscriptTail(file, { lastN = 8, includeTools = false, maxC
         } else if (c.type === 'tool_use') {
           if (includeTools) turns.push({ role: 'tool', text: describeToolUse(c), at: rec.timestamp });
           lastKind = 'tool_use';
+          lastTool = { name: String(c.name ?? '').slice(0, 120), id: typeof c.id === 'string' ? c.id.slice(0, 100) : '', at: typeof rec.timestamp === 'string' ? rec.timestamp : null };
         }
       }
     }
@@ -272,7 +276,8 @@ export function readTranscriptTail(file, { lastN = 8, includeTools = false, maxC
   const looksBusy = lastKind && lastKind !== 'assistant_text' && lastKind !== 'stopped';
   const state = looksBusy ? (ageMs < 10 * 60 * 1000 ? 'working' : 'stopped mid-task or waiting') : 'idle (finished its last reply)';
 
-  return { state, turns: turns.slice(-lastN), lastKind, ageMs };
+  // lastTool: only while that call is the last thing (Claude may be waiting on the user for it).
+  return { state, turns: turns.slice(-lastN), lastKind, ageMs, lastTool: lastKind === 'tool_use' ? lastTool : null };
 }
 
 function describeToolUse(c) {

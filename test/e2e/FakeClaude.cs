@@ -14,8 +14,11 @@
 // Automation shows of the real one (read-only, 2026-10): a Document named "<title> - Claude Code"
 // with a "Prompt" edit box and, on its row, Claude's "Send" button, which turns into "Stop" while
 // Claude works; a background task's "Stop this task" button elsewhere (never to be pressed). It sits
-// far off screen and never takes focus. Commands come in on stdin, one JSON object per line
-// ({"working":true}, {"quit":true}); what was pressed goes out on stdout ({"event":"stop"}).
+// far off screen and never takes focus. Claude's permission and question cards too (see
+// PermissionCard / QuestionCard: modelled on the app's own markup). Commands come in on stdin, one
+// JSON object per line ({"working":true}, {"permission":{"command":"npm test","always":true}},
+// {"question":{"questions":[{"q":"Which?","options":[["A","first"],["B",""]]}]}}, {"quit":true});
+// what was pressed goes out on stdout ({"event":"stop"}, {"event":"permission","choice":"Deny"}).
 // Build it with the WPF references (see test/desktop-uia.test.js). Never named claude.exe.
 using System;
 using System.Collections.Generic;
@@ -219,6 +222,19 @@ class UiaButton : System.Windows.Controls.Button {
   protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() { return new UiaButtonPeer(this); }
 }
 
+// An answer option on a question card: a toggle button (aria-pressed), so UI Automation can only
+// toggle it, not invoke it (desktop.ps1 must handle both).
+class UiaToggle : System.Windows.Controls.Primitives.ToggleButton {
+  public string Cls = "";
+  protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() { return new UiaTogglePeer(this); }
+}
+
+class UiaTogglePeer : System.Windows.Automation.Peers.ToggleButtonAutomationPeer {
+  readonly UiaToggle t;
+  public UiaTogglePeer(UiaToggle t) : base(t) { this.t = t; }
+  protected override string GetClassNameCore() { return t.Cls ?? ""; }
+}
+
 class UiaButtonPeer : System.Windows.Automation.Peers.ButtonAutomationPeer {
   readonly UiaButton b;
   public UiaButtonPeer(UiaButton b) : base(b) { this.b = b; }
@@ -290,7 +306,93 @@ static class FakeWindow {
     RenderCards();
   }
 
-  static void RenderCards() { conversation.Children.Clear(); }
+  // Claude's cards, modelled on its own markup: a permission card (class epitaxy-approval-card) with
+  // the request, the command in a region named "The command Claude wants to run", and its buttons in
+  // an epitaxy-approval-actions row; a question card (epitaxy-approval-card epitaxy-question-card),
+  // a group named after the question, its options toggle buttons (class epitaxy-answer-option, a
+  // radio mark for one choice) with a label and a description, then Other, Skip and Submit (Next
+  // before the last question). One choice starts with the first option picked, as Claude's does.
+  static Dictionary<string, object> permission; // { heading, command, always, session }
+  static System.Collections.ArrayList questions; // [{ q, options: [[label, description]], multi }]
+  static int page;
+  static bool plain; // {"plain":true}: the cards without their epitaxy-* classes (a renamed class)
+  static string C(string cls) { return plain ? System.Text.RegularExpressions.Regex.Replace(cls, @"\bepitaxy-[a-z-]+", "x") : cls; }
+  static List<int>[] picked;
+
+  static void RenderCards() {
+    conversation.Children.Clear();
+    conversation.Children.Add(new System.Windows.Controls.TextBlock { Text = "Earlier message from Claude." });
+    if (permission != null) conversation.Children.Add(PermissionCard());
+    if (questions != null && page < questions.Count) conversation.Children.Add(QuestionCard());
+  }
+
+  static string S(Dictionary<string, object> d, string k, string def = "") { object v; return d != null && d.TryGetValue(k, out v) && v != null ? Convert.ToString(v) : def; }
+  // JSON arrays come back from JavaScriptSerializer as object[].
+  static System.Collections.ArrayList L(object v) { var a = v as object[]; return a != null ? new System.Collections.ArrayList(a) : (v as System.Collections.ArrayList) ?? new System.Collections.ArrayList(); }
+  static bool B(Dictionary<string, object> d, string k) { object v; return d != null && d.TryGetValue(k, out v) && v is bool && (bool)v; }
+
+  static UiaPanel PermissionCard() {
+    var card = new UiaPanel { Cls = C("mb-4 block overflow-hidden rounded-card border bg-surface-panel shadow-lg epitaxy-approval-card") };
+    card.Children.Add(new System.Windows.Controls.TextBlock { Text = S(permission, "heading", "Allow Claude to run a command?") });
+    var region = new UiaPanel { AName = "The command Claude wants to run", Cls = "w-full overflow-y-auto select-text" };
+    region.Children.Add(new System.Windows.Controls.TextBlock { Text = S(permission, "command", "npm test") });
+    card.Children.Add(region);
+    var actions = new UiaPanel { Cls = C("epitaxy-approval-actions ms-7 flex flex-wrap gap-sm"), Orientation = System.Windows.Controls.Orientation.Horizontal };
+    Action<string> answer = (name) => { permission = null; Render(); Emit(new Dictionary<string, object> { { "event", "permission" }, { "choice", name } }); };
+    actions.Children.Add(Btn("Allow once", () => answer("Allow once")));
+    if (B(permission, "session")) actions.Children.Add(Btn("Allow for this session", () => answer("Allow for this session")));
+    if (B(permission, "always")) actions.Children.Add(Btn("Always allow", () => answer("Always allow")));
+    actions.Children.Add(Btn("Deny", () => answer("Deny")));
+    card.Children.Add(actions);
+    return card;
+  }
+
+  static UiaPanel QuestionCard() {
+    var q = questions[page] as Dictionary<string, object>;
+    var opts = L(q["options"]);
+    bool multi = B(q, "multi");
+    var card = new UiaPanel { AName = S(q, "q"), Cls = C("epitaxy-question-card max-w-[480px] outline-none epitaxy-approval-card") };
+    var head = new UiaPanel { Cls = "bg-alpha-1 px-lg flex gap-md py-md", Orientation = System.Windows.Controls.Orientation.Horizontal };
+    head.Children.Add(new System.Windows.Controls.TextBlock { Text = S(q, "q") });
+    if (questions.Count > 1) head.Children.Add(new System.Windows.Controls.TextBlock { Text = (page + 1) + " of " + questions.Count });
+    card.Children.Add(head);
+    for (int i = 0; i < opts.Count; i++) {
+      var o = L(opts[i]);
+      string label = Convert.ToString(o[0]), desc = o.Count > 1 ? Convert.ToString(o[1]) : "";
+      int idx = i;
+      var t = new UiaToggle { Cls = C("epitaxy-answer-option flex w-full items-start gap-md px-lg py-lg text-start"), IsChecked = picked[page].Contains(i), Height = 40 };
+      var inner = new System.Windows.Controls.StackPanel();
+      inner.Children.Add(new UiaPanel { Cls = C(multi ? "cds-checkbox" : "epitaxy-radio-mark"), Width = 10, Height = 2 });
+      inner.Children.Add(new System.Windows.Controls.TextBlock { Text = label });
+      if (desc != "") inner.Children.Add(new System.Windows.Controls.TextBlock { Text = desc });
+      t.Content = inner;
+      System.Windows.Automation.AutomationProperties.SetName(t, desc != "" ? label + " " + desc : label);
+      t.Checked += (s, e) => { if (!multi) picked[page].Clear(); if (!picked[page].Contains(idx)) picked[page].Add(idx); win.Dispatcher.BeginInvoke(new Action(Render)); };
+      t.Unchecked += (s, e) => { picked[page].Remove(idx); win.Dispatcher.BeginInvoke(new Action(Render)); };
+      card.Children.Add(t);
+    }
+    card.Children.Add(Btn("Other", () => Emit(new Dictionary<string, object> { { "event", "other" } })));
+    var actions = new UiaPanel { Cls = C("epitaxy-approval-actions flex items-center justify-end gap-sm px-lg pb-lg pt-md"), Orientation = System.Windows.Controls.Orientation.Horizontal };
+    actions.Children.Add(Btn("Skip", () => { Emit(new Dictionary<string, object> { { "event", "skip" }, { "question", page + 1 } }); NextPage(); }));
+    bool last = page == questions.Count - 1;
+    var primary = Btn(last ? "Submit" : "Next", () => {
+      if (picked[page].Count == 0) return;
+      var chosen = new object[picked[page].Count];
+      for (int k = 0; k < chosen.Length; k++) chosen[k] = picked[page][k] + 1;
+      Emit(new Dictionary<string, object> { { "event", last ? "submit" : "next" }, { "question", page + 1 }, { "picked", chosen } });
+      NextPage();
+    });
+    primary.IsEnabled = picked[page].Count > 0;
+    actions.Children.Add(primary);
+    card.Children.Add(actions);
+    return card;
+  }
+
+  static void NextPage() {
+    page++;
+    if (page >= questions.Count) questions = null;
+    Render();
+  }
 
   static void ReadCommands() {
     string line;
@@ -314,5 +416,16 @@ static class FakeWindow {
     if (cmd.ContainsKey("working")) working = cmd["working"] is bool && (bool)cmd["working"];
     if (cmd.ContainsKey("title")) title = Convert.ToString(cmd["title"]);
     if (cmd.ContainsKey("prompt")) prompt.Text = Convert.ToString(cmd["prompt"]);
+    if (cmd.ContainsKey("plain")) plain = B(cmd, "plain");
+    if (cmd.ContainsKey("permission")) permission = cmd["permission"] as Dictionary<string, object>;
+    if (cmd.ContainsKey("question")) {
+      var q = cmd["question"] as Dictionary<string, object>;
+      questions = q == null ? null : L(q["questions"]);
+      page = 0;
+      if (questions != null) {
+        picked = new List<int>[questions.Count];
+        for (int i = 0; i < questions.Count; i++) picked[i] = B(questions[i] as Dictionary<string, object>, "multi") ? new List<int>() : new List<int> { 0 };
+      }
+    }
   }
 }

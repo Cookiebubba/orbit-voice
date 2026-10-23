@@ -126,6 +126,24 @@ export async function run(mode, args) {
     raise(st, target);
     return { ok: true, created: true, newSession: true, folder, windowId: target.hwnd };
   }
+  if (mode === 'pending' || mode === 'answer') {
+    // As desktop.ps1: a window's `pending` is the card Claude shows (desktop.ps1's own shape), or null.
+    let target = front;
+    if (o.ExpectTitleB64) {
+      const m = st.windows.filter((w) => w.title === decode(o.ExpectTitleB64));
+      if (m.length !== 1) return { ok: false, error: m.length ? 'session_ambiguous' : 'session_not_open', message: 'That session is not open in a Claude window.', sessionTitle: front.title };
+      target = m[0];
+    }
+    const p = target.pending || null;
+    if (mode === 'pending') return { ok: true, sessionTitle: target.title, windowId: target.hwnd, pending: p, count: p ? 1 : 0 };
+    if (!p || decode(o.KeyB64) !== p.key) return { ok: false, error: p ? 'prompt_changed' : 'nothing_pending', message: 'x', pending: p, sessionTitle: target.title };
+    const choice = o.Choice;
+    if (p.kind === 'permission' && !p.options.some((x) => x.id === choice)) return { ok: false, error: 'choice_not_offered', message: 'x', sessionTitle: target.title };
+    if (p.kind === 'question' && !(choice === 'skip' || (choice === 'option' && Number(o.Option) >= 1 && Number(o.Option) <= p.choices.length))) return { ok: false, error: 'bad_choice', message: 'x', sessionTitle: target.title };
+    target.pending = null;
+    (st.answers ??= []).push({ at: Date.now(), title: target.title, kind: p.kind, choice, option: Number(o.Option || 0) });
+    return { ok: true, answered: true, pressed: choice === 'option' ? p.choices[Number(o.Option) - 1].label : choice, confirmed: true, sessionTitle: target.title, next: null };
+  }
   if (mode === 'stop') {
     // As desktop.ps1: Claude's Stop button shows (on the box's row) only while it works (`working`).
     let target = front;
