@@ -113,6 +113,12 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
           <SecondBrainSection s={s} update={update} name={name} />
         </Reveal>
 
+        {desktop && !isMac && (
+          <Reveal show gap={GAP}>
+            <AnywhereSection s={s} update={update} name={name} />
+          </Reveal>
+        )}
+
         {desktop && (
           <Reveal show gap={GAP}>
             <HotkeySection />
@@ -181,6 +187,28 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
 }
 
 // ---------- building blocks ----------
+function AnywhereSection({ s, update, name }: { s: SettingsT; update: Update; name: string }) {
+  return (
+    <Section title="Orbit anywhere">
+      <Toggle
+        checked={s.anywhere}
+        onChange={(anywhere) => update({ anywhere })}
+        label={`Let ${name} read the window you're in`}
+        hint={`In any app, not just Claude: ask "what does this say?" or "what's new in Discord?" and ${name} reads that window. Only when you ask, never password managers, banking, private browsing or sign-in windows, and what a window says is never taken as an instruction.`}
+      />
+      <Reveal show={s.anywhere}>
+        <Toggle
+          className="mt-4"
+          checked={s.anywhereVision}
+          onChange={(anywhereVision) => update({ anywhereVision })}
+          label="Let Claude see windows"
+          hint={`When you ask ${name} to look at a window (a picture, a chart), a picture of that one window goes to Claude through your Claude Code. Off: looking stays on this PC, reading only the text in it.`}
+        />
+      </Reveal>
+    </Section>
+  );
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">

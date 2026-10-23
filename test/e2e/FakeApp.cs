@@ -212,8 +212,9 @@ static class FakeApp {
     public void SetTitle(string t) { win.Title = t; }
     System.Windows.Controls.TextBox Box(string name) { return name == "Notes" ? notes : message; }
     public void Set(string name, string value) { Box(name).Text = value; }
-    // Logical focus only: Focus() would activate the window (the fixture must never take focus).
-    public void SelectText(string name, int start, int length) { var b = Box(name); System.Windows.Input.FocusManager.SetFocusedElement(win, b); b.Select(start, length); }
+    // No focus at all: Focus() (even logical focus) would activate the window, and the fixture must
+    // never take focus. A WPF text box keeps its selection while unfocused.
+    public void SelectText(string name, int start, int length) { var b = Box(name); b.Select(start, length); }
     public void Focus(string name) { System.Windows.Input.FocusManager.SetFocusedElement(win, Box(name)); }
     public Dictionary<string, object> State() {
       var item = channels.SelectedItem as System.Windows.Controls.ListBoxItem;

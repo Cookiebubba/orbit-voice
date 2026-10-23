@@ -6,10 +6,20 @@
 //
 // Phase 1 is focus: which window is in front, in any app, from window events (no polling).
 // Phase 2 adds reading a window's UI Automation tree (scanWindow), for app profiles.
+// Phase 3 adds reading its text and selection (uiaRequest 'read' / 'selection') and looking at it
+// (captureWindow: a picture plus on-device OCR).
 
-import { createWinFocusTracker } from './win/focus.js';
+import { execFile } from 'node:child_process';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { POWERSHELL, createWinFocusTracker } from './win/focus.js';
 import { createUiaHost } from './win/uia.js';
 import { focus, setFocusBackend } from './focus.js';
+
+const CAPTURE_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'win', 'capture.ps1').replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
 
 export { appName, cleanWindow, createFocusStore, describeWindow, focus, focusBackend, listWindows, setFocusBackend } from './focus.js';
 
@@ -73,3 +83,33 @@ export function scanWindow(hwnd, { values = false, maxNodes = 2000 } = {}) {
   return uiaRequest('scan', { hwnd: Math.floor(Number(hwnd)) || 0, values: !!values, maxNodes });
 }
 
+// ---- looking at one window (a picture of it, and its text by on-device OCR) ----
+let captureImpl = null; // tests: a stand-in for capture.ps1
+/** Tests: capture with this function ((hwnd, opts) => result) instead of capture.ps1, or null. */
+export function setCaptureImpl(fn) {
+  captureImpl = typeof fn === 'function' ? fn : null;
+}
+
+/**
+ * A picture of one window (PrintWindow: works while it's covered), saved as a PNG in the temp
+ * folder, with its text read by Windows' own OCR. Resolves { ok, path, w, h, lit, ocr } or
+ * { ok: false, error }. The caller deletes the picture when done with it.
+ */
+export function captureWindow(hwnd, { ocr = true, maxWidth = 1600, timeoutMs = 25_000 } = {}) {
+  if (captureImpl) return Promise.resolve(captureImpl(hwnd, { ocr, maxWidth }));
+  if (process.platform !== 'win32') return Promise.resolve({ ok: false, error: 'unavailable', message: 'Looking at windows works only on Windows for now.' });
+  const out = path.join(os.tmpdir(), `orbit-look-${crypto.randomBytes(8).toString('hex')}.png`);
+  return new Promise((resolve) => {
+    execFile(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', CAPTURE_SCRIPT, '-Hwnd', String(Math.floor(Number(hwnd)) || 0), '-Out', out, '-MaxWidth', String(maxWidth), ...(ocr ? [] : ['-NoOcr'])], { windowsHide: true, timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+      let j = null;
+      try {
+        j = JSON.parse(String(stdout).trim().split(/\r?\n/).pop());
+      } catch {}
+      if (!j) {
+        fs.rm(out, { force: true }, () => {});
+        return resolve({ ok: false, error: err?.killed ? 'timeout' : 'capture_failed', message: 'Orbit could not take a picture of that window.' });
+      }
+      resolve(j);
+    });
+  });
+}

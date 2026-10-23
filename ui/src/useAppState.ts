@@ -31,6 +31,8 @@ export type Settings = {
   orbPulse: boolean;
   orbPulseGrok: boolean;
   orbPulseAmount: number;
+  anywhere: boolean;
+  anywhereVision: boolean;
 };
 
 export type AppConfig = { version: string; hasKey: boolean; keyStorage: string; settings: Settings };

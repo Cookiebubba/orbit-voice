@@ -20,6 +20,7 @@ import { getSetting } from './config.js';
 import { AVATAR_ACTIONS, AVATAR_NAMES, activeAvatar, actionsFor } from './avatar-commands.js';
 import { CUES } from './emote-cues.js';
 import { toolDefs } from './tools.js';
+import { ANYWHERE_GUIDE, anywhereAvailable } from './anywhere/tools.js';
 
 const ORBIT_PERSONA = `
 Who you are:
@@ -165,10 +166,11 @@ export function onScreen({ avatar = activeAvatar(), showOrb = getSetting('showOr
 export function agentContext(screen = onScreen()) {
   const { face, avatar, orb } = screen;
   const persona = face === 'orbit' ? ORBIT_PERSONA : `${PERSONAS[face]}${orb ? `\n${ORB_TOO}` : ''}`;
-  const instructions = [persona, core(), avatar ? avatarBody(avatar) : ''].filter(Boolean).join('\n\n');
-  const tools = toolDefs({ brainEnabled: getSetting('brainEnabled'), brainModel: getSetting('brainModel'), brainExplore: getSetting('brainExplore'), brainConnection: getSetting('brainConnection'), avatar, webSearch: getSetting('webSearch'), engine: getSetting('voiceEngine') });
+  const anywhere = anywhereAvailable();
+  const instructions = [persona, core(), avatar ? avatarBody(avatar) : '', anywhere ? ANYWHERE_GUIDE : ''].filter(Boolean).join('\n\n');
+  const tools = toolDefs({ brainEnabled: getSetting('brainEnabled'), brainModel: getSetting('brainModel'), brainExplore: getSetting('brainExplore'), brainConnection: getSetting('brainConnection'), avatar, webSearch: getSetting('webSearch'), engine: getSetting('voiceEngine'), anywhere });
   return { face, avatar, orb, instructions, tools };
 }
 
 /** Settings that change what the model is told (the live session is updated when they change). */
-export const CONTEXT_SETTINGS = Object.freeze(['avatar', 'showOrb', 'brainEnabled', 'brainModel', 'brainExplore', 'brainConnection', 'wakeOnResults', 'webSearch']);
+export const CONTEXT_SETTINGS = Object.freeze(['avatar', 'showOrb', 'brainEnabled', 'brainModel', 'brainExplore', 'brainConnection', 'wakeOnResults', 'webSearch', 'anywhere']);

@@ -15,6 +15,14 @@
 #             "v":"value (values:true only, never for password fields)","rid":"runtime id"}
 #   pat letters: V value, I invoke, T toggle, S selection item, E expand/collapse, X text, R range,
 #   L scroll, A legacy (MSAA).
+# {"id":n,"op":"read","hwnd":h,"maxChars":6000}
+#   -> {"ok":true,"title":"..","lines":["label: value", "text", ...],"truncated":false,"focused":{"t","n"}|null}
+#   The window's visible text in reading order: names of text, list, tree and link elements, the
+#   values of edit boxes and documents (never password fields), the control with keyboard focus.
+# {"id":n,"op":"selection","hwnd":h}
+#   -> {"ok":true,"kind":"text","text":"..","from":{"t","n"}} | {"kind":"items","items":[..]} | {"kind":"none"}
+#   Selected text (text pattern, or a classic edit box asked read-only with EM_GETSEL/WM_GETTEXT),
+#   else the selected list items. Nothing is copied: the clipboard is never touched.
 # Errors: {"id":n,"ok":false,"error":"code","message":"..."} (codes: no_window, access_denied,
 #   timeout, bad_request, failed).
 param([int]$ParentPid = 0, [string]$Cache = '')
@@ -149,6 +157,8 @@ public static class OrbitUia {
     string op = Str(req, "op");
     if (op == "ping") return Ok();
     if (op == "scan") return Scan(req);
+    if (op == "read") return Read(req);
+    if (op == "selection") return Selection(req);
     throw new ArgumentException("unknown op");
   }
 
@@ -257,6 +267,170 @@ public static class OrbitUia {
     int[] rid = e.GetCachedPropertyValue(P_RuntimeId) as int[];
     if (rid != null) d["rid"] = string.Join(".", Array.ConvertAll(rid, x => x.ToString()));
     return d;
+  }
+
+  // ---------------- reading what's in a window (phase 3) ----------------
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr SendMessageTimeout(IntPtr h, uint msg, IntPtr w, IntPtr l, uint flags, uint ms, out IntPtr result);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageTimeoutW")] static extern IntPtr SendMessageTimeoutText(IntPtr h, uint msg, IntPtr w, StringBuilder l, uint flags, uint ms, out IntPtr result);
+  const int TextPatternId = 10014, SelectionPatternId = 10001;
+  const uint WM_GETTEXT = 0x000D, WM_GETTEXTLENGTH = 0x000E, EM_GETSEL = 0x00B0, SMTO_ABORTIFHUNG = 0x2;
+
+  static uint WinPid(long hwnd) { uint p; GetWindowThreadProcessId(new IntPtr(hwnd), out p); return p; }
+
+  // Content-bearing kinds of element, read in tree order.
+  static readonly HashSet<string> ContentTypes = new HashSet<string> { "Text", "ListItem", "TreeItem", "DataItem", "Hyperlink", "HeaderItem", "Document", "Edit", "TabItem", "Header", "MenuItem", "StatusBar", "TitleBar" };
+
+  /** The window's text as lines (labels, values, documents), the focused control, and the title. */
+  static Dictionary<string, object> Read(Dictionary<string, object> req) {
+    Stopwatch sw = Stopwatch.StartNew();
+    int maxChars = (int)Math.Max(200, Math.Min(40000, Long(req, "maxChars", 6000)));
+    IUIAutomationElement root;
+    try { root = Root(req); } catch (NoWindow) { return Fail("no_window", "That window is gone."); }
+    IUIAutomationElement cached = root.BuildUpdatedCache(Request(true));
+    bool rootOff = B(cached.GetCachedPropertyValue(P_Offscreen));
+    List<string> lines = new List<string>();
+    int chars = 0; bool truncated = false; int docs = 0;
+    // (element, the kind of its parent, inside the title bar or a button)
+    Stack<Tuple<IUIAutomationElement, string, bool>> todo = new Stack<Tuple<IUIAutomationElement, string, bool>>();
+    todo.Push(Tuple.Create(cached, "", false));
+    string last = null;
+    while (todo.Count > 0) {
+      var item = todo.Pop();
+      IUIAutomationElement e = item.Item1;
+      string type; Types.TryGetValue(I(e.GetCachedPropertyValue(P_ControlType)), out type);
+      // A button's own caption and the title bar's buttons are controls, not content.
+      bool skipUnder = item.Item3 || type == "TitleBar" || type == "Button" || type == "CheckBox" || type == "RadioButton" || type == "SplitButton";
+      IUIAutomationElementArray kids = null;
+      try { kids = e.GetCachedChildren(); } catch (Exception) { }
+      if (kids != null) for (int i = kids.Length - 1; i >= 0; i--) todo.Push(Tuple.Create(kids.GetElement(i), type ?? "", skipUnder));
+      if (e == cached || item.Item3) continue;
+      if (B(e.GetCachedPropertyValue(P_IsPassword))) continue;
+      if (!rootOff && B(e.GetCachedPropertyValue(P_Offscreen))) continue; // scrolled away, collapsed
+      if (type == null || !ContentTypes.Contains(type)) continue;
+      string name = S(e.GetCachedPropertyValue(P_Name)).Trim();
+      string value = B(e.GetCachedPropertyValue(P_HasValue)) ? S(e.GetCachedPropertyValue(P_Value)) : "";
+      string line;
+      if (type == "Edit" || type == "Document") {
+        string text = value;
+        if (text == "" && B(e.GetCachedPropertyValue(P_HasText)) && docs < 4) {
+          docs++;
+          try {
+            IUIAutomationTextPattern tp = (IUIAutomationTextPattern)e.GetCurrentPattern(TextPatternId);
+            text = tp.DocumentRange.GetText(maxChars - chars + 1);
+          } catch (Exception) { }
+        }
+        if (text == "" && name == "") continue;
+        line = (name != "" ? name + ": " : "") + text;
+      } else if (type == "TitleBar") {
+        continue; // the title is reported on its own
+      } else {
+        if (name == "") continue;
+        line = name;
+      }
+      line = line.Replace("\r\n", "\n").Trim();
+      if (line == "" || line == last) continue;
+      last = line;
+      if (chars + line.Length > maxChars) { lines.Add(line.Substring(0, Math.Max(0, maxChars - chars))); truncated = true; break; }
+      lines.Add(line);
+      chars += line.Length + 1;
+    }
+    var res = Ok();
+    res["title"] = Cut(S(cached.GetCachedPropertyValue(P_Name)), 300);
+    res["lines"] = lines;
+    res["truncated"] = truncated;
+    res["focused"] = Focused(Long(req, "hwnd"));
+    res["ms"] = sw.ElapsedMilliseconds;
+    return res;
+  }
+
+  /** The control with keyboard focus, if it's in this window's app: { t, n } (never its value). */
+  static object Focused(long hwnd) {
+    try {
+      IUIAutomationElement f = uia.GetFocusedElement();
+      if (f == null || (uint)f.CurrentProcessId != WinPid(hwnd)) return null;
+      string type; Types.TryGetValue(f.CurrentControlType, out type);
+      var d = new Dictionary<string, object> { { "t", type ?? "Custom" } };
+      string n = f.CurrentName ?? "";
+      if (n != "") d["n"] = Cut(n, 200);
+      if (f.CurrentIsPassword != 0) d["pw"] = 1;
+      return d;
+    } catch (Exception) { return null; }
+  }
+
+  /** What's selected in the window: selected text (text controls, or classic edit boxes), or the selected items of a list. */
+  static Dictionary<string, object> Selection(Dictionary<string, object> req) {
+    int maxChars = (int)Math.Max(100, Math.Min(40000, Long(req, "maxChars", 8000)));
+    long hwnd = Long(req, "hwnd");
+    IUIAutomationElement root;
+    try { root = Root(req); } catch (NoWindow) { return Fail("no_window", "That window is gone."); }
+    List<IUIAutomationElement> candidates = new List<IUIAutomationElement>();
+    try {
+      IUIAutomationElement f = uia.GetFocusedElement();
+      if (f != null && (uint)f.CurrentProcessId == WinPid(hwnd)) candidates.Add(f);
+    } catch (Exception) { }
+    try {
+      IUIAutomationElementArray texts = root.FindAll(TreeScope.TreeScope_Descendants, uia.CreatePropertyCondition(P_HasText, true));
+      for (int i = 0; i < texts.Length && i < 40; i++) candidates.Add(texts.GetElement(i));
+    } catch (Exception) { }
+    foreach (IUIAutomationElement e in candidates) {
+      try {
+        if (e.CurrentIsPassword != 0) continue;
+        object pat = e.GetCurrentPattern(TextPatternId);
+        if (pat == null) continue;
+        IUIAutomationTextRangeArray sel = ((IUIAutomationTextPattern)pat).GetSelection();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; sel != null && i < sel.Length && sb.Length < maxChars; i++) sb.Append(sel.GetElement(i).GetText(maxChars - sb.Length));
+        if (sb.ToString().Trim() != "") return Picked(sb.ToString(), e, "text");
+      } catch (Exception) { }
+    }
+    // Classic edit boxes (no text pattern): ask the control itself, read-only (EM_GETSEL, WM_GETTEXT).
+    try {
+      IUIAutomationElementArray edits = root.FindAll(TreeScope.TreeScope_Descendants, uia.CreatePropertyCondition(P_ControlType, 50004));
+      List<IUIAutomationElement> order = new List<IUIAutomationElement>();
+      foreach (IUIAutomationElement c in candidates) if (c.CurrentControlType == 50004) order.Add(c);
+      for (int i = 0; i < edits.Length && i < 40; i++) order.Add(edits.GetElement(i));
+      foreach (IUIAutomationElement e in order) {
+        if (e.CurrentIsPassword != 0) continue;
+        IntPtr h = e.CurrentNativeWindowHandle;
+        string cls = e.CurrentClassName ?? "";
+        if (h == IntPtr.Zero || cls.IndexOf("EDIT", StringComparison.OrdinalIgnoreCase) < 0) continue;
+        IntPtr r;
+        if (SendMessageTimeout(h, EM_GETSEL, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out r) == IntPtr.Zero) continue;
+        int start = (int)((long)r & 0xFFFF), end = (int)(((long)r >> 16) & 0xFFFF);
+        if (end <= start) continue;
+        IntPtr len;
+        SendMessageTimeout(h, WM_GETTEXTLENGTH, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out len);
+        StringBuilder text = new StringBuilder((int)len + 2);
+        SendMessageTimeoutText(h, WM_GETTEXT, new IntPtr(text.Capacity), text, SMTO_ABORTIFHUNG, 1000, out r);
+        string all = text.ToString();
+        if (start < all.Length) return Picked(all.Substring(start, Math.Min(end, all.Length) - start), e, "text");
+      }
+    } catch (Exception) { }
+    // Selected list or tree items (a channel, a file).
+    try {
+      IUIAutomationElementArray items = root.FindAll(TreeScope.TreeScope_Descendants, uia.CreatePropertyCondition(30079, true)); // SelectionItemIsSelected
+      List<string> names = new List<string>();
+      for (int i = 0; i < items.Length && names.Count < 20; i++) { string n = items.GetElement(i).CurrentName ?? ""; if (n.Trim() != "") names.Add(Cut(n.Trim(), 200)); }
+      if (names.Count > 0) {
+        var res = Ok();
+        res["kind"] = "items";
+        res["items"] = names;
+        return res;
+      }
+    } catch (Exception) { }
+    var none = Ok();
+    none["kind"] = "none";
+    return none;
+  }
+
+  static Dictionary<string, object> Picked(string text, IUIAutomationElement e, string kind) {
+    var res = Ok();
+    res["kind"] = kind;
+    res["text"] = Cut(text.Replace("\r\n", "\n"), 40000);
+    string type; Types.TryGetValue(e.CurrentControlType, out type);
+    res["from"] = new Dictionary<string, object> { { "t", type ?? "Custom" }, { "n", Cut(e.CurrentName ?? "", 120) } };
+    return res;
   }
 
   // ---------------- small helpers ----------------

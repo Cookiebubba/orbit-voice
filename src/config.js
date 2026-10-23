@@ -61,6 +61,9 @@ export const DEFAULTS = Object.freeze({
   // "Orbit anywhere": Orbit follows the window you're in, in any app (window events, no polling),
   // so it can read it when you ask and Qubit can come along. Acting in other apps still asks.
   anywhere: true,
+  // ...and with this on, "look at this window" may show Claude a picture of that one window (through
+  // the user's own Claude Code). Off: looking stays on this PC (its text, and Windows' own OCR).
+  anywhereVision: false,
 });
 
 export const AVATARS = Object.freeze(['buddy', 'qubit', 'none']);
