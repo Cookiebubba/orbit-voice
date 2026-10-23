@@ -14,6 +14,10 @@ const runs = Number(process.argv[2] || 1);
 const limit = Number(process.argv[3] || 6);
 const exe = findClaude()?.path;
 if (!exe) throw new Error('Claude Code not found');
+// As Claude voice runs it (its own search tool, search_web), with settings in a throwaway folder.
+const { initConfig, updateSettings } = await import('../src/config.js');
+initConfig({ dir: (await import('node:fs')).mkdtempSync((await import('node:path')).join((await import('node:os')).tmpdir(), 'orbit-eval-')) });
+updateSettings({ voiceEngine: 'claude', webSearch: true });
 const { instructions, tools } = agentContext({ face: 'orbit', avatar: null, orb: true });
 const prompt = systemPrompt({ instructions, tools });
 
@@ -63,6 +67,9 @@ const CASES = [
   ['go with the second option', 'answer_claude_prompt', [/"answer":"option"/, /"option":2\b/], QUESTION_CTX],
   ["what's it asking", 'read_claude_prompt'],
   ['use MongoDB instead', D, [/mongodb/i], QUESTION_CTX],
+  // Web search: looked up, with the question as asked; asking Claude to search is a prompt.
+  ['search the web for the latest Node LTS version', 'search_web', [/node/i, /lts/i]],
+  ['tell Claude to search the web for the latest Node version', D, [/search the web for the latest node version/i]],
 ];
 const BAD = /\b(tell|ask|let)\s+(claude|it|him)\b|\bclaude\b/i;
 

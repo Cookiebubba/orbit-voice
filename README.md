@@ -38,6 +38,9 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
   - Drag it to choose its spot on the window.
 - **You control the mic, and the bill.** Say "go to sleep" and Orbit hangs up, so nothing is billed while it sleeps. Or use **one question at a time** mode: press the hotkey (default **Ctrl+Alt+G**, changeable), ask, and it hangs up after answering.
 - **Say "Hey Orbit" (optional).** A free, fully offline wake word starts Grok again after it has gone to sleep. It's recognized on your PC by a small speech model, so no audio leaves your computer until Grok is awake. Each wake starts a fresh connection, with Orbit's short note on the last call (see above), and Grok can always re-read your Claude sessions.
+- **Stop Claude.** "Stop", "stop it", "cancel that run": Orbit presses Claude's own Stop button. A bare "stop" while Claude works is pressed at once, before Grok even answers.
+- **Answer Claude when it's waiting on you.** When Claude asks permission (to run a command, edit a file) or asks a question with options, Grok tells you, even waking up to do it, and says the risky part ("It wants to run npm install. Allow it?"). Say "allow it", "deny that" or "go with the second option" and Orbit clicks Claude's own button. Only your own words answer it, and "always allow" only if you say "always".
+- **Web search.** For current facts (the latest version of something, news, docs), Grok looks them up instead of guessing: xAI's own web and X search, or with Claude voice a quick search through your Claude Code that can only search and read web pages. Turn it off in Settings → Second brain.
 - **Copy to clipboard.** "Copy Claude's last answer", "copy that command": Grok puts it on your clipboard, ready to paste.
 - **A second brain for hard questions.** When a question needs more thought, or needs a look at the code in your current project ("why would the hotkey stop working after sleep?"), Grok quietly asks Claude and tells you the answer.
   - Grok picks Haiku, Sonnet or Opus to fit the question.
@@ -70,6 +73,9 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 | "Switch to the launchpad dashboard" | Opens that session in Claude |
 | "Start a new session" / "New thread in castpilot" | Opens a new, empty Claude session, then asks what to tell Claude |
 | "Tell Claude: add a dark mode toggle" | Shows a draft, reads it back, waits for your "yes" |
+| "Stop" / "stop it, it's going the wrong way" | Presses Claude's Stop button |
+| "What's it asking?" / "Allow it" / "Deny that" / "Go with the second option" | Reads what Claude is waiting on, and clicks your answer |
+| "Search the web for the latest Node LTS version" | Looks it up and tells you |
 | "Go to sleep" | Grok says goodbye and Orbit hangs up (nothing billed) |
 | "Hey Orbit" / "Hey Grok" / the hotkey / click the orb | Starts a fresh conversation (turn the wake word on in Settings → Listening) |
 | "Copy Claude's last answer" / "Copy that" | Puts it on your clipboard |
@@ -132,6 +138,7 @@ flowchart LR
 - Orbit is a **voice input method** for you, like dictation. Every prompt is yours, read back to you, and sent only after you confirm. Grok can't send on its own. The app enforces this in code: a voice "send" only goes through if your transcribed reply after the draft is a clear yes. Please don't modify Orbit to send prompts automatically or run Claude unattended through its UI. For automation, use Claude Code's official headless mode (`claude -p`) or the Agent SDK.
 - The parts of your sessions Grok reads are sent to **xAI** to answer you. Don't use Orbit on sessions containing secrets you wouldn't share with xAI.
 - When Grok uses the second brain, the question goes to **Anthropic** through your Claude Code, along with the recent messages of your open session and any project files Claude reads. Claude's answer then goes to xAI so Grok can say it. Turn the second brain, or just "Read the current project", off in Settings if you don't want that.
+- Web search sends the question to **xAI** (Grok's own search) or, with Claude voice, to **Anthropic** through your Claude Code, which searches the web. Turn it off in Settings → Second brain.
 - **Updates** come from this repository's GitHub Releases. With "Update automatically" on (the default), Orbit asks GitHub for the newest release's update info when it starts and every 6 hours. Turn it off in Settings → Updates and Orbit only checks when you press **Check now**. GitHub sees the request like any download, but Orbit sends nothing about you.
 - Nothing else leaves your computer. There's no telemetry. Logs never contain keys or prompt text.
 - The wake word listens only on your PC, only while it's turned on and Grok is off or asleep. Its audio is never recorded or sent anywhere.
@@ -167,7 +174,8 @@ None of these touch the real Claude app, xAI or Anthropic, and none use your `%A
 `npm run fuzz:e2e` runs the real app, `electron/main.js`, hidden, against test doubles:
 
 - A fake Grok realtime server (`test/e2e/fake-grok.mjs`) sends realistic but random events: audio in steady, bursty or slow rhythms, transcripts, function calls, errors, slow starts and abrupt drops (1006).
-- A fake `claude.exe` (`test/e2e/FakeClaude.cs`) is built with .NET Framework's `csc.exe` into a temp folder. The real second brain spawns it for real. It checks every argument and answers valid, malformed, huge, hostile, signed-out, slow, hanging and crashing.
+- A fake `claude.exe` (`test/e2e/FakeClaude.cs`) is built with .NET Framework's `csc.exe` into a temp folder. The real second brain spawns it for real. It checks every argument (second-brain questions and web searches) and answers valid, malformed, huge, hostile, signed-out, slow, hanging and crashing.
+- The same file, run with `--window`, is a stand-in Claude window for UI Automation (`test/desktop-uia.test.js`): a prompt box, Send/Stop, and Claude's permission and question cards, modelled on the real app's tree. `desktop.ps1 -OnlyPid` looks only at it, never at the real Claude app.
 - A fake Claude window (`test/e2e/fake-desktop.mjs`) with several windows, loaded through the dev-only `ORBIT_FAKE_DESKTOP` switch.
 - Claude sessions on disk in a throwaway profile, finished by appending to their transcripts, so the real watcher wakes Grok.
 

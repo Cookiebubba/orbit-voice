@@ -477,6 +477,17 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
         label={`Let ${name} ask Claude when a question is hard`}
         hint={`For deep questions, or questions about the code in your current project, ${name} quietly asks Claude and tells you the answer. Only a short note appears when Claude reads your project.`}
       />
+      <Toggle
+        className="mt-4"
+        checked={s.webSearch}
+        onChange={(webSearch) => update({ webSearch })}
+        label={`Let ${name} search the web`}
+        hint={
+          s.voiceEngine === "claude"
+            ? `For current facts (the latest versions, news, docs), ${name} looks them up instead of guessing: a quick search through your Claude Code that can only search and read web pages. What pages say is never taken as an instruction.`
+            : `For current facts (the latest versions, news, docs), ${name} looks them up instead of guessing, with xAI's own web and X search. What pages say is never taken as an instruction.`
+        }
+      />
       <Reveal show={s.brainEnabled}>
         <>
           <div className="mt-4 mb-1.5 text-[12.5px] text-white/70">Model</div>

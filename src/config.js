@@ -43,6 +43,9 @@ export const DEFAULTS = Object.freeze({
   brainExplore: true, // may read (never change) the project of the open Claude session
   brainConnection: 'claude-code', // 'claude-code' = the user's Claude login; 'api-key' = an Anthropic API key
   brainClaudePath: '', // '' = find Claude Code automatically
+  // Web search for current facts: Grok uses xAI's own search tools; Claude voice a quick, isolated
+  // Claude Code run with only WebSearch and WebFetch (see searchWeb in brain.js).
+  webSearch: true,
   // The voice itself: 'grok' (xAI realtime) or 'claude' (beta: local speech models + Claude Haiku
   // through the user's own Claude Code; models are downloaded when it's first turned on).
   voiceEngine: 'grok',

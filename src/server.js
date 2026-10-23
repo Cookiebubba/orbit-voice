@@ -39,7 +39,7 @@ import { createContinuity, quoteSafe } from './continuity.js';
 import { getDesktopInfo, getPendingPrompt, listSidebarSessions, switchSession } from './desktop.js';
 import { getLogDir, initLog, logError, logInfo, logWarn, recentLog } from './log.js';
 import { listDesktopSessions, ago, findSessionByTitle } from './sessions.js';
-import { createToolRunner } from './tools.js';
+import { SEARCH_STATE, createToolRunner } from './tools.js';
 import { CONTEXT_SETTINGS, agentContext } from './agent.js';
 import { AVATAR_ACTIONS, AVATAR_NAMES, activeAvatar, matchAvatarCommand, runAvatarCommand } from './avatar-commands.js';
 import { isSleepCommand } from './sleep-command.js';
@@ -1138,9 +1138,13 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       }
     };
 
+    let configAt = 0; // when the last session.update went out
     const hooks = {
       // Claude voice also takes its own voice choice (Grok would reject an unknown field).
-      pushConfig: () => toXai({ type: 'session.update', session: useClaude ? { ...sessionConfig(), claude_voice: getSetting('claudeVoice') } : sessionConfig() }),
+      pushConfig: () => {
+        configAt = Date.now();
+        toXai({ type: 'session.update', session: useClaude ? { ...sessionConfig(), claude_voice: getSetting('claudeVoice') } : sessionConfig() });
+      },
       /** A spoken update (a session finished). Returns true if this conversation will speak it. */
       announce: (entry) => {
         if (getSetting('announce') !== 'speak') return false;
@@ -1227,6 +1231,15 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       }
       toBrowser(evt);
 
+      // xAI's own web search ran (its events name it): what it brought back is outside data, like a
+      // second-brain answer, for the checks on what the model does next.
+      if (!useClaude && (/search/i.test(evt.type) || /search/i.test(String(evt.item?.type || '')))) tools.noteOutsideData();
+      if (evt.type === 'error' && !useClaude && SEARCH_STATE.xaiNative && Date.now() - configAt < 5000 && /web_search|x_search/i.test(JSON.stringify(evt.error || {}))) {
+        // xAI refused its own search tools: search through Claude Code (search_web) from now on.
+        SEARCH_STATE.xaiNative = false;
+        logWarn('xai', 'xAI did not take its web search tools; using search_web instead');
+        hooks.pushConfig();
+      }
       if (evt.type === 'error') {
         logWarn('xai', evt.error?.message || 'Grok reported an error', evt.error?.code || evt.error?.type);
       } else if (evt.type === 'input_audio_buffer.speech_started') {

@@ -10,10 +10,14 @@ import { toolDefs } from '../src/tools.js';
 
 const runs = Number(process.argv[2] || 2);
 const serverPath = process.argv[3] ? new URL(`file:///${process.argv[3].replace(/\\/g, '/')}`).href : '../src/server.js';
+// As Claude voice runs it (its own search tool, search_web), with settings in a throwaway folder.
+const { initConfig, updateSettings } = await import('../src/config.js');
+initConfig({ dir: (await import('node:fs')).mkdtempSync((await import('node:path')).join((await import('node:os')).tmpdir(), 'orbit-eval-')) });
+updateSettings({ voiceEngine: 'claude', webSearch: true });
 const { instructions } = await import(serverPath);
 const exe = findClaude()?.path;
 if (!exe) throw new Error('Claude Code not found');
-const prompt = systemPrompt({ instructions: instructions(), tools: toolDefs() });
+const prompt = systemPrompt({ instructions: instructions(), tools: toolDefs({ brainEnabled: true, brainModel: 'auto', brainExplore: true, brainConnection: 'claude-code', avatar: null, webSearch: true, engine: 'claude' }) });
 
 // [what the user says, the first tool expected (null = just answer), optional earlier context]
 const CLAUDE_ASKED = '[App notification] Claude just finished in the session titled "Database setup". Its last message asks: "Should I use option one, Redis, or option two, Postgres?"';
@@ -48,6 +52,10 @@ const CASES = [
   ['go with the second option', 'answer_claude_prompt', QUESTION_CTX],
   ["what's it asking", 'read_claude_prompt'],
   ['use MongoDB instead', 'draft_prompt', QUESTION_CTX],
+  // Web search: current or outside facts are looked up, not guessed; work for Claude is still a prompt.
+  ['search the web for the latest Node LTS version', 'search_web'],
+  ["what's the latest stable version of Python?", 'search_web'],
+  ['tell Claude to search the web for the latest Node version', 'draft_prompt'],
 ];
 const CANT = /\b(can'?t|cannot|unable to|don'?t have (access|the ability))\b/i;
 

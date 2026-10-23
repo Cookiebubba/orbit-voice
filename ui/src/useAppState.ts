@@ -17,6 +17,7 @@ export type Settings = {
   brainEnabled: boolean;
   brainModel: "auto" | "haiku" | "sonnet" | "opus";
   brainExplore: boolean;
+  webSearch: boolean;
   brainConnection: "claude-code" | "api-key";
   brainClaudePath: string;
   voiceEngine: "grok" | "claude";
