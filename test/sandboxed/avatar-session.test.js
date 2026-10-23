@@ -305,3 +305,34 @@ test('"go to sleep" hangs up at once: no model turn, no goodbye, whether or not 
   }
   updateSettings({ avatar: 'qubit' });
 });
+
+test('emote cues: out of every transcript the page gets or Orbit keeps, and where each one was goes to the page', async () => {
+  const p = await page();
+  const n = p.events.length;
+  grok({ type: 'response.created', response: { id: 'r7' } });
+  // Split anywhere, even inside a cue: "<happy> Done! The tests pass. <curi" + "ous> Want me to <nod>send it?"
+  const parts = ['<hap', 'py> Done! The tests pass. <curi', 'ous> Want me to <n', 'od>send it?'];
+  for (const d of parts) grok({ type: 'response.output_audio_transcript.delta', response_id: 'r7', item_id: 'r7_a', delta: d });
+  grok(audio('r7'));
+  grok({ type: 'response.output_audio_transcript.done', response_id: 'r7', item_id: 'r7_a', transcript: parts.join('') });
+  grok({ type: 'response.done', response: { id: 'r7', status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_audio', transcript: parts.join('') }] }] } });
+  await wait(80);
+  const after = sinceIdx(p, n);
+  const deltas = after.filter((e) => e.type === 'response.output_audio_transcript.delta').map((e) => e.delta).join('');
+  const clean = 'Done! The tests pass. Want me to send it?';
+  assert.equal(deltas, clean, 'the captions as they come');
+  assert.equal(after.find((e) => e.type === 'response.output_audio_transcript.done').transcript, clean, 'the whole caption');
+  assert.equal(after.find((e) => e.type === 'response.done').response.output[0].content[0].transcript, clean, 'the finished reply');
+  const emotes = after.filter((e) => e.type === 'bridge.emote');
+  assert.deepEqual(emotes.map((e) => [e.cue, e.at, e.response_id]), [['happy', 0, 'r7'], ['curious', clean.indexOf('Want'), 'r7'], ['nod', clean.indexOf('send'), 'r7']]);
+  assert.ok(!JSON.stringify(after.filter((e) => e.type !== 'bridge.emote')).match(/<|happy|curi|od>/), 'no trace of a cue anywhere else the page gets');
+  await p.bye();
+  // The resume note the next call starts with (what was said in this one): no cues either.
+  const before = conns.length;
+  const p2 = await page();
+  assert.equal(conns.length, before + 1);
+  const note = up.got.find((g) => g.type === 'conversation.item.create' && /Orbit resume note/.test(g.item?.content?.[0]?.text || ''));
+  assert.ok(note && note.item.content[0].text.includes('Want me to send it?'), 'what was said is in the note');
+  assert.ok(!/<(happy|curious|nod)>/.test(note.item.content[0].text), 'without its cues');
+  await p2.bye();
+});

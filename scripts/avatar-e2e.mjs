@@ -394,6 +394,8 @@ async function run() {
   await qjs(ACTS);
   await qjs('window.__qubit.dir.setLifeTiming({ dozeS: [1.5, 1.5] })');
   s = await expectState('he stirs and gets up by himself', { state: 'asleep', life: 'up', mode: 'idle' }, 8000);
+  // How much of the time he's up he's doing something (a move, a fidget, a trick), every frame.
+  await qjs(`(() => { const Q = window.__qubit; window.__busy = [0, 0]; Q.E.ticker.hooks.add(() => { if (Q.dir.life === 'up') window.__busy[Q.q.task ? 0 : 1]++; }); })()`);
   const lifeCpu = await cpu('his own life (up and about)', 8000);
   fps = await framesPerSecond();
   check(fps > 55, 'full frame rate while he is up', `${fps} fps`);
@@ -401,7 +403,10 @@ async function run() {
   const acts = await qjs('window.__acts2');
   const own = acts.filter((a) => a[1]).map((a) => a[0]);
   out(`  his own: ${own.join(', ')}`);
-  check(own.length >= 6 && new Set(own).size >= 3, 'he gets on with things of his own (moves, fidgets, tricks)', `${own.length} actions, ${new Set(own).size} kinds`);
+  const busy = await qjs('window.__busy');
+  const busyPct = Math.round((busy[0] / Math.max(1, busy[0] + busy[1])) * 100);
+  out(`  up and about: busy ${busyPct}% of the time (moving, fidgeting or a trick)`);
+  check(own.length >= 3 && new Set(own).size >= 2 && busyPct >= 50, 'he gets on with things of his own over 23 s (moves, fidgets, tricks)', `${own.length} actions, ${new Set(own).size} kinds, busy ${busyPct}%`);
   const lifePhys = await qjs('({ pops: window.__phys.pops, bad: window.__phys.bad.filter((b) => b[0] === "life"), popAt: window.__phys.popAt })');
   check(lifePhys.pops === 0, 'no jumps of his outline while he lives', JSON.stringify(lifePhys.popAt));
   check(lifePhys.bad.length === 0, 'always on a surface (never sunk in, never floating)', JSON.stringify(lifePhys.bad));
@@ -467,6 +472,67 @@ async function run() {
   }
   check(maxOut > 0.05, 'the live voice level reaches him (setLevels output)', `max ${maxOut.toFixed(2)}`);
   await waitFor(async () => (await qstate()).state === 'listening', 6000);
+
+  out('5c. Feelings while he speaks: cues in Grok\x27s words fire as those words play, never shown');
+  await label('emotes');
+  // Synthetic speech (tone bursts for words, quiet for pauses), with where each word starts.
+  const synth = (text) => {
+    const R = 24000;
+    const pcm = [];
+    const starts = [];
+    let inWord = false;
+    const add = (s, loud) => { for (let i = 0; i < Math.round(s * R); i++) pcm.push(loud ? Math.round(Math.sin((pcm.length * 2 * Math.PI * 200) / R) * 9000) : 0); };
+    for (const ch of text) {
+      if (/[A-Za-z']/.test(ch)) { if (!inWord) starts.push(pcm.length / R); inWord = true; add(0.055, true); }
+      else { inWord = false; if (ch === ' ') add(0.04, true); else if (ch === ',') add(0.18, false); else if (/[.!?]/.test(ch)) add(0.38, false); }
+    }
+    return { pcm: Int16Array.from(pcm), starts };
+  };
+  const saidLine = 'Done! The tests all pass. Want me to send it?';
+  const syn = synth(saidLine);
+  // In Orbit's page: when each chunk of the voice is scheduled to sound (wall clock), and the
+  // captions it shows. In his page: when each feeling arrives.
+  await pjs(`(() => { if (window.__starts) return; window.__starts = []; const st = AudioBufferSourceNode.prototype.start; AudioBufferSourceNode.prototype.start = function (when = 0, ...a) { const ac = this.context; window.__starts.push(Date.now() + (Math.max(when, ac.currentTime) - ac.currentTime + (ac.outputLatency || ac.baseLatency || 0)) * 1000); return st.call(this, when, ...a); }; })()`);
+  await pjs('window.__starts.length = 0');
+  await qjs(`(() => { const d = window.__qubit.dir; window.__emotes = []; if (!d.__wrapped) { const e = d.emote; d.emote = (n) => { const ok = e(n); window.__emotes.push([n, Date.now(), ok]); return ok; }; d.__wrapped = true; } })()`);
+  const emoRid = 'resp_emote';
+  c.send({ type: 'response.created', response: { id: emoRid } });
+  for (const d of ['<hap', 'py> Done! The tests all pass. <curi', 'ous> Want me to send it?']) c.send({ type: 'response.output_audio_transcript.delta', response_id: emoRid, item_id: `${emoRid}_a`, delta: d });
+  for (let i = 0; i < syn.pcm.length; i += 9600) c.send({ type: 'response.output_audio.delta', response_id: emoRid, item_id: `${emoRid}_a`, delta: Buffer.from(syn.pcm.slice(i, i + 9600).buffer).toString('base64') });
+  c.send({ type: 'response.output_audio.done', response_id: emoRid, item_id: `${emoRid}_a` });
+  c.send({ type: 'response.output_audio_transcript.done', response_id: emoRid, item_id: `${emoRid}_a`, transcript: '<happy> Done! The tests all pass. <curious> Want me to send it?' });
+  c.send({ type: 'response.done', response: { id: emoRid, status: 'completed' } });
+  const emoFilm = film('emotes', 3200, 20, { follow: true });
+  await wait(syn.pcm.length / 24 + 600);
+  await emoFilm;
+  const emo = await qjs('window.__emotes');
+  const voiceStarts = await pjs('window.__starts.slice()');
+  const tVoice = voiceStarts[0];
+  const emoWant = [['happy', tVoice + syn.starts[0] * 1000], ['curious', tVoice + syn.starts[saidLine.slice(0, saidLine.indexOf('Want')).match(/[A-Za-z']+/g).length] * 1000]];
+  check(emo.length === 2 && emo.every((e, i) => e[0] === emoWant[i][0] && e[2]), 'both feelings came, in order, and he showed them', JSON.stringify(emo.map((e) => [e[0], e[2]])));
+  const emoErrs = emo.map((e, i) => e[1] - emoWant[i]?.[1]);
+  out(`  emote timing (his page vs the words' sound, wall clock): ${emoErrs.map((e) => `${Math.round(e)} ms`).join(', ')}`);
+  check(emoErrs.length === 2 && emoErrs.every((e) => Math.abs(e) <= 80), 'each within 80 ms of its words', emoErrs.map(Math.round).join(', '));
+  check(await qjs('window.__qubit.dir.log.some((l) => l.what === "emote happy") && window.__qubit.dir.log.some((l) => l.what === "emote curious")'), 'the director showed them (happy, then curious)');
+  const capText = await pjs('document.body.innerText');
+  check(capText.includes('Done! The tests all pass.') && !/<\w+>|happy>|<curi/.test(capText), 'the caption has the words and no cue', capText.slice(0, 120).replace(/\s+/g, ' '));
+  // Claude voice's way: the emote rides the first audio of its words (here the second of two chunks).
+  await qjs('window.__emotes.length = 0');
+  await pjs('window.__starts.length = 0');
+  const cvRid = 'resp_cv';
+  const half = Math.floor(syn.pcm.length / 2);
+  c.send({ type: 'response.created', response: { id: cvRid } });
+  c.send({ type: 'response.output_audio_transcript.delta', response_id: cvRid, item_id: `${cvRid}_a`, delta: 'Done! The tests all pass.' });
+  c.send({ type: 'response.output_audio.delta', response_id: cvRid, item_id: `${cvRid}_a`, delta: Buffer.from(syn.pcm.slice(0, half).buffer).toString('base64') });
+  c.send({ type: 'response.output_audio.delta', response_id: cvRid, item_id: `${cvRid}_a`, delta: Buffer.from(syn.pcm.slice(half).buffer).toString('base64'), emote: { name: 'nod' } });
+  c.send({ type: 'response.done', response: { id: cvRid, status: 'completed' } });
+  await wait(syn.pcm.length / 24 + 600);
+  const cvEmo = await qjs('window.__emotes');
+  const cvStarts = await pjs('window.__starts.slice()');
+  const cvErr = cvEmo.length === 1 && cvStarts.length >= 2 ? cvEmo[0][1] - cvStarts[1] : NaN;
+  out(`  emote timing, on its chunk (Claude voice's way): ${Math.round(cvErr)} ms`);
+  check(cvEmo.length === 1 && cvEmo[0][0] === 'nod' && Math.abs(cvErr) <= 80, 'an emote on an audio chunk fires as that chunk plays', JSON.stringify(cvEmo));
+  await expectState('back to listening after he spoke', { state: 'listening' }, 6000);
 
   out('5b. Talking to Qubit: "do a backflip" (the fast path: no model turn), and a trick by Grok\x27s tool');
   await label('backflip');

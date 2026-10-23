@@ -29,6 +29,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { isSignInProblem } from './brain.js';
+import { createCueStream } from './emote-cues.js';
 import { modelPaths } from './voice-models.js';
 
 const require = createRequire(import.meta.url);
@@ -42,6 +43,12 @@ export const CLAUDE_VOICE = Object.freeze({
   threads: 4,
   sid: 0,
 });
+
+// Emote cues (<happy> before "Done!", see src/emote-cues.js) become markers in the text to speak:
+// each one starts a new piece, so its emote rides on that piece's first audio and plays with it.
+const [M0, M1] = [String.fromCharCode(0xe000), String.fromCharCode(0xe001)]; // (private-use characters: never in text)
+const MARK = new RegExp(`${M0}([a-z]+)${M1}`, 'g');
+const mark = (name) => `${M0}${name}${M1}`;
 
 const OPEN = 1;
 const CLOSED = 3;
@@ -576,9 +583,9 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
     return proc;
   };
 
-  const sendAudio = (t, pcmB64, reflex = false) => {
+  const sendAudio = (t, pcmB64, reflex = false, emote = null) => {
     if (t.cancelled) return;
-    emit({ type: 'response.output_audio.delta', response_id: t.id, item_id: t.itemId, delta: pcmB64, ...(reflex ? { reflex: true } : {}) });
+    emit({ type: 'response.output_audio.delta', response_id: t.id, item_id: t.itemId, delta: pcmB64, ...(reflex ? { reflex: true } : {}), ...(emote ? { emote: { name: emote } } : {}) });
   };
 
   const fillerPcm = async (text) => {
@@ -605,30 +612,64 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
   };
 
   const queueSpeech = (t, pieces) => {
-    for (const piece of pieces) {
-      if (isJunk(piece)) continue;
-      const say = speakableText(piece);
-      if (!say) continue;
-      t.spoken += (t.spoken ? ' ' : '') + say;
-      emit({ type: 'response.output_audio_transcript.delta', response_id: t.id, item_id: t.itemId, delta: (t.chunks++ ? ' ' : '') + say });
-      t.tts = t.tts.then(async () => {
-        if (t.cancelled) return;
-        let samples;
-        try {
-          samples = await speech.speak(say, { speed, sid });
-        } catch (e) {
-          warnOnce('Claude voice: text to speech failed', e);
-          return;
+    for (const whole of pieces) {
+      // A piece with cues in it is said in parts, each cue starting one (the emote plays with it).
+      const parts = [];
+      let at = 0;
+      let cue = t.carry || null;
+      t.carry = null;
+      for (const m of whole.matchAll(MARK)) {
+        parts.push({ text: whole.slice(at, m.index), cue });
+        cue = m[1];
+        at = m.index + m[0].length;
+      }
+      parts.push({ text: whole.slice(at), cue });
+      for (const part of parts) {
+        const say = isJunk(part.text) ? '' : speakableText(part.text);
+        if (!say) {
+          if (part.cue) t.carry = part.cue; // no words for it here: it goes with the next ones
+          continue;
         }
-        if (t.cancelled) return;
-        t.firstAudioAt ??= now();
-        t.audioSent = true;
-        sendAudio(t, floatToPcm16(samples).toString('base64'));
-      });
+        t.spoken += (t.spoken ? ' ' : '') + say;
+        emit({ type: 'response.output_audio_transcript.delta', response_id: t.id, item_id: t.itemId, delta: (t.chunks++ ? ' ' : '') + say });
+        const emote = part.cue;
+        t.tts = t.tts.then(async () => {
+          if (t.cancelled) return;
+          let samples;
+          try {
+            samples = await speech.speak(say, { speed, sid });
+          } catch (e) {
+            warnOnce('Claude voice: text to speech failed', e);
+            return;
+          }
+          if (t.cancelled) return;
+          t.firstAudioAt ??= now();
+          t.audioSent = true;
+          sendAudio(t, floatToPcm16(samples).toString('base64'), false, emote);
+        });
+      }
     }
   };
 
+  /** A cue with no words after it at all (the reply's last thing): it plays when the speech ends. */
+  const flushCarry = (t) => {
+    const emote = t.carry;
+    t.carry = null;
+    if (!emote) return;
+    t.tts = t.tts.then(() => t.audioSent && sendAudio(t, '', false, emote));
+  };
+
   const speakText = (t, text, final) => {
+    // Cues out of the words (never spoken or shown), each marked where it was.
+    const r = final ? (() => {
+      const a = t.cueStream.push(text);
+      const b = t.cueStream.end();
+      return { text: a.text + b.text, cues: [...a.cues, ...b.cues] };
+    })() : t.cueStream.push(text);
+    const base = t.cueStream.length - r.text.length;
+    let marked = r.text;
+    for (const c of [...r.cues].reverse()) marked = marked.slice(0, c.at - base) + mark(c.cue) + marked.slice(c.at - base);
+    text = marked;
     t.say += text;
     const { chunks, rest } = takeChunks(t.say, { first: t.chunks === 0, final });
     t.say = rest;
@@ -641,6 +682,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
     clearTimeout(t.slowTimer);
     if (status === 'completed') {
       speakText(t, '', true);
+      flushCarry(t);
       await t.fillerP; // a reflex phrase still being made goes out before the reply ends
       await t.tts;
     }
@@ -679,7 +721,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
       respondAgain = true;
       return;
     }
-    const t = { id: id('resp'), itemId: id('item'), say: '', spoken: '', chunks: 0, tts: Promise.resolve(), hold: '', inTool: false, toolText: '', call: null, finished: false, cancelled: false, ended: false, audioSent: false, fillerP: null, timing };
+    const t = { id: id('resp'), itemId: id('item'), say: '', spoken: '', chunks: 0, cueStream: createCueStream(), carry: null, tts: Promise.resolve(), hold: '', inTool: false, toolText: '', call: null, finished: false, cancelled: false, ended: false, audioSent: false, fillerP: null, timing };
     turn = t;
     emit({ type: 'response.created', response: { id: t.id } });
     const text = input.splice(0).join('\n\n');

@@ -43,6 +43,7 @@ import { SEARCH_STATE, createToolRunner } from './tools.js';
 import { CONTEXT_SETTINGS, agentContext } from './agent.js';
 import { AVATAR_ACTIONS, AVATAR_NAMES, activeAvatar, matchAvatarCommand, runAvatarCommand } from './avatar-commands.js';
 import { isSleepCommand } from './sleep-command.js';
+import { createCueStream, withoutCues } from './emote-cues.js';
 import { asksToStop, isStopCommand } from './stop-command.js';
 import { startMeter, usageSummary } from './usage.js';
 import { createSessionWatcher } from './watcher.js';
@@ -1048,6 +1049,42 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         if (!lastResponse.done) suppressResponse(lastResponse.id);
       } else suppressNext = { origin: item, until: Date.now() + 5000 };
     };
+    const cueStreams = new Map(); // transcript item -> its cue stream (a cue can be split across deltas)
+    /** Strip cues from a voice event in place; returns the page's bridge.emote events for them. */
+    const cueOut = (evt) => {
+      const t = evt.type;
+      const at = (cues) => cues.map((c) => ({ type: 'bridge.emote', item_id: evt.item_id ?? null, response_id: evt.response_id ?? null, cue: c.cue, at: c.at }));
+      if (/^response.(output_)?(audio_transcript|text).delta$/.test(t) && typeof evt.delta === 'string') {
+        const key = evt.item_id || evt.response_id || 'reply';
+        let cs = cueStreams.get(key);
+        if (!cs) {
+          cs = createCueStream();
+          cueStreams.set(key, cs);
+          if (cueStreams.size > 20) cueStreams.delete(cueStreams.keys().next().value);
+        }
+        const r = cs.push(evt.delta);
+        evt.delta = r.text;
+        return at(r.cues);
+      }
+      if (/^response.(output_)?(audio_transcript|text).done$/.test(t)) {
+        const key = evt.item_id || evt.response_id || 'reply';
+        const cs = cueStreams.get(key);
+        cueStreams.delete(key);
+        if (typeof evt.transcript === 'string') evt.transcript = withoutCues(evt.transcript);
+        if (typeof evt.text === 'string') evt.text = withoutCues(evt.text);
+        return cs ? at(cs.end().cues) : [];
+      }
+      // Whole items (an item done, the response done) carry the transcript too.
+      const clean = (item) => {
+        for (const part of Array.isArray(item?.content) ? item.content : []) {
+          if (part && typeof part.transcript === 'string') part.transcript = withoutCues(part.transcript);
+          if (part && typeof part.text === 'string' && item.role === 'assistant') part.text = withoutCues(part.text);
+        }
+      };
+      if (evt.item) clean(evt.item);
+      if (Array.isArray(evt.response?.output)) evt.response.output.forEach(clean);
+      return [];
+    };
     const outputSuppressed = (evt) => {
       if (!suppressed.size || !evt.type.startsWith('response.') || evt.type === 'response.created' || evt.type === 'response.done') return false;
       const rid = evt.response_id ?? evt.response?.id;
@@ -1229,7 +1266,12 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         logInfo('xai', 'Grok did not take response.cancel (its output was dropped instead)');
         return;
       }
+      // Emote cues (<happy> before the words they go with; see src/emote-cues.js): out of every
+      // transcript before anything shows or keeps it, and where each was goes to the page, which
+      // fires it when those words play (ui/src/emote-sync.js).
+      const emotes = cueOut(evt);
       toBrowser(evt);
+      for (const e of emotes) toBrowser(e);
 
       // xAI's own web search ran (its events name it): what it brought back is outside data, like a
       // second-brain answer, for the checks on what the model does next.

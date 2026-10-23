@@ -522,3 +522,71 @@ test('after a celebration (its colour sweep) he glides back to his mood\x27s own
   assert.ok(Math.abs(q.sp.L.v - L) < 0.01 && Math.abs(q.sp.C.v - C) < 0.01 && Math.abs(hue - Hh) < 2, `indigo again (${q.sp.L.v.toFixed(2)} ${q.sp.C.v.toFixed(2)} ${hue.toFixed(0)})`);
   q.destroy();
 });
+
+// ---------- feelings while he talks (emote cues) ----------
+test('emotes while he speaks: a mood or a move in place, his eye still his mouth, then back to speaking', async () => {
+  const s = scene({ voice: { phase: 'speaking', output: 0.6 } });
+  const { q, dir } = s;
+  await s.run(1.5);
+  assert.equal(q.mode, 'speaking');
+  const x0 = q.cx;
+  assert.equal(dir.emote('happy'), true);
+  await s.run(0.1);
+  assert.equal(q.mode, 'happy');
+  assert.equal(q.taskName, 'hopInPlace');
+  await s.run(0.6);
+  // His eye keeps opening with his voice in the happy squint.
+  s.set({ output: 0 });
+  await s.run(0.3);
+  const shut = q.sp.eh.v;
+  s.set({ output: 1 });
+  await s.run(0.3);
+  assert.ok(q.sp.eh.v > shut + 4, `still talking with his eye (${shut.toFixed(1)} -> ${q.sp.eh.v.toFixed(1)})`);
+  await s.run(1);
+  assert.equal(q.mode, 'speaking', 'back to speaking after the moment');
+  assert.ok(Math.abs(q.cx - x0) < 1, 'in place');
+  for (const name of ['excited', 'curious', 'surprised', 'proud', 'sad', 'embarrassed', 'nod', 'shake', 'wonder', 'hop']) {
+    assert.equal(dir.emote(name), true, name);
+    await s.run(2.2);
+    assert.equal(q.mode, 'speaking', `${name}: back to speaking`);
+  }
+  assert.ok(Math.abs(q.cx - x0) < 2 && !q.air, 'all in place, landed');
+  assert.equal(dir.emote('dance'), false, 'not a feeling');
+  assert.deepEqual(s.problems, []);
+  s.done();
+});
+
+test('emotes: only while he talks; you talking, asleep, or something you asked him to do win', async () => {
+  const s = scene({ voice: { phase: 'listening' } });
+  const { q, dir } = s;
+  await s.run(1);
+  assert.equal(dir.emote('happy'), false, 'listening');
+  s.set({ hearing: true });
+  await s.run(0.2);
+  assert.equal(dir.emote('happy'), false, 'you talking');
+  // The first words' feeling arrives a frame before Orbit says it's speaking: it keeps its moment.
+  s.set({ hearing: false, phase: 'thinking' });
+  await s.run(0.5);
+  assert.equal(dir.emote('surprised'), true, 'about to speak');
+  s.set({ phase: 'speaking', output: 0.5 });
+  await s.run(0.3);
+  assert.equal(q.mode, 'surprised', 'kept through the switch to speaking');
+  await s.run(1);
+  assert.equal(q.mode, 'speaking');
+  // A trick you asked for wins over a feeling.
+  dir.command({ action: 'backflip' });
+  await s.run(0.1);
+  assert.equal(dir.emote('nod'), false);
+  await s.run(4);
+  // Barge-in mid-feeling: listening at once.
+  assert.equal(dir.emote('sad'), true);
+  await s.run(0.2);
+  s.set({ phase: 'listening', hearing: true, output: 0 });
+  await s.run(2 / 60);
+  assert.equal(q.mode, 'listening');
+  s.set({ phase: 'off', hearing: false });
+  await s.run(3);
+  assert.equal(dir.emote('happy'), false, 'asleep');
+  assert.deepEqual(s.problems, []);
+  s.done();
+});

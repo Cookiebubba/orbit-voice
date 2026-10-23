@@ -72,6 +72,26 @@ function rng(seed) {
   };
 }
 
+/**
+ * Feelings while he talks: the voice's emote cues (src/emote-cues.js CUES), each one of his own moods
+ * for a moment (`mode`, `hold` seconds; his eye stays his mouth) and/or one of his own moves in
+ * place (`act`). They fire as the words play (ui/src/emote-sync.js) and he returns to speaking.
+ */
+export const EMOTES = Object.freeze({
+  happy: { mode: 'happy', act: 'hopInPlace', hold: 1.3 },
+  excited: { act: 'celebrate', hold: 1.6 },
+  curious: { mode: 'curious', hold: 1.4 },
+  surprised: { mode: 'surprised', hold: 0.9 },
+  proud: { mode: 'happy', act: 'stretch', hold: 1.3 },
+  sad: { mode: 'sad', hold: 1.6 },
+  embarrassed: { mode: 'embarrassed', hold: 1.4 },
+  nod: { act: 'nod', hold: 0.6 },
+  shake: { act: 'shake', hold: 0.7 },
+  wonder: { act: 'wonder', hold: 1.1 },
+  hop: { act: 'hopInPlace', hold: 0.6 },
+});
+const EMOTE_ACTS = new Set(Object.values(EMOTES).map((e) => e.act).filter(Boolean));
+
 /** Qubit's side in px for the avatar size setting (1 tiny, 2 small, 3 big). */
 export const sideFor = (scale) => SIDES[Math.round(Number(scale))] || SIDES[2];
 
@@ -177,7 +197,8 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
   const draw = ([a, b]) => a + (b - a) * lifeRand();
   let seenAt = 0; // the last time anything happened (for how tired he gets)
   let lastPointer = null;
-  let lives = 0; // a new idle planner each time his life starts, each with its own seed
+  let lives = 0;
+  let feel = null; // a feeling while he talks: { name, mode, until } // a new idle planner each time his life starts, each with its own seed
   const log = []; // what it did, for tests and the e2e harness (state and reaction names only)
   const note = (what) => {
     log.push({ t: Math.round(t * 100) / 100, what });
@@ -307,7 +328,7 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
     }
     if (s === 'waking' || s === 'listening') q.look = { x: 0, y: 0 }; // he looks at you
     if (wasAsleep && motion) wakeInto(mode);
-    else if (q.mode !== mode || s === 'muted') q.setMode(mode);
+    else if ((q.mode !== mode || s === 'muted') && !(s === 'speaking' && feel?.mode && q.mode === feel.mode)) q.setMode(mode); // (a feeling his first words brought stays its moment)
     if (s === 'muted') {
       if (motion) q.do('shake', {}, { interrupt: !wasAsleep }); // not listening
       return;
@@ -510,8 +531,30 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
     return true;
   }
 
+  /**
+   * A feeling as his words play (an emote cue; see EMOTES). Only while he's talking or about to (not
+   * while you talk, asleep, or during a reaction or something you asked him to do: those win).
+   * Returns whether he showed it.
+   */
+  function emote(name) {
+    const e = Object.hasOwn(EMOTES, name) ? EMOTES[name] : null;
+    if (!e || !geo || react || v.hearing || v.muted) return false;
+    const s = baseState(v, t - lastActive);
+    if (s !== 'speaking' && s !== 'thinking' && state !== 'speaking') return false;
+    note(`emote ${name}`);
+    if (e.mode) q.setMode(e.mode);
+    // A move in place: over another feeling's move, or on its own; never over a move to a place.
+    if (e.act) {
+      const mine = !q.busy || EMOTE_ACTS.has(q.taskName);
+      if (mine) q.do(e.act, {}, { interrupt: q.busy });
+    }
+    feel = { name, mode: e.mode || null, until: t + e.hold };
+    return true;
+  }
+
   return {
     command,
+    emote,
     /** Orbit's voice state (see baseState). */
     setVoice(next) {
       if (next && typeof next === 'object') v = next;
@@ -600,6 +643,12 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
       q.setLevels(v.muted ? 0 : Number(v.input) || 0, Number(v.output) || 0);
       if (v.phase !== 'listening' || v.hearing || v.draft || v.sending || v.claudeWorking || v.asleep || v.muted) lastActive = t;
       const s = baseState(v, t - lastActive);
+      q.talking = s === 'speaking';
+      if (feel && (t >= feel.until || (s !== 'speaking' && s !== 'thinking') || react)) {
+        // Back to speaking (or whatever Orbit's state is now: enter() has already set a new one).
+        if (feel.mode && q.mode === feel.mode && (s === 'speaking' || s === 'thinking') && !react) q.setMode(MODE_FOR[s]);
+        feel = null;
+      }
       // What keeps him from tiring: a call, Claude at work, the cursor moving near him.
       if ((v.phase && v.phase !== 'off') || v.claudeWorking) seen();
       if (q.pointer && q.pointer !== lastPointer && Math.abs(q.pointer.x - q.cx) < q.side * 8) seen();

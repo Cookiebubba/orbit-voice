@@ -27,7 +27,8 @@
     "e2e:avatar": "electron scripts/avatar-e2e.mjs",
     "fuzz:e2e": "electron scripts/fuzz-e2e.mjs",
     "latency:claude-voice": "node scripts/claude-voice-latency.mjs",
-    "eval:intent": "node scripts/intent-eval.mjs"
+    "eval:intent": "node scripts/intent-eval.mjs",
+    "eval:emote": "node scripts/emote-eval.mjs"
   },
   "engines": {
     "node": ">=20"

@@ -15,6 +15,7 @@ import { MAX_CLIPBOARD_CHARS, writeClipboard } from './clipboard.js';
 import { getBrainKey, getSetting } from './config.js';
 import { BRAIN_MODELS, askBrain, findClaude, openClaudeSignIn, searchWeb } from './brain.js';
 import { AVATAR_ACTIONS, AVATAR_NAMES, activeAvatar, actionsFor, avatarToolDef, isAvatarAction, runAvatarCommand } from './avatar-commands.js';
+import { withoutKnownCues } from './emote-cues.js';
 
 export const TOOL_DEFS = [
   {
@@ -654,7 +655,8 @@ export function createToolRunner({
     },
 
     async draft_prompt({ text, verbatim = false } = {}) {
-      const raw = String(text || '').trim().slice(0, 8000);
+      // (An emote cue the voice slipped in, <happy>, is its face, never words for Claude.)
+      const raw = withoutKnownCues(String(text || '')).trim().slice(0, 8000);
       if (!raw) return { error: 'Draft text was empty.' };
       // The words must come from the user: not from an app notification, a transcript Grok read, or
       // a second-brain answer (its suggested prompt is only drafted once the user asks for it).

@@ -18,6 +18,7 @@
 
 import { getSetting } from './config.js';
 import { AVATAR_ACTIONS, AVATAR_NAMES, activeAvatar, actionsFor } from './avatar-commands.js';
+import { CUES } from './emote-cues.js';
 import { toolDefs } from './tools.js';
 
 const ORBIT_PERSONA = `
@@ -48,8 +49,12 @@ Your body (${name}, on the Claude window):
 - The app moves you by itself for everything that happens (listening, thinking, a draft, a send, Claude working or finishing). Do tricks only when the user asks.
 - When the user asks you to do something with your body ("do a backflip", "dance", "roll left"), call avatar. You can do: ${actionsFor(kind).map((a) => AVATAR_ACTIONS[a].label).join(', ')}. If they ask for something else, say in a few words that you can't do that one.
 - Orbit often does a simple request itself before you hear it: an "[Orbit note: ...]" says so. Then say nothing about it unless they ask.
-- Asking you for a trick is never work for Claude, and work for Claude (like "add a backflip animation") is never a trick.`.trim();
+- Asking you for a trick is never work for Claude, and work for Claude (like "add a backflip animation") is never a trick.${kind === 'qubit' ? `
+${EMOTE_GUIDE}` : ''}`.trim();
 }
+
+/** Qubit's feelings while he talks (src/emote-cues.js; the app strips them and times each to its words). */
+const EMOTE_GUIDE = `- Your face can show a feeling as you speak: put a cue right before the words it goes with, like "<happy> Done!" or "<curious> Which file?". Cues: ${CUES.map((c) => `<${c}>`).join(' ')}. Use them sparingly: at most one per sentence, only where the feeling fits, often none. They are never spoken or shown, and never go in prompts or tool arguments.`;
 
 /** The job: the same text whatever the face (the app's own rules for Claude Code). */
 export const core = () => `

@@ -24,6 +24,13 @@ contextBridge.exposeInMainWorld('desktop', {
   // gets Orbit's state and says when the cursor is over it (so it can take clicks).
   buddyEvent: (name) => ipcRenderer.send('buddy:event', name),
   buddyHover: (on) => ipcRenderer.send('buddy:hover', !!on),
+  // A feeling as the voice's words play (an emote cue: 'happy', 'surprised'...), for Qubit.
+  buddyEmote: (name) => ipcRenderer.send('buddy:emote', String(name)),
+  onBuddyEmote: (cb) => {
+    const fn = (_e, name) => cb(name);
+    ipcRenderer.on('buddy:emote', fn);
+    return () => ipcRenderer.removeListener('buddy:emote', fn);
+  },
   onBuddyState: (cb) => {
     const fn = (_e, s) => cb(s);
     ipcRenderer.on('buddy:state', fn);

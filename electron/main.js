@@ -421,6 +421,7 @@ on('orb:state', (s) => {
   avatar?.onVoice(s);
 });
 on('buddy:event', (name) => avatar?.event(name));
+on('buddy:emote', (name) => avatar?.emote(name));
 // From the avatar's own page (not one that is fading out after a switch).
 ipcMain.on('buddy:hover', (e, over) => fromUs(e) && avatar?.window && e.sender === avatar.window.webContents && avatar.hover(!!over));
 on('orb:action', (a) => main?.webContents.send('orb:action', a));

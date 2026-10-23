@@ -22,12 +22,13 @@ import { BrowserWindow, screen } from 'electron';
 
 import { BUDDY_HEIGHT, boxInStrip, buddyBoundsFor, sendAtOffset, sendInStrip, sendOffsetFor, usableBox } from './buddy-geometry.js';
 import { isAvatarAction } from '../src/avatar-commands.js';
+import { cueName } from '../src/emote-cues.js';
 
 export { BUDDY_HEIGHT };
 
 export const AVATAR_KINDS = Object.freeze({
   buddy: { title: 'Orbit buddy', events: ['finished', 'draft', 'sent'], sendButton: false },
-  qubit: { title: 'Orbit Qubit', events: ['finished', 'draft', 'sent', 'error'], sendButton: true },
+  qubit: { title: 'Orbit Qubit', events: ['finished', 'draft', 'sent', 'error'], sendButton: true, emotes: true },
 });
 const LEAVE_MS = 450; // the page's fade-out, and a little more
 
@@ -265,6 +266,13 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       sendEvent(name);
       // A draft fills Claude's box (it grows) and a send empties it: look again.
       if (name === 'draft' || name === 'sent') refind(name === 'draft' ? 350 : 700);
+    },
+    /** A feeling as the voice's words play (an emote cue, timed by the main window's audio). Qubit only. */
+    emote(name) {
+      const cue = cueName(name);
+      if (!K.emotes || !cue || leaving || !enabled || !visible()) return false;
+      win.webContents.send('buddy:emote', cue);
+      return true;
     },
     /**
      * Something the user asked the avatar to do ({ action, dir }, see src/avatar-commands.js), by

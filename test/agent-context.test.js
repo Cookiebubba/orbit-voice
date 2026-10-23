@@ -127,3 +127,17 @@ test('Claude voice gets the same layers in its system prompt, tools included', (
 test('the settings that change the context are the ones the live session is updated for', () => {
   for (const k of ['avatar', 'showOrb', 'brainEnabled', 'brainModel', 'brainExplore', 'brainConnection', 'wakeOnResults']) assert.ok(CONTEXT_SETTINGS.includes(k), k);
 });
+
+test('Qubit\x27s emote cues: a short guide in his body layer only, after the job, naming exactly his cues', async () => {
+  const { CUES } = await import('../src/emote-cues.js');
+  const q = ctx('qubit', false);
+  const guide = q.instructions.split('\n').find((l) => l.startsWith('- Your face can show a feeling'));
+  assert.ok(guide, 'the guide is there');
+  assert.ok(q.instructions.indexOf(guide) > q.instructions.indexOf('Your body (Qubit'), 'in his body layer');
+  assert.ok(q.instructions.indexOf(guide) > q.instructions.indexOf(core()) + core().length - 1, 'after the job (which is unchanged)');
+  assert.deepEqual([...new Set([...guide.matchAll(/<([a-z]+)>/g)].map((m) => m[1]))].sort(), [...CUES].sort(), 'its cues are exactly his');
+  assert.ok(guide.length < 520, `short (${guide.length} chars)`);
+  assert.match(guide, /sparingly/);
+  assert.match(guide, /never spoken or shown, and never go in prompts or tool arguments/);
+  for (const [a, o] of [['none', true], ['buddy', false]]) assert.ok(!/Your face can show a feeling|<happy>/.test(ctx(a, o).instructions), `not for ${a}`);
+});

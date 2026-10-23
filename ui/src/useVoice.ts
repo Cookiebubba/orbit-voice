@@ -2,6 +2,8 @@
 // phase (listening / thinking / speaking), live volume levels for the orb, history, draft.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playChime } from "./sounds";
+import { desktop } from "./desktop";
+import { createEmoteSync } from "./emote-sync.js";
 
 const RATE = 24000;
 const TAP_TIMEOUT_MS = 10_000; // "one question" mode: give up if you say nothing for this long
@@ -119,6 +121,19 @@ export function useVoice(options: VoiceOptions) {
   const stopRef = useRef<(reason?: ByeReason) => void>(() => {});
   const opts = useRef(options);
   opts.current = options;
+  // The avatar's feelings as the words play (emote cues; see emote-sync.js): timed on this call's
+  // audio clock, with the output's latency, so each fires when its words come out of the speakers.
+  const emotes = useRef(
+    createEmoteSync({
+      now: () => {
+        const ac = ctx.current;
+        return ac ? ac.currentTime - (ac.outputLatency || ac.baseLatency || 0) : 0;
+      },
+      fire: (cue) => desktop?.buddyEmote?.(cue),
+    }),
+  );
+  const replyId = useRef<string>("reply"); // the reply now coming in (for events that don't say)
+  const replyKey = (evt: any): string => String(evt.response_id || replyId.current);
 
   const caption = useCallback((raw: Omit<Caption, "at">, mode: "set" | "append" = "set") => {
     // Text only: Grok's events are passed through as they come, and anything but a string here
@@ -368,13 +383,15 @@ export function useVoice(options: VoiceOptions) {
     playing.current.clear();
     audioEndsAt.current = 0;
     if (ac) playHead.current = ac.currentTime;
+    emotes.current.clear(); // nothing still to play: no feelings for it either
   }, []);
 
-  const playPcm = useCallback((b64: string) => {
+  /** Schedule a chunk of the voice; returns when it plays (this call's clock), how long, and its samples. */
+  const playPcm = useCallback((b64: string): { at: number; dur: number; pcm: Int16Array } | null => {
     const ac = ctx.current;
-    if (!ac || !outBus.current) return;
+    if (!ac || !outBus.current) return null;
     const pcm = b64ToInt16(b64);
-    if (!pcm.length) return;
+    if (!pcm.length) return null;
     if (ac.state === "suspended") void ac.resume().catch(() => {});
     const buffer = ac.createBuffer(1, pcm.length, RATE);
     const ch = buffer.getChannelData(0);
@@ -405,6 +422,7 @@ export function useVoice(options: VoiceOptions) {
       if (!playing.current.delete(src)) return;
       st.played += Math.min(buffer.duration, Math.max(0, ac.currentTime - at));
     };
+    return { at, dur: buffer.duration, pcm };
   }, []);
 
   const sendText = useCallback(
@@ -519,12 +537,25 @@ export function useVoice(options: VoiceOptions) {
           setErrorCount((n) => n + 1);
           return;
         case "response.output_audio.delta":
-        case "response.audio.delta":
+        case "response.audio.delta": {
           thinking.current = false;
           lastAudioAt.current = Date.now();
-          playPcm(evt.delta);
+          const r = playPcm(evt.delta);
+          const cue = evt.emote && typeof evt.emote.name === "string" ? { name: evt.emote.name, offset: 0 } : null;
+          if (r) emotes.current.audio(replyKey(evt), r.at, r.dur, r.pcm, cue);
+          else if (cue && ctx.current) emotes.current.audio(replyKey(evt), Math.max(playHead.current, ctx.current.currentTime), 0, null, cue); // a feeling after the last words
+          return;
+        }
+        case "response.output_audio.done":
+        case "response.audio.done":
+          emotes.current.audioDone(replyKey(evt));
+          return;
+        case "bridge.emote":
+          // A cue in the reply's transcript (Grok): placed on the reply's audio when its words play.
+          if (typeof evt.cue === "string") emotes.current.cue(replyKey(evt), evt.cue, typeof evt.at === "number" ? evt.at : 0);
           return;
         case "response.created": {
+          if (evt.response?.id) replyId.current = String(evt.response.id);
           responding.current = true;
           const a = announceRef.current;
           if (a) {
@@ -570,6 +601,7 @@ export function useVoice(options: VoiceOptions) {
           }
           return;
         case "response.done":
+          emotes.current.audioDone(replyKey({ response_id: evt.response?.id }));
           thinking.current = false;
           responding.current = false;
     toolsInFlight.current = 0;
@@ -586,6 +618,8 @@ export function useVoice(options: VoiceOptions) {
         const id = `grok-${evt.item_id || evt.response_id}`;
         if (t.endsWith(".delta") && evt.delta) caption({ id, who: "grok", text: evt.delta }, "append");
         else if (t.endsWith(".done") && evt.transcript) caption({ id, who: "grok", text: evt.transcript });
+        if (t.endsWith(".delta") && typeof evt.delta === "string") emotes.current.text(replyKey(evt), evt.delta);
+        else if (t.endsWith(".done")) emotes.current.textDone(replyKey(evt), typeof evt.transcript === "string" ? evt.transcript : undefined);
       }
     },
     [caption, playPcm, stopPlayback, sleep, sendText, armTapTimeout, hangUpWhenQuiet, watchAnnounce, answeredAnnounce],

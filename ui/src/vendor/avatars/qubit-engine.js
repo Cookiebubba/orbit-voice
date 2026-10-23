@@ -333,6 +333,7 @@
       this.keepAlive = !!opts.keepAlive;
       this.t = 0;
       this.levels = { input: 0, output: 0 };
+      this.talking = false; // his voice is playing (his eye is his mouth in any mood then)
       this.pointer = null;
       this.bounds = [0, this.W];
 
@@ -801,6 +802,10 @@
         const lv = this.levels.output;
         s.eh.to(M.eye.h * 0.55 + lv * 22);
         if (lv > 0.5 && !this.air && !this.task) s.stretch.to(1 + (lv - 0.5) * 0.05);
+      } else if (this.talking && this.eyeHold <= 0 && !this.task) {
+        // Talking in another mood (a feeling while he speaks): his eye is still his mouth, in that mood's shape.
+        const lv = this.levels.output;
+        s.eh.to(M.eye.h * 0.6 + lv * Math.min(20, 6 + M.eye.h * 1.2));
       }
       if (M.bpm) this._musicBeat(dt);
       if (M.nods) {
@@ -829,7 +834,7 @@
         const e = M.eye;
         if (!this.task && !M.listens && !M.speaks) {
           s.ew.to(e.w);
-          s.eh.to(e.h);
+          if (!this.talking) s.eh.to(e.h);
         }
         s.ex.to(e.x + lx * 17);
         s.ey.to(e.y + ly * 11);
