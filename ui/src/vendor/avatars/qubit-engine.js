@@ -162,10 +162,10 @@
     },
     curious: {
       label: 'Curious',
-      about: 'Orange. His eye turns tall and tilts, and his body tilts with it, toward whatever caught his interest.',
+      about: 'Orange. His eye turns tall and tilts, and his body tips toward whatever caught his interest for a moment, then settles level.',
       color: PALETTE.orange,
       eye: { w: 20, h: 24, x: 4, y: -16, rot: -10 },
-      tilt: -5,
+      tiltPulse: -5, // a moment, not a pose: held, a tilt balances him on one corner
       breathe: 0.012,
     },
     focused: {
@@ -437,9 +437,10 @@
       s.hover.to(m.hover || 0);
       s.tilt.to(m.tilt || 0);
       s.lean.to(m.lean || 0);
-      // A lean-in is a moment, not a pose: he leans in, then tips back down.
+      // A lean-in or a tilt is a moment, not a pose: he tips, then settles back level.
       this.leanBackAt = 0;
       if (m.leanPulse && !instant) (s.lean.to(m.leanPulse), (this.leanBackAt = this.t + 0.5));
+      if (m.tiltPulse && !instant) (s.tilt.to(m.tiltPulse), (this.leanBackAt = this.t + 0.6));
       if (m.stretch) s.stretch.kick(2.2);
       if (!m.brain) this._dropIdle(); // a mood with somewhere to be: idle life steps aside
       this.beatAt = 0;
@@ -743,7 +744,11 @@
 
     // ---------- the frame
     update(dt) {
-      if (this.leanBackAt && this.t >= this.leanBackAt) (this.sp.lean.to(this.M.lean || 0), (this.leanBackAt = 0));
+      if (this.leanBackAt && this.t >= this.leanBackAt) {
+        if (this.M.leanPulse) this.sp.lean.to(this.M.lean || 0);
+        if (this.M.tiltPulse) this.sp.tilt.to(this.M.tilt || 0);
+        this.leanBackAt = 0;
+      }
       this._dt = dt;
       this.t += dt;
       this.modeT += dt;
