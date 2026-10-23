@@ -48,3 +48,9 @@ export function matchPresenceCommand(text, { away = false } = {}) {
   if (away && LEAVE.some((re) => re.test(t))) return 'leave';
   return null;
 }
+
+/** "Orbit, stop everything" (and only that): every helper stops at once, with no model turn. */
+export function isStopEverything(text) {
+  const t = normalize(text);
+  return /^(stop|cancel|halt|kill) (everything|it all|all (of )?(the |my )?(helpers|tasks|of them|agents)|all)$/.test(t) && !/\b(don'?t|do not|never|not)\b/i.test(String(text));
+}

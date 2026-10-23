@@ -2,8 +2,13 @@
 // use these). Platform-neutral: everything native goes through src/platform/index.js.
 
 import path from 'node:path';
-import { getConfigDir, getSetting } from '../config.js';
-import { focus, focusBackend, scanWindow, switchToWindow } from '../platform/index.js';
+import { getBrainKey, getConfigDir, getSetting } from '../config.js';
+import { findClaude } from '../brain.js';
+import { engineFor } from '../engines/index.js';
+import { createAgents } from './agents.js';
+import { HANDS_TOOLS, createHandsServer } from './hands-mcp.js';
+import { describeAct, perform } from './hands.js';
+import { describeWindow, focus, focusBackend, scanWindow, switchToWindow } from '../platform/index.js';
 import { logInfo } from '../log.js';
 import { createFocusGuard } from './focus-guard.js';
 import { switchIsIntentional } from './switching.js';
@@ -128,3 +133,65 @@ export const focusGuard = createFocusGuard({
   },
 });
 focusGuard.start();
+
+// ---------------------------------------------------------------- background helpers (phase 8)
+
+let bridgeBase = '';
+/** The bridge's own address (helpers reach orbit-hands there). */
+export function setBridgeBase(url) {
+  bridgeBase = String(url || '');
+}
+
+/**
+ * Orbit's helpers (src/anywhere/agents.js): Claude Code on the user's own sign-in by default (the
+ * engine is a setting; Codex is listed for later), each reaching only its window through
+ * orbit-hands on this bridge.
+ */
+let engineOverride = null;
+/** Tests (and a future engine picker): run helpers on this engine instead ({ start(opts) }), or null. */
+export function useHelperEngine(engine) {
+  engineOverride = engine && typeof engine.start === 'function' ? engine : null;
+}
+export const agents = createAgents({
+  engine: { start: (opts) => (engineOverride || engineFor(getSetting('helperEngine'))).start(opts) },
+  engineOptions: () => {
+    const claude = findClaude(getSetting('brainClaudePath'));
+    return { claudePath: claude?.path || '', apiKey: getSetting('brainConnection') === 'api-key' ? getBrainKey() : '' };
+  },
+  mcpUrl: (id) => `${bridgeBase}/mcp/hands/${id}`,
+  tools: () => HANDS_TOOLS, // (late: hands-mcp.js imports this module)
+  contexts,
+  describe: (plan) => describeAct(plan),
+});
+
+/**
+ * The orbit-hands endpoint for a helper manager: one request (POST /mcp/hands/<id>, bearer token)
+ * resolves { status: 401 } (unknown helper or token), { status: 202 } (a notification) or
+ * { status: 200, body }.
+ */
+export function createHandsEndpoint(manager) {
+  const servers = new Map(); // helper id -> its orbit-hands handler
+  return async function handsEndpoint(id, token, msg) {
+    const h = manager.byToken(id, token);
+    if (!h) return { status: 401 };
+    let serve = servers.get(h.id);
+    if (!serve) {
+      serve = createHandsServer({
+        label: h.label,
+        win: h.win,
+        window: () => describeWindow(h.hwnd),
+        onProgress: (line) => manager.progress(h.id, line),
+        onTyped: (text) => manager.noteTyped(h.id, text),
+        requestApproval: (plan) => manager.requestApproval(h.id, plan),
+        waitApproval: (approvalId, ms) => manager.waitApproval(h.id, approvalId, ms, (plan) => perform(plan)),
+      });
+      servers.set(h.id, serve);
+      if (servers.size > 20) servers.delete(servers.keys().next().value);
+    }
+    if (Array.isArray(msg)) return { status: 200, body: { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Batches are not supported' } } };
+    const body = await serve(msg);
+    return body ? { status: 200, body } : { status: 202 };
+  };
+}
+/** Orbit's own (the bridge serves it). */
+export const handsEndpoint = createHandsEndpoint(agents);

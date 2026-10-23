@@ -64,6 +64,9 @@ export const DEFAULTS = Object.freeze({
   // ...and with this on, "look at this window" may show Claude a picture of that one window (through
   // the user's own Claude Code). Off: looking stays on this PC (its text, and Windows' own OCR).
   anywhereVision: false,
+  // Background helpers (Orbit anywhere): the engine they run on. 'claude-code' (the user's Claude
+  // sign-in) for now; 'codex' is planned.
+  helperEngine: 'claude-code',
 });
 
 export const AVATARS = Object.freeze(['buddy', 'qubit', 'none']);
@@ -152,6 +155,9 @@ function sanitize(input) {
         break;
       case 'brainConnection':
         if (val === 'claude-code' || val === 'api-key') out.brainConnection = val;
+        break;
+      case 'helperEngine':
+        if (val === 'claude-code' || val === 'codex') out.helperEngine = val;
         break;
       case 'voiceEngine':
         if (val === 'grok' || val === 'claude') out.voiceEngine = val;

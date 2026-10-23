@@ -118,6 +118,12 @@ export function createContexts({ focusStore, isHomeWindow = () => false, now = (
       activate(r.id, 'come_here');
       return { ok: true, id: r.id, made: r.made, already: !r.made && activeId === r.id };
     },
+    /** A context for this window without moving the conversation there (a helper starting work). */
+    attach(win) {
+      if (!win?.hwnd || win.kind === 'orbit' || win.kind === 'shell') return null;
+      const r = ensure(win);
+      return r?.id ? { id: r.id, made: r.made } : null;
+    },
     /** "Qubit, go away" / "go home": end this window's context (home stays). */
     leave(id = activeId) {
       if (id === HOME || !contexts.has(id)) return { ok: false, error: id === HOME ? 'home' : 'none' };
