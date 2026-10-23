@@ -127,10 +127,10 @@
     },
     listening: {
       label: 'Listening',
-      about: 'Heard "Hey Qubit". Turns cyan, opens his eye wider and leans in a little. His eye stretches taller as you get louder, so you can see him hearing you.',
+      about: 'Heard "Hey Qubit". Turns cyan, opens his eye wider and leans in for a moment, then settles back. His eye stretches taller as you get louder, so you can see him hearing you.',
       color: PALETTE.cyan,
       eye: { w: 27, h: 19, x: 0, y: -17, rot: 0 },
-      lean: 3,
+      leanPulse: 3, // he leans in for a moment as he starts listening, then tips back (never holds it)
       breathe: 0.01,
       listens: true,
     },
@@ -437,6 +437,9 @@
       s.hover.to(m.hover || 0);
       s.tilt.to(m.tilt || 0);
       s.lean.to(m.lean || 0);
+      // A lean-in is a moment, not a pose: he leans in, then tips back down.
+      this.leanBackAt = 0;
+      if (m.leanPulse && !instant) (s.lean.to(m.leanPulse), (this.leanBackAt = this.t + 0.5));
       if (m.stretch) s.stretch.kick(2.2);
       if (!m.brain) this._dropIdle(); // a mood with somewhere to be: idle life steps aside
       this.beatAt = 0;
@@ -740,6 +743,7 @@
 
     // ---------- the frame
     update(dt) {
+      if (this.leanBackAt && this.t >= this.leanBackAt) (this.sp.lean.to(this.M.lean || 0), (this.leanBackAt = 0));
       this._dt = dt;
       this.t += dt;
       this.modeT += dt;
