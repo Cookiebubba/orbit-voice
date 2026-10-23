@@ -1,4 +1,4 @@
-// "Hey Grok" wake word. The listening happens in a hidden helper page (wake.html / wake.ts),
+// "Hey Orbit" / "Hey Grok" wake word. The listening happens in a hidden helper page (wake.html / wake.ts),
 // mounted as an iframe only while `enabled`; removing the iframe stops the mic. This hook
 // returns that iframe (render it anywhere) and the current status.
 import { createElement, useEffect, useRef, useState } from "react";

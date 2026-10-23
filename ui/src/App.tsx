@@ -28,7 +28,7 @@ export default function App() {
   const app = useAppState({ onFinished: (f) => finishedRef.current(f), onWake: () => wakeRef.current() });
   const settings = app.config?.settings;
   const v = useVoice({ listenMode: settings?.listenMode ?? "always", halfDuplex: settings?.halfDuplex ?? false });
-  // "Hey Grok": offline, and only while Grok is off or asleep. Same effect as the hotkey.
+  // "Hey Orbit" / "Hey Grok": offline, and only while Grok is off or asleep. Same effect as the hotkey.
   const { status: wakeStatus, element: wakeFrame } = useWakeWord({
     enabled: !!settings?.wakeWord && !!app.config?.hasKey && (v.phase === "off" || v.asleep),
     onWake: () => v.hotkey(),
@@ -113,8 +113,8 @@ export default function App() {
   // question" mode) answering / holding a draft that waits for your yes.
   const waitingForYes = v.asleep && tap && !!v.draft;
   const asleepLabel = waitingForYes ? "Waiting for your answer" : tap ? "Answering" : "Going to sleep…";
-  const say = wakeOn ? "Say “Hey Grok” or press" : "Press";
-  const hint = !on ? (wakeOn ? `Say “Hey Grok” or press ${hotkey}` : `Tap the orb or press ${hotkey}`) : waitingForYes ? `${say} ${hotkey} to answer` : null;
+  const say = wakeOn ? "Say “Hey Orbit” or press" : "Press";
+  const hint = !on ? (wakeOn ? `Say “Hey Orbit” or press ${hotkey}` : `Tap the orb or press ${hotkey}`) : waitingForYes ? `${say} ${hotkey} to answer` : null;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-black text-white select-none">

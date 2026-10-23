@@ -1,5 +1,5 @@
 // Runs inside the hidden wake-word page (wake.html), loaded in an iframe only while the wake word
-// is switched on and Grok is off or asleep. Recognizes "Hey Grok" fully offline with a small
+// is switched on and Grok is off or asleep. Recognizes "Hey Orbit" and "Hey Grok" fully offline with a small
 // Vosk model (no audio leaves the PC, no cost) and posts { type: "wake" } to the main window.
 //
 // It lives in its own page because the Vosk recognizer needs `eval` and WebAssembly, which the
@@ -9,11 +9,25 @@
 // ("hey rock", "hey brock", "okay rock"...) and give it decoys ("hey brooke", "hey rob"...) so
 // similar-sounding names land on those instead. Tested on TTS clips: 10/10 "Hey Grok" across 9
 // voices, 12/13 sound-alikes ignored (the miss: someone actually saying "Hey Brock").
+//
+// "Orbit" is in the vocabulary, so it needs no stand-ins, only decoys for what sounds like it
+// ("hey rabbit", "hey hobbit", "hey army", "in orbit"...). Tested on 160 TTS clips (14 voices):
+// 46/46 "Hey Orbit" woke, "Hey Grok" went from 10/14 to 11/14, and 0 of 110 sound-alikes or
+// sentences with "orbit" in them woke it. ("Qubit" is in the vocabulary too, but the small model
+// hears "Hey Qubit" as "hey cupid" most of the time, so it isn't a wake word.)
 import { createModel } from "vosk-browser";
 
 const MODEL_FILE = "vosk-model-small-en-us-0.15.tar.gz";
-const GRAMMAR = ["hey rock", "hey brock", "okay rock", "okay brock", "hey brooke", "hey brook", "hey rob", "hey bob", "hey rocky", "hey robert", "[unk]"];
-const WAKE = /\b(hey|okay) (rock|brock)\b/;
+const GRAMMAR = [
+  "hey orbit", "okay orbit",
+  "hey rock", "hey brock", "okay rock", "okay brock",
+  // decoys
+  "hey brooke", "hey brook", "hey rob", "hey bob", "hey rocky", "hey robert",
+  "hey rabbit", "hey hobbit", "in orbit", "the orbit", "an orbit", "hey order", "hey abbott",
+  "hey army", "hey robbie", "hey ruby", "hey arbor", "hey harbor", "hey barbie",
+  "[unk]",
+];
+const WAKE = /\b(hey|okay) (orbit|rock|brock)\b/;
 const DEBOUNCE_MS = 2000;
 
 const tell = (msg: { type: "status"; status: string; detail?: string } | { type: "wake" }) =>

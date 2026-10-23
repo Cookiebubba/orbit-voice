@@ -54,8 +54,8 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
             />
             <p className="mt-2 text-[12.5px] leading-relaxed text-white/50">
               {s.listenMode === "always"
-                ? `${name} hears you until you say "go to sleep" or press ${s.hotkeyLabel}. Then it hangs up${claude ? "" : ", so nothing is billed,"} until you press ${s.hotkeyLabel}${s.wakeWord ? ' or say “Hey Grok”' : ""} again.`
-                : `Press ${s.hotkeyLabel}${s.wakeWord ? ' or say “Hey Grok”' : ""}, ask one question, and ${name} hangs up after answering (it waits up to a minute if a prompt needs your yes). Nothing in the background gets picked up.`}
+                ? `${name} hears you until you say "go to sleep" or press ${s.hotkeyLabel}. Then it hangs up${claude ? "" : ", so nothing is billed,"} until you press ${s.hotkeyLabel}${s.wakeWord ? ' or say “Hey Orbit”' : ""} again.`
+                : `Press ${s.hotkeyLabel}${s.wakeWord ? ' or say “Hey Orbit”' : ""}, ask one question, and ${name} hangs up after answering (it waits up to a minute if a prompt needs your yes). Nothing in the background gets picked up.`}
             </p>
             <Toggle
               className="mt-4"
@@ -68,7 +68,7 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
               className="mt-4"
               checked={s.wakeWord}
               onChange={(wakeWord) => update({ wakeWord })}
-              label="Wake word: say “Hey Grok”"
+              label="Wake word: say “Hey Orbit” (or “Hey Grok”)"
               hint={`Starts ${name} hands-free after it has gone to sleep. Recognized entirely on this PC by a small offline speech model: no audio leaves your computer and it costs nothing. Each wake starts a fresh conversation.`}
             />
           </Section>
