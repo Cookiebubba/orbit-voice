@@ -9,10 +9,12 @@
 // (so no inherited "bypass permissions" and no connectors), no Bash or edit tools, secret files
 // denied, nothing saved to their session history. Prompts go in on stdin, never as arguments.
 
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { childEnv, claudeNames, desktopClaudeCandidates, groupOptions, killTree as killProcessTree, searchDirs } from './platform.js';
 
 export const BRAIN_MODELS = Object.freeze({
   haiku: { label: 'Haiku', timeoutMs: 60_000, budgetUsd: 0.5 },
@@ -75,32 +77,32 @@ You can look at the user's project with read-only tools (Read, Glob, Grep); you 
 /**
  * Finds a Claude Code executable: the configured path, then `claude` on PATH (resolving npm's
  * claude.cmd shim to the real claude.exe), then the copy bundled with the Claude desktop app.
- * Returns { path, source } or null.
+ * On macOS "PATH" also means the login shell's PATH and the usual install folders (~/.local/bin,
+ * ~/.claude/local, Homebrew, /usr/local/bin, ~/.npm-global/bin), since an app opened from Finder
+ * doesn't inherit the terminal's PATH (see src/platform.js). Returns { path, source } or null.
+ * `opts` ({ platform, homedir, shellPath }) is for tests.
  */
-export function findClaude(configured = '', env = process.env) {
-  if (configured) return isClaudeFile(configured) && isLocalAbsolute(configured) && fs.existsSync(configured) ? { path: configured, source: 'settings' } : null;
-  const names = process.platform === 'win32' ? ['claude.exe', 'claude.cmd'] : ['claude'];
-  for (const dir of String(env.PATH || env.Path || '').split(path.delimiter).filter(Boolean)) {
+export function findClaude(configured = '', env = process.env, opts = {}) {
+  const platform = opts.platform ?? process.platform;
+  const homedir = opts.homedir ?? os.homedir();
+  const exists = opts.exists ?? fs.existsSync;
+  const p = platform === 'win32' ? path.win32 : path.posix;
+  if (configured) return isClaudeFile(configured, platform) && isLocalAbsolute(configured) && exists(configured) ? { path: configured, source: 'settings' } : null;
+  const names = claudeNames(platform);
+  for (const dir of searchDirs({ platform, env, homedir, shellPath: opts.shellPath })) {
     for (const name of names) {
-      const p = path.join(dir, name);
-      if (!fs.existsSync(p)) continue;
+      const file = p.join(dir, name);
+      if (!exists(file)) continue;
       if (name === 'claude.cmd') {
-        const target = shimTarget(p);
+        const target = shimTarget(file);
         if (target) return { path: target, source: 'path' };
         continue;
       }
-      return { path: p, source: 'path' };
+      return { path: file, source: 'path' };
     }
   }
-  if (process.platform === 'win32' && env.APPDATA) {
-    const root = path.join(env.APPDATA, 'Claude', 'claude-code');
-    const versions = safeReaddir(root).filter((v) => /^\d+\.\d+\.\d+$/.test(v)).sort(compareVersions).reverse();
-    for (const v of versions) {
-      for (const sub of ['', ...safeReaddir(path.join(root, v))]) {
-        const p = path.join(root, v, sub, 'claude.exe');
-        if (fs.existsSync(p)) return { path: p, source: 'claude-desktop' };
-      }
-    }
+  for (const file of desktopClaudeCandidates({ platform, env, homedir })) {
+    if (exists(file)) return { path: file, source: 'claude-desktop' };
   }
   return null;
 }
@@ -129,13 +131,6 @@ function shimTarget(cmdFile) {
     return null;
   }
 }
-
-const safeReaddir = (d) => { try { return fs.readdirSync(d); } catch { return []; } };
-const compareVersions = (a, b) => {
-  const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
-  for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
-  return 0;
-};
 
 /** Command-line arguments for one run (fixed values only; the question goes in on stdin). */
 export function brainArgs({ model, explore }) {
@@ -265,7 +260,7 @@ export function askBrain({ question, model = 'sonnet', explore = false, cwd, con
     if (explore && !(cwd && fs.existsSync(cwd))) explore = false;
 
     // Claude login by default; an API key only when the user chose that connection.
-    const env = { ...process.env };
+    const env = childEnv(process.env);
     delete env.ANTHROPIC_API_KEY;
     delete env.ELECTRON_RUN_AS_NODE;
     if (apiKey) env.ANTHROPIC_API_KEY = apiKey;
@@ -284,7 +279,7 @@ export function askBrain({ question, model = 'sonnet', explore = false, cwd, con
 
     let child;
     try {
-      child = spawnImpl(exe, brainArgs({ model, explore }), { cwd: explore ? cwd : os.tmpdir(), env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      child = spawnImpl(exe, brainArgs({ model, explore }), { cwd: explore ? cwd : os.tmpdir(), env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], ...groupOptions() });
     } catch (e) {
       return finish({ ok: false, error: `Couldn't start Claude Code: ${e.message}` });
     }
@@ -401,7 +396,7 @@ export function searchWeb({ query, claudePath, apiKey, signal, spawnImpl = spawn
   return new Promise((resolve) => {
     const exe = claudePath || findClaude()?.path;
     if (!exe) return resolve({ ok: false, error: 'Claude Code is not installed (or not found), so web search is unavailable.' });
-    const env = { ...process.env };
+    const env = childEnv(process.env);
     delete env.ANTHROPIC_API_KEY;
     delete env.ELECTRON_RUN_AS_NODE;
     if (apiKey) env.ANTHROPIC_API_KEY = apiKey;
@@ -418,7 +413,7 @@ export function searchWeb({ query, claudePath, apiKey, signal, spawnImpl = spawn
     };
     let child;
     try {
-      child = spawnImpl(exe, searchArgs(), { cwd: os.tmpdir(), env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      child = spawnImpl(exe, searchArgs(), { cwd: os.tmpdir(), env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], ...groupOptions() });
     } catch (e) {
       return finish({ ok: false, error: `Couldn't start Claude Code: ${e.message}` });
     }
@@ -460,7 +455,7 @@ export function isSignInProblem(text) {
 
 /** The environment for running Claude Code on the user's own Claude login (no API key). */
 function loginEnv() {
-  const env = { ...process.env };
+  const env = childEnv(process.env);
   delete env.ANTHROPIC_API_KEY;
   delete env.ELECTRON_RUN_AS_NODE;
   return env;
@@ -483,7 +478,7 @@ export function claudeAuthStatus({ claudePath, spawnImpl = spawn, timeoutMs = 15
     };
     let child;
     try {
-      child = spawnImpl(claudePath, ['auth', 'status', '--json'], { cwd: os.tmpdir(), env: loginEnv(), windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      child = spawnImpl(claudePath, ['auth', 'status', '--json'], { cwd: os.tmpdir(), env: loginEnv(), windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'], ...groupOptions() });
     } catch (e) {
       return finish({ ok: false, error: `Couldn't start Claude Code: ${e.message}` });
     }
@@ -509,13 +504,21 @@ export function claudeAuthStatus({ claudePath, spawnImpl = spawn, timeoutMs = 15
  * user sees it and can finish in the browser it opens. No shell is involved: the executable is
  * the one findClaude vouched for, with fixed arguments. Resolves { ok } once it has started.
  */
-export function openClaudeSignIn({ claudePath, spawnImpl = spawn } = {}) {
+export function openClaudeSignIn({ claudePath, spawnImpl = spawn, platform = process.platform } = {}) {
   return new Promise((resolve) => {
     if (!claudePath) return resolve({ ok: false, error: 'Claude Code was not found.' });
     let child;
     try {
-      // detached on Windows = its own console window, which closes when sign-in finishes.
-      child = spawnImpl(claudePath, ['auth', 'login'], { cwd: os.homedir(), env: loginEnv(), detached: true, windowsHide: false, stdio: 'ignore' });
+      if (platform === 'darwin') {
+        // A Mac app has no console of its own: a one-line .command file opens in Terminal (no
+        // Apple Events needed) and runs the sign-in there. The path is single-quoted for the shell.
+        const file = path.join(os.tmpdir(), `orbit-claude-sign-in-${crypto.randomBytes(6).toString('hex')}.command`);
+        fs.writeFileSync(file, signInScript(file, claudePath), { mode: 0o700 });
+        child = spawnImpl('/usr/bin/open', [file], { stdio: 'ignore' });
+      } else {
+        // detached on Windows = its own console window, which closes when sign-in finishes.
+        child = spawnImpl(claudePath, ['auth', 'login'], { cwd: os.homedir(), env: loginEnv(), detached: true, windowsHide: false, stdio: 'ignore' });
+      }
     } catch (e) {
       return resolve({ ok: false, error: `Couldn't open the Claude Code sign-in: ${e.message}` });
     }
@@ -525,21 +528,17 @@ export function openClaudeSignIn({ claudePath, spawnImpl = spawn } = {}) {
   });
 }
 
-// Runs still going when Orbit exits are ended too (on Windows a child outlives its parent).
+/** One argument for /bin/sh, single-quoted. */
+export const shellQuote = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
+
+/** The Mac sign-in's .command file: removes itself, then runs `claude auth login` in Terminal. */
+export const signInScript = (file, claudePath) => `#!/bin/sh\nrm -f ${shellQuote(file)}\nexec ${shellQuote(claudePath)} auth login\n`;
+
+// Runs still going when Orbit exits are ended too (on Windows a child outlives its parent; on
+// macOS each run is its own process group, see src/platform.js).
 const live = new Set();
-const TASKKILL = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe');
 /** End the run and anything it started (Claude Code runs ripgrep as child processes). */
-function killTree(child, sync = false) {
-  if (process.platform === 'win32' && child.pid) {
-    const args = ['/pid', String(child.pid), '/T', '/F'];
-    try {
-      if (sync) spawnSync(TASKKILL, args, { windowsHide: true, timeout: 5000 });
-      else spawn(TASKKILL, args, { windowsHide: true, stdio: 'ignore' }).on('error', () => {});
-      return;
-    } catch { /* fall back to a plain kill */ }
-  }
-  try { child.kill(); } catch { /* gone */ }
-}
+const killTree = (child, sync = false) => killProcessTree(child, { sync });
 process.on('exit', () => { for (const c of live) killTree(c, true); });
 
 function describeFailure(text, code) {

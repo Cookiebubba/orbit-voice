@@ -26,11 +26,12 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { isSignInProblem } from './brain.js';
 import { createCueStream } from './emote-cues.js';
 import { modelPaths } from './voice-models.js';
+import { childEnv, groupOptions, killTree } from './platform.js';
 
 const require = createRequire(import.meta.url);
 
@@ -221,11 +222,29 @@ function floatToPcm16(samples) {
 
 let speechJob = null; // { root, promise }
 
+/**
+ * sherpa-onnx's native addon for this platform (sherpa-onnx-win-x64, -darwin-arm64 or -darwin-x64,
+ * unpacked from app.asar; its dylibs are found through @loader_path, so no DYLD_* variables are
+ * needed). If it can't load, say why in plain words instead of its own "set DYLD_LIBRARY_PATH" advice.
+ */
+function loadSherpa(platform = process.platform, arch = process.arch) {
+  try {
+    return require('sherpa-onnx-node');
+  } catch (e) {
+    const why = String(e?.message || e).split('\n')[0].slice(0, 200);
+    if (platform === 'darwin') {
+      const needs = arch === 'arm64' ? 'macOS 14 or later' : 'macOS 15 or later on an Intel Mac';
+      throw new Error(`The on-device speech engine couldn't load on this Mac (it needs ${needs}): ${why}`);
+    }
+    throw new Error(`The on-device speech engine couldn't load: ${why}`);
+  }
+}
+
 /** Loads the speech models once; later calls share them. Rejects if they can't be loaded. */
 export function loadSpeech(root, { threads = CLAUDE_VOICE.threads } = {}) {
   if (speechJob && speechJob.root === root) return speechJob.promise;
   const promise = (async () => {
-    const sherpa = require('sherpa-onnx-node');
+    const sherpa = loadSherpa();
     const p = modelPaths(root);
     const [recognizer, tts] = await Promise.all([
       sherpa.OfflineRecognizer.createAsync({
@@ -259,7 +278,6 @@ export function loadSpeech(root, { threads = CLAUDE_VOICE.threads } = {}) {
 
 // ---------------------------------------------------------------- Claude Code, kept open
 
-const TASKKILL = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe');
 const liveProcs = new Set();
 process.on('exit', () => {
   for (const p of liveProcs) p.kill(true);
@@ -283,7 +301,8 @@ export class ClaudeProc {
     fs.writeFileSync(this.promptFile, prompt, { mode: 0o600 });
     const args = ['-p', '--model', model, '--effort', effort, '--input-format', 'stream-json', '--output-format', 'stream-json', '--include-partial-messages', '--verbose', '--tools', '', '--strict-mcp-config', '--setting-sources', '', '--system-prompt-file', this.promptFile, '--no-session-persistence'];
     // The user's own Claude login (never an API key from the environment), as the second brain does.
-    const env = { ...process.env };
+    // (On macOS the PATH is widened to the login shell's: an app opened from Finder lacks it.)
+    const env = childEnv(process.env);
     delete env.ANTHROPIC_API_KEY;
     delete env.ELECTRON_RUN_AS_NODE;
     // Without this, each answer's end comes 0.7–2 s after its last word (background requests),
@@ -294,7 +313,7 @@ export class ClaudeProc {
     try {
       fs.mkdirSync(cwd, { recursive: true });
     } catch {}
-    this.child = spawnImpl(exe, args, { cwd: fs.existsSync(cwd) ? cwd : os.tmpdir(), env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    this.child = spawnImpl(exe, args, { cwd: fs.existsSync(cwd) ? cwd : os.tmpdir(), env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], ...groupOptions() });
     liveProcs.add(this);
     let buf = '';
     this.child.stdout?.on('data', (d) => {
@@ -371,17 +390,8 @@ export class ClaudeProc {
     try {
       this.child.stdin?.end();
     } catch {}
-    if (process.platform === 'win32' && this.child.pid) {
-      const args = ['/pid', String(this.child.pid), '/T', '/F'];
-      try {
-        if (sync) spawnSync(TASKKILL, args, { windowsHide: true, timeout: 5000 });
-        else spawn(TASKKILL, args, { windowsHide: true, stdio: 'ignore' }).on('error', () => {});
-        return;
-      } catch {}
-    }
-    try {
-      this.child.kill();
-    } catch {}
+    // The whole tree: taskkill /T on Windows, the process group elsewhere (src/platform.js).
+    killTree(this.child, { sync });
   }
 }
 

@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { tarPath } from './platform.js';
 
 const BASE = 'https://github.com/k2-fsa/sherpa-onnx/releases/download';
 
@@ -53,7 +54,8 @@ export function modelsReady(root) {
   }
 }
 
-const TAR = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
+// Windows' own tar.exe by full path (a tar planted on PATH is never used); /usr/bin/tar on macOS.
+const TAR = tarPath();
 
 async function sha256File(file) {
   const h = crypto.createHash('sha256');

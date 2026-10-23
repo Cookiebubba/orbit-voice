@@ -32,6 +32,7 @@ import {
   updateSettings,
 } from './config.js';
 import { askBrain, claudeAuthStatus, findClaude, openClaudeSignIn, speakable } from './brain.js';
+import { hotkeyLabel as platformHotkeyLabel, primeLoginShellPath } from './platform.js';
 import { createClaudeRealtime, keepSpare, loadSpeech, stopClaudeVoice, systemPrompt } from './claude-voice.js';
 import { downloadModels, downloadStatus, modelsReady, VOICE_MODELS_MB } from './voice-models.js';
 import { setClipboardWriter } from './clipboard.js';
@@ -98,7 +99,8 @@ export function stopBackgroundWork() {
   stopClaudeVoice();
 }
 
-export const hotkeyLabel = (accel) => accel.replace(/CommandOrControl|Control/g, 'Ctrl').replace(/Super|Meta/g, 'Win');
+/** "Ctrl+Alt+G" on Windows, "⌃⌥G" on a Mac (see src/platform.js). */
+export const hotkeyLabel = (accel) => platformHotkeyLabel(accel);
 const wakeLabel = () => hotkeyLabel(getSetting('wakeHotkey'));
 
 const FALLBACK_VOICES = [
@@ -287,7 +289,9 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       `end of turn ${s(m.heardAt, m.endedAt)}, speech to text ${s(m.textAt, m.heardAt)}, Claude first word ${s(m.firstTokenAt, m.textAt)}, first audio ${s(m.firstAudioAt, m.firstTokenAt)}${m.fillerAt ? `, filler at ${s(m.fillerAt, m.endedAt)}` : ''}${m.tool ? `, tool ${m.tool}` : ''}, ${m.status}`,
     );
   };
-  setImmediate(prewarmClaudeVoice);
+  // On macOS, ask the login shell for its PATH in the background first (an app opened from Finder
+  // doesn't have it, and Claude Code is usually found through it). Only its length is logged.
+  primeLoginShellPath({ platform: process.platform, env: process.env, log: (m) => logInfo('app', m) }).finally(() => setImmediate(prewarmClaudeVoice));
 
   const allowedHosts = new Set([`${HOST}:${port}`, `localhost:${port}`]);
   const allowedOrigins = new Set([...allowedHosts].map((h) => `http://${h}`));

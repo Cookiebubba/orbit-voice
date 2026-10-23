@@ -89,11 +89,12 @@ test('finds claude.exe behind npm\x27s claude.cmd shim, or the copy inside the C
     fs.writeFileSync(p, '');
   }
   if (process.platform === 'win32') {
-    const found = findClaude('', { PATH: '', APPDATA: appData });
+    const found = findClaude('', { PATH: '', APPDATA: appData, LOCALAPPDATA: tmp('orbit-local-') });
     assert.equal(found.source, 'claude-desktop');
     assert.match(found.path, /2\.1\.10[\\/]abc123[\\/]claude\.exe$/, 'newest version wins (numeric, not alphabetical)');
   }
-  assert.equal(findClaude('', { PATH: '', APPDATA: tmp('orbit-empty-') }), null);
+  // (LOCALAPPDATA too: the Microsoft Store copy of Claude lives under it, and this machine may have one.)
+  assert.equal(findClaude('', { PATH: '', APPDATA: tmp('orbit-empty-'), LOCALAPPDATA: tmp('orbit-empty-') }, { homedir: tmp('orbit-home-') }), null);
 });
 
 test('a configured path must exist and be named claude', () => {

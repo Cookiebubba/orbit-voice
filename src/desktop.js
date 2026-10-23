@@ -4,6 +4,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logError, logWarn } from './log.js';
+import { desktopUnsupportedMessage } from './platform.js';
 
 // In the installed app this file is inside app.asar, which PowerShell can't read; the script
 // itself is shipped unpacked next to it.
@@ -40,7 +41,7 @@ function runPs(mode, args = [], timeoutMs = 20000) {
   args = [...args, ...hintArgs()];
   if (driver) return Promise.resolve().then(() => driver.run(mode, args)).catch((e) => ({ ok: false, error: 'script_failed', message: String(e?.message || e).slice(0, 200) }));
   if (process.platform !== 'win32') {
-    return Promise.resolve({ ok: false, error: 'unsupported_platform', message: 'Controlling the Claude app is only implemented for Windows so far.' });
+    return Promise.resolve({ ok: false, error: 'unsupported_platform', message: desktopUnsupportedMessage(process.platform) });
   }
   return new Promise((resolve) => {
     execFile(

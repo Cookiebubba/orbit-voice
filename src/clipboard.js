@@ -1,6 +1,6 @@
-// Writing to the Windows clipboard. The desktop app plugs in Electron's clipboard; in browser
-// mode we fall back to PowerShell's Set-Clipboard, with the text passed on stdin (never as an
-// argument, so nothing in it can be interpreted as a command).
+// Writing to the clipboard. The desktop app plugs in Electron's clipboard; in browser mode we fall
+// back to PowerShell's Set-Clipboard on Windows or /usr/bin/pbcopy on macOS, with the text passed on
+// stdin (never as an argument, so nothing in it can be interpreted as a command).
 
 import { execFile } from 'node:child_process';
 import path from 'node:path';
@@ -23,7 +23,15 @@ export async function writeClipboard(text) {
     writer(value);
     return { ok: true, chars: value.length };
   }
-  if (process.platform !== 'win32') return { ok: false, error: 'Clipboard is only supported on Windows in browser mode.' };
+  if (process.platform === 'darwin') {
+    return new Promise((resolve) => {
+      const child = execFile('/usr/bin/pbcopy', [], { timeout: 10000, env: { ...process.env, LANG: 'en_US.UTF-8' } }, (err) =>
+        resolve(err ? { ok: false, error: 'Could not write to the clipboard.' } : { ok: true, chars: value.length }),
+      );
+      child.stdin.end(value, 'utf8');
+    });
+  }
+  if (process.platform !== 'win32') return { ok: false, error: 'Clipboard is only supported on Windows and macOS in browser mode.' };
   return new Promise((resolve) => {
     const child = execFile(
       POWERSHELL,

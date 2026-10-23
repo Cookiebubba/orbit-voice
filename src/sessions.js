@@ -5,29 +5,23 @@
 // and the transcript itself is the regular Claude Code log under
 //   ~/.claude/projects/<encoded-cwd>/<cliSessionId>.jsonl
 //
-// <Claude app data> is %APPDATA%\Claude for the regular installer, but the Microsoft Store
-// version keeps it in %LOCALAPPDATA%\Packages\Claude_<id>\LocalCache\Roaming\Claude.
-// Only processes started by Claude itself see that redirected; everything else (like this
-// app) has to look there explicitly.
+// <Claude app data> is %APPDATA%\Claude for the regular installer on Windows, but the Microsoft
+// Store version keeps it in %LOCALAPPDATA%\Packages\Claude_<id>\LocalCache\Roaming\Claude (only
+// processes started by Claude itself see that redirected; everything else, like this app, has to
+// look there explicitly). On macOS it is ~/Library/Application Support/Claude. See src/platform.js.
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { projectsDir, sessionRootCandidates } from './platform.js';
 
-const APPDATA = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
-const LOCALAPPDATA = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
+const PROJECTS_DIR = projectsDir();
 
-/** Every claude-code-sessions folder that exists on this machine. */
-export function desktopSessionRoots() {
-  const roots = [path.join(APPDATA, 'Claude', 'claude-code-sessions')];
-  const packages = path.join(LOCALAPPDATA, 'Packages');
-  for (const d of listDir(packages)) {
-    if (d.isDirectory() && /^Claude_/i.test(d.name)) {
-      roots.push(path.join(packages, d.name, 'LocalCache', 'Roaming', 'Claude', 'claude-code-sessions'));
-    }
-  }
-  return roots.filter((r) => fs.existsSync(r));
+/**
+ * Every claude-code-sessions folder that exists on this machine. `opts` ({ platform, env,
+ * homedir }) is for tests; it defaults to this machine.
+ */
+export function desktopSessionRoots(opts) {
+  return sessionRootCandidates(opts).filter((r) => fs.existsSync(r));
 }
 
 const CLI_ID = /^[A-Za-z0-9_-]{1,100}$/;
