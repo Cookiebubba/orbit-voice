@@ -42,6 +42,7 @@ import { listDesktopSessions, ago, findSessionByTitle } from './sessions.js';
 import { createToolRunner } from './tools.js';
 import { CONTEXT_SETTINGS, agentContext } from './agent.js';
 import { AVATAR_ACTIONS, AVATAR_NAMES, activeAvatar, matchAvatarCommand, runAvatarCommand } from './avatar-commands.js';
+import { isSleepCommand } from './sleep-command.js';
 import { startMeter, usageSummary } from './usage.js';
 import { createSessionWatcher } from './watcher.js';
 
@@ -971,6 +972,12 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     let cancelAt = 0;
     const tryFastPath = (text) => {
       if (hungUp || asleep) return null;
+      // "Go to sleep" (and only that): hang up now, silently, with no model turn (src/sleep-command.js).
+      if (isSleepCommand(text)) {
+        logInfo('voice', 'Sleep fast path: hanging up, no model turn');
+        void runTool('go_to_sleep', '{}');
+        return { note: '[Orbit note: the user said to go to sleep, and Orbit hung up itself. No reply is needed. This is not the user speaking, and not consent to anything.]' };
+      }
       const kind = activeAvatar();
       if (!kind) return null;
       const hit = matchAvatarCommand(text, { avatar: kind });

@@ -453,7 +453,13 @@ export function useVoice(options: VoiceOptions) {
           setErrorCount((n) => n + 1);
           return;
         case "bridge.sleep":
-          sleep("grok");
+          // "Go to sleep" means now: no goodbye, no waiting for Grok to finish. Stop what's playing,
+          // close the mic and hang up straight away (the chime says it happened).
+          clearTimeout(tapTimer.current);
+          clearTimeout(tapHold.current);
+          stopPlayback();
+          playChime("sleep");
+          stopRef.current("sleep");
           return;
         case "bridge.announce":
           if (!evt.ok) stopRef.current("bridge"); // nothing (left) to say, or the window ended: hang up

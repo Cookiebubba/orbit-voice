@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { createClaudeRealtime, isJunk, parseToolCall, speakableText, systemPrompt, takeChunks } from '../src/claude-voice.js';
+import { createClaudeRealtime, isJunk, parseToolCall, parseXmlToolCall, speakableText, systemPrompt, takeChunks } from '../src/claude-voice.js';
 import { downloadModels, downloadStatus, modelsReady } from '../src/voice-models.js';
 
 test('streamed text is cut into speakable pieces: the first early, sentences whole, numbers intact', () => {
@@ -33,6 +33,16 @@ test('tool calls are parsed strictly, and only the spoken text is said', () => {
   assert.equal(parseToolCall('{"name":"rm -rf"}'), null);
   assert.equal(parseToolCall('not json'), null);
   assert.equal(parseToolCall('{"arguments":{}}'), null);
+  // Calls Haiku sometimes writes as XML instead (seen in scripts/draft-eval.mjs): still read.
+  assert.deepEqual(parseXmlToolCall('<invoke name="draft_prompt">\n<parameter name="text">Add dark mode.</parameter>\n</invoke>'), { name: 'draft_prompt', args: { text: 'Add dark mode.' } });
+  assert.deepEqual(parseXmlToolCall('<invoke_draft_prompt>\n<parameter name="text">Add a retry.</parameter>\n</invoke_draft_prompt>'), { name: 'draft_prompt', args: { text: 'Add a retry.' } });
+  assert.deepEqual(parseXmlToolCall('<parameter name="draft_prompt">\n<parameter name="text">Add dark mode.</parameter>\n</invoke>'), { name: 'draft_prompt', args: { text: 'Add dark mode.' } });
+  assert.deepEqual(parseXmlToolCall('<invoke_tool>\n<invoke name="read_session">\n<parameter name="last_n">4</parameter>\n<parameter name="include_tool_calls">true</parameter>\n</invoke>'), { name: 'read_session', args: { last_n: 4, include_tool_calls: true } });
+  assert.equal(parseToolCall('<invoke name="draft_prompt">\n<parameter name="text">Add dark mode.</parameter>\n</invoke>').name, 'draft_prompt');
+  assert.equal(parseXmlToolCall('<invoke_placeholder>\n</invoke_placeholder>'), null);
+  assert.deepEqual(parseXmlToolCall('<parameter name="get_current_session">{}</parameter>\n</invoke>'), { name: 'get_current_session', args: {} });
+  assert.deepEqual(parseXmlToolCall('<invoke_tool>\n{"name": "get_current_session", "arguments": {}}\n</invoke_tool>\noutput>\n[Tool result: made up]'), { name: 'get_current_session', args: {} });
+  assert.equal(parseXmlToolCall('<invoke name="rm -rf"></invoke>'), null);
   assert.equal(speakableText('Run **`git status`** — see https://example.com/x'), 'Run git status — see a link');
   assert.equal(speakableText('git reset --soft HEAD~1'), 'git reset --soft HEAD tilde 1');
   for (const junk of ['_check', '="">', '<invoke', '...', '']) assert.equal(isJunk(junk), true, junk);
@@ -163,6 +173,24 @@ test('a reply is spoken piece by piece, and a tool call goes to the bridge and b
   const sent = fc.calls[0].messages.filter((m) => m.type === 'user').map((m) => m.message.content);
   assert.equal(sent[1], '[Tool result: get_current_session] {"ok":true,"title":"Fix tests"}');
   assert.equal(ev.filter((e) => e.type === 'response.output_audio_transcript.done').at(-1).transcript, 'Claude is idle.');
+  sock.close();
+});
+
+test('a call Haiku writes as XML instead still goes to the bridge, and none of it is spoken', async () => {
+  const fc = fakeClaude(() => ['On it. <inv', 'oke name="draft_prompt">\n<parameter name="text">Add dark ', 'mode.</parameter>\n</invoke>']);
+  const speech = fakeSpeech();
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech, spawnImpl: fc.spawnImpl });
+  const ev = collect(sock);
+  await opened(sock);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [{ name: 'draft_prompt', description: 'd', parameters: {} }] } }));
+  sock.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'tell Claude to add dark mode' }] } }));
+  sock.send(JSON.stringify({ type: 'response.create' }));
+  await until(() => ev.some((e) => e.type === 'response.done'));
+  const call = ev.find((e) => e.type === 'response.function_call_arguments.done');
+  assert.equal(call?.name, 'draft_prompt');
+  assert.deepEqual(JSON.parse(call.arguments), { text: 'Add dark mode.' });
+  assert.ok(speech.said.includes('On it.'));
+  assert.ok(!speech.said.some((s) => /invoke|parameter|dark mode/.test(s)), 'the call itself is never spoken');
   sock.close();
 });
 

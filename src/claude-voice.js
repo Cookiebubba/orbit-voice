@@ -143,8 +143,48 @@ export const isJunk = (piece) => {
   return !s || (/^[^\p{L}\p{N}]/u.test(s) && !/\s/.test(s)) || !/[\p{L}\p{N}]/u.test(s);
 };
 
-/** Pulls a <tool>{...}</tool> call out of what Claude wrote: { name, args } or null. */
+// Haiku now and then writes its call as XML instead of the <tool>{json}</tool> line it was asked for
+// (about 1 in 20 in scripts/draft-eval.mjs): <invoke name="draft_prompt"><parameter name="text">…,
+// <invoke_draft_prompt>…, or <parameter name="draft_prompt"> standing in for the name. The call is
+// still meant, so it is read rather than lost (and never spoken).
+const XML_CALL = /<(?:invoke|parameter\b|function_calls)/;
+const NAME_OK = /^[a-z_][a-z0-9_]{0,63}$/i;
+
+/** A call written as XML: { name, args } or null. */
+export function parseXmlToolCall(text) {
+  const s = String(text);
+  // <invoke_tool>{"name": ..., "arguments": ...}</invoke_tool>: the JSON line in another wrapper.
+  const json = s.match(/^<invoke_tool>\s*(\{[\s\S]*?\})\s*<\/invoke_tool>/);
+  if (json) {
+    try {
+      const j = JSON.parse(json[1]);
+      if (j && typeof j.name === 'string' && NAME_OK.test(j.name)) return { name: j.name, args: j.arguments && typeof j.arguments === 'object' && !Array.isArray(j.arguments) ? j.arguments : {} };
+    } catch {}
+  }
+  const params = [...s.matchAll(/<parameter\s+name="([a-z_][a-z0-9_]{0,63})"\s*>([\s\S]*?)(?=<\/parameter>|<parameter\b|<\/invoke|$)/gi)];
+  let name = s.match(/<invoke\s+name="([a-z_][a-z0-9_]{0,63})"/i)?.[1] || s.match(/<invoke_(?!tool\b|placeholder\b)([a-z_][a-z0-9_]{0,63})>/i)?.[1] || null;
+  // <parameter name="draft_prompt"> with nothing in it, then the real parameters: the name.
+  if (!name && params.length > 1 && !params[0][2].trim()) name = params.shift()[1];
+  // <parameter name="get_current_session">{...}</parameter>: the name, with its arguments as JSON.
+  if (!name && params.length === 1 && /^\s*\{[\s\S]*\}\s*$/.test(params[0][2])) {
+    try {
+      const a = JSON.parse(params[0][2]);
+      if (a && typeof a === 'object' && !Array.isArray(a) && NAME_OK.test(params[0][1])) return { name: params[0][1], args: a };
+    } catch {}
+  }
+  if (!name || !NAME_OK.test(name)) return null;
+  const args = {};
+  for (const [, k, raw] of params) {
+    if (k === name) continue;
+    const v = raw.trim();
+    args[k] = v === 'true' ? true : v === 'false' ? false : /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v;
+  }
+  return { name, args };
+}
+
+/** Pulls a call out of what Claude wrote after <tool> (or an XML call, see above): { name, args } or null. */
 export function parseToolCall(text) {
+  if (XML_CALL.test(String(text).trimStart().slice(0, 40))) return parseXmlToolCall(text);
   try {
     const j = JSON.parse(String(text).trim());
     if (!j || typeof j.name !== 'string' || !/^[a-z_][a-z0-9_]{0,63}$/i.test(j.name)) return null;
@@ -660,25 +700,22 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
         } else {
           t.hold += delta;
           const at = t.hold.indexOf('<tool>');
-          if (at >= 0) {
-            speakText(t, t.hold.slice(0, at), true);
-            t.toolText = t.hold.slice(at + 6);
+          const xml = at < 0 ? t.hold.search(XML_CALL) : -1;
+          if (at >= 0 || xml >= 0) {
+            speakText(t, t.hold.slice(0, at >= 0 ? at : xml), true);
+            t.toolText = at >= 0 ? t.hold.slice(at + 6) : t.hold.slice(xml);
+            t.xml = at < 0; // read once the message ends (XML has no one closing tag to wait for)
             t.hold = '';
             t.inTool = true;
           } else {
-            // Hold back a tail that might be the start of "<tool>".
-            let keep = 0;
-            for (let k = Math.min(5, t.hold.length); k > 0; k--) {
-              if ('<tool>'.startsWith(t.hold.slice(-k))) {
-                keep = k;
-                break;
-              }
-            }
+            // Hold back a tail that might be the start of a call ("<tool>", "<invoke"...).
+            const lt = t.hold.lastIndexOf('<');
+            const keep = lt >= 0 && t.hold.length - lt <= 16 && !t.hold.slice(lt).includes('>') ? t.hold.length - lt : 0;
             speakText(t, t.hold.slice(0, t.hold.length - keep), false);
             t.hold = t.hold.slice(t.hold.length - keep);
           }
         }
-        if (t.inTool) {
+        if (t.inTool && !t.xml) {
           const end = t.toolText.indexOf('</tool>');
           if (end >= 0) {
             t.call = parseToolCall(t.toolText.slice(0, end));
@@ -692,6 +729,10 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
         if (t.finished) return;
         t.ended = true;
         if (!t.inTool) speakText(t, t.hold, true);
+        else if (t.xml && !t.call) {
+          t.call = parseXmlToolCall(t.toolText);
+          if (t.call && !t.spoken && !t.say.trim()) filler(t, TOOL_FILLERS);
+        }
         t.hold = '';
         finishTurn(t);
       },
@@ -702,6 +743,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
         }
         if (!t.finished) {
           t.ended = true;
+          if (t.xml && !t.call && !t.cancelled) t.call = parseXmlToolCall(t.toolText);
           finishTurn(t, t.cancelled ? 'cancelled' : 'completed');
         }
       },

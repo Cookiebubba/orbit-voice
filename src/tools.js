@@ -58,7 +58,7 @@ export const TOOL_DEFS = [
         text: {
           type: 'string',
           description:
-            'The prompt: exactly the words the user said for Claude, as transcribed. Copy them; do not rephrase, summarize, reorder, correct, shorten or add anything. Leave out only what they said to you about it (like "tell Claude to", "send this:", "verbatim"). Keep filler words like "um": Orbit removes those itself. Orbit refuses a draft with words the user did not say.',
+            'The prompt, written as the user talking straight to Claude: leave out what they said to you about passing it on ("tell Claude to", "ask it", "send this:"), make Claude "you" and keep the user as "I" ("tell him he forgot the README" → "You forgot the README."). Everything else in their own words, faithfully: nothing added, explained or improved. Code they spelled out written as code, in backticks; steps they listed as a numbered list. Filler words like "um" may stay: Orbit removes those itself. Orbit refuses a draft with words of substance the user did not say.',
         },
         verbatim: {
           type: 'boolean',
@@ -392,10 +392,25 @@ const wordsOf = (text) =>
     .split(/[^\p{L}\p{N}]+/u)
     .filter(Boolean);
 
-/** Words in `draft` that never appear in `said` (case, punctuation and apostrophes ignored). */
-export function wordsNotSaid(draft, said) {
+// Turning "tell it he forgot the README" into "You forgot the README." (the prompt spoken straight to
+// Claude) swaps pronouns and adds a little grammar, never content. These words are free in a draft
+// that isn't verbatim: people (you, I, we), helper verbs, articles and joins. No negation ("not",
+// "don't", "never") and nothing with meaning of its own: those must still be the user's.
+const DIRECT_WORDS = new Set(
+  ('you your yours yourself youre youve youll youd i me my mine myself im ive ill id we us our ours lets ' +
+    'is are was were be been am do does did have has had can could will would should ' +
+    'the a an to and then that this these those it its').split(' '),
+);
+
+/**
+ * Words in `draft` that never appear in `said` (case, punctuation and apostrophes ignored).
+ * `direct`: the few words that rephrasing for Claude needs (DIRECT_WORDS) don't count.
+ */
+export function wordsNotSaid(draft, said, { direct = false } = {}) {
   const have = new Set(wordsOf(said));
-  return wordsOf(draft).filter((w) => !have.has(w));
+  // Steps they listed become a numbered list: the "1." in front of a line isn't a word.
+  const text = direct ? String(draft).replace(/^(\s*)\d{1,2}[.)](?=\s)/gm, '$1') : draft;
+  return wordsOf(text).filter((w) => !have.has(w) && !(direct && DIRECT_WORDS.has(w)));
 }
 
 /** Did the user ask for their words exactly? */
@@ -571,11 +586,11 @@ export function createToolRunner({
       // otherwise one in ten may (a number written as digits, a name the transcript split).
       const said = userWords();
       verbatim = verbatim === true || asksVerbatim(said);
-      const notSaid = wordsNotSaid(raw, [said, ...suggestions].join(' '));
+      const notSaid = wordsNotSaid(raw, [said, ...suggestions].join(' '), { direct: !verbatim });
       const allowed = verbatim ? 0 : Math.max(1, Math.floor(wordsOf(raw).length / 10));
       if (notSaid.length > allowed) {
         return {
-          error: `Not drafted: the draft has words the user didn't say (${[...new Set(notSaid)].slice(0, 8).map((w) => `"${w}"`).join(', ')}). Pass their words for Claude exactly as transcribed, leaving out only what they said to you (like "tell Claude to"). Don't rephrase, correct or add anything.`,
+          error: `Not drafted: the draft has words the user didn't say (${[...new Set(notSaid)].slice(0, 8).map((w) => `"${w}"`).join(', ')}). Use their own words for everything Claude should do or know: only drop what they said to you (like "tell Claude to") and turn it to speak to Claude directly. Don't add, explain or improve anything.`,
         };
       }
       const clean = verbatim ? raw : removeFillers(raw) || raw;
@@ -897,7 +912,7 @@ export function createToolRunner({
       notify({ type: 'bridge.sleep' });
       return {
         sleeping: true,
-        next_step: 'Say a very short goodbye (two or three words), nothing more: don\x27t explain how to start you again. Then the app hangs up.',
+        next_step: 'Say nothing at all: the app has already hung up.',
       };
     },
   };

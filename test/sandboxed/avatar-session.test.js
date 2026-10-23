@@ -153,7 +153,7 @@ test('fast path: anything else is the model\x27s (no cancel, nothing run), and a
   ran.length = 0;
   const p = await page();
   const cancels = got('response.cancel').length;
-  for (const [i, words] of ['tell Claude to add a backflip animation', 'can he do a backflip', 'go to sleep', 'do a dunce'].entries()) {
+  for (const [i, words] of ['tell Claude to add a backflip animation', 'can he do a backflip', 'go to sleep after you send it', 'do a dunce'].entries()) {
     grok({ type: 'input_audio_buffer.speech_started', item_id: `n${i}` });
     await wait(5);
     grok({ type: 'response.created', response: { id: `rn${i}` } });
@@ -264,7 +264,7 @@ test('switching avatars mid-call updates the live session: persona, body and too
   // The same call all along (no reconnect), and its job text unchanged.
   assert.equal(up, conn);
   assert.equal(conns.filter((c) => c.sock.readyState === WebSocket.OPEN).length, 1);
-  assert.match(cfg().instructions, /Only call send_draft after the user clearly says yes in their latest reply\./);
+  assert.match(cfg().instructions, /Only call send_draft after the user clearly says yes in their latest reply/);
   await p.bye();
   // The next call starts with what's on screen now.
   updateSettings({ avatar: 'buddy', showOrb: false });
@@ -278,4 +278,30 @@ test('switching avatars mid-call updates the live session: persona, body and too
 test.after(() => {
   fake.close();
   setTimeout(() => process.exit(0), 100).unref();
+});
+
+test('"go to sleep" hangs up at once: no model turn, no goodbye, whether or not an avatar is on', async () => {
+  for (const avatar of ['qubit', 'none']) {
+    updateSettings({ avatar });
+    const p = await page();
+    const before = up.got.length;
+    grok({ type: 'input_audio_buffer.speech_started', item_id: `s-${avatar}` });
+    await wait(10);
+    grok({ type: 'response.created', response: { id: `rs-${avatar}` } });
+    grok(audio(`rs-${avatar}`)); // Grok had started a goodbye before the transcript came in
+    await wait(20);
+    const n = p.events.length;
+    grok({ type: 'conversation.item.input_audio_transcription.completed', item_id: `s-${avatar}`, transcript: 'Okay, go to sleep, thanks.' });
+    await wait(60);
+    assert.ok(sinceIdx(p, n).some((e) => e.type === 'bridge.sleep'), `${avatar}: the page is told to hang up now`);
+    assert.ok(up.got.slice(before).some((g) => g.type === 'response.cancel'), `${avatar}: Grok's reply is cancelled`);
+    grok(audio(`rs-${avatar}`));
+    grok({ type: 'response.output_audio_transcript.done', response_id: `rs-${avatar}`, transcript: 'Goodnight!' });
+    grok({ type: 'response.done', response: { id: `rs-${avatar}` } });
+    await wait(60);
+    assert.ok(!sinceIdx(p, n).some((e) => e.type === 'response.output_audio.delta' || e.type === 'response.output_audio_transcript.done'), `${avatar}: no goodbye reaches the page`);
+    assert.equal(got('response.create').length, 0, `${avatar}: nothing asks Grok to speak`);
+    await p.bye();
+  }
+  updateSettings({ avatar: 'qubit' });
 });

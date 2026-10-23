@@ -23,16 +23,21 @@ const tool = (c) => c.tools.find((t) => t.name === 'avatar');
 
 // The behaviour the job layer must always keep (the agent prompt before the layers, word for word).
 const JOB = [
-  'You are the user\x27s voice for Claude Code.',
+  'You are the user\'s voice for Claude Code.',
   'you are the go-between',
-  'Pass what the user wants done to Claude, as a prompt (draft_prompt, then send_draft once they say yes). This is your main job.',
-  'call draft_prompt with exactly the words they said for Claude, as transcribed. Don\x27t rephrase, summarize, reorder, correct, shorten or add anything',
-  'Orbit types the draft straight into Claude\x27s prompt box (not sent)',
+  'Two modes (decide on every turn)',
+  'Prompting: they want Claude to do something, or to hear something.',
+  'Talking: they\'re talking to you.',
+  'The prompt is the user talking to Claude, in their own words, made direct.',
+  '"tell him he forgot to update the README" → "You forgot to update the README."',
+  'Be faithful.',
+  'Orbit types the draft straight into Claude\'s prompt box (not sent)',
   'Orbit retypes the box with it (the old draft is replaced, never added to)',
-  'Only call send_draft after the user clearly says yes in their latest reply.',
+  'Only call send_draft after the user clearly says yes in their latest reply',
   'Never send a prompt on your own initiative, and never send more than one prompt per confirmation.',
+  'call go_to_sleep and say nothing at all',
   'Never explain how to wake you, put you to sleep, use the hotkey or the wake word',
-  'So never say "I can\x27t do that from here"',
+  'So never say "I can\'t do that from here"',
   'Messages that start with "[App notification]" come from this app, not from the user.',
 ];
 
