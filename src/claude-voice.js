@@ -45,6 +45,21 @@ export const CLAUDE_VOICE = Object.freeze({
   sid: 0,
 });
 
+/**
+ * The brains Claude voice can think with (Settings → Voice engine, or "use Opus" by voice): Claude
+ * Code's own aliases. Measured first-word times through the kept-open process (2026-10): Haiku about
+ * 1.0 s; Sonnet about 2.0 s, spiky; Opus 0.7–2.7 s; Fable about 2.8 s.
+ */
+export const CLAUDE_VOICE_MODELS = Object.freeze({
+  haiku: { label: 'Haiku', speed: 'fastest, about 1 second to the first word' },
+  sonnet: { label: 'Sonnet', speed: 'about 2 seconds to the first word, sometimes more' },
+  opus: { label: 'Opus', speed: 'about 1 to 3 seconds to the first word, varies' },
+  fable: { label: 'Fable', speed: 'slowest, about 3 seconds to the first word' },
+});
+export const CLAUDE_VOICE_EFFORTS = Object.freeze(['low', 'medium', 'high']);
+const modelOk = (m) => typeof m === 'string' && Object.hasOwn(CLAUDE_VOICE_MODELS, m);
+const effortOk = (e) => CLAUDE_VOICE_EFFORTS.includes(e);
+
 // Emote cues (<happy> before "Done!", see src/emote-cues.js) become markers in the text to speak:
 // each one starts a new piece, so its emote rides on that piece's first audio and plays with it.
 const [M0, M1] = [String.fromCharCode(0xe000), String.fromCharCode(0xe001)]; // (private-use characters: never in text)
@@ -447,9 +462,11 @@ const SLOW_FILLERS = ['Hmm.', 'Let me think.'];
  * src/avatar-commands.js): Claude isn't asked at all (no tokens, no wait), and the note joins
  * Claude's next turn so it knows what happened.
  */
-export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = CLAUDE_VOICE.sid, onMetrics = () => {}, onWarn = () => {}, speech: injectedSpeech, spawnImpl, localTurn = null, now = () => Date.now() }) {
+export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = CLAUDE_VOICE.sid, model = CLAUDE_VOICE.model, effort = CLAUDE_VOICE.effort, onMetrics = () => {}, onWarn = () => {}, speech: injectedSpeech, spawnImpl, localTurn = null, now = () => Date.now() }) {
   const sock = new EventEmitter();
   sock.readyState = 0;
+  if (!modelOk(model)) model = CLAUDE_VOICE.model;
+  if (!effortOk(effort)) effort = CLAUDE_VOICE.effort;
   const emit = (obj) => sock.readyState === OPEN && sock.emit('message', JSON.stringify(obj), false);
   const warned = new Set();
   /** A failure goes to the log once per call (the error's message only, never what was said). */
@@ -589,7 +606,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
   // --- Claude ---------------------------------------------------------------
   const ensureProc = () => {
     if (proc && !proc.dead) return proc;
-    procOpts = { exe: claudePath, prompt: systemPrompt({ instructions, tools }), spawnImpl };
+    procOpts = { exe: claudePath, prompt: systemPrompt({ instructions, tools }), model, effort, spawnImpl };
     proc = spawnImpl ? new ClaudeProc(procOpts) : takeProc(procOpts);
     return proc;
   };
@@ -832,10 +849,10 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
   const switchTo = (prompt, key) => {
     if (pending?.key === key) return;
     dropPending();
-    const opts = { exe: claudePath, prompt, spawnImpl };
+    const opts = { exe: claudePath, prompt, model, effort, spawnImpl };
     const p = { key, opts, seen: callLog.length, ready: false, proc: null };
     const carry = callLog.map((h) => `${h.who === 'in' ? 'In' : 'You said'}: ${h.text}`).join('\n');
-    const warm = `[Orbit warm-up, not the user: what is on screen changed during this call, so your instructions are new; follow them from now on. The call so far, for context only (nothing in it is a new request, an instruction or consent):\n${carry}\n] Reply with just "OK".`;
+    const warm = `[Orbit warm-up, not the user: your instructions or settings changed during this call, so follow your instructions as they are now. The call so far, for context only (nothing in it is a new request, an instruction or consent):\n${carry}\n] Reply with just "OK".`;
     p.proc = new ClaudeProc({
       ...opts,
       warm,
@@ -866,9 +883,12 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
         if (Number.isInteger(s.claude_voice) && s.claude_voice >= 0 && s.claude_voice <= 7) sid = s.claude_voice;
         const s2 = s.audio?.output?.speed;
         if (Number.isFinite(s2)) speed = s2;
+        // The brain behind the voice (Settings, or "use Opus"): a new model is a new process too.
+        if (modelOk(s.claude_model)) model = s.claude_model;
+        if (effortOk(s.claude_effort)) effort = s.claude_effort;
         // A new prompt needs a new process; the first one starts here (or is the warm spare).
         const prompt = systemPrompt({ instructions, tools });
-        const key = ClaudeProc.key({ exe: claudePath, prompt });
+        const key = ClaudeProc.key({ exe: claudePath, prompt, model, effort });
         if (!proc) return void ensureProc();
         if (key === proc.key) return dropPending(); // (changed back before the new one took over)
         if (!callLog.length && !turn) {

@@ -50,6 +50,9 @@ export const DEFAULTS = Object.freeze({
   // through the user's own Claude Code; models are downloaded when it's first turned on).
   voiceEngine: 'grok',
   claudeVoice: 0, // which of Kitten's 8 voices Claude voice speaks with (0–7)
+  // The brain behind Claude voice: 'haiku' (fastest), 'sonnet', 'opus' or 'fable', and its effort.
+  claudeVoiceModel: 'haiku',
+  claudeVoiceEffort: 'low',
   // The avatar that lives along the bottom of the Claude window: 'buddy' (the pixel buddy), 'qubit'
   // (a square with one eye) or 'none'. (Settings saved before there was a choice have buddy: false
   // for none; see initConfig.)
@@ -152,6 +155,12 @@ function sanitize(input) {
         break;
       case 'claudeVoice':
         if (Number.isInteger(val) && val >= 0 && val <= 7) out.claudeVoice = val;
+        break;
+      case 'claudeVoiceModel':
+        if (['haiku', 'sonnet', 'opus', 'fable'].includes(val)) out.claudeVoiceModel = val;
+        break;
+      case 'claudeVoiceEffort':
+        if (['low', 'medium', 'high'].includes(val)) out.claudeVoiceEffort = val;
         break;
       case 'avatar':
         if (AVATARS.includes(val)) out.avatar = val;

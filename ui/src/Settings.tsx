@@ -332,6 +332,14 @@ function PulseAmount({ value, update }: { value: number; update: Update }) {
 // ---------- mute my mic in other apps ----------
 type MicApp = { exe: string; name: string; active: boolean; running: boolean; action: "mute" | "leave"; why: "you" | "recording-or-routing" | "default" };
 
+// How quickly each brain starts talking (first word through the kept-open Claude Code, measured 2026-10).
+const BRAIN_SPEED: Record<SettingsT["claudeVoiceModel"], string> = {
+  haiku: "Haiku is the fastest: about 1 second to the first word.",
+  sonnet: "Sonnet: about 2 seconds to the first word on average, sometimes much more.",
+  opus: "Opus: anywhere from under 1 to about 3 seconds to the first word.",
+  fable: "Fable: the slowest, about 3 seconds to the first word.",
+};
+
 // ---------- second brain ----------
 type ClaudeVoiceStatus = { models: { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string }; mb: number; claudeFound: boolean };
 
@@ -378,7 +386,32 @@ function VoiceEngineSection({ s, update }: { s: SettingsT; update: Update }) {
       </Reveal>
       <Reveal show={s.voiceEngine === "claude"}>
         <p className="mt-2 text-[12px] leading-snug text-white/45">
-          Claude Haiku through your own Claude Code sign-in, with speech recognized and spoken on {thisComputer}. No xAI cost. Replies take a moment longer than Grok's. Takes effect on the next call.
+          Claude through your own Claude Code sign-in, with speech recognized and spoken on {thisComputer}. No xAI cost. Replies take a moment longer than Grok's.
+        </p>
+        <div className="mt-4 mb-1.5 text-[12.5px] text-white/70">Brain</div>
+        <Segmented
+          value={s.claudeVoiceModel}
+          onChange={(claudeVoiceModel) => update({ claudeVoiceModel })}
+          options={[
+            { value: "haiku", label: "Haiku" },
+            { value: "sonnet", label: "Sonnet" },
+            { value: "opus", label: "Opus" },
+            { value: "fable", label: "Fable" },
+          ]}
+        />
+        <p className="mt-2 text-[12px] leading-snug text-white/45">{BRAIN_SPEED[s.claudeVoiceModel]} You can also say "use Opus" or "switch to Haiku". A change takes over between turns, mid-call too.</p>
+        <div className="mt-4 mb-1.5 text-[12.5px] text-white/70">Effort</div>
+        <Segmented
+          value={s.claudeVoiceEffort}
+          onChange={(claudeVoiceEffort) => update({ claudeVoiceEffort })}
+          options={[
+            { value: "low", label: "Low" },
+            { value: "medium", label: "Medium" },
+            { value: "high", label: "High" },
+          ]}
+        />
+        <p className="mt-2 text-[12px] leading-snug text-white/45">
+          {s.claudeVoiceEffort === "low" ? "Answers right away. Best for talking." : "Thinks longer before it speaks: slower to answer, especially on Opus and Fable."}
         </p>
         {status && (
           <div className="mt-3 text-[12px] leading-snug">

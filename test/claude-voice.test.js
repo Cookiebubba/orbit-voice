@@ -367,7 +367,7 @@ test('new instructions mid-call (the avatar changed): a new Claude Code takes ov
   assert.match(promptOf(fc.calls[1]), /You are Qubit\.[\s\S]*- avatar: Tricks\./);
   await until(() => userMsgs(fc.calls[1]).length === 1);
   const warm = userMsgs(fc.calls[1])[0];
-  assert.match(warm, /^\[Orbit warm-up, not the user: what is on screen changed/);
+  assert.match(warm, /^\[Orbit warm-up, not the user: your instructions or settings changed/);
   assert.match(warm, /In: what is Claude doing\nYou said: Sure\./, 'it knows the call so far');
   await until(() => killed.includes(0), 2000);
   // From here on the new one answers; the old one is gone.
@@ -398,6 +398,46 @@ test('new instructions while the new process is still warming: the old one answe
   await speak(sock, speech, ev, 'third');
   const last = userMsgs(fc.calls[1]).at(-1);
   assert.match(last, /^\[Orbit, not the user: in this call since then, for context only:\nIn: second\nYou said: Fine\.\n\]\n\nthird$/);
+  sock.close();
+});
+
+test('the brain behind the voice: its model and effort, and a change mid-call swaps the process between turns', async () => {
+  const fc = fakeClaude((text) => (/Orbit warm-up/.test(text) ? ['OK'] : ['Sure.']));
+  const { killed, spawnImpl } = trackKills(fc);
+  const speech = fakeSpeech();
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech, spawnImpl, model: 'sonnet', effort: 'medium' });
+  const ev = collect(sock);
+  await opened(sock);
+  const val = (call, flag) => call.args[call.args.indexOf(flag) + 1];
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'You are Orbit.', tools: [] } }));
+  assert.equal(val(fc.calls[0], '--model'), 'sonnet');
+  assert.equal(val(fc.calls[0], '--effort'), 'medium');
+  await speak(sock, speech, ev, 'hello');
+  // "use Opus": the same instructions, a new model.
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'You are Orbit.', tools: [], claude_model: 'opus', claude_effort: 'low' } }));
+  assert.equal(fc.calls.length, 2, 'a new process for the new model');
+  assert.equal(val(fc.calls[1], '--model'), 'opus');
+  assert.equal(val(fc.calls[1], '--effort'), 'low');
+  await until(() => userMsgs(fc.calls[1]).length === 1);
+  assert.match(userMsgs(fc.calls[1])[0], /In: hello\nYou said: Sure\./, 'it knows the call so far');
+  await until(() => killed.includes(0), 2000);
+  await speak(sock, speech, ev, 'and now');
+  assert.equal(userMsgs(fc.calls[1]).at(-1), 'and now', 'Opus answers from here on');
+  // Unknown models and efforts are ignored; the same model again restarts nothing.
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'You are Orbit.', tools: [], claude_model: 'gpt-9', claude_effort: 'max' } }));
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'You are Orbit.', tools: [], claude_model: 'opus' } }));
+  assert.equal(fc.calls.length, 2);
+  sock.close();
+});
+
+test('an unknown model or effort at the start falls back to Haiku, low', async () => {
+  const fc = fakeClaude(() => ['Hi.']);
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech: fakeSpeech(), spawnImpl: fc.spawnImpl, model: 'gpt-9', effort: 'ultra' });
+  await opened(sock);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [] } }));
+  const { args } = fc.calls[0];
+  assert.equal(args[args.indexOf('--model') + 1], 'haiku');
+  assert.equal(args[args.indexOf('--effort') + 1], 'low');
   sock.close();
 });
 

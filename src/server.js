@@ -277,7 +277,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     if (!claude) return;
     loadSpeech(voiceModelsDir).catch((e) => logWarn('voice', 'Claude voice: speech models failed to load', String(e?.message || e).slice(0, 200)));
     const { instructions: text, tools } = agentContext();
-    keepSpare({ exe: claude.path, prompt: systemPrompt({ instructions: text, tools }) });
+    keepSpare({ exe: claude.path, prompt: systemPrompt({ instructions: text, tools }), model: getSetting('claudeVoiceModel'), effort: getSetting('claudeVoiceEffort') });
   };
   const claudeVoiceMetrics = (m) => {
     if (!m.endedAt) return;
@@ -474,7 +474,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     const { orbPosition, orbStickAnchor, ...visible } = all;
     broadcast({ type: 'settings.changed', changed, settings: visible });
     // What the voice model is told follows these (src/agent.js): a live call gets it at once.
-    if (changed.some((k) => ['voice', 'claudeVoice', 'speed', 'wakeHotkey', ...CONTEXT_SETTINGS].includes(k))) {
+    if (changed.some((k) => ['voice', 'claudeVoice', 'claudeVoiceModel', 'claudeVoiceEffort', 'speed', 'wakeHotkey', ...CONTEXT_SETTINGS].includes(k))) {
       for (const s of liveSessions) s.pushConfig();
       if (changed.some((k) => CONTEXT_SETTINGS.includes(k))) logInfo('voice', `Context now: ${agentContext().face}${liveSessions.size ? ` (live call${liveSessions.size > 1 ? 's' : ''} updated)` : ''}`);
     }
@@ -1096,7 +1096,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     };
 
     const upstream = useClaude
-      ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), sid: getSetting('claudeVoice'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d), localTurn: (text, itemId) => tryFastPath(text, itemId) })
+      ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), sid: getSetting('claudeVoice'), model: getSetting('claudeVoiceModel'), effort: getSetting('claudeVoiceEffort'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d), localTurn: (text, itemId) => tryFastPath(text, itemId) })
       : new WebSocket(process.env.XAI_REALTIME_URL || `wss://api.x.ai/v1/realtime?model=${encodeURIComponent(getSetting('model'))}`, { headers: { Authorization: `Bearer ${apiKey}` } });
     const toXai = (obj) => upstream.readyState === WebSocket.OPEN && upstream.send(JSON.stringify(obj));
     const stopMeter = useClaude ? () => {} : startMeter(); // Claude voice isn't billed by xAI
@@ -1184,7 +1184,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       // Claude voice also takes its own voice choice (Grok would reject an unknown field).
       pushConfig: () => {
         configAt = Date.now();
-        toXai({ type: 'session.update', session: useClaude ? { ...sessionConfig(), claude_voice: getSetting('claudeVoice') } : sessionConfig() });
+        toXai({ type: 'session.update', session: useClaude ? { ...sessionConfig(), claude_voice: getSetting('claudeVoice'), claude_model: getSetting('claudeVoiceModel'), claude_effort: getSetting('claudeVoiceEffort') } : sessionConfig() });
       },
       /** A spoken update (a session finished). Returns true if this conversation will speak it. */
       announce: (entry) => {
@@ -1222,7 +1222,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       connectedAt = Date.now();
       logInfo('xai', useClaude ? 'Claude voice session started' : 'Grok session started');
       hooks.pushConfig();
-      toBrowser({ type: 'bridge.ready', model: useClaude ? 'claude-haiku' : getSetting('model'), voice: getSetting('voice') });
+      toBrowser({ type: 'bridge.ready', model: useClaude ? `claude-${getSetting('claudeVoiceModel')}` : getSetting('model'), voice: getSetting('voice') });
       runTool('get_current_session').catch(() => {});
       // The resume note from recent calls goes in first, quietly: no response.create, so Grok
       // doesn't start talking about it. It's Orbit's record, so what Grok does next (drafting,

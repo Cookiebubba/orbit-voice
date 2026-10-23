@@ -23,6 +23,8 @@ export type Settings = {
   brainClaudePath: string;
   voiceEngine: "grok" | "claude";
   claudeVoice: number;
+  claudeVoiceModel: "haiku" | "sonnet" | "opus" | "fable";
+  claudeVoiceEffort: "low" | "medium" | "high";
   avatar: "buddy" | "qubit" | "none";
   buddySize: number;
   showOrb: boolean;
