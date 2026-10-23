@@ -488,6 +488,7 @@ app.whenReady().then(async () => {
   createTray();
   updater = createUpdater({
     isPackaged: app.isPackaged,
+    version: app.getVersion(),
     auto: !!getSetting('autoUpdate'),
     onChange: (state) => main?.webContents.send('update:state', state),
     log: { info: (m) => logInfo('update', m), warn: (m, d) => logWarn('update', m, d) },

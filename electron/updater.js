@@ -5,11 +5,21 @@
 // background, and installs when Orbit quits (or at once with "Restart to update").
 // Off: nothing is checked until you press "Check now" (which then downloads what it finds).
 // Each download is checked against the SHA-512 in latest.yml before it's installed.
+//
+// Channels follow the installed version. A stable install (1.2.0) asks GitHub for its "latest"
+// release, which is never a prerelease, so it is never offered a beta. A beta install
+// (1.3.0-beta.1) reads the releases feed and takes the newest beta or stable above it, so it gets
+// later betas and, when it ships, the stable release (and is a stable install from then on).
 
 import electronUpdater from 'electron-updater';
 
 const FIRST_CHECK_MS = 20_000; // let the app settle first
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
+
+/** Whether this version is a prerelease (1.3.0-beta.1), so its updates include later prereleases. */
+export function allowsPrereleases(version = '') {
+  return /^v?\d+\.\d+\.\d+-[0-9A-Za-z]/.test(String(version).trim());
+}
 
 /** A short, plain reason for Settings (the full error goes to the log). */
 export function describeUpdateError(message = '') {
@@ -24,12 +34,13 @@ export function describeUpdateError(message = '') {
  * status: 'dev' (running from source: no updates) | 'idle' | 'checking' | 'latest' | 'downloading'
  *         | 'ready' (downloaded, installs on quit) | 'error'
  */
-export function createUpdater({ isPackaged, auto, onChange = () => {}, log = { info() {}, warn() {} } }) {
+export function createUpdater({ isPackaged, auto, version = '', onChange = () => {}, log = { info() {}, warn() {} }, updater = null }) {
   let state = { status: isPackaged ? 'idle' : 'dev' };
   let timer = null;
   let firstTimer = null;
   // Created only in the installed app: reading it builds the updater, which needs a packaged app.
-  const autoUpdater = isPackaged ? electronUpdater.autoUpdater : null;
+  // (`updater` stands in for electron-updater's in tests.)
+  const autoUpdater = isPackaged ? updater || electronUpdater.autoUpdater : null;
   const set = (next) => {
     state = next;
     onChange(state);
@@ -39,7 +50,8 @@ export function createUpdater({ isPackaged, auto, onChange = () => {}, log = { i
     autoUpdater.logger = null;
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
-    autoUpdater.allowPrerelease = false;
+    autoUpdater.allowPrerelease = allowsPrereleases(version || autoUpdater.currentVersion?.version);
+    autoUpdater.allowDowngrade = false;
     autoUpdater.on('checking-for-update', () => set({ status: 'checking' }));
     autoUpdater.on('update-not-available', () => set({ status: 'latest', checkedAt: Date.now() }));
     autoUpdater.on('update-available', (info) => set({ status: 'downloading', version: info.version, percent: 0 }));
