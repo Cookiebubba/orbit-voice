@@ -222,7 +222,7 @@ async function waitFor(fn, ms, step = 100) {
   return false;
 }
 const clickLabel = (text) => pjs(`(() => { const b = [...document.querySelectorAll('button')].find((x) => (x.getAttribute('aria-label') || x.textContent || '').includes(${JSON.stringify(text)})); if (b && !b.disabled) b.click(); return !!b; })()`);
-const qstate = () => qjs(`(() => { const Q = window.__qubit; const q = Q.q, d = Q.dir; if (!q) return null; const g = d.geometry; return { state: d.state, reaction: d.reaction, mode: q.mode, action: q.taskName || null, x: Math.round(q.cx), onSurface: g ? Math.round(g.ground - q.sy) : null, air: q.air, input: q.levels.input, output: q.levels.output, eyeH: q.sp.eh.v, low: Q.lowPower, running: Q.running, box: g && g.box, sendAt: g && g.sendAt, confirm: g && g.confirm, watch: g && g.watch, home: g && g.home, W: q.W, H: q.H, side: q.side, voice: Q.state.voice }; })()`);
+const qstate = () => qjs(`(() => { const Q = window.__qubit; const q = Q.q, d = Q.dir; if (!q) return null; const g = d.geometry; return { state: d.state, reaction: d.reaction, life: d.life, mode: q.mode, action: q.taskName || null, idleTask: !!(q.task && q.task.idle), x: Math.round(q.cx), onSurface: g ? Math.round(g.ground - q.sy) : null, air: q.air, input: q.levels.input, output: q.levels.output, eyeH: q.sp.eh.v, low: Q.lowPower, running: Q.running, box: g && g.box, sendAt: g && g.sendAt, confirm: g && g.confirm, watch: g && g.watch, home: g && g.home, W: q.W, H: q.H, side: q.side, voice: Q.state.voice }; })()`);
 
 // Pictures of the strip: each saved as a PNG, with what was going on, for the contact sheets.
 const snaps = [];
@@ -235,7 +235,7 @@ async function snap(label, win = qwin, kind = 'qubit') {
   snaps.push({ label, file, info, kind });
 }
 /** Frames at about `fps` for `ms` (a film strip of one moment). */
-async function film(label, ms, fps = 20) {
+async function film(label, ms, fps = 20, { wide = false, follow = false } = {}) {
   const frames = [];
   const t0 = Date.now();
   for (let n = 0; Date.now() - t0 < ms; n++) {
@@ -248,7 +248,7 @@ async function film(label, ms, fps = 20) {
   fs.mkdirSync(dir, { recursive: true });
   frames.forEach((b, i) => fs.writeFileSync(path.join(dir, `f${String(i).padStart(3, '0')}.png`), b));
   const info = await qstate();
-  films.push({ label, dir, n: frames.length, box: info?.box, sendAt: info?.sendAt, x: info?.x });
+  films.push({ label, dir, n: frames.length, box: info?.box, sendAt: info?.sendAt, x: info?.x, wide, follow });
   return frames.length;
 }
 const films = [];
@@ -314,6 +314,11 @@ async function framesPerSecond() {
   return Math.round(((b[0] - a[0]) * 1000) / (b[1] - a[1]));
 }
 const label = (l) => qjs(`window.__phys && (window.__phys.label = ${JSON.stringify(l)})`);
+// His own life (Orbit off): most steps keep him dozing so their sleep checks hold; step 2b lets him live.
+const DOZING = '{ dozeS: [900, 900] }';
+const keepDozing = () => qjs(`window.__qubit.dir.setLifeTiming(${DOZING})`);
+/** What he starts (name, idle or not), from now on. */
+const ACTS = '(window.__acts2 = window.__acts2 || (window.__qubit.q.on("action", (a) => window.__acts2.push([a.name, !!(window.__qubit.q.task && window.__qubit.q.task.idle), performance.now()])), [])).length = 0';
 /** Each geometry his page gets, with when (Date.now()). */
 const BOXLOG = `(() => {
   const d = window.__qubit.dir;
@@ -361,6 +366,7 @@ async function run() {
   check(await waitFor(() => (qwin = avatarWin('qubit')), 15_000), 'the Qubit window exists');
   check(!avatarWin('buddy'), 'no pixel buddy window');
   await waitFor(() => qjs('!!(window.__qubit && window.__qubit.q)'), 8000);
+  await keepDozing();
   await qjs(MOTION);
   // The console check itself works: a probe error on his page is seen (then set aside).
   await qjs('console.error("avatar-e2e probe")');
@@ -383,13 +389,37 @@ async function run() {
   let fps = await framesPerSecond();
   check(s.low && fps >= 24 && fps <= 36, 'low power while asleep and still: about 30 fps', `lowPower ${s.low}, ${fps} fps`);
 
-  out('3. Wake (the hotkey, same as the wake word)');
+  out('2b. His own life: after a short doze he gets up and lives (Orbit still off)');
+  await label('life');
+  await qjs(ACTS);
+  await qjs('window.__qubit.dir.setLifeTiming({ dozeS: [1.5, 1.5] })');
+  s = await expectState('he stirs and gets up by himself', { state: 'asleep', life: 'up', mode: 'idle' }, 8000);
+  const lifeCpu = await cpu('his own life (up and about)', 8000);
+  fps = await framesPerSecond();
+  check(fps > 55, 'full frame rate while he is up', `${fps} fps`);
+  await film('life', 14_000, 12, { wide: true });
+  const acts = await qjs('window.__acts2');
+  const own = acts.filter((a) => a[1]).map((a) => a[0]);
+  out(`  his own: ${own.join(', ')}`);
+  check(own.length >= 6 && new Set(own).size >= 3, 'he gets on with things of his own (moves, fidgets, tricks)', `${own.length} actions, ${new Set(own).size} kinds`);
+  const lifePhys = await qjs('({ pops: window.__phys.pops, bad: window.__phys.bad.filter((b) => b[0] === "life"), popAt: window.__phys.popAt })');
+  check(lifePhys.pops === 0, 'no jumps of his outline while he lives', JSON.stringify(lifePhys.popAt));
+  check(lifePhys.bad.length === 0, 'always on a surface (never sunk in, never floating)', JSON.stringify(lifePhys.bad));
+  await snap('his-own-life');
+
+  out('3. Wake (the hotkey, same as the wake word): he attends at once, from wherever he is');
   const hot = [...hotkeys.values()][0];
   check(!!hot, 'the global hotkey is registered');
   await label('waking');
+  // Wait for him to be in the middle of something of his own (mid-move, if it comes), then wake Orbit.
+  await waitFor(async () => (await qstate()).idleTask && (await qstate()).air, 8000, 30);
+  const handoffFilm = film('handoff', 1800, 20, { follow: true });
+  const tWake = Date.now();
   hot();
-  await expectState('waking: the wake action', { action: 'wake' }, 3000);
-  await wait(120);
+  check(await waitFor(async () => (await qstate()).mode === 'listening', 1500, 20), 'listening at once (his own life gives way)', `${Date.now() - tWake} ms`);
+  await qjs(ACTS);
+  await handoffFilm;
+  await keepDozing();
   await snap('waking');
   check(await waitFor(() => fake.conns.length > 0 && fake.conns.at(-1).configured > 0, 10_000), 'connected to (fake) Grok');
   const c = fake.current();
@@ -399,6 +429,7 @@ async function run() {
   await snap('listening');
   fps = await framesPerSecond();
   check(fps > 55, 'full frame rate while awake', `${fps} fps (the off-screen window's own rate)`);
+  check((await qjs('window.__acts2')).filter((a) => a[1]).length === 0, 'none of his own life while Orbit listens');
 
   out('4. You talk: his eye follows the mic level');
   await label('hearing');
@@ -711,6 +742,7 @@ async function run() {
   await pickAvatar('Qubit');
   check(await waitFor(() => (qwin = avatarWin('qubit')), 4000), 'Qubit is back');
   await waitFor(() => qjs('!!(window.__qubit && window.__qubit.q)'), 5000);
+  await keepDozing();
   await qjs(MOTION);
   await label('entrance');
   const entered = await qjs('window.__qubit.dir.log.some((l) => l.what === "enter")');
@@ -765,7 +797,8 @@ async function run() {
   const relevant = consoleErrors.filter((e) => !/Failed to load resource.*(api\.x\.ai|x\.ai)/.test(e));
   check(relevant.length === 0, 'no console errors on Orbit\x27s pages, Qubit\x27s or the buddy\x27s', relevant.slice(0, 6).join(' | '));
   check(spawnTries.length === 0, 'no child processes', spawnTries.join(','));
-  out(`  cpu summary: asleep ${idleCpu.r.toFixed(2)}% (GPU ${idleCpu.gpu.toFixed(2)}%), active ${activeCpu.r.toFixed(2)}% (GPU ${activeCpu.gpu.toFixed(2)}%), hidden ${hiddenCpu.r.toFixed(2)}%`);
+  out(`  cpu summary: asleep ${idleCpu.r.toFixed(2)}% (GPU ${idleCpu.gpu.toFixed(2)}%), his own life ${lifeCpu.r.toFixed(2)}% (GPU ${lifeCpu.gpu.toFixed(2)}%), active ${activeCpu.r.toFixed(2)}% (GPU ${activeCpu.gpu.toFixed(2)}%), hidden ${hiddenCpu.r.toFixed(2)}%`);
+  check(lifeCpu.r < 5, 'his own life costs little CPU', `${lifeCpu.r.toFixed(2)}%`);
   check(hiddenCpu.r < 1, 'next to no CPU while hidden', `${hiddenCpu.r.toFixed(2)}%`);
   check(idleCpu.r < Math.max(3, activeCpu.r * 0.8), 'asleep costs less than active', `${idleCpu.r.toFixed(2)}% vs ${activeCpu.r.toFixed(2)}%`);
 
@@ -809,8 +842,31 @@ async function sheets() {
     const files = fs.readdirSync(f.dir).filter((n) => n.endsWith('.png')).sort();
     const pick = files.filter((_, i) => i % Math.max(1, Math.floor(files.length / 30)) === 0).slice(0, 30);
     const srcs = pick.map((n) => toData(path.join(f.dir, n)));
+    if (f.wide) {
+      // The whole strip, every few frames, two to a row: where he goes, not just what he does.
+      const all = files.filter((_, i) => i % Math.max(1, Math.floor(files.length / 40)) === 0).slice(0, 40).map((n) => toData(path.join(f.dir, n)));
+      const wideData = await w.webContents.executeJavaScript(`(async () => {
+        const srcs = ${JSON.stringify(all)}, box = ${JSON.stringify(f.box || { x: 288, y: 126, w: 624 })};
+        const CW = 600, CH = 120, COLS = 2, K = 0.5;
+        const c = document.getElementById('c');
+        c.width = CW * COLS; c.height = Math.ceil(srcs.length / COLS) * CH;
+        const g = c.getContext('2d');
+        for (let i = 0; i < srcs.length; i++) {
+          const img = new Image(); img.src = srcs[i]; await img.decode();
+          const X = (i % COLS) * CW, Y = Math.floor(i / COLS) * CH;
+          g.fillStyle = '#262624'; g.fillRect(X, Y, CW, CH);
+          g.fillStyle = '#30302e'; g.fillRect(X + box.x * K, Y + box.y * K, box.w * K, CH - box.y * K - 9 * K);
+          g.drawImage(img, 0, 0, img.width, img.height, X, Y, CW, CH);
+          g.strokeStyle = '#000'; g.strokeRect(X + 0.5, Y + 0.5, CW - 1, CH - 1);
+          g.fillStyle = '#ccc'; g.font = '11px monospace'; g.fillText(String(i), X + 4, Y + 12);
+        }
+        return c.toDataURL('image/png');
+      })()`);
+      fs.writeFileSync(path.join(OUT, `sheet-film-${f.label}.png`), Buffer.from(wideData.split(',')[1], 'base64'));
+      continue;
+    }
     const data = await w.webContents.executeJavaScript(`(async () => {
-      const srcs = ${JSON.stringify(srcs)}, box = ${JSON.stringify(f.box || { x: 288, y: 126, w: 624 })}, cx = ${JSON.stringify(f.sendAt ? f.sendAt.x : f.x || 800)};
+      const srcs = ${JSON.stringify(srcs)}, box = ${JSON.stringify(f.box || { x: 288, y: 126, w: 624 })}, cx = ${JSON.stringify(!f.follow && f.sendAt ? f.sendAt.x : f.x || 800)};
       const CW = 200, CH = 240, COLS = 10;
       const c = document.getElementById('c');
       c.width = CW * COLS; c.height = Math.ceil(srcs.length / COLS) * CH;

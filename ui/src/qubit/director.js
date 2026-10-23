@@ -6,6 +6,13 @@
 //     speaking, waiting for a yes by Send, sending, watching Claude work, muted, a quiet call (idle,
 //     where his seeded idle wander takes over), going to sleep. Entering one sets his mode (colour,
 //     eye, idle loop) and, where it has a place, sends him there by the best route.
+//   - His own life, while Orbit is off or asleep (nobody is talking to him): he dozes off, and after
+//     a few seconds gets up and lives (see LIFE): wanders the prompt box and the floor, hops, rolls,
+//     practises his flips, looks about, and takes the odd nap, all seeded so it never loops. The
+//     longer nothing happens, the longer his naps, until he sleeps for good (CPU: asleep and still,
+//     the page drops to low power). Anything real (the wake word, a call, Claude finishing) wins at
+//     once, from wherever he is: a mode change is a spring retarget, and a move in progress is cut
+//     short (physics lands him), so the hand-off is smooth.
 //   - Reactions to events, which run to the end (a couple of seconds at most) before the base state
 //     takes over again: a draft (he goes to the text and follows it along), a send (he stomps
 //     Claude's Send button), Claude finishing (he celebrates; asleep, he jolts awake and dozes off
@@ -28,6 +35,42 @@ const SIDES = { 1: 26, 2: 36, 3: 50 }; // body side (px) per avatar size setting
  */
 export const COMMANDS = Object.freeze(['backflip', 'frontflip', 'roll', 'jump', 'hop', 'grow', 'shrink', 'celebrate', 'dance', 'nod', 'shake', 'look_around', 'stretch', 'blink', 'happy', 'sad', 'surprised', 'curious', 'move', 'go_home', 'nap', 'wake']);
 export const COMMAND_TIMES = Object.freeze({ dance: 6, mood: 4, nap: 12, grow: 15 }); // seconds: dancing, a mood, a nap, staying big
+
+/**
+ * His own life (Orbit off or asleep), in seconds ([min, max] are drawn from his seed): the doze
+ * before he gets up, how long he's up between naps, and the naps. After `tiredS` with nothing
+ * happening (no call, no cursor near him, nothing from Claude) his naps get long; after `nightS`
+ * he sleeps until something happens.
+ */
+export const LIFE = Object.freeze({ dozeS: [5, 9], awakeS: [40, 100], napS: [6, 15], tiredS: 600, tiredNapS: [40, 90], nightS: 1800 });
+/** How he is when he's up and about on his own: livelier than in a quiet call (OrbitNav temperament). */
+export const LIVELY = Object.freeze({ energy: 1, curiosity: 0.55, sociability: 0.5, boldness: 0.8, playfulness: 1, patience: 0, homebody: 0.25 });
+/** ...and what he leans toward: more play and shorter walks, fewer long rests (OrbitNav idle bias). */
+export const LIFE_BIAS = Object.freeze({ fidget: 2.4, rest: 0.55, look: 0.7, explore: 0.55, go: 1.1 });
+/** What he does on the spot when he's up (his engine's own actions; tricks scale with playfulness). */
+export const LIFE_FIDGETS = Object.freeze([
+  { name: 'hopInPlace', weight: 1.1 },
+  { name: 'lookAround', weight: 0.9 },
+  { name: 'wonder', weight: 0.6 },
+  { name: 'eyeMorph', weight: 0.5 },
+  { name: 'eyeTurn', weight: 0.45 },
+  { name: 'stretch', weight: 0.45 },
+  { name: 'doubleBlink', weight: 0.35 },
+  { name: 'flip', weight: 0.75, trick: true, params: { outcome: 'auto' } }, // practising (mostly misses)
+  { name: 'roll', weight: 0.55, trick: true },
+  { name: 'jump', weight: 0.45, trick: true },
+]);
+
+/** A small seeded random source (mulberry32): his life's timing is reproducible per seed. */
+function rng(seed) {
+  let a = seed >>> 0 || 1;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 /** Qubit's side in px for the avatar size setting (1 tiny, 2 small, 3 big). */
 export const sideFor = (scale) => SIDES[Math.round(Number(scale))] || SIDES[2];
@@ -115,7 +158,7 @@ export function layout({ W, H, box, send, side }) {
  * The director for one Qubit `q` (a QubitEngine instance). `setLowPower(on)` is told when nothing
  * is happening (asleep and still), so the page can drop to the engine's low-power frame rate.
  */
-export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
+export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTiming = {} } = {}) {
   let t = 0;
   let v = { phase: 'off' };
   let geo = null;
@@ -123,9 +166,18 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
   let lastActive = 0;
   let react = null; // { kind, mode, until } while a reaction runs
   let sleeping = false; // the walk home and doze-off is under way
-  let wander = false;
+  let wander = null; // the idle wander that's on: null, 'calm' (a quiet call) or 'life' (his own life)
   let relocate = false; // the box moved (the window resized): back to his place once he's settled
   let grownUntil = 0; // "get bigger": he shrinks back by himself then
+  // His own life (Orbit off or asleep): { phase: 'doze' | 'stir' | 'up' | 'nap', until }. `until` is
+  // null while he's still dozing off (it starts once he's asleep and still).
+  let life = null;
+  const timing = { ...LIFE, ...lifeTiming };
+  const lifeRand = rng(seed * 2654435761 + 17);
+  const draw = ([a, b]) => a + (b - a) * lifeRand();
+  let seenAt = 0; // the last time anything happened (for how tired he gets)
+  let lastPointer = null;
+  let lives = 0; // a new idle planner each time his life starts, each with its own seed
   const log = []; // what it did, for tests and the e2e harness (state and reaction names only)
   const note = (what) => {
     log.push({ t: Math.round(t * 100) / 100, what });
@@ -142,14 +194,71 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
     q.goTo(p.x, p.y - 1, { style, interrupt });
   }
 
-  function setWander(on) {
-    on = on && !reduceMotion && !!geo;
-    if (on === wander) return;
-    wander = on;
-    if (on) q.setWander(true, { seed, home: geo.home, quiet: 3, delay: 1.5, interests: interests() });
+  /** Idle wander off (null), calm (a quiet call) or lively (his own life). */
+  function setWander(kind) {
+    kind = kind && !reduceMotion && geo ? kind : null;
+    if (kind === wander) return;
+    wander = kind;
+    if (kind === 'life') q.setWander(true, { seed: seed + 1 + 7919 * lives++, home: geo.home, quiet: 1.1, delay: 0.6, temperament: LIVELY, fidgets: LIFE_FIDGETS, bias: LIFE_BIAS, interests: interests(), cursorWeight: 0.9 });
+    else if (kind) q.setWander(true, { seed, home: geo.home, quiet: 3, delay: 1.5, interests: interests() });
     else q.setWander(false);
   }
   const interests = () => (geo?.sendAt ? [{ x: geo.sendAt.x, y: geo.sendAt.y, kind: 'send', weight: 0.5 }] : []);
+
+  // ---- his own life ----
+  const lifeState = (s) => s === 'asleep' || s === 'sleepy';
+  const lifeOn = () => !reduceMotion && !!geo;
+  /** Off to sleep (from wherever he is, or home first): a doze, or a nap in the middle of his day. */
+  function doze(phase, { home = false } = {}) {
+    life = { phase, until: null };
+    sleeping = true;
+    if (q.mode !== 'asleep') q.setMode('sleepy');
+    if (home) moveTo(geo?.home, { style: 'amble' });
+    q.do('sleep').then(() => (sleeping = false));
+  }
+  /** He wakes by himself: his lid lifts, a blink or two, a stretch, and he's up. */
+  function stir() {
+    note('life stir');
+    life = { phase: 'stir', until: t + 1.1 };
+    q.setMode('sleepy');
+    q.do('doubleBlink', { axis: 'h' }, { interrupt: true });
+  }
+  function getUp() {
+    note('life up');
+    life = { phase: 'up', until: t + draw(timing.awakeS) };
+    q.setMode('idle');
+    q.do('stretch');
+    setWander('life');
+  }
+  /** One frame of his own life (only while Orbit is off or asleep, and nothing else is on). */
+  function liveTick() {
+    if (!life) return;
+    const still = !q.air && !q.pivot && !q.busy;
+    const idleFor = t - seenAt;
+    if (life.phase === 'doze' || life.phase === 'nap') {
+      if (q.mode !== 'asleep' && still && !sleeping && !q.task) return doze(life.phase); // (his doze-off was cut short)
+      if (q.mode !== 'asleep' || !still || sleeping) return;
+      if (life.until == null) {
+        // He's asleep now: how long for (naps get longer as he tires; at night, until something happens).
+        const tired = idleFor > timing.tiredS;
+        life.until = idleFor > timing.nightS ? Infinity : t + draw(life.phase === 'nap' && tired ? timing.tiredNapS : life.phase === 'nap' ? timing.napS : timing.dozeS);
+        note(`life ${life.phase} ${Number.isFinite(life.until) ? Math.round(life.until - t) + 's' : 'for the night'}`);
+      } else if (t >= life.until) stir();
+    } else if (life.phase === 'stir') {
+      if (t >= life.until && still) getUp();
+    } else if (life.phase === 'up') {
+      if (q.mode !== 'idle' && still && !q.task) q.setMode('idle'); // (back from a flip's embarrassment)
+      if (t >= life.until && still) {
+        note('life nap');
+        doze('nap', { home: lifeRand() < 0.35 }); // (his wander waits: asleep, it doesn't run)
+      }
+    }
+  }
+  /** Something happened (a call, Claude, the cursor near him): he isn't tired, and at night he wakes. */
+  function seen() {
+    seenAt = t;
+    if (life && (life.phase === 'doze' || life.phase === 'nap') && life.until === Infinity) life.until = t + 1.5;
+  }
 
   /** Wake first if he's asleep (the lid lifts, a little hop), into this state's mode. */
   function wakeInto(mode) {
@@ -162,7 +271,24 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
     note(`state ${s}`);
     const g = geo;
     q.brainT.glance = s === 'watching' || s === 'confirm' ? 99 : Math.min(q.brainT.glance, 1.5);
-    setWander(s !== 'muted');
+    if (lifeState(s) && lifeOn()) {
+      // Orbit is off or asleep: his own life. Back from a reaction (Claude finished, a poke) while
+      // he's up and about, he carries on; otherwise he dozes off (at home, if Orbit just hung up).
+      if (!motion) return; // a reaction is on; this runs when it ends
+      if (life && (life.phase === 'up' || life.phase === 'stir') && (prev === 'reaction' || prev === 'relocate')) {
+        if (life.phase === 'stir') return getUp();
+        if (q.mode !== 'idle') q.setMode('idle');
+        setWander('life');
+        return;
+      }
+      if (life && (life.phase === 'doze' || life.phase === 'nap') && q.mode === 'asleep' && (prev === 'reaction' || prev === 'relocate' || prev === 'asleep' || prev === 'sleepy') && !(prev === 'relocate' && !near(g?.home))) return;
+      setWander(null);
+      if (q.mode === 'asleep' && near(g?.home) && life) return;
+      doze(life?.phase === 'nap' ? 'nap' : 'doze', { home: (s === 'asleep' && prev !== 'reaction') || prev === 'relocate' });
+      return;
+    }
+    life = null;
+    setWander(s !== 'muted' && 'calm');
     if (s === 'asleep') {
       if (!motion) return; // a reaction is on; he dozes off when it ends
       if (q.mode === 'asleep' && near(g?.home)) return;
@@ -179,6 +305,7 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
       if (q.mode !== 'asleep') q.setMode('sleepy');
       return;
     }
+    if (s === 'waking' || s === 'listening') q.look = { x: 0, y: 0 }; // he looks at you
     if (wasAsleep && motion) wakeInto(mode);
     else if (q.mode !== mode || s === 'muted') q.setMode(mode);
     if (s === 'muted') {
@@ -205,6 +332,7 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
     const g = geo;
     const base = baseState(v, t - lastActive);
     lastActive = t;
+    seen();
     if (name === 'error') {
       note('react error');
       sleeping = false;
@@ -215,7 +343,7 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
     }
     if (name === 'finished') {
       note('react finished');
-      if (base === 'asleep' || base === 'sleepy') {
+      if ((base === 'asleep' || base === 'sleepy') && asleepLike()) {
         // Asleep: a start, a celebration, and he dozes off again (when the reaction ends).
         react = { kind: 'finished', mode: null, until: t + 1 };
         wakeInto('happy');
@@ -264,6 +392,14 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
 
   /** Is he standing on the prompt box? */
   const onTheBox = () => !!geo?.box && !q.air && !q.pivot && Math.abs(geo.ground - q.sy - geo.box.y) < 2 && q.cx > geo.box.x && q.cx < geo.box.x + geo.box.w;
+  // (Engine workaround: a flip's deep take-off crouch on top of a solid reads as hitting the solid's
+  // side, which throws him off the box's end. While a flip that starts on the box runs (asked for,
+  // or practised in his own life), the box is a ledge: he still lands on its top.)
+  const setLedge = (on) => {
+    for (const o of q.solids) if (o.id === 'box') o.oneWay = on;
+  };
+  q.on('action', ({ name }) => name === 'flip' && onTheBox() && setLedge(true));
+  q.on('done', ({ name }) => name === 'flip' && setLedge(false));
   const grown = () => q.sp.grow.t > 1.05;
   /** Which way to go (dir 'left' | 'right', else toward the side with more room) and how far there's room. */
   function room(dir) {
@@ -284,6 +420,7 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
     const base = baseState(v, t - lastActive);
     note(`command ${a}`);
     lastActive = t;
+    seen();
     if (a === 'wake') {
       react = { kind: 'command', mode: null, until: t + 0.6, action: a };
       if (asleepLike()) wakeInto(MODE_FOR[base] || 'listening');
@@ -306,18 +443,9 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
     let hold = 0.5;
     switch (a) {
       case 'backflip':
-      case 'frontflip': {
-        // (Engine workaround: a flip's deep take-off crouch on top of a solid reads as hitting the
-        // solid's side, which throws him off the box's end. While it runs, the box is a ledge: he
-        // still lands on its top; nothing else changes while he flips in place.)
-        const ledge = onTheBox();
-        const setLedge = (on) => {
-          for (const o of q.solids) if (o.id === 'box') o.oneWay = on;
-        };
-        if (ledge) setLedge(true);
-        q.do('flip', { dir: a === 'backflip' ? -1 : 1, outcome: 'success' }, opt).then(() => ledge && setLedge(false));
+      case 'frontflip':
+        q.do('flip', { dir: a === 'backflip' ? -1 : 1, outcome: 'success' }, opt);
         break;
-      }
       case 'roll': {
         let r = room(cmd.dir);
         if (r.space < side() * 0.9) r = room(r.d > 0 ? 'left' : 'right'); // no room that way: the other
@@ -456,7 +584,13 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
       q.setMode(mode, { instant: true });
       state = s;
       lastActive = t;
-      setWander(s !== 'muted');
+      seen();
+      if (lifeState(s) && lifeOn()) {
+        // Already asleep: his doze has begun (he gets up after it).
+        q.setMode('asleep', { instant: true });
+        life = { phase: 'doze', until: null };
+        setWander(null);
+      } else setWander(s !== 'muted' && 'calm');
       note(`place ${s}`);
     },
     event,
@@ -466,6 +600,10 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
       q.setLevels(v.muted ? 0 : Number(v.input) || 0, Number(v.output) || 0);
       if (v.phase !== 'listening' || v.hearing || v.draft || v.sending || v.claudeWorking || v.asleep || v.muted) lastActive = t;
       const s = baseState(v, t - lastActive);
+      // What keeps him from tiring: a call, Claude at work, the cursor moving near him.
+      if ((v.phase && v.phase !== 'off') || v.claudeWorking) seen();
+      if (q.pointer && q.pointer !== lastPointer && Math.abs(q.pointer.x - q.cx) < q.side * 8) seen();
+      lastPointer = q.pointer;
       // Big for a while after "get bigger", then back to his own size.
       if (grownUntil && t > grownUntil && !react && !q.busy && !q.air && !q.pivot) {
         grownUntil = 0;
@@ -492,18 +630,20 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
         state = s;
         enter(s, prev);
       } else if (relocate && !q.air && !q.pivot && !q.busy) {
-        // The window changed under him: back to his place (asleep, he sleepwalks there).
+        // The window changed under him: back to his place (asleep, he sleepwalks there; up and
+        // about in his own life, he has no place: he carries on from where he is).
         relocate = false;
-        const place = { asleep: geo.home, confirm: geo.confirm, sending: geo.sendAt, watching: geo.watch }[s];
+        const place = life?.phase === 'up' || life?.phase === 'stir' ? null : { asleep: geo.home, confirm: geo.confirm, sending: geo.sendAt, watching: geo.watch }[s];
         if (place && !near(place)) {
           note('relocate');
           enter(s, 'relocate');
         }
-      }
+      } else if (lifeState(s) && lifeOn()) liveTick();
     },
     /** A click on him: a little reaction (asleep, he stirs and dozes off again). */
     poke() {
       if (!geo || react) return;
+      seen();
       if (asleepLike()) {
         react = { kind: 'poke', mode: null, until: t + 0.5 };
         q.do('wake', { to: 'sleepy' }, { interrupt: true });
@@ -521,6 +661,15 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
     /** Nothing is happening: asleep, settled and still (the page drops to low power). */
     lowPower() {
       return q.mode === 'asleep' && !q.task && !q.queue.length && !q.air && !q.pivot && !react;
+    },
+    /** Retune his own life (see LIFE; the e2e keeps him dozing for its sleep checks). A doze under way is re-timed. */
+    setLifeTiming(patch = {}) {
+      for (const k of Object.keys(LIFE)) if (Array.isArray(patch[k]) || Number.isFinite(patch[k])) timing[k] = patch[k];
+      if (life && (life.phase === 'doze' || life.phase === 'nap')) life.until = null;
+    },
+    /** His own life's phase: 'doze' | 'stir' | 'up' | 'nap', or null (Orbit is on). */
+    get life() {
+      return life?.phase || null;
     },
     get state() {
       return state;

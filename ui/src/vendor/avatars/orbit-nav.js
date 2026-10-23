@@ -66,6 +66,8 @@
  *     planner.setInterests(list), planner.setHome(p), planner.reseed(seed), planner.history
  *     temperament: 'qubit' | 'inkey' | { energy, curiosity, sociability, boldness, playfulness,
  *                  patience, homebody } (0..1). fidgets: [{ name, weight, trick?, params? }].
+ *     bias (extension): { rest, look, fidget, go, explore, perch, return } factors on top of the
+ *                  temperament (e.g. { fidget: 2, rest: 0.5 } for a livelier spell).
  *   Idle life is a weighted behaviour chain (what tends to follow what), scaled by temperament, with
  *   novelty (recent behaviours and recently visited places are less likely), rests drawn from a
  *   log-normal distribution, settle beats before and after every move, and interest points (cursor,
@@ -985,6 +987,8 @@
       w.look *= lerp(0.6, 1.4, T.curiosity);
       w.return *= lerp(0.3, 1.8, T.homebody) * clamp(away / 25, 0, 1.6) * clamp(homeD / (ab.bodyW * 3), 0, 1.2);
       if (homeD < ab.bodyW * 1.5) w.return = 0;
+      // A caller's own leaning (opts.bias: a factor per behaviour), on top of the temperament.
+      for (const k in this.opts.bias || {}) if (k in w && Number.isFinite(this.opts.bias[k])) w[k] *= Math.max(0, this.opts.bias[k]);
       const topI = interests.reduce((m, i) => (!m || i.sal > m.sal ? i : m), null);
       if (topI) {
         w.look += topI.sal * 0.7 * lerp(0.6, 1.4, T.sociability);

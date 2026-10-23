@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { MODE_FOR, QUIET_TO_IDLE_S, baseState, createDirector, layout, sideFor } from '../ui/src/qubit/director.js';
+import { LIFE, LIFE_FIDGETS, MODE_FOR, QUIET_TO_IDLE_S, baseState, createDirector, layout, sideFor } from '../ui/src/qubit/director.js';
 import { rectInStrip, sendInStrip, boxInStrip } from '../electron/buddy-geometry.js';
 
 // ---------- the engine in node ----------
@@ -32,12 +32,14 @@ const H = 240;
 const BOX = { x: 300, y: 142, w: 624, h: 98 }; // a prompt box 95 px tall above the floor
 const SEND = { x: 872, y: 196, w: 32, h: 32 };
 
-function scene({ seed = 7, box = BOX, send = SEND, scale = 2, voice = { phase: 'off' }, entrance = false } = {}) {
+// (Most tests keep him dozing while Orbit is off: his own life has tests of its own, below.)
+const DOZE_ON = { dozeS: [600, 600] };
+function scene({ seed = 7, box = BOX, send = SEND, scale = 2, voice = { phase: 'off' }, entrance = false, life = DOZE_ON, reduceMotion = false } = {}) {
   const realRandom = Math.random;
   Math.random = seeded(seed);
   const q = E.create({ mount: null, width: W, height: H, size: sideFor(scale), floor: 3, mode: 'asleep', keepAlive: true });
   q.brainT.play = q.brainT.stunt = Infinity;
-  const dir = createDirector(q, { seed });
+  const dir = createDirector(q, { seed, life, reduceMotion });
   dir.setVoice(voice);
   dir.setGeometry({ W, H, box, send, side: sideFor(scale) });
   dir.place({ entrance });
@@ -366,4 +368,157 @@ test('the listening lean is a moment, and curious never tilts him: he always set
   let most = 0;
   for (let i = 0; i < 180; i++) (q.update(1 / 60), (most = Math.max(most, Math.abs(q.sp.lean.v + q.sp.tilt.v))));
   assert.ok(most < 0.3, `curious: body stays level (${most.toFixed(2)}°)`);
+});
+
+// ---------- his own life (Orbit off or asleep) ----------
+const TRICKS = new Set(['flip', 'roll', 'jump']);
+/** Watch his own life for `secs`: the actions he starts (idle or not), where he is, and when. */
+async function watchLife(s, secs) {
+  const { q, dir } = s;
+  const acts = [];
+  q.on('action', (a) => s.watching === acts && acts.push({ name: a.name, t: q.t, idle: !!q.task?.idle, mode: q.mode }));
+  s.watching = acts;
+  let floor = 0;
+  let box = 0;
+  let low = 0;
+  let maxStep = 0;
+  let px = q._rx;
+  const xs = new Set();
+  await s.run(secs, () => {
+    if (!q.air && !q.pivot) {
+      if (q.sy < 1) floor++;
+      else box++;
+    }
+    if (dir.lowPower()) low++;
+    xs.add(Math.round(q.cx / 20));
+    if (px != null) maxStep = Math.max(maxStep, Math.abs(q._rx - px));
+    px = q._rx;
+  });
+  s.watching = null;
+  return { acts, floor: floor / 60, box: box / 60, low: low / 60, places: xs.size, maxStep };
+}
+
+test('his own life: he dozes, gets up after a few seconds and lives (seeded, varied, on the box and the floor)', async () => {
+  const runs = [];
+  for (const seed of [1, 2, 3, 4]) {
+    const s = scene({ seed, life: {} }); // the real timing (LIFE)
+    const { q, dir } = s;
+    assert.equal(q.mode, 'asleep', 'Orbit is off: he starts asleep');
+    const w = await watchLife(s, 200);
+    const log = dir.log.map((l) => l.what);
+    const upAt = dir.log.find((l) => l.what === 'life up')?.t;
+    assert.ok(upAt >= LIFE.dozeS[0] && upAt <= LIFE.dozeS[1] + 3, `seed ${seed}: up after his doze (${upAt}s)`);
+    const did = w.acts.filter((a) => a.t > upAt);
+    const names = new Set(did.map((a) => (a.name === '_wanderMove' ? 'move' : a.name)));
+    const moves = did.filter((a) => a.name === '_wanderMove').length;
+    const tricks = did.filter((a) => TRICKS.has(a.name)).length;
+    assert.ok(moves >= 12, `seed ${seed}: wanders (${moves} moves)`);
+    assert.ok(tricks >= 3, `seed ${seed}: tricks (${tricks}: ${[...names]})`);
+    assert.ok(names.size >= 7, `seed ${seed}: varied (${[...names].join(', ')})`);
+    assert.ok(w.places >= 15, `seed ${seed}: all over (${w.places} spots of 20 px)`);
+    assert.ok(w.floor > 3 && w.box > 30, `seed ${seed}: on the floor (${w.floor.toFixed(0)}s) and the box (${w.box.toFixed(0)}s)`);
+    assert.ok(log.includes('life nap'), `seed ${seed}: a nap in his day`);
+    assert.ok(w.low > 4, `seed ${seed}: his naps are low power (${w.low.toFixed(1)}s)`);
+    // Everything he does is his engine's own (no new art): his fidgets, moves, naps and wakes.
+    const allowed = new Set([...LIFE_FIDGETS.map((f) => f.name), '_wanderMove', 'goTo', 'sleep', 'doubleBlink', 'stretch', 'celebrate']);
+    for (const a of did) assert.ok(allowed.has(a.name), `seed ${seed}: ${a.name}`);
+    assert.ok(w.maxStep < q.side * 0.5, `seed ${seed}: no jumps on screen (largest step ${w.maxStep.toFixed(1)} px)`);
+    assert.deepEqual(s.problems, [], `seed ${seed}`);
+    runs.push(did.slice(0, 12).map((a) => a.name).join(' '));
+    s.done();
+  }
+  // Seeds diverge: no two of them start their day the same way.
+  assert.equal(new Set(runs).size, runs.length, runs.join('\n'));
+});
+
+test('his own life never runs while Orbit listens: the wake word wins at once, from wherever he is', async () => {
+  for (const seed of [5, 6, 7]) {
+    const s = scene({ seed, life: { dozeS: [1, 1] } });
+    const { q, dir } = s;
+    // Up and about, then caught mid-air (a hop, a jump or a flip of his own).
+    await s.run(4);
+    let caught = false;
+    for (let i = 0; i < 60 * 40 && !caught; i++) {
+      await s.run(1 / 60);
+      caught = q.air && !!q.task?.idle && dir.state === 'asleep';
+    }
+    assert.ok(caught, `seed ${seed}: caught him mid-air in his own life`);
+    const x0 = q.cx;
+    s.set({ phase: 'connecting' });
+    await s.run(2 / 60);
+    assert.equal(q.mode, 'listening', `seed ${seed}: listening at once (mid-air)`);
+    assert.ok(!q.task || !q.task.idle || q.task.cancelled, `seed ${seed}: his own move is cut short`);
+    s.set({ phase: 'listening', hearing: true, input: 0.4 });
+    const w = await watchLife(s, 12);
+    assert.equal(w.acts.filter((a) => a.idle).length, 0, `seed ${seed}: no idle life while listening (${w.acts.map((a) => a.name)})`);
+    assert.ok(!q.air && !q.pivot, `seed ${seed}: he landed`);
+    assert.ok(Math.abs(q.cx - x0) < q.side * 3, `seed ${seed}: from where he was (moved ${(q.cx - x0).toFixed(0)} px)`);
+    assert.ok(w.maxStep < q.side * 0.5, `seed ${seed}: a smooth hand-off (largest step ${w.maxStep.toFixed(1)} px)`);
+    assert.equal(q.mode, 'listening');
+    // Thinking and speaking: still nothing of his own.
+    s.set({ hearing: false, phase: 'thinking' });
+    const w2 = await watchLife(s, 3);
+    s.set({ phase: 'speaking', output: 0.5 });
+    const w3 = await watchLife(s, 4);
+    assert.equal([...w2.acts, ...w3.acts].filter((a) => a.idle).length, 0, `seed ${seed}: none while thinking or speaking`);
+    // Hung up: he dozes off at home, and is up again a moment later.
+    s.set({ phase: 'off', output: 0 });
+    await s.run(1);
+    assert.ok(q.mode === 'sleepy' || q.mode === 'asleep', `seed ${seed}: dozing off (${q.mode})`);
+    await s.run(16);
+    assert.ok(dir.log.filter((l) => l.what === 'life up').length >= 2, `seed ${seed}: up again`);
+    assert.deepEqual(s.problems, [], `seed ${seed}`);
+    s.done();
+  }
+});
+
+test('his own life: Orbit asleep in a call counts too; Claude finishing while he is up: a celebration, then he carries on', async () => {
+  const s = scene({ seed: 9, voice: { phase: 'listening', asleep: true }, life: { dozeS: [2, 2] } });
+  const { q, dir } = s;
+  await s.run(8);
+  assert.equal(dir.state, 'sleepy');
+  assert.equal(q.mode, 'idle', 'Orbit asleep in a call: he gets up too');
+  await s.run(0.5);
+  dir.event('finished');
+  await s.run(0.3);
+  assert.equal(q.mode, 'happy');
+  assert.equal(q.taskName, 'celebrate');
+  await s.run(3);
+  assert.equal(q.mode, 'idle', 'and carries on with his day (no going back to sleep)');
+  const w = await watchLife(s, 10);
+  assert.ok(w.acts.some((a) => a.idle), 'his own life again');
+  assert.deepEqual(s.problems, []);
+  s.done();
+});
+
+test('his own life: he tires (longer naps), sleeps for the night, and wakes when something happens; reduced motion stays asleep', async () => {
+  const s = scene({ seed: 4, life: { dozeS: [1, 1], awakeS: [8, 8], napS: [3, 3], tiredS: 40, tiredNapS: [20, 20], nightS: 80 } });
+  const { q, dir } = s;
+  await s.run(150);
+  const naps = dir.log.filter((l) => /^life nap \d+s$/.test(l.what)).map((l) => Number(l.what.match(/(\d+)s/)[1]));
+  assert.ok(naps.includes(3) && naps.includes(20), `short naps, then long ones (${naps})`);
+  assert.ok(dir.log.some((l) => l.what === 'life nap for the night'), 'asleep for the night');
+  await s.run(30);
+  assert.equal(q.mode, 'asleep', 'still asleep');
+  assert.ok(dir.lowPower());
+  dir.event('finished'); // Claude finished: it wakes him
+  await s.run(12);
+  assert.ok(dir.log.slice(-6).some((l) => l.what === 'life up') || q.mode === 'idle', `up again (${dir.log.slice(-4).map((l) => l.what)})`);
+  s.done();
+  const r = scene({ seed: 4, life: { dozeS: [1, 1] }, reduceMotion: true });
+  await r.run(20);
+  assert.equal(r.q.mode, 'asleep', 'reduced motion: he stays asleep');
+  assert.ok(!r.dir.log.some((l) => l.what === 'life up'));
+  r.done();
+});
+
+test('after a celebration (its colour sweep) he glides back to his mood\x27s own colour', () => {
+  const q = E.create({ mount: null, width: W, height: H, size: 36, floor: 3, mode: 'idle', keepAlive: true });
+  q.brainT.play = q.brainT.stunt = Infinity;
+  q.do('celebrate');
+  for (let i = 0; i < 60 * 5; i++) q.update(1 / 60);
+  const [L, C, Hh] = E.MODES.idle.color;
+  const hue = ((q.sp.H.v % 360) + 360) % 360;
+  assert.ok(Math.abs(q.sp.L.v - L) < 0.01 && Math.abs(q.sp.C.v - C) < 0.01 && Math.abs(hue - Hh) < 2, `indigo again (${q.sp.L.v.toFixed(2)} ${q.sp.C.v.toFixed(2)} ${hue.toFixed(0)})`);
+  q.destroy();
 });

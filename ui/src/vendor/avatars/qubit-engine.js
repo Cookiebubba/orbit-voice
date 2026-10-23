@@ -652,7 +652,7 @@
     /**
      * Idle wander: a seeded idle planner fills quiet time (in moods that allow it, i.e. idle).
      * opts: seed, home {x, y}, temperament, interests [{ x, y, kind, weight }], quiet (seconds after
-     * anything explicit before idle life resumes), cursorWeight.
+     * anything explicit before idle life resumes), cursorWeight, fidgets, bias (OrbitNav.idle's).
      */
     setWander(on = true, opts = {}) {
       if (!on) {
@@ -670,6 +670,7 @@
         fidgets: opts.fidgets || QUBIT_FIDGETS,
         interests: opts.interests || [],
         cursorWeight: opts.cursorWeight ?? 0.8,
+        bias: opts.bias,
       });
       this._dropIdle();
       this.wander = { planner, until: this.t + (opts.delay ?? 0.6), lookAt: null, last: null, quiet: opts.quiet ?? 2.5 };
@@ -728,6 +729,7 @@
           else params = { dir, n: 1 };
         }
         if (name === 'hopInPlace' && room < this.side * 0.45) name = 'eyeMorph';
+        if (name === 'jump' && room < this.side * 2) name = room < this.side * 0.45 ? 'lookAround' : 'hopInPlace';
         this.do(name, params, { idle: true });
       } else {
         this.do('_wanderMove', { intent: it }, { idle: true });
@@ -850,8 +852,13 @@
       // Colour override (celebration sweeps, music)
       if (this.colorOverride) {
         const c = this.colorOverride(this.t);
-        if (!c) this.colorOverride = null;
-        else (s.L.to(c[0]), s.C.to(c[1]), s.H.to(c[2]));
+        if (!c) {
+          // The sweep is over: back to his mood's own colour (a glide, never a snap).
+          this.colorOverride = null;
+          s.L.to(M.color[0]);
+          s.C.to(M.color[1]);
+          s.H.to(M.color[2]);
+        } else (s.L.to(c[0]), s.C.to(c[1]), s.H.to(c[2]));
       }
 
       for (const k in s) s[k].step(dt);
@@ -1246,17 +1253,19 @@
 
   const ACTIONS = {
     /** A small hop in place. */
-    *hopInPlace(q) {
+    *hopInPlace(q, {}, ctx) {
       yield* crouch(q, 0.86, 0.1);
       eyeBack(q);
+      if (ctx?.cancelled) return; // asked to stop mid-crouch: no take-off
       q.launch(0.32);
       yield* untilGrounded(q);
     },
     /** Hop sideways: dir -1 or 1, distance in body sides. */
-    *hop(q, { dir = 1, dist = 0.6 } = {}) {
+    *hop(q, { dir = 1, dist = 0.6 } = {}, ctx) {
       q.look = { x: dir, y: 0 };
       yield* crouch(q, 0.84, 0.09);
       eyeBack(q);
+      if (ctx?.cancelled) return;
       const h = 0.22;
       const T = q.flightTime(h);
       q.launch(h, (dir * dist * q.side) / T, dir * 8);
@@ -1272,7 +1281,7 @@
         const d = target - q.cx;
         if (Math.abs(d) < q.side * 0.12) break;
         const dist = Math.min(Math.abs(d) / q.side, 0.75);
-        yield* ACTIONS.hop(q, { dir: Math.sign(d), dist });
+        yield* ACTIONS.hop(q, { dir: Math.sign(d), dist }, ctx);
         yield* wait(q, 0.04, ctx);
       }
       q.look = { x: 0, y: 0 };
@@ -1281,10 +1290,11 @@
       yield* ACTIONS.moveTo(q, { x: q.cx + dx * q.side }, ctx);
     },
     /** A big straight jump. */
-    *jump(q, { height = 1.1 } = {}) {
+    *jump(q, { height = 1.1 } = {}, ctx) {
       q.look = { x: 0, y: -0.8 };
       yield* crouch(q, 0.72, 0.16);
       eyeBack(q);
+      if (ctx?.cancelled) return;
       q.sp.stretch.to(1);
       q.sp.stretch.kick(1.8);
       q.launch(height);
@@ -1303,8 +1313,10 @@
       q.sp.ew.to(36);
       q.sp.eh.to(5);
       yield* wait(q, 0.25, ctx);
+      if (ctx.cancelled) return;
       yield* crouch(q, 0.62, 0.22);
       q.sp.eh.to(q.M.eye.h);
+      if (ctx.cancelled) return;
       const T = q.flightTime(height);
       // How far round he gets: a full turn, or short of it.
       const miss = outcome === 'success' ? rand(-6, 6) : outcome === 'side' ? -90 + rand(-4, 4) : -rand(30, 58);
@@ -1315,6 +1327,7 @@
       q.sp.stretch.kick(2.4);
       q.emit('say', { text: pick(['Hup!', 'Here goes!', 'Watch this!']) });
       yield* untilGrounded(q, ctx, 6);
+      if (ctx.cancelled) return; // something else wants him: no celebration or blushing, just the landing
       // How did it go?
       const landedUpright = !q.lastLand?.sideways;
       if (outcome === 'success' && landedUpright) {
@@ -1433,6 +1446,7 @@
       q.emit('say', { text: pick(['Yes!', 'Stuck it!', 'Ta-da!']) });
       for (let i = 0; i < 2; i++) {
         yield* crouch(q, 0.84, 0.07);
+        if (ctx.cancelled) break;
         q.launch(0.38);
         yield* untilGrounded(q, ctx);
       }
@@ -1485,8 +1499,10 @@
     *sleep(q, {}, ctx) {
       q.setMode('sleepy');
       yield* wait(q, 1.6, ctx);
+      if (ctx.cancelled) return; // woken (or sent somewhere) before he dropped off
       q.blink('h');
       yield* wait(q, 0.6, ctx);
+      if (ctx.cancelled) return;
       q.setMode('asleep');
     },
     /** A quick look at something (x, y in -1..1), held. */
@@ -1628,6 +1644,7 @@
       const h = Math.max(0.04, Math.min(st.h * rand(0.9, 1.1), (room - 2) / q.side));
       yield* crouch(q, room < q.side * 0.2 ? 0.94 : st.crouch, st.crouchT);
       eyeBack(q);
+      if (ctx.cancelled) return;
       q.launchTo(tx, q.sy, q.sy + h * q.side, Math.sign(step) * 8);
       yield* untilGrounded(q, ctx);
       q.av = 0;
