@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased
+## 1.3.0-beta.1 (2026-10-23) · beta
+
+A prerelease. Installs of 1.2.0 aren't offered it; a beta install updates to later betas and to the next stable release.
+
+- **Updates follow your channel.** A stable install only ever updates to stable releases. A beta install takes the newest beta or stable release above it, so it moves on to the stable release when that ships.
+- **"Hey Orbit" wake word** ("Hey Grok" still works).
+- **Stop Claude by voice.** Saying "stop" or "cancel that run" presses Claude's own Stop button in the session that's open.
+- **Answer Claude when it's blocked.** When Claude waits on a permission prompt, one of its questions or a plan to approve, Orbit tells you, reads it, and answers it with Claude's own button.
+- **Web search.** Grok uses xAI's own search; Claude voice searches through your Claude Code sign-in (web pages only, at most 10 searches a call).
+- **The voice writes prompts for you.** Anything for Claude goes into Claude's box as your own words, said straight to Claude; "go to sleep" hangs up the moment it's heard.
+- **Mute button** and **Show the orb** (Settings → Avatar: with an avatar on, the orb can be turned off).
 
 - **Qubit's flips on the prompt box land on the box.** A flip from the box's top used to read, in his physics, as hitting the box's side as he crouched and spun off, which threw him off the end of the box (a workaround in the director turned the box into a ledge while he flipped). The engine now knows he took off from that top: until his centre drops below it, it's a top to land on, never a side. And a flip that lands on a corner next to the box and topples toward it knocks against its side and rocks back, instead of rolling into it.
 - **Qubit shows feelings as he talks, in time with his words.** With Qubit on, the voice may put a cue such as `<happy>` or `<curious>` right before the words it goes with (sparingly: at most one a sentence, often none). The cue is never spoken, shown in captions or kept anywhere (it is stripped as the words stream in, even when a cue arrives split across pieces, and from the resume note), and Qubit shows that feeling, one of his own moods or moves for a moment, exactly when those words come out of the speakers, then goes back to talking, his eye still his mouth. Eleven cues: happy, excited, curious, surprised, proud, sad, embarrassed, nod, shake, wonder, hop. Claude voice speaks each cue's words as their own piece, so the feeling starts with their audio; on Grok the audio is made on xAI's side, so the cue's place in the transcript is mapped onto the reply's audio as it is scheduled (snapped to where speech starts after a pause): on real Grok replies, within 10 ms at sentence and phrase starts, and within about 170 ms mid-phrase. Interrupting him, or anything you ask him to do, wins at once. (Tried on Grok: `[happy]` and `*happy*` vanish from its transcript, so Orbit couldn't see them; `<happy>` stays in the transcript and is never spoken.)
