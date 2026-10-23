@@ -35,7 +35,7 @@ export function createWinFocusTracker({ onFocus = () => {}, onSwitching = () => 
       return; // a partial or stray line
     }
     if (!j || typeof j !== 'object') return;
-    if (j.fg && typeof j.fg === 'object') return onFocus(j.fg);
+    if (j.fg && typeof j.fg === 'object') return onFocus(Number.isFinite(j.idle) ? { ...j.fg, idle: j.idle } : j.fg);
     if (typeof j.switching === 'boolean') return onSwitching(j.switching);
     if (Array.isArray(j.gone)) return onGone(j.gone.filter(Number.isFinite));
     if (Array.isArray(j.wins)) return onWins(j.wins.filter((w) => w && Number.isFinite(w.hwnd)));
@@ -132,6 +132,13 @@ export function createWinFocusTracker({ onFocus = () => {}, onSwitching = () => 
       watching = [...new Set((Array.isArray(hwnds) ? hwnds : []).map((h) => Math.floor(Number(h))).filter((h) => h > 0))].slice(0, 16);
       const r = await request(`watch # ${watching.length ? watching.join(',') : '-'}`);
       return Number.isFinite(r.watching) ? r.watching : -1;
+    },
+    /** Bring a window to the front (only on the user's request): { switched, how } or { error }. */
+    async switchTo(hwnd) {
+      const h = Math.floor(Number(hwnd));
+      if (!(h > 0)) return { error: 'no_window' };
+      const r = await request(`switch # ${h}`);
+      return r.error ? { error: r.error } : { switched: !!r.switched, how: String(r.how || '') };
     },
     /** The app windows Alt+Tab would show, front first. */
     async list() {

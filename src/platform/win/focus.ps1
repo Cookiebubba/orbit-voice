@@ -4,7 +4,8 @@
 # ends, and when the window in front changes its title. Long-lived; one JSON object per line.
 #
 # Reports (stdout):
-#   {"fg":<win>}                       the window in front changed (or its title, or minimized)
+#   {"fg":<win>,"idle":ms}             the window in front changed (or its title, or minimized); idle:
+#                                      how long since the user last touched the mouse or keyboard
 #   {"switching":true|false}           Alt+Tab (or Win+Tab) started / ended
 #   {"gone":[hwnd,...]}                windows reported before that no longer exist
 #   {"id":n,"describe":<win>|null}     answer to "describe"
@@ -20,7 +21,10 @@
 #   elevated: the app runs as administrator (or as another user), so Windows blocks Orbit from it.
 # The title is the app's own text: it never goes to the log (see focus.js).
 #
-# Commands (stdin): "describe <id> <hwnd>", "list <id>", "watch <id> <hwnd>,<hwnd>,..." (the
+# Commands (stdin): "describe <id> <hwnd>", "list <id>", "switch <id> <hwnd>" (bring it to the
+# front, only when the user asked: restore if minimized, SetForegroundWindow, else minimize without
+# activating and restore, else flash its taskbar button -> {"id":n,"switched":bool,"how":"restore|
+# foreground|minrestore|flash"}; never the Alt-key trick or AttachThreadInput), "watch <id> <hwnd>,<hwnd>,..." (the
 # windows Qubit is in: their moves come from per-process hooks, so other windows cost nothing;
 # "watch <id> -" stops), "quit".
 # Exits when stdin closes or its parent process (Orbit) is gone.
@@ -73,6 +77,43 @@ public static class OrbitFocus {
   [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr h, int flags, StringBuilder s, ref int size);
   [DllImport("advapi32.dll")] static extern bool OpenProcessToken(IntPtr h, uint access, out IntPtr token);
   [DllImport("advapi32.dll")] static extern bool GetTokenInformation(IntPtr token, int cls, out int info, int size, out int ret);
+  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
+  [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] static extern bool FlashWindowEx(ref FLASHWINFO fi);
+  [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LASTINPUTINFO li);
+  [StructLayout(LayoutKind.Sequential)] public struct FLASHWINFO { public uint cbSize; public IntPtr hwnd; public uint dwFlags; public uint uCount; public uint dwTimeout; }
+  [StructLayout(LayoutKind.Sequential)] public struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+
+  /** Milliseconds since the user last touched the mouse or keyboard (any app). */
+  public static long IdleMs() {
+    LASTINPUTINFO li = new LASTINPUTINFO(); li.cbSize = (uint)Marshal.SizeOf(typeof(LASTINPUTINFO));
+    if (!GetLastInputInfo(ref li)) return -1;
+    return (long)(uint)(Environment.TickCount - (int)li.dwTime);
+  }
+
+  static bool InFront(IntPtr h) { IntPtr f = GetForegroundWindow(); return f != IntPtr.Zero && GetAncestor(f, GA_ROOT) == h; }
+
+  /** The tested chain (see the top). */
+  static string Switch(IntPtr h) {
+    if (h == IntPtr.Zero || !IsWindow(h)) return "\"error\":\"no_window\"";
+    if (InFront(h) && !IsIconic(h)) return "\"switched\":true,\"how\":\"already\"";
+    if (IsIconic(h)) {
+      ShowWindow(h, 9); // SW_RESTORE
+      Thread.Sleep(120);
+      if (InFront(h)) return "\"switched\":true,\"how\":\"restore\"";
+    }
+    SetForegroundWindow(h);
+    Thread.Sleep(120);
+    if (InFront(h)) return "\"switched\":true,\"how\":\"foreground\"";
+    ShowWindow(h, 7); // SW_SHOWMINNOACTIVE
+    Thread.Sleep(60);
+    ShowWindow(h, 9); // SW_RESTORE
+    Thread.Sleep(160);
+    if (InFront(h)) return "\"switched\":true,\"how\":\"minrestore\"";
+    FLASHWINFO fi = new FLASHWINFO { cbSize = (uint)Marshal.SizeOf(typeof(FLASHWINFO)), hwnd = h, dwFlags = 3 | 12, uCount = 0, dwTimeout = 0 }; // FLASHW_ALL | FLASHW_TIMERNOFG
+    FlashWindowEx(ref fi);
+    return "\"switched\":false,\"how\":\"flash\"";
+  }
 
   const uint EVENT_SYSTEM_FOREGROUND = 0x0003, EVENT_SYSTEM_SWITCHSTART = 0x0014, EVENT_SYSTEM_SWITCHEND = 0x0015;
   const uint EVENT_SYSTEM_MINIMIZESTART = 0x0016, EVENT_SYSTEM_MINIMIZEEND = 0x0017, EVENT_OBJECT_NAMECHANGE = 0x800C;
@@ -211,7 +252,7 @@ public static class OrbitFocus {
     if (d == lastFg) return;
     lastFg = d;
     if (root != IntPtr.Zero && d.Contains("\"kind\":\"app\"") && !seen.Contains(root)) { seen.Add(root); if (seen.Count > 64) seen.RemoveAt(0); }
-    Out("{\"fg\":" + d + "}");
+    Out("{\"fg\":" + d + ",\"idle\":" + IdleMs() + "}");
   }
 
   // Title changes only from the process in front (a global name-change hook would hear every
@@ -332,6 +373,10 @@ public static class OrbitFocus {
           lock (watchGate) { wantWatch = want.ToArray(); }
           PostThreadMessage(loopThread, WM_APP_WATCH, IntPtr.Zero, IntPtr.Zero);
           Out("{\"id\":" + id + ",\"watching\":" + want.Count + "}");
+        } else if (p[0] == "switch" && p.Length == 3) {
+          long h;
+          string r = long.TryParse(p[2], out h) ? Switch(new IntPtr(h)) : "\"error\":\"no_window\"";
+          Out("{\"id\":" + id + "," + r + "}");
         } else if (p[0] == "list") {
           Out("{\"id\":" + id + ",\"list\":" + List() + "}");
         }

@@ -21,7 +21,7 @@ import { focus, setFocusBackend } from './focus.js';
 
 const CAPTURE_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'win', 'capture.ps1').replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
 
-export { appName, cleanWindow, createFocusStore, describeWindow, focus, focusBackend, listWindows, setFocusBackend } from './focus.js';
+export { appName, cleanWindow, createFocusStore, describeWindow, focus, focusBackend, listWindows, setFocusBackend, switchToWindow } from './focus.js';
 
 /**
  * Start following the window in front (the desktop shell calls this). Returns the tracker

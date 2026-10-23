@@ -38,7 +38,6 @@ for (const kind of ['winforms', 'wpf']) {
     const act = (args) => r.run('act_in_window', JSON.stringify({ window: title, ...args }));
     try {
       for (let i = 0; i < 40 && !focus.current; i++) await sleep(50);
-      const fgBefore = focus.current?.hwnd;
       await say(`in ${title} type hello there into the message box`);
       let res = await act({ control: 'Message', action: 'set_text', text: 'hello there' });
       assert.equal(res.done, true, JSON.stringify(res));
@@ -73,7 +72,8 @@ for (const kind of ['winforms', 'wpf']) {
       assert.ok((await act({ control: 'Secret', action: 'set_text', text: 'hello there' })).error);
       assert.equal(await app.state().then((s) => s.active), false, 'the window never became active');
       assert.ok(app.events.every((e) => e.event !== 'activated'), 'no activation, ever');
-      assert.equal(focus.current?.hwnd, fgBefore, 'the foreground never changed');
+      // (The user may be using the PC meanwhile, so the foreground may change: just never to ours.)
+      assert.ok(focus.recent.every((w) => w.hwnd !== app.hwnd) && focus.current?.hwnd !== app.hwnd, 'our window never came to the front');
     } finally {
       tracker?.stop();
       host.stop();

@@ -45,6 +45,7 @@ export function cleanWindow(w) {
     elevated: !!w.elevated,
     rect: { x: int(w.x), y: int(w.y), w: Math.max(0, int(w.w)), h: Math.max(0, int(w.h)) },
     dpi: int(w.dpi) > 0 ? int(w.dpi) : 96,
+    ...(Number.isFinite(Number(w.idle)) && w.idle !== null && w.idle !== undefined ? { idle: Math.max(0, int(w.idle)) } : {}),
   };
 }
 
@@ -161,6 +162,12 @@ export const focusBackend = () => backend;
 export async function describeWindow(hwnd) {
   if (!backend?.describe) return null;
   return cleanWindow(await backend.describe(hwnd).catch(() => null));
+}
+
+/** Bring a window to the front, on the user's request only: { switched, how } or { error }. */
+export async function switchToWindow(hwnd) {
+  if (!backend?.switchTo) return { error: 'unavailable' };
+  return backend.switchTo(hwnd).catch(() => ({ error: 'failed' }));
 }
 
 /** The app windows the user could switch to, front first ([] without a helper). */

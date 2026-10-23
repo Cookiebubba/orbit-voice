@@ -53,7 +53,14 @@ test('look: a picture of one window (even off screen, behind others) with its te
   const app = await startFakeApp('winforms', `ORBIT-LOOK-${process.pid}`);
   try {
     await app.send({ set: { Message: 'Quarterly report draft ready' } });
-    const shot = await captureWindow(app.hwnd);
+    // (Under load the off-screen window may not have painted the new text yet: look again.)
+    let shot = null;
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 300));
+      if (shot?.path) fs.rmSync(shot.path, { force: true });
+      shot = await captureWindow(app.hwnd);
+      if (/Quarterly report draft ready/.test(shot.ocr || '')) break;
+    }
     assert.equal(shot.ok, true, JSON.stringify(shot));
     assert.ok(fs.existsSync(shot.path));
     assert.ok(shot.w >= 600 && shot.w <= 1600, `width ${shot.w}`);
