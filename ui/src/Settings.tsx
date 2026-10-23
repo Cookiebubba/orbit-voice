@@ -279,6 +279,13 @@ function AvatarSection({ s, update, name }: { s: SettingsT; update: Update; name
             { value: "3", label: "Big" },
           ]}
         />
+        <Toggle
+          className="mt-4"
+          checked={s.showOrb !== false}
+          onChange={(showOrb) => update({ showOrb })}
+          label="Show the orb"
+          hint={`Off: ${avatar === "qubit" ? "Qubit" : "the pixel buddy"} stands in for the orb when ${name} is minimized. Open ${name} again from its tray icon.`}
+        />
       </Reveal>
     </Section>
   );

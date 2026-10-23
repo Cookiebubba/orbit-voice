@@ -103,12 +103,21 @@ dialog.showErrorBox = (title, msg) => fail('error dialog', msg);
 // Orbit's own windows stay hidden; only the avatars' strips show (on the off-screen fake Claude window).
 const isAvatar = (w) => /^Orbit (Qubit|buddy)$/.test(w.getTitle());
 const realShowInactive = BrowserWindow.prototype.showInactive;
+// The orb never really shows either; whether Orbit wants it showing is tracked here instead.
+const isOrb = (w) => /#orb$|view=orb/.test(w.webContents.getURL()); // its page renames the window, so go by the URL
+let orbShown = false;
 for (const m of ['show', 'showInactive', 'focus', 'moveTop', 'restore']) {
   const orig = BrowserWindow.prototype[m];
   BrowserWindow.prototype[m] = function (...a) {
+    if (isOrb(this) && (m === 'show' || m === 'showInactive')) orbShown = true;
     if (isAvatar(this)) return orig.apply(this, a);
   };
 }
+const origHide = BrowserWindow.prototype.hide;
+BrowserWindow.prototype.hide = function (...a) {
+  if (isOrb(this)) orbShown = false;
+  return origHide.apply(this, a);
+};
 
 // Whether the avatar's window takes the mouse (only while the cursor is on him).
 const ignoreCalls = [];
@@ -598,6 +607,26 @@ async function run() {
   await expectState('and dozes off again', { mode: 'asleep', action: null }, 10_000);
   qwin.webContents.sendInputEvent({ type: 'mouseMove', x: pos.x - 300, y: pos.y });
   check(await waitFor(() => ignoreCalls.at(-1) === true, 2000), 'the cursor off him: clicks go through to Claude again');
+
+  out('17b. Show the orb (Settings -> Avatar)');
+  const savedOrb = () => JSON.parse(fs.readFileSync(path.join(USER_DATA, 'settings.json'), 'utf8')).showOrb;
+  const orbSwitch = (click) => pjs(`(() => { const b = document.querySelector('button[role=switch][aria-label="Show the orb"]'); if (b && ${!!click}) b.click(); return b ? b.getAttribute('aria-checked') : null; })()`);
+  check((await orbSwitch(false)) === 'true', 'the switch is there, on by default');
+  orbShown = false;
+  await pjs(`document.querySelector('button[aria-label="Shrink to orb"]').click()`);
+  check(await waitFor(() => orbShown, 3000), 'shrinking Orbit brings up the orb');
+  await orbSwitch(true);
+  check(await waitFor(() => !orbShown, 3000), 'off: the orb goes away');
+  check(qwin.isVisible(), 'Qubit stays, standing in for it');
+  check(await waitFor(() => savedOrb() === false, 2000), 'saved: showOrb false');
+  await pickAvatar('None');
+  check(await waitFor(() => orbShown, 3000), 'with no avatar the orb always shows (something stays on screen)');
+  await pickAvatar('Qubit');
+  check(await waitFor(() => (qwin = avatarWin('qubit')) && !orbShown, 4000), 'Qubit back: the orb goes away again');
+  await waitFor(() => qjs('!!(window.__qubit && window.__qubit.q)'), 5000);
+  await orbSwitch(true);
+  check(await waitFor(() => orbShown, 3000), 'on again: the orb comes back');
+  check(await waitFor(() => savedOrb() !== false, 2000), 'saved: showOrb on');
 
   out('18. Errors on any page');
   const relevant = consoleErrors.filter((e) => !/Failed to load resource.*(api\.x\.ai|x\.ai)/.test(e));

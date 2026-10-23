@@ -157,6 +157,7 @@ function showOrb() {
   main.hide();
   orbMode = true;
   drag = null; // a click on the orb starts a "drag" that never ends; don't let it block the orb
+  if (!orbAllowed()) return orb.hide(); // the avatar stands in for it (open Orbit from the tray)
   if (getSetting('orbStick') && claude?.found) placeOrb();
   else orb.showInactive();
 }
@@ -216,6 +217,11 @@ function setOrbLayer(layer) {
 
 function placeOrb() {
   if (!orb || orb.isDestroyed() || drag) return;
+  if (!orbAllowed()) {
+    claudeTracker.pause();
+    orb.hide();
+    return;
+  }
   if (!sticking()) {
     claudeTracker.pause();
     claudeDip = null;
@@ -257,6 +263,9 @@ function nativeHandle(win) {
 // Settings -> Avatar: the pixel buddy, Qubit or none. Switching is live: the new one's window comes
 // up with an entrance while the old one fades out (see avatar.js).
 const avatarKind = () => (['buddy', 'qubit'].includes(getSetting('avatar')) ? getSetting('avatar') : null);
+// Settings -> Avatar -> Show the orb: with an avatar on, the orb can be turned off (the avatar stands
+// in for it). Without an avatar the orb always shows, so there is always something on screen.
+const orbAllowed = () => getSetting('showOrb') !== false || !avatarKind();
 function setAvatar({ live = false } = {}) {
   const kind = avatarKind();
   const size = getSetting('buddySize');
@@ -284,6 +293,7 @@ function setAvatar({ live = false } = {}) {
 const needTracker = () => !!getSetting('orbStick') || !!avatarKind();
 onSettingsChange((changed) => {
   if (changed.includes('avatar') || changed.includes('buddySize')) setAvatar({ live: true });
+  if (changed.includes('showOrb') && !changed.includes('orbStick') && !changed.includes('avatar')) return placeOrb();
   if (!changed.includes('orbStick') && !changed.includes('avatar')) return;
   if (needTracker()) {
     claudeTracker.start();

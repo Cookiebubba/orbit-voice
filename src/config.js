@@ -52,6 +52,9 @@ export const DEFAULTS = Object.freeze({
   // for none; see initConfig.)
   avatar: 'buddy',
   buddySize: 2, // the avatar's size: 1 (tiny) to 3 (big); the pixel buddy is 16 px tall per step
+  // The floating orb the main window minimizes into. With an avatar on it can be turned off: the
+  // avatar stands in for it and Orbit opens from the tray icon. (Without an avatar it always shows.)
+  showOrb: true,
 });
 
 export const AVATARS = Object.freeze(['buddy', 'qubit', 'none']);

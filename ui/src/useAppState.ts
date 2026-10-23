@@ -23,6 +23,7 @@ export type Settings = {
   claudeVoice: number;
   avatar: "buddy" | "qubit" | "none";
   buddySize: number;
+  showOrb: boolean;
   autoUpdate: boolean;
   orbStick: boolean;
   orbPulse: boolean;
