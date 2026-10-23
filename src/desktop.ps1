@@ -35,12 +35,19 @@
 #   -Mode answer : answer that card (-KeyB64: only if it is still exactly that one) by pressing one
 #                  of its own buttons: -Choice allow_once | allow_session | allow_always | deny, or
 #                  for a question -Choice option -Option <n> (then Submit / Next), or -Choice skip.
+#   -Mode app    : one of Claude's own controls in the front window, by -Action (see "---- app ----"):
+#                  status / folders (read only), sidebar, tab, panel, scroll, load_earlier, model,
+#                  permission, rename, archive, delete. Menus are opened with ExpandCollapse and their
+#                  items pressed with Invoke, as a click would; nothing is typed but a new title.
 # Everything is looked up only inside Claude's own page, never in a web page shown in its window.
 # -OnlyPid (Orbit's own tests): look only at that process's windows (a stand-in Claude window,
 # test/e2e/FakeClaude.cs --window), never at the real Claude app.
 # Always prints one line of JSON.
 param(
-  [ValidateSet('info', 'list', 'switch', 'new', 'send', 'stop', 'pending', 'answer')][string]$Mode = 'info',
+  [ValidateSet('info', 'list', 'switch', 'new', 'send', 'stop', 'pending', 'answer', 'app')][string]$Mode = 'info',
+  # app: one of Claude's own controls (see "---- app ----" below), with -ValueB64 and -TitleB64.
+  [ValidateSet('', 'status', 'folders', 'sidebar', 'tab', 'panel', 'scroll', 'load_earlier', 'model', 'permission', 'rename', 'archive', 'delete')][string]$Action = '',
+  [string]$ValueB64 = '',
   [long]$OnlyPid = 0,
   [string]$KeyB64 = '',
   [ValidateSet('', 'allow_once', 'allow_session', 'allow_always', 'deny', 'option', 'skip')][string]$Choice = '',
@@ -400,7 +407,9 @@ function Get-NewSessionPage($root, $title) {
     $n = $b.Current.Name
     if ($n -and $n.StartsWith('Folder: ') -and $n.Length -gt 'Folder: '.Length -and (Test-InApp $b)) { return @{ folder = $n.Substring('Folder: '.Length).Trim() } }
   }
-  return $null # no folder chosen yet: not a page a prompt can be sent from
+  # No folder chosen yet: still a new session (Orbit can pick one for it), but not one a prompt can
+  # be sent from until it has a folder (send refuses it).
+  return @{ folder = $null }
 }
 
 # ---- what Claude is waiting on the user for ----
@@ -849,6 +858,209 @@ try {
     Out-Json @{ ok = $true; stopped = $true; confirmed = $confirmed; sessionTitle = $title; windowId = $target.hwnd }
   }
 
+  # ---- app ----
+  # Claude's own controls, found by the names UI Automation shows of the real window (read-only,
+  # 2026-10): "Hide sidebar" / "Show sidebar"; the "Mode" switch (radio buttons "Claude" and
+  # "Code"); the session header's "<title>, rename session" and "More options for <title>"; the
+  # panel toggles "Terminal", "Changes", "Browser", "Files"; on the composer row "Add", the
+  # permission mode ("Bypass permissions", ...) and "Model: <model> <effort>", each opening a menu
+  # (ExpandCollapse); the conversation's scroll container and its "Load earlier messages". What
+  # is inside those menus, the rename field and the delete confirmation was not opened on the
+  # real app (that would mean clicking it): it's matched loosely, and every action checks its
+  # result instead of assuming it.
+  if ($Mode -eq 'app') {
+    $value = $(if ($ValueB64) { (Decode $ValueB64).Trim() } else { '' })
+    $all = { param($ct) @($root.FindAll($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $ct))) | Where-Object { Test-InApp $_ }) }
+    $named = { param($ct, $name) @(& $all $ct | Where-Object { $_.Current.Name -eq $name }) | Select-Object -First 1 }
+    $pat = { param($el, $p) $x = $null; if ($el -and $el.TryGetCurrentPattern($p::Pattern, [ref]$x)) { $x } else { $null } }
+    $EC = [System.Windows.Automation.ExpandCollapsePattern]
+    $IP = [System.Windows.Automation.InvokePattern]
+    $TP = [System.Windows.Automation.TogglePattern]
+    $SIP = [System.Windows.Automation.SelectionItemPattern]
+    $SP = [System.Windows.Automation.ScrollPattern]
+    $VP = [System.Windows.Automation.ValuePattern]
+    # Open a menu button (ExpandCollapse; Invoke if that's all it has).
+    $expand = { param($b) $e = & $pat $b $EC; if ($e) { $e.Expand(); return $true }; $i = & $pat $b $IP; if ($i) { $i.Invoke(); return $true }; return $false }
+    $collapse = { param($b) try { $e = & $pat $b $EC; if ($e) { $e.Collapse() } } catch { } }
+    # The items of the menu that just opened: menu items (or list items / radio buttons in a popup).
+    $menuItems = {
+      for ($i = 0; $i -lt 15; $i++) {
+        $items = @(& $all $CT::MenuItem | Where-Object { $_.Current.IsEnabled -and $_.Current.Name })
+        if ($items.Count) { return $items } # (one by one: callers pipe them, or collect them with @())
+        Start-Sleep -Milliseconds 100
+      }
+    }
+    $press = { param($el) $i = & $pat $el $IP; if ($i) { $i.Invoke(); return $true }; $s = & $pat $el $SIP; if ($s) { $s.Select(); return $true }; $t = & $pat $el $TP; if ($t) { $t.Toggle(); return $true }; return $false }
+    $box = Get-PromptBox $root
+    $buttons = & $all $CT::Button
+    $modelBtn = $buttons | Where-Object { $_.Current.Name -like 'Model: *' } | Select-Object -First 1
+    $PermLike = '^(ask( before edits| permissions)?|accept edits|edit automatically|auto( mode|-accept edits)?|plan mode|bypass permissions|default)$'
+    $permBtn = $buttons | Where-Object { $_.Current.Name -match $PermLike -and (& $pat $_ $EC) } | Select-Object -First 1
+    $sideBtn = $buttons | Where-Object { $_.Current.Name -eq 'Hide sidebar' -or $_.Current.Name -eq 'Show sidebar' } | Select-Object -First 1
+    $modeGrp = & $all $CT::Group | Where-Object { $_.Current.Name -eq 'Mode' } | Select-Object -First 1
+    $tabNow = $null
+    if ($modeGrp) { foreach ($r in $modeGrp.FindAll($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::RadioButton)))) { $s = & $pat $r $SIP; if ($s -and $s.Current.IsSelected) { $tabNow = $(if ($r.Current.Name -eq 'Code') { 'code' } else { 'chat' }) } } }
+    $PANELS = @{ terminal = 'Terminal'; changes = 'Changes'; browser = 'Browser'; files = 'Files'; rail = 'Hide session rail' }
+    $panelState = @{}
+    foreach ($k in $PANELS.Keys) { $b = $buttons | Where-Object { $_.Current.Name -eq $PANELS[$k] } | Select-Object -First 1; $t = & $pat $b $TP; if ($t) { $panelState[$k] = $t.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On } }
+    $page = Get-NewSessionPage $root $title
+    # The conversation's scroll container: the largest scrollable area outside the sidebar.
+    $scroller = $null; $best = 0
+    foreach ($e in $root.FindAll($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AE::IsScrollPatternAvailableProperty, $true)))) {
+      if ($e.Current.ControlType -eq $CT::Document -or -not (Test-InApp $e)) { continue }
+      $s = & $pat $e $SP
+      if (-not $s -or -not $s.Current.VerticallyScrollable) { continue }
+      $r = $e.Current.BoundingRectangle; $a = $(if ($r.IsEmpty) { 0 } else { $r.Width * $r.Height })
+      if ($a -gt $best) { $scroller = $e; $best = $a }
+    }
+    $status = {
+      @{ ok = $true; sessionTitle = $title; windowId = $front.hwnd; sidebar = $(if ($sideBtn) { $sideBtn.Current.Name -eq 'Hide sidebar' } else { $null }); tab = $tabNow; model = $(if ($modelBtn) { $modelBtn.Current.Name.Substring(7) } else { $null }); permission = $(if ($permBtn) { $permBtn.Current.Name } else { $null }); panels = $panelState; newSession = [bool]$page; folder = $(if ($page) { $page.folder } else { $null }); canScroll = [bool]$scroller; canLoadEarlier = [bool]($buttons | Where-Object { $_.Current.Name -eq 'Load earlier messages' } | Select-Object -First 1) }
+    }
+    switch ($Action) {
+      'status' { Out-Json (& $status) }
+      'folders' {
+        $f = @(Get-NewInFolderButtons $root | ForEach-Object { @{ folder = $_.folder; group = $_.group } } | Select-Object -First 30)
+        Out-Json @{ ok = $true; folders = $f; newSession = [bool]$page; folder = $(if ($page) { $page.folder } else { $null }); sessionTitle = $title }
+      }
+      'sidebar' {
+        if (-not $sideBtn) { Out-Json @{ ok = $false; error = 'control_not_found'; message = "Couldn't find Claude's sidebar button." } }
+        $shown = $sideBtn.Current.Name -eq 'Hide sidebar'
+        $want = $(if ($value -eq 'show') { $true } elseif ($value -eq 'hide') { $false } else { -not $shown })
+        if ($want -ne $shown) { [void](& $press $sideBtn) }
+        $ok = $false
+        for ($i = 0; $i -lt 15 -and -not $ok; $i++) { Start-Sleep -Milliseconds 100; $ok = [bool](& $all $CT::Button | Where-Object { $_.Current.Name -eq $(if ($want) { 'Hide sidebar' } else { 'Show sidebar' }) }) }
+        Out-Json @{ ok = $ok; sidebar = $want; changed = ($want -ne $shown); error = $(if ($ok) { $null } else { 'not_confirmed' }); sessionTitle = $title }
+      }
+      'tab' {
+        $want = $(if ($value -eq 'chat') { 'Claude' } else { 'Code' })
+        $r = $(if ($modeGrp) { @($modeGrp.FindAll($Scope::Descendants, (ButtonNamed $want))) + @($modeGrp.FindAll($Scope::Descendants, (New-Object System.Windows.Automation.AndCondition((New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::RadioButton)), (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, $want)))))) | Select-Object -First 1 } else { $null })
+        if (-not $r) { Out-Json @{ ok = $false; error = 'control_not_found'; message = "Couldn't find Claude's Code / chat switch." } }
+        $s = & $pat $r $SIP
+        if ($s -and $s.Current.IsSelected) { Out-Json @{ ok = $true; tab = $value; changed = $false; sessionTitle = $title } }
+        [void](& $press $r)
+        $ok = $false
+        # (Looked up again each time: the page may redraw the switch.)
+        for ($i = 0; $i -lt 15 -and -not $ok; $i++) {
+          Start-Sleep -Milliseconds 100
+          $r2 = & $all $CT::RadioButton | Where-Object { $_.Current.Name -eq $want } | Select-Object -First 1
+          $s2 = & $pat $r2 $SIP
+          $ok = [bool]($s2 -and $s2.Current.IsSelected)
+        }
+        Out-Json @{ ok = $ok; tab = $value; changed = $true; error = $(if ($ok) { $null } else { 'not_confirmed' }) }
+      }
+      'panel' {
+        $parts = $value -split ':'
+        $name = $PANELS[$parts[0]]
+        $b = $(if ($name) { $buttons | Where-Object { $_.Current.Name -eq $name } | Select-Object -First 1 } else { $null })
+        $t = & $pat $b $TP
+        if (-not $t) { Out-Json @{ ok = $false; error = 'control_not_found'; message = "Couldn't find that panel's button." } }
+        $on = $t.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On
+        $want = $(if ($parts[1] -eq 'on') { $true } elseif ($parts[1] -eq 'off') { $false } else { -not $on })
+        if ($want -ne $on) { $t.Toggle() }
+        Start-Sleep -Milliseconds 150
+        $now = $t.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On
+        Out-Json @{ ok = ($now -eq $want); panel = $parts[0]; on = $now; changed = ($want -ne $on); sessionTitle = $title }
+      }
+      'scroll' {
+        if (-not $scroller) { Out-Json @{ ok = $false; error = 'control_not_found'; message = "Couldn't find the conversation to scroll." } }
+        $s = & $pat $scroller $SP
+        $before = $s.Current.VerticalScrollPercent
+        $SA = [System.Windows.Automation.ScrollAmount]
+        switch ($value) {
+          'top' { $s.SetScrollPercent([System.Windows.Automation.ScrollPattern]::NoScroll, 0) }
+          'bottom' { $s.SetScrollPercent([System.Windows.Automation.ScrollPattern]::NoScroll, 100) }
+          'down' { if ($before -lt 100) { $s.Scroll($SA::NoAmount, $SA::LargeIncrement) } }
+          default { if ($before -gt 0) { $s.Scroll($SA::NoAmount, $SA::LargeDecrement) } }
+        }
+        Start-Sleep -Milliseconds 150
+        $after = $s.Current.VerticalScrollPercent
+        Out-Json @{ ok = $true; before = [math]::Round($before, 1); after = [math]::Round($after, 1); atTop = $after -le 0; atBottom = $after -ge 100; sessionTitle = $title }
+      }
+      'load_earlier' {
+        $b = $buttons | Where-Object { $_.Current.Name -eq 'Load earlier messages' } | Select-Object -First 1
+        if (-not $b) { Out-Json @{ ok = $false; error = 'nothing_earlier'; message = 'There are no earlier messages to load.' } }
+        Out-Json @{ ok = [bool](& $press $b); sessionTitle = $title }
+      }
+      { $_ -eq 'model' -or $_ -eq 'permission' } {
+        $btn = $(if ($Action -eq 'model') { $modelBtn } else { $permBtn })
+        if (-not $btn) { Out-Json @{ ok = $false; error = 'control_not_found'; message = $(if ($Action -eq 'model') { "Couldn't find Claude's model picker." } else { "Couldn't find Claude's permission mode button." }) } }
+        $was = [string]$btn.Current.Name
+        $match = $(if ($Action -eq 'model') { { param($n) $n.IndexOf($value, [StringComparison]::OrdinalIgnoreCase) -ge 0 } } else {
+          $rx = @{ ask = '^(ask|default)'; accept_edits = 'accept edits|edit automatically|auto-?accept'; plan = 'plan'; bypass = 'bypass' }[$value]
+          if (-not $rx) { Out-Json @{ ok = $false; error = 'bad_value'; message = 'Unknown permission mode.' } }
+          { param($n) $n -match $rx }.GetNewClosure() })
+        if ($Action -eq 'permission' -and $was -match $rx) { Out-Json @{ ok = $true; changed = $false; permission = $was; sessionTitle = $title } }
+        if ($Action -eq 'model' -and $was.IndexOf($value, [StringComparison]::OrdinalIgnoreCase) -ge 0) { Out-Json @{ ok = $true; changed = $false; model = $was.Substring(7); sessionTitle = $title } }
+        if (-not (& $expand $btn)) { Out-Json @{ ok = $false; error = 'not_pressable'; message = "That picker can't be opened from here." } }
+        $items = @(& $menuItems)
+        $names = @($items | ForEach-Object { [string]$_.Current.Name } | Select-Object -First 20)
+        $hits = @($items | Where-Object { & $match ([string]$_.Current.Name) })
+        # Several alike ("Opus 5.5", "Opus 5.5 (1M context)"): the plainest one.
+        if ($hits.Count -gt 1 -and $Action -eq 'model') { $hits = @($hits | Sort-Object { ([string]$_.Current.Name).Length } | Select-Object -First 1) }
+        if ($hits.Count -ne 1) {
+          & $collapse $btn
+          Out-Json @{ ok = $false; error = $(if ($hits.Count) { 'ambiguous' } else { 'not_offered' }); message = $(if ($hits.Count) { 'More than one choice matches that.' } else { "Claude's picker has no choice like that." }); options = $names; sessionTitle = $title }
+        }
+        $picked = [string]$hits[0].Current.Name
+        [void](& $press $hits[0])
+        $now = $was
+        for ($i = 0; $i -lt 20; $i++) {
+          Start-Sleep -Milliseconds 100
+          $b2 = $(if ($Action -eq 'model') { & $all $CT::Button | Where-Object { $_.Current.Name -like 'Model: *' } | Select-Object -First 1 } else { & $all $CT::Button | Where-Object { $_.Current.Name -match $PermLike } | Select-Object -First 1 })
+          if ($b2) { $now = [string]$b2.Current.Name }
+          if ($now -ne $was) { break }
+        }
+        Out-Json @{ ok = ($now -ne $was); picked = $picked; now = $(if ($Action -eq 'model' -and $now -like 'Model: *') { $now.Substring(7) } else { $now }); error = $(if ($now -ne $was) { $null } else { 'not_confirmed' }); sessionTitle = $title }
+      }
+      { $_ -eq 'rename' -or $_ -eq 'archive' -or $_ -eq 'delete' } {
+        $target = $(if ($TitleB64) { (Decode $TitleB64).Trim() } else { $title })
+        if (-not $target) { Out-Json @{ ok = $false; error = 'no_session'; message = 'No session is open to do that to.' } }
+        $rowsNow = { @(Get-SidebarSessions $root | ForEach-Object { $_.title }) }
+        $more = @($buttons | Where-Object { $_.Current.Name -eq "More options for $target" })
+        if ($Action -eq 'rename') {
+          if (-not $value) { Out-Json @{ ok = $false; error = 'no_name'; message = 'Say what to call it.' } }
+          $hdr = $buttons | Where-Object { $_.Current.Name -eq "$target, rename session" } | Select-Object -First 1
+          $opened = $false
+          if ($hdr) { $opened = [bool](& $press $hdr) }
+          elseif ($more.Count) { if (& $expand $more[0]) { $it = @(& $menuItems | Where-Object { $_.Current.Name -match '^rename' }); if ($it.Count) { $opened = [bool](& $press $it[0]) } else { & $collapse $more[0] } } }
+          if (-not $opened) { Out-Json @{ ok = $false; error = 'control_not_found'; message = "Couldn't find how to rename that session." } }
+          $edit = $null
+          for ($i = 0; $i -lt 15 -and -not $edit; $i++) {
+            Start-Sleep -Milliseconds 100
+            $edit = & $all $CT::Edit | Where-Object { $_.Current.Name -ne 'Prompt' -and $_.Current.Name -ne 'Find in page' -and ((& $pat $_ $VP).Current.Value -eq $target) } | Select-Object -First 1
+          }
+          if (-not $edit) { Out-Json @{ ok = $false; error = 'rename_field_not_found'; message = "Opened the rename, but couldn't find its text field." } }
+          (& $pat $edit $VP).SetValue($value)
+          $save = & $all $CT::Button | Where-Object { @('Save', 'Done', 'Rename', 'Confirm') -contains $_.Current.Name } | Select-Object -First 1
+          if ($save) { [void](& $press $save) } elseif ($box) { try { $box.SetFocus() } catch { } }
+          $ok = $false
+          for ($i = 0; $i -lt 20 -and -not $ok; $i++) { Start-Sleep -Milliseconds 100; $ok = ((& $rowsNow) -contains $value) -or ((Get-SessionTitle) -eq $value) }
+          Out-Json @{ ok = $ok; renamed = $ok; from = $target; to = $value; error = $(if ($ok) { $null } else { 'not_confirmed' }); sessionTitle = (Get-SessionTitle) }
+        }
+        if (-not $more.Count) { Out-Json @{ ok = $false; error = 'session_not_in_sidebar'; message = "Couldn't find that session's options."; sessionTitle = $title } }
+        # The sidebar row's own button when it's there (the header's is the open session's).
+        $mb = @($more | Where-Object { -not (Test-SidebarButton $_) } | Select-Object -Last 1)
+        if (-not $mb.Count) { $mb = @($more[0]) }
+        if (-not (& $expand $mb[0])) { Out-Json @{ ok = $false; error = 'not_pressable'; message = "That session's options can't be opened from here." } }
+        $want = $(if ($Action -eq 'archive') { '^archive' } else { '^delete' })
+        $it = @(& $menuItems | Where-Object { $_.Current.Name -match $want })
+        if (-not $it.Count) { & $collapse $mb[0]; Out-Json @{ ok = $false; error = 'not_offered'; message = "Claude doesn't offer that for this session."; sessionTitle = $title } }
+        [void](& $press $it[0])
+        if ($Action -eq 'delete') {
+          # Claude asks first: press its own Delete in the confirmation (never anything else).
+          $confirm = $null
+          for ($i = 0; $i -lt 15 -and -not $confirm; $i++) { Start-Sleep -Milliseconds 100; $confirm = & $all $CT::Button | Where-Object { $_.Current.Name -eq 'Delete' -and $_.Current.IsEnabled } | Select-Object -First 1 }
+          if (-not $confirm) { Out-Json @{ ok = $false; error = 'confirm_not_found'; message = "Claude didn't show its delete confirmation, so nothing was deleted."; sessionTitle = $title } }
+          [void](& $press $confirm)
+        }
+        $gone = $false
+        for ($i = 0; $i -lt 20 -and -not $gone; $i++) { Start-Sleep -Milliseconds 100; $gone = -not ((& $rowsNow) -contains $target) }
+        Out-Json @{ ok = $gone; done = $Action; session = $target; error = $(if ($gone) { $null } else { 'not_confirmed' }); sessionTitle = (Get-SessionTitle) }
+      }
+    }
+    Out-Json @{ ok = $false; error = 'bad_action'; message = 'Unknown app action.' }
+  }
+
   # ---- send ----
   # Into the one window showing the session the prompt was drafted for: never a guess between two.
   $target = $front
@@ -860,7 +1072,7 @@ try {
     $target = $targets[0]
   }
   $wantFolder = if ($ExpectFolderB64) { Decode $ExpectFolderB64 } else { $null }
-  $newPage = { param($w) if ($w.title -or -not (Use-Window $w)) { return $null }; $p = Get-NewSessionPage $script:App $null; if ($p -and ($null -eq $wantFolder -or $p.folder -eq $wantFolder)) { return $p }; return $null }
+  $newPage = { param($w) if ($w.title -or -not (Use-Window $w)) { return $null }; $p = Get-NewSessionPage $script:App $null; if ($p -and $p.folder -and ($null -eq $wantFolder -or $p.folder -eq $wantFolder)) { return $p }; return $null }
   if ($ExpectNew) {
     $targets = @($wins | Where-Object { & $newPage $_ })
     if ($targets.Count -eq 0) { Out-Json @{ ok = $false; error = 'session_changed'; message = 'The new session this prompt was drafted for is no longer open (or is now in a different folder), so nothing was sent.'; sessionTitle = $title } }

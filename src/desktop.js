@@ -106,6 +106,25 @@ export function newSession({ project = '' } = {}) {
   return enqueue(() => runPs('new', clean ? ['-ProjectB64', b64(clean)] : []));
 }
 
+/** What desktop.ps1 -Mode app can do in Claude's window (see its "---- app ----"). */
+export const APP_ACTIONS = Object.freeze(['status', 'folders', 'sidebar', 'tab', 'panel', 'scroll', 'load_earlier', 'model', 'permission', 'rename', 'archive', 'delete']);
+const READ_ONLY = new Set(['status', 'folders']);
+
+/**
+ * One of Claude's own controls in the window you're in: `action` from APP_ACTIONS, `value` (a model,
+ * a mode, show / hide, a new title...), `title` (the session, for rename / archive / delete; empty =
+ * the open one). Reading is immediate; anything that changes the window waits its turn in the queue.
+ */
+export function claudeApp(action, { value = '', title = '' } = {}) {
+  if (!APP_ACTIONS.includes(action)) return Promise.resolve({ ok: false, error: 'bad_action' });
+  const args = ['-Action', action];
+  const v = String(value || '').trim().slice(0, 200);
+  const t = String(title || '').trim().slice(0, 300);
+  if (v) args.push('-ValueB64', b64(v));
+  if (t) args.push('-TitleB64', b64(t));
+  return READ_ONLY.has(action) ? runPs('app', args) : enqueue(() => runPs('app', args, 15000));
+}
+
 /**
  * Halt Claude's current run: press Claude's own Stop button (no keys, no mouse). `expectTitle`:
  * only in the one window showing that session; otherwise the window you're in.

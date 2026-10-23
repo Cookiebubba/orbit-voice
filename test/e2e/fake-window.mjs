@@ -62,7 +62,7 @@ export async function startFakeWindow(title = 'Fake session') {
   if (!ready) throw new Error('the stand-in window did not start');
   let sent = 0;
   const b64 = (s) => Buffer.from(String(s), 'utf8').toString('base64');
-  return {
+  const w = {
     pid: ready.pid,
     events,
     b64,
@@ -70,7 +70,8 @@ export async function startFakeWindow(title = 'Fake session') {
     async send(cmd) {
       const n = ++sent;
       child.stdin.write(`${JSON.stringify(cmd)}\n`);
-      for (let i = 0; i < 200 && !acks.includes(n); i++) await new Promise((r) => setTimeout(r, 20));
+      for (let i = 0; i < 500 && !acks.includes(n); i++) await new Promise((r) => setTimeout(r, 20));
+      await new Promise((r) => setTimeout(r, 50)); // (the page redrawn: let UI Automation catch up)
     },
     /** Run desktop.ps1 against this window only. Resolves with its JSON answer. */
     ps(mode, args = []) {
@@ -94,6 +95,13 @@ export async function startFakeWindow(title = 'Fake session') {
       } catch {}
     },
   };
+  // Shown is not yet seen: on a busy machine UI Automation takes a moment to see the new page.
+  for (let i = 0; i < 20; i++) {
+    const r = await w.ps('info');
+    if (r.ok || (r.error !== 'claude_page_not_found' && r.error !== 'claude_window_not_found')) break;
+    await new Promise((res) => setTimeout(res, 250));
+  }
+  return w;
 }
 
 /** desktop.ps1 with -OnlyPid for a process that isn't a stand-in (refusal checks). */

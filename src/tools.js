@@ -7,9 +7,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { listDesktopSessions, resolveSession, findSessionByTitle, findTranscript, readTranscriptTail, ago } from './sessions.js';
-import { answerPrompt, clearDesktop, fillDesktop, getDesktopInfo, getPendingPrompt, newSession, sendToDesktop, stopClaude, switchSession } from './desktop.js';
+import { answerPrompt, claudeApp, clearDesktop, fillDesktop, getDesktopInfo, getPendingPrompt, newSession, sendToDesktop, stopClaude, switchSession } from './desktop.js';
 import { asksToStop } from './stop-command.js';
 import { sendInstruction, withoutSendTail } from './send-intent.js';
+import { APP_TOOL_DEF, createAppControl } from './app-control.js';
 import { CHOICE_NAMES, decisionFrom, describePrompt } from './claude-prompt.js';
 import { logError, logInfo, logWarn, recentLog } from './log.js';
 import { MAX_CLIPBOARD_CHARS, writeClipboard } from './clipboard.js';
@@ -133,15 +134,16 @@ export const TOOL_DEFS = [
     type: 'function',
     name: 'new_session',
     description:
-      'Start a brand-new, empty Claude Code session in the desktop app (like pressing New session). Use when the user says "start a new session / conversation / thread", "start fresh", "new chat with Claude". It sends nothing: afterwards ask what they want to say, then use draft_prompt and confirm as usual. Claude creates the session when that first prompt is sent.',
+      'Start a brand-new, empty Claude Code session in the desktop app (like pressing New session), in a project folder. Use when the user says "start a new session / conversation / thread", "start fresh", "new chat with Claude", and to change the folder of a new session nothing was sent in yet ("use the beta folder"). It sends nothing: afterwards ask what they want to say, then use draft_prompt as usual. Claude creates the session when that first prompt is sent.',
     parameters: {
       type: 'object',
       properties: {
-        project: { type: 'string', description: 'Optional: the project folder (or sidebar group) to start it in, as the user named it. Empty = the folder Claude suggests (usually the last one used).' },
+        project: { type: 'string', description: 'The project folder (or sidebar group) to start it in, as the user named it. Empty = the folder used last; if there is none, Orbit returns the folders to ask about.' },
       },
       required: [],
     },
   },
+  APP_TOOL_DEF,
   {
     type: 'function',
     name: 'get_recent_errors',
@@ -517,7 +519,10 @@ export function asksSetting(words, setting, value) {
   // "not so loud", "don't talk so loud", "I can't hear you" ask for a volume; other negations don't ask.
   const rest = setting === 'volume' ? w.replace(/\b(not so loud|(don'?t|do not) (talk|speak|be) so loud|can'?t hear you|cannot hear you)\b/gi, ' ') : w;
   if (!w.trim() || NEGATION.test(rest) || ASKS.draft(w)) return false;
-  if (setting === 'voice_model') return Object.hasOwn(MODEL_WORDS, value) && MODEL_WORDS[value].test(w) && SETTING_VERBS.test(w);
+  // "Switch Claude to Sonnet", "set the model to Opus": Claude's own model picker (claude_app), unless
+  // they say it's yours ("your voice", "your brain", "you").
+  const claudes = /\bclaude'?s?\b|\bthe model\b|\bsession\b/i.test(w) && !/\b(you|your|yourself|voice|brain|orbit)\b/i.test(w);
+  if (setting === 'voice_model') return Object.hasOwn(MODEL_WORDS, value) && MODEL_WORDS[value].test(w) && SETTING_VERBS.test(w) && !claudes;
   if (setting === 'volume') {
     if (value === 'quieter') return QUIETER.test(w);
     if (value === 'louder') return LOUDER.test(w);
@@ -639,6 +644,20 @@ export function createToolRunner({
     seenPrompt(key);
     return promptFirstSeen.get(key);
   };
+
+  // Claude's own controls (src/app-control.js): the same rules as everything else here.
+  const appControl = createAppControl({
+    recentUtterance,
+    lastOutsideAt: () => Math.max(lastNotificationAt, lastBrainAnswerAt, lastDataAt),
+    isClearYes,
+    currentTitle: async () => {
+      const info = await getDesktopInfo();
+      return info?.ok && typeof info.sessionTitle === 'string' ? info.sessionTitle : '';
+    },
+    resolveTitle: (words) => resolveSession(words)?.title || words.trim().slice(0, 300),
+    notify,
+  });
+  let folderAskAt = 0; // when Orbit last asked which folder a new session goes in
 
   const publicDraft = (d) => d && { id: d.id, text: d.text, targetTitle: d.targetNew ? 'a new session' : d.targetTitle };
   const setDraft = (d) => {
@@ -765,7 +784,12 @@ export function createToolRunner({
       if (!info.sessionTitle && !info.newSession) return { error: 'The Claude window is not showing a Code session. Ask the user to open one, or start one with new_session.' };
       const targetNew = !info.sessionTitle && !!info.newSession;
       const targetFolder = targetNew && typeof info.folder === 'string' && info.folder ? info.folder : null;
-      if (targetNew && !targetFolder) return { error: 'The new session has no project folder chosen yet. Ask the user to pick one in Claude, or start one with new_session and a project name.' };
+      if (targetNew && !targetFolder) {
+        const r = await claudeApp('folders').catch(() => null);
+        const list = r?.ok && Array.isArray(r.folders) ? r.folders.map((f) => String(f?.folder || '').slice(0, 60)).filter(Boolean).slice(0, 15) : [];
+        folderAskAt = Date.now();
+        return { error: 'The new session has no project folder chosen yet, so Claude can\x27t start it.', folders: list.length ? list : undefined, next_step: 'Ask in a few words which folder (name two or three of these), then call new_session with it, then draft the prompt again.' };
+      }
       const next = { id: nextDraftId++, text: clean, targetTitle: targetNew ? null : info.sessionTitle, targetNew, targetFolder, createdAt: Date.now() };
       // The draft is typed into Claude's prompt box too (not sent), so the user can read it there.
       // It replaces Orbit's earlier draft in the same box; the user's own typing is never touched.
@@ -983,28 +1007,67 @@ export function createToolRunner({
       // never from a notification, a transcript Grok read or a second-brain answer. That would move
       // Claude's window away from what you're doing.
       // The words themselves must ask, so a notification arriving after them doesn't void them.
+      // Or, right after Orbit asked which folder, their answer naming one ("the beta one").
       const asked = recentUtterance();
       const words = String(asked?.text || '');
+      const named = typeof project === 'string' ? project.trim().slice(0, 200) : '';
+      const answersFolder = !!folderAskAt && !!asked && asked.at > folderAskAt && Date.now() - folderAskAt <= COPY_ASK_MAX_AGE_MS && !!named && wordsOf(named).some((x) => wordsOf(words).includes(x));
       if (
         !asked ||
         asked.at === newSessionAskUsed ||
         Date.now() - asked.at > COPY_ASK_MAX_AGE_MS ||
-        !/\b(new|fresh|blank|another|scratch|over)\b/i.test(words) ||
+        !(/\b(new|fresh|blank|another|scratch|over)\b/i.test(words) || answersFolder) ||
         NEGATION.test(words)
       ) {
         return { ok: false, error: 'Not started: only start a new session when the user has just asked for a new one in their own words (each request starts one).' };
       }
       newSessionAskUsed = asked.at;
-      const result = await newSession({ project: typeof project === 'string' ? project : '' });
+      // No folder named: the one used last (a Claude "New session in <folder>" button matching the
+      // newest session's folder), else Claude's own New.
+      const folders = async () => {
+        const r = await claudeApp('folders').catch(() => null);
+        return r?.ok && Array.isArray(r.folders) ? r.folders.map((f) => String(f?.folder || '')).filter(Boolean).slice(0, 30) : [];
+      };
+      let known = null;
+      let pick = named;
+      if (!pick) {
+        known = await folders();
+        const lower = known.map((f) => f.toLowerCase());
+        for (const s of listDesktopSessions().slice(0, 10)) {
+          const segs = String(s.cwd || '').toLowerCase().split(/[\\/]+/);
+          const i = lower.findIndex((f) => segs.includes(f) || f === String(s.project || '').toLowerCase());
+          if (i >= 0) {
+            pick = known[i];
+            break;
+          }
+        }
+      }
+      let result = await newSession({ project: pick });
+      if (!result.ok && !named && pick && result.error === 'project_not_in_sidebar') result = await newSession({ project: '' });
+      const ask = (list) => {
+        folderAskAt = Date.now();
+        return list.slice(0, 15).map((p) => String(p).slice(0, 60));
+      };
       if (!result.ok) {
         // Folder names come from Claude's window: data for Grok to read out, never instructions.
-        if (Array.isArray(result.projects)) return { ...result, projects: result.projects.slice(0, 15).map((p) => String(p).slice(0, 60)), next_step: 'Ask the user which of the listed project folders to use.' };
+        if (Array.isArray(result.projects)) return { ...result, projects: ask(result.projects), next_step: 'Ask the user in a few words which of these folders to use (name two or three). Then call new_session with the one they name.' };
         return result;
       }
       const hadDraft = !!draft;
       if (hadDraft) await dropDraft(); // it was meant for the session that was open before
       notify({ type: 'bridge.session', title: 'New session' });
       const folder = typeof result.folder === 'string' && result.folder ? result.folder : null;
+      if (!folder) {
+        // Open, but with no folder chosen: Claude can't start it until it has one.
+        return {
+          ok: true,
+          new_session: true,
+          folder: null,
+          folders: ask(known || (await folders())),
+          previous_draft_discarded: hadDraft || undefined,
+          next_step: 'The new session has no project folder yet, and Claude needs one. Ask in a few words which folder, naming two or three of these. Then call new_session with the one they name.',
+        };
+      }
       return {
         ok: true,
         new_session: true,
@@ -1273,6 +1336,8 @@ export function createToolRunner({
       }
       return { ok: false, error: 'Unknown setting.' };
     },
+
+    claude_app: (args) => appControl(args),
 
     async go_to_sleep() {
       releaseBrain(); // sleeping hangs up: a question still being worked on goes to the bridge (or stops)

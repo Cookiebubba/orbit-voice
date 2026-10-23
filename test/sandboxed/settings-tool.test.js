@@ -42,6 +42,8 @@ test('which words ask for a brain', () => {
     ['opus', 'opus'], // no ask
     ['what is opus', 'opus'],
     ['use the best one', 'opus'],
+    ['switch Claude to opus', 'opus'], // Claude's own model picker (claude_app)
+    ['set the model to opus', 'opus'],
     ['', 'opus'],
   ]) assert.equal(asksSetting(w, 'voice_model', v), false, w);
   assert.equal(asksSetting('use Opus', 'nonsense', 'opus'), false);

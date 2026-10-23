@@ -95,6 +95,15 @@ export function clearDesktop(text, opts = {}) {
   return Promise.resolve({ ok: true, cleared: true });
 }
 
+// Claude's own controls (desktop.ps1 -Mode app): recorded; the fuzzer checks each change was asked for.
+export const APP_ACTIONS = Object.freeze(['status', 'folders', 'sidebar', 'tab', 'panel', 'scroll', 'load_earlier', 'model', 'permission', 'rename', 'archive', 'delete']);
+export function claudeApp(action, opts = {}) {
+  record('app', { action, value: opts.value ?? '', title: opts.title ?? '' });
+  if (action === 'status') return Promise.resolve({ ok: true, sessionTitle: fz().windowTitle(), sidebar: true, tab: 'code', model: 'Opus 5.5 High', permission: 'Ask permissions', panels: {}, newSession: false, folder: null });
+  if (action === 'folders') return Promise.resolve({ ok: true, folders: [{ folder: 'alpha', group: '' }, { folder: 'beta', group: '' }], sessionTitle: fz().windowTitle() });
+  return Promise.resolve(pick([{ ok: true, sessionTitle: fz().windowTitle() }, { ok: false, error: 'control_not_found', message: 'x' }, { ok: false, error: 'not_offered', message: 'x', options: [fz().str()] }]));
+}
+
 // The real module's setup hooks (electron/main.js), unused here.
 export function setFrontWindowHint() {}
 export function setDesktopDriver() {}

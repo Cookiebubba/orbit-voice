@@ -262,6 +262,39 @@ class UiaButtonPeer : System.Windows.Automation.Peers.ButtonAutomationPeer {
   protected override string GetClassNameCore() { return b.Cls ?? ""; }
 }
 
+// A button that opens a menu (aria-haspopup): UI Automation shows it with ExpandCollapse and no
+// Invoke, as Claude's "Model: …", permission-mode, "Add" and "More options for …" buttons are.
+class UiaMenuButton : System.Windows.Controls.Button {
+  public Action OnExpand, OnCollapse;
+  public bool Open;
+  protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() { return new UiaMenuButtonPeer(this); }
+}
+
+class UiaMenuButtonPeer : System.Windows.Automation.Peers.ButtonAutomationPeer, System.Windows.Automation.Provider.IExpandCollapseProvider {
+  readonly UiaMenuButton b;
+  public UiaMenuButtonPeer(UiaMenuButton b) : base(b) { this.b = b; }
+  protected override string GetClassNameCore() { return "cds-reset group/btn relative isolate inline-flex"; }
+  public override object GetPattern(System.Windows.Automation.Peers.PatternInterface p) {
+    if (p == System.Windows.Automation.Peers.PatternInterface.ExpandCollapse) return this;
+    if (p == System.Windows.Automation.Peers.PatternInterface.Invoke) return null;
+    return base.GetPattern(p);
+  }
+  public void Expand() { b.Dispatcher.BeginInvoke(new Action(() => { if (b.OnExpand != null) b.OnExpand(); })); }
+  public void Collapse() { b.Dispatcher.BeginInvoke(new Action(() => { if (b.OnCollapse != null) b.OnCollapse(); })); }
+  public System.Windows.Automation.ExpandCollapseState ExpandCollapseState { get { return b.Open ? System.Windows.Automation.ExpandCollapseState.Expanded : System.Windows.Automation.ExpandCollapseState.Collapsed; } }
+}
+
+// An item of an open menu (role=menuitem): ControlType MenuItem, pressed with Invoke.
+class UiaMenuItem : System.Windows.Controls.Button {
+  protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() { return new UiaMenuItemPeer(this); }
+}
+
+class UiaMenuItemPeer : System.Windows.Automation.Peers.ButtonAutomationPeer {
+  public UiaMenuItemPeer(UiaMenuItem b) : base(b) { }
+  protected override System.Windows.Automation.Peers.AutomationControlType GetAutomationControlTypeCore() { return System.Windows.Automation.Peers.AutomationControlType.MenuItem; }
+  protected override string GetClassNameCore() { return "cds-menu-item"; }
+}
+
 static class FakeWindow {
   static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
   static System.Windows.Window win;
@@ -317,8 +350,187 @@ static class FakeWindow {
     app.Run();
   }
 
+  // ---- The whole app ({"app":{...}}): sidebar, header, pickers and menus, modelled on what UI
+  // Automation shows of the real Claude window (read-only, 2026-10). Without it, the window is just
+  // a session page (the composer and the cards), as before.
+  static bool app;
+  static bool sidebar = true;
+  static string tab = "code";
+  static readonly Dictionary<string, bool> panels = new Dictionary<string, bool> { { "Terminal", false }, { "Changes", false }, { "Browser", false }, { "Files", false }, { "Hide session rail", false } };
+  static readonly List<string[]> sessions = new List<string[]>(); // [title, folder]
+  static readonly List<string[]> folders = new List<string[]>(); // [folder, group]
+  static List<string> models = new List<string> { "Opus 5.5", "Sonnet 5.5", "Haiku 5.5", "Fable 5.1" };
+  static string model = "Opus 5.5";
+  static readonly string[] modes = { "Ask permissions", "Accept edits", "Plan mode", "Bypass permissions" };
+  static string mode = "Ask permissions";
+  static string menu; // which menu is open: model | permission | add | more:<title>
+  static string dialog; // delete:<title>
+  static string renaming; // the title being renamed
+  static bool newPage;
+  static string newFolder; // the new session's folder (null: none chosen yet)
+  static string newDefault; // the folder "New" starts in (null: none, as on the owner's machine)
+  static int created;
+  static System.Windows.Controls.ScrollViewer scroller;
+  static System.Windows.Controls.TextBox renameBox;
+
+  static void Ev(string name, params object[] kv) {
+    var d = new Dictionary<string, object> { { "event", name } };
+    for (int i = 0; i + 1 < kv.Length; i += 2) d[(string)kv[i]] = kv[i + 1];
+    Emit(d);
+  }
+  static UiaPanel Grp(string name, bool row = false) { return new UiaPanel { AName = name, Orientation = row ? System.Windows.Controls.Orientation.Horizontal : System.Windows.Controls.Orientation.Vertical }; }
+  static UiaMenuButton MenuBtn(string name, string which) {
+    var b = new UiaMenuButton { Content = name, Height = 24, Margin = new System.Windows.Thickness(2), Open = menu == which };
+    System.Windows.Automation.AutomationProperties.SetName(b, name);
+    b.OnExpand = () => { menu = which; Render(); };
+    b.OnCollapse = () => { if (menu == which) menu = null; Render(); };
+    return b;
+  }
+  static UiaMenuItem Item(string name, Action onPick) {
+    var b = new UiaMenuItem { Content = name, Height = 22 };
+    System.Windows.Automation.AutomationProperties.SetName(b, name);
+    b.Click += (s, e) => { menu = null; onPick(); Render(); };
+    return b;
+  }
+  static UiaToggle Toggle(string name) {
+    var t = new UiaToggle { Content = name, Height = 24, IsChecked = panels[name] };
+    System.Windows.Automation.AutomationProperties.SetName(t, name);
+    t.Checked += (s, e) => { if (panels[name]) return; panels[name] = true; Ev("panel", "name", name, "on", true); };
+    t.Unchecked += (s, e) => { if (!panels[name]) return; panels[name] = false; Ev("panel", "name", name, "on", false); };
+    return t;
+  }
+  static void Open(string t) { title = t; newPage = false; renaming = null; Ev("open", "title", t); }
+  static void Remove(string t) {
+    sessions.RemoveAll(s => s[0] == t);
+    if (title == t && !newPage) { if (sessions.Count > 0) title = sessions[0][0]; else { newPage = true; newFolder = newDefault; } }
+  }
+
+  static void RenderApp() {
+    doc.Children.Clear();
+    doc.AName = newPage ? "Claude" : title + " - Claude Code";
+    win.Title = "Claude";
+    doc.Children.Add(Btn("Menu", () => Ev("menu")));
+    doc.Children.Add(Btn(sidebar ? "Hide sidebar" : "Show sidebar", () => { sidebar = !sidebar; Ev("sidebar", "visible", sidebar); Render(); }));
+    // The top bar (it is a group named "Sidebar" too, in the real app): the Claude / Code switch and the session's header.
+    var top = Grp("Sidebar", true);
+    var modeGrp = Grp("Mode", true);
+    foreach (var m in new[] { "Claude", "Code" }) {
+      var r = new System.Windows.Controls.RadioButton { Content = m, GroupName = "mode", IsChecked = (m == "Code") == (tab == "code") };
+      System.Windows.Automation.AutomationProperties.SetName(r, m);
+      string v = m == "Code" ? "code" : "chat";
+      r.Checked += (s, e) => { if (tab == v) return; tab = v; Ev("tab", "value", v); win.Dispatcher.BeginInvoke(new Action(Render)); };
+      modeGrp.Children.Add(r);
+    }
+    top.Children.Add(modeGrp);
+    if (!newPage) {
+      string t = title;
+      top.Children.Add(Btn(t + ", rename session", () => { renaming = t; Render(); }));
+      top.Children.Add(MenuBtn("More options for " + t, "more:" + t));
+    }
+    foreach (var p in new[] { "Hide session rail", "Terminal", "Changes", "Browser", "Files" }) top.Children.Add(Toggle(p));
+    doc.Children.Add(top);
+    if (renaming != null) {
+      var row = Grp("", true);
+      renameBox = new System.Windows.Controls.TextBox { Width = 300, Text = renaming };
+      System.Windows.Automation.AutomationProperties.SetName(renameBox, "Session title");
+      string from = renaming;
+      Action commit = () => {
+        if (renaming != from) return;
+        string to = renameBox.Text.Trim();
+        renaming = null;
+        if (to != "" && to != from) {
+          foreach (var s in sessions) if (s[0] == from) s[0] = to;
+          if (title == from) title = to;
+          Ev("rename", "from", from, "to", to);
+        }
+        win.Dispatcher.BeginInvoke(new Action(Render));
+      };
+      row.Children.Add(renameBox);
+      row.Children.Add(Btn("Save", commit));
+      doc.Children.Add(row);
+    }
+    if (sidebar) {
+      var nav = Grp("Sidebar");
+      nav.Children.Add(Btn("Search", () => Ev("search")));
+      nav.Children.Add(Btn("New", () => { newPage = true; newFolder = newDefault; renaming = null; Ev("new", "folder", newDefault ?? ""); Render(); }));
+      foreach (var f in folders) {
+        string folder = f[0], group = f[1];
+        nav.Children.Add(Btn("New session in " + folder + (group != "" ? ", added to " + group : ""), () => { newPage = true; newFolder = folder; renaming = null; Ev("new", "folder", folder); Render(); }));
+        foreach (var s in sessions) {
+          if (s[1] != folder) continue;
+          string t = s[0];
+          var row = Grp("", true);
+          row.Children.Add(Btn(t, () => { Open(t); Render(); }));
+          row.Children.Add(MenuBtn("More options for " + t, "more:" + t));
+          nav.Children.Add(row);
+        }
+      }
+      doc.Children.Add(nav);
+    }
+    if (newPage) {
+      doc.Children.Add(new System.Windows.Controls.TextBlock { Text = "New session" });
+      if (newFolder != null) doc.Children.Add(MenuBtn("Folder: " + newFolder, "folder"));
+      else doc.Children.Add(MenuBtn("Choose a folder", "folder"));
+    }
+    doc.Children.Add(tasks);
+    // The conversation scrolls inside its own container ("Load earlier messages" at its top).
+    scroller.Content = null;
+    conversation.Children.Clear();
+    conversation.Children.Add(Btn("Load earlier messages", () => Ev("load_earlier")));
+    for (int i = 1; i <= 40; i++) conversation.Children.Add(new System.Windows.Controls.TextBlock { Text = "Message " + i + " of the fake conversation.", Height = 22 });
+    if (permission != null) conversation.Children.Add(PermissionCard());
+    if (questions != null && page < questions.Count) conversation.Children.Add(QuestionCard());
+    scroller.Content = conversation;
+    doc.Children.Add(scroller);
+    composer.Children.Clear();
+    composer.Children.Add(prompt);
+    composer.Children.Add(SendOrStop());
+    composer.Children.Add(MenuBtn("Add", "add"));
+    composer.Children.Add(MenuBtn(mode, "permission"));
+    composer.Children.Add(MenuBtn("Model: " + model + " High", "model"));
+    doc.Children.Add(composer);
+    // An open menu, at the end of the page (as a popup is).
+    if (menu != null) {
+      var list = new UiaPanel { Kind = System.Windows.Automation.Peers.AutomationControlType.Menu };
+      if (menu == "model") foreach (var m in models) { string v = m; list.Children.Add(Item(v, () => { model = v; Ev("model", "value", v); })); }
+      else if (menu == "permission") foreach (var m in modes) { string v = m; list.Children.Add(Item(v, () => { mode = v; Ev("permission_mode", "value", v); })); }
+      else if (menu == "add") { list.Children.Add(Item("Upload from computer", () => Ev("upload"))); list.Children.Add(Item("Add from GitHub", () => Ev("github"))); }
+      else if (menu == "folder") foreach (var f in folders) { string v = f[0]; list.Children.Add(Item(v, () => { newFolder = v; Ev("folder", "value", v); })); }
+      else if (menu.StartsWith("more:")) {
+        string t = menu.Substring(5);
+        list.Children.Add(Item("Pin", () => Ev("pin", "title", t)));
+        list.Children.Add(Item("Rename", () => { renaming = t; }));
+        list.Children.Add(Item("Archive", () => { Remove(t); Ev("archive", "title", t); }));
+        list.Children.Add(Item("Delete", () => { dialog = "delete:" + t; }));
+      }
+      doc.Children.Add(list);
+    }
+    if (dialog != null && dialog.StartsWith("delete:")) {
+      string t = dialog.Substring(7);
+      var dlg = Grp("Delete session?");
+      dlg.Children.Add(new System.Windows.Controls.TextBlock { Text = "This can't be undone." });
+      dlg.Children.Add(Btn("Cancel", () => { dialog = null; Ev("delete_cancelled", "title", t); Render(); }));
+      dlg.Children.Add(Btn("Delete", () => { dialog = null; Remove(t); Ev("delete", "title", t); Render(); }));
+      doc.Children.Add(dlg);
+    }
+  }
+
+  static UiaButton SendOrStop() {
+    if (working) return Btn("Stop", () => { working = false; Render(); Emit(new Dictionary<string, object> { { "event", "stop" } }); });
+    return Btn("Send", () => {
+      if (prompt.Text.Trim() == "") return;
+      if (app && newPage && newFolder == null) return; // no folder chosen: Claude can't start it
+      Emit(new Dictionary<string, object> { { "event", "send" }, { "chars", prompt.Text.Length }, { "folder", newPage ? (object)newFolder : null } });
+      prompt.Text = "";
+      if (app && newPage) { title = "Fresh session " + (++created); sessions.Insert(0, new[] { title, newFolder }); newPage = false; }
+      working = true;
+      Render();
+    });
+  }
+
   // The composer row: the prompt box, then Send (or Stop while Claude works) at its right end.
   static void Render() {
+    if (app) { RenderApp(); return; }
     doc.AName = title + " - Claude Code";
     composer.Children.Clear();
     composer.Children.Add(prompt);
@@ -434,6 +646,25 @@ static class FakeWindow {
   }
 
   static void Apply(Dictionary<string, object> cmd) {
+    if (cmd.ContainsKey("app")) {
+      // {"app":{"folders":[["alpha","Alpha"]],"sessions":[["Parser fixes","alpha"]],"open":"Parser fixes"|null,"newDefault":null}}
+      var a = cmd["app"] as Dictionary<string, object> ?? new Dictionary<string, object>();
+      app = true;
+      folders.Clear();
+      foreach (var f in L(a.ContainsKey("folders") ? a["folders"] : null)) { var x = L(f); folders.Add(new[] { Convert.ToString(x[0]), x.Count > 1 ? Convert.ToString(x[1]) : "" }); }
+      sessions.Clear();
+      foreach (var s in L(a.ContainsKey("sessions") ? a["sessions"] : null)) { var x = L(s); sessions.Add(new[] { Convert.ToString(x[0]), Convert.ToString(x[1]) }); }
+      if (a.ContainsKey("models")) { models = new List<string>(); foreach (var m in L(a["models"])) models.Add(Convert.ToString(m)); }
+      if (a.ContainsKey("model")) model = Convert.ToString(a["model"]);
+      if (a.ContainsKey("mode")) mode = Convert.ToString(a["mode"]);
+      newDefault = a.ContainsKey("newDefault") && a["newDefault"] != null ? Convert.ToString(a["newDefault"]) : null;
+      object open; a.TryGetValue("open", out open);
+      if (open == null) { newPage = true; newFolder = newDefault; } else { newPage = false; title = Convert.ToString(open); }
+      if (scroller == null) {
+        scroller = new System.Windows.Controls.ScrollViewer { Height = 260, VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Auto };
+        scroller.ScrollChanged += (s, e) => { if (e.VerticalChange != 0) Ev("scroll", "offset", Math.Round(scroller.VerticalOffset), "max", Math.Round(scroller.ScrollableHeight)); };
+      }
+    }
     if (cmd.ContainsKey("working")) working = cmd["working"] is bool && (bool)cmd["working"];
     if (cmd.ContainsKey("title")) title = Convert.ToString(cmd["title"]);
     if (cmd.ContainsKey("prompt")) prompt.Text = Convert.ToString(cmd["prompt"]);

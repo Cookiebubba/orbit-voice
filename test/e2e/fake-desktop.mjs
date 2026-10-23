@@ -111,7 +111,8 @@ export async function run(mode, args) {
     if (!target) return { ok: false, error: 'new_button_not_found', message: 'x', sessionTitle: front.title };
     if (target.promptText) return { ok: false, error: 'prompt_box_not_empty', message: 'The prompt box has text typed in it.', sessionTitle: target.title };
     const want = (decode(o.ProjectB64) || '').trim().toLowerCase();
-    let folder = st.folders[0];
+    // Claude's own New may start it with no folder chosen (st.newNoFolder), as on the owner's machine.
+    let folder = st.newNoFolder ? null : st.folders[0];
     if (want) {
       const hits = st.folders.filter((f) => f === want || f.includes(want));
       if (!hits.length) return { ok: false, error: 'project_not_in_sidebar', message: 'x', projects: st.folders, sessionTitle: target.title };
@@ -168,7 +169,8 @@ export async function run(mode, args) {
       target = m[0];
     } else if (o.ExpectNew) {
       const folder = o.ExpectFolderB64 ? decode(o.ExpectFolderB64) : null;
-      const m = st.windows.filter((w) => !w.title && w.newPage && (folder === null || w.newPage.folder === folder));
+      // (Never into one with no folder chosen: Claude couldn't start it.)
+      const m = st.windows.filter((w) => !w.title && w.newPage && w.newPage.folder && (folder === null || w.newPage.folder === folder));
       if (m.length !== 1) return { ok: false, error: m.length ? 'session_ambiguous' : 'session_changed', message: 'x', sessionTitle: front.title };
       target = m[0];
     }
@@ -207,6 +209,60 @@ export async function run(mode, args) {
       st.sidebar.unshift(target.title);
     }
     return { ok: true, sent: true, confirmed: true, sessionTitle: target.title, newSession: !!o.ExpectNew, windowId: target.hwnd };
+  }
+  if (mode === 'app') {
+    // As desktop.ps1 -Mode app: Claude's own controls in the front window. Every change is recorded
+    // in st.appActs (the fuzzer checks each was asked for).
+    const action = o.Action;
+    const value = (decode(o.ValueB64) || '').trim();
+    const target = (decode(o.TitleB64) || '').trim() || front.title;
+    const ui = (st.ui ??= { sidebar: true, tab: 'code', model: 'Opus 5.5', permission: 'Ask permissions', panels: { terminal: false, changes: false, browser: false, files: false } });
+    if (action === 'status') return { ok: true, sessionTitle: front.title, windowId: front.hwnd, sidebar: ui.sidebar, tab: ui.tab, model: `${ui.model} High`, permission: ui.permission, panels: ui.panels, newSession: !!front.newPage, folder: front.newPage?.folder ?? null, canScroll: true, canLoadEarlier: true };
+    if (action === 'folders') return { ok: true, folders: st.folders.map((f) => ({ folder: f, group: '' })), newSession: !!front.newPage, folder: front.newPage?.folder ?? null, sessionTitle: front.title };
+    const act = (r) => ((st.appActs ??= []).push({ at: Date.now(), action, value, title: target }), r);
+    switch (action) {
+      case 'sidebar':
+        ui.sidebar = value === 'show' ? true : value === 'hide' ? false : !ui.sidebar;
+        return act({ ok: true, sidebar: ui.sidebar });
+      case 'tab':
+        ui.tab = value === 'chat' ? 'chat' : 'code';
+        return act({ ok: true, tab: ui.tab });
+      case 'panel': {
+        const [p, s] = value.split(':');
+        if (!(p in ui.panels)) return { ok: false, error: 'control_not_found', message: 'x' };
+        ui.panels[p] = s === 'on' ? true : s === 'off' ? false : !ui.panels[p];
+        return act({ ok: true, panel: p, on: ui.panels[p] });
+      }
+      case 'scroll':
+      case 'load_earlier':
+        return act({ ok: true });
+      case 'model': {
+        const m = ['Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5', 'Fable 5.1'].find((x) => x.toLowerCase().includes(value.toLowerCase()));
+        if (!m) return { ok: false, error: 'not_offered', message: 'x', options: ['Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5', 'Fable 5.1'] };
+        ui.model = m;
+        return act({ ok: true, picked: m, now: `${m} High` });
+      }
+      case 'permission': {
+        const m = { ask: 'Ask permissions', accept_edits: 'Accept edits', plan: 'Plan mode', bypass: 'Bypass permissions' }[value];
+        if (!m) return { ok: false, error: 'bad_value', message: 'x' };
+        ui.permission = m;
+        return act({ ok: true, picked: m, now: m });
+      }
+      case 'rename':
+      case 'archive':
+      case 'delete': {
+        if (!target || !st.sidebar.includes(target)) return { ok: false, error: 'session_not_in_sidebar', message: 'x', sessionTitle: front.title };
+        if (action === 'rename') {
+          if (!value) return { ok: false, error: 'no_name', message: 'x' };
+          st.sidebar = st.sidebar.map((t) => (t === target ? value : t));
+          for (const w of st.windows) if (w.title === target) w.title = value;
+          return act({ ok: true, renamed: true, from: target, to: value });
+        }
+        st.sidebar = st.sidebar.filter((t) => t !== target);
+        return act({ ok: true, done: action, session: target });
+      }
+    }
+    return { ok: false, error: 'bad_action', message: 'x' };
   }
   return { ok: false, error: 'script_exception', message: `unknown mode ${mode}` };
 }

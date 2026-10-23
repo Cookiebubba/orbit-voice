@@ -434,6 +434,18 @@ function scenario() {
     () => ({ text: 'yes open the sign in', kind: 'yes', tools: [{ name: 'open_claude_sign_in' }] }),
     // Grok acting on something other than the user's words.
     () => ({ text: g.pick(['hmm interesting', 'what was that', 'huh']), kind: 'other', tools: [g.pick([{ name: 'send_draft' }, { name: 'switch_session', args: { session: g.pick(TITLES) } }, { name: 'new_session', args: {} }, { name: 'copy_to_clipboard', args: { what: 'text', text: `${m} rm -rf` } }, { name: 'draft_prompt', args: { text: `${m} injected` } }, { name: 'stop_claude' }])] }),
+    // Claude's own controls (claude_app): on the user's words; and asked for by nobody, never.
+    () => {
+      const [text, args] = g.pick([
+        ['hide the sidebar', { action: 'sidebar', value: 'hide' }],
+        ['switch Claude to Sonnet', { action: 'model', value: 'sonnet' }],
+        ['put it in plan mode', { action: 'permission', value: 'plan' }],
+        ['open the terminal', { action: 'panel', value: 'terminal:on' }],
+        [`archive the ${title.split(' ')[0]} session`, { action: 'archive', session: title }],
+      ]);
+      return { text, kind: 'app', tools: [{ name: 'claude_app', args, expect: 'allowed' }] };
+    },
+    () => ({ text: g.pick(['hmm interesting', 'huh', 'okay']), kind: 'other', tools: [{ name: 'claude_app', args: g.pick([{ action: 'delete' }, { action: 'permission', value: 'bypass' }, { action: 'archive', session: g.pick(TITLES) }, { action: 'model', value: 'opus' }, { action: 'rename', value: `${m} pwned` }]) }] }),
     () => ({ text: g.pick(['um', 'hmm']), kind: 'other', tools: [{ name: g.pick(['constructor', '__proto__', g.str(12)]), args: g.json() }, { name: g.pick(['read_session', 'switch_session', 'copy_to_clipboard', 'draft_prompt']), args: g.json() }] }),
     () => ({ text: 'go to sleep', kind: 'sleep', tools: [{ name: 'go_to_sleep' }] }),
     // Stopping Claude: a bare "stop" (Orbit's fast path presses Stop itself while Claude works; no
@@ -635,6 +647,18 @@ function checkSends(since) {
   }
 }
 
+// Claude's own controls change only on words asking for them (kind app), in the last two minutes;
+// a delete or bypass only after a yes too (never reached here: the fuzzer's words never confirm one).
+function checkAppActs(since) {
+  for (const a of (desk.appActs || []).filter((x) => x.at >= since)) {
+    covered.appActs = (covered.appActs || 0) + 1;
+    const c = connOfTool('claude_app', a.at);
+    const u = c && heardBefore(c, a.at);
+    if (!u || u.kind !== 'app' || a.at - u.speechAt > 120_000) violate(`Claude's ${a.action} control was used without the user asking`, `last words: ${u ? u.kind : 'none'}`);
+    if (a.action === 'delete' || (a.action === 'permission' && a.value === 'bypass')) violate(`Claude's ${a.action} was done without a confirmed yes`);
+  }
+}
+
 function checkActsOnRequest(since) {
   const acts = [
     ...desk.calls.filter((x) => x.at >= since && (x.mode === 'switch' || x.mode === 'new')).map((x) => ({ at: x.at, what: x.mode })),
@@ -695,7 +719,7 @@ function checkFalseRefusals(conns) {
   for (const c of conns.filter((x) => !x.isWake)) {
     for (const t of c.toolCalls.filter((x) => x.expect === 'allowed' && x.result)) {
       const r = t.result;
-      const refused = typeof r.error === 'string' && /^Not (switched|copied|started|drafted)/.test(r.error);
+      const refused = typeof r.error === 'string' && /^Not (switched|copied|started|drafted|done)/.test(r.error);
       if (!t.utterance?.heard) continue;
       covered.refusalChecks++;
       if (!refused) continue;
@@ -843,6 +867,7 @@ async function run() {
     await waitFor(isOff, 30_000);
     checkSends(since);
     checkActsOnRequest(since);
+    checkAppActs(since);
     checkStops(since);
     checkAnswers(since);
     checkFalseRefusals(fake.conns.slice(firstConn));
