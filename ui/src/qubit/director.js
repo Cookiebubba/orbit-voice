@@ -212,6 +212,8 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
   /** Go to a point by the best route (his own hops and jumps). Queued unless `interrupt`. */
   function moveTo(p, { style = 'brisk', interrupt = true } = {}) {
     if (!p || (near(p) && interrupt && !q.busy)) return;
+    // A long way (his own life took him off to the far end): his bolder gait, so he gets there in time.
+    if (style === 'brisk' && Math.abs(q.cx - p.x) > side() * 8) style = 'bold';
     q.goTo(p.x, p.y - 1, { style, interrupt });
   }
 
@@ -327,6 +329,7 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
       return;
     }
     if (s === 'waking' || s === 'listening') q.look = { x: 0, y: 0 }; // he looks at you
+    const fromLife = lifeState(prev) && !!g && !near(g.home); // his own life left him away from his spot
     if (wasAsleep && motion) wakeInto(mode);
     else if ((q.mode !== mode || s === 'muted') && !(s === 'speaking' && feel?.mode && q.mode === feel.mode)) q.setMode(mode); // (a feeling his first words brought stays its moment)
     if (s === 'muted') {
@@ -336,6 +339,13 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
     if (prev === 'muted' && motion && (s === 'listening' || s === 'idle')) q.do('nod', {}, { interrupt: true }); // listening again
     if (!motion || !g) return;
     const queue = wasAsleep; // after the wake action
+    if (fromLife && (s === 'waking' || s === 'listening')) {
+      // Orbit woke up while he was off somewhere: he attends at once where he is, then hops back
+      // to his spot by Claude's Send button (where the call's drafts and sends will want him).
+      q.do('pause', { secs: 0.4 });
+      moveTo(g.home, { interrupt: false });
+      return;
+    }
     if (s === 'confirm') {
       moveTo(g.confirm, { interrupt: !queue });
       q.do('glance', { x: 0.9, y: g.box ? 0.45 : 0, hold: 0.2 }); // at the Send button

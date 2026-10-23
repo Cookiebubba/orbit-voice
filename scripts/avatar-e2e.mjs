@@ -435,6 +435,7 @@ async function run() {
   fps = await framesPerSecond();
   check(fps > 55, 'full frame rate while awake', `${fps} fps (the off-screen window's own rate)`);
   check((await qjs('window.__acts2')).filter((a) => a[1]).length === 0, 'none of his own life while Orbit listens');
+  await expectState('then he hops back to his spot by Send (from wherever his own life took him)', { state: 'listening', x: (x, st) => near(st.home, 14)(x), air: false }, 15_000);
 
   out('4. You talk: his eye follows the mic level');
   await label('hearing');

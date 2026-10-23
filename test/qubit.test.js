@@ -448,11 +448,15 @@ test('his own life never runs while Orbit listens: the wake word wins at once, f
     await s.run(2 / 60);
     assert.equal(q.mode, 'listening', `seed ${seed}: listening at once (mid-air)`);
     assert.ok(!q.task || !q.task.idle || q.task.cancelled, `seed ${seed}: his own move is cut short`);
+    await s.run(0.3);
+    assert.ok(Math.abs(q.cx - x0) < q.side * 1.2, `seed ${seed}: he attends where he is first (moved ${(q.cx - x0).toFixed(0)} px)`);
     s.set({ phase: 'listening', hearing: true, input: 0.4 });
     const w = await watchLife(s, 12);
     assert.equal(w.acts.filter((a) => a.idle).length, 0, `seed ${seed}: no idle life while listening (${w.acts.map((a) => a.name)})`);
     assert.ok(!q.air && !q.pivot, `seed ${seed}: he landed`);
-    assert.ok(Math.abs(q.cx - x0) < q.side * 3, `seed ${seed}: from where he was (moved ${(q.cx - x0).toFixed(0)} px)`);
+    // He attended where he was, then hopped back to his spot by Send (the call's drafts want him there).
+    const home = dir.geometry.home;
+    assert.ok(Math.abs(q.cx - home.x) < q.side * 0.5 && onBox(s), `seed ${seed}: back at his spot (x ${q.cx.toFixed(0)}, home ${home.x.toFixed(0)}, was at ${x0.toFixed(0)})`);
     assert.ok(w.maxStep < q.side * 0.5, `seed ${seed}: a smooth hand-off (largest step ${w.maxStep.toFixed(1)} px)`);
     assert.equal(q.mode, 'listening');
     // Thinking and speaking: still nothing of his own.
