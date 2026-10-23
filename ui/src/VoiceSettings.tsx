@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { thisComputer } from "./desktop";
+import { DEFAULT_VOLUME, volumeGain } from "./playback.js";
 
 type Voice = { id: string; name: string; gender: string };
 type VoiceState = { voice: string; speed: number; minSpeed: number; maxSpeed: number; voices: Voice[] };
@@ -23,7 +24,7 @@ export function prefetchVoices(engine: Engine) {
     .catch(() => null);
 }
 
-export default function VoiceSettings({ engine = "grok" }: { engine?: Engine }) {
+export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME, onVolume }: { engine?: Engine; volume?: number; onVolume?: (v: number) => void }) {
   const claude = engine === "claude";
   const [state, setState] = useState<VoiceState | null>(cache[engine] ?? null);
   const [speed, setSpeed] = useState(cache[engine]?.speed ?? 1);
@@ -31,6 +32,16 @@ export default function VoiceSettings({ engine = "grok" }: { engine?: Engine }) 
   const [error, setError] = useState("");
   const audio = useRef<HTMLAudioElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Volume: shown at once as you drag, saved a moment later (and it follows "talk quieter" by voice).
+  const [vol, setVol] = useState(volume);
+  const volTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => setVol(volume), [volume]);
+  const changeVolume = (v: number) => {
+    setVol(v);
+    if (audio.current) audio.current.volume = volumeGain(v);
+    clearTimeout(volTimer.current);
+    volTimer.current = setTimeout(() => onVolume?.(v), 150);
+  };
 
   useEffect(() => {
     prefetchVoices(engine).then((s) => {
@@ -41,6 +52,7 @@ export default function VoiceSettings({ engine = "grok" }: { engine?: Engine }) 
     return () => {
       audio.current?.pause();
       clearTimeout(saveTimer.current);
+      clearTimeout(volTimer.current);
     };
   }, []);
 
@@ -78,6 +90,7 @@ export default function VoiceSettings({ engine = "grok" }: { engine?: Engine }) 
       const url = URL.createObjectURL(await r.blob());
       audio.current?.pause();
       const a = new Audio(url);
+      a.volume = volumeGain(vol);
       audio.current = a;
       a.onended = () => {
         setPreview("idle");
@@ -168,6 +181,27 @@ export default function VoiceSettings({ engine = "grok" }: { engine?: Engine }) 
         </button>
         <span>Faster</span>
       </div>
+
+      <div className="mt-5 mb-1.5 flex items-baseline justify-between">
+        <label className="text-[12px] text-white/50">Volume</label>
+        <span className="text-[13px] font-medium tabular-nums">{Math.round(vol * 100)}%</span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        value={vol}
+        onChange={(e) => changeVolume(Number(e.target.value))}
+        aria-label="Volume"
+        className="speed-slider w-full"
+        style={{ background: `linear-gradient(to right, #fff ${vol * 100}%, rgba(255,255,255,.15) ${vol * 100}%)` }}
+      />
+      <div className="mt-1 flex justify-between text-[11.5px] text-white/40">
+        <span>Quiet</span>
+        <span>Loud</span>
+      </div>
+      <p className="mt-1.5 text-[11.5px] leading-snug text-white/40">Applies at once, mid-sentence too. You can also say "talk quieter" or "louder".</p>
 
       {error && <p className="mt-3 text-[12.5px] text-amber-400">{error}</p>}
     </section>

@@ -73,6 +73,48 @@ test('the user\x27s own words change the brain once; nothing else does', async (
   off();
 });
 
+test('volume by voice: small steps on the user\x27s own words, within 0â€“100%', async () => {
+  updateSettings({ voiceVolume: 0.75 });
+  for (const w of ['talk quieter', "you're too loud", 'can you turn it down a bit', 'not so loud please', "don't talk so loud"]) assert.equal(asksSetting(w, 'volume', 'quieter'), true, w);
+  for (const w of ['louder', 'speak up', "I can't hear you", 'turn the volume up']) assert.equal(asksSetting(w, 'volume', 'louder'), true, w);
+  assert.equal(asksSetting('set the volume to 40', 'volume', '40'), true);
+  for (const [w, v] of [
+    ["don't turn it down", 'quieter'],
+    ['tell Claude to make the alert louder', 'louder'],
+    ['louder', 'quieter'],
+    ['set the volume to 40', '50'],
+    ['the deadline is 40 days', '40'],
+    ['volume to 400', '400'],
+  ]) assert.equal(asksSetting(w, 'volume', v), false, w);
+  const { r, say } = runner();
+  await say('talk quieter');
+  const q = await set(r, 'quieter', 'volume');
+  assert.equal(q.ok, true, JSON.stringify(q));
+  assert.equal(getSetting('voiceVolume'), 0.65);
+  assert.equal((await set(r, 'quieter', 'volume')).ok, false, 'one request, one step');
+  await say('a bit louder');
+  await set(r, 'louder', 'volume');
+  assert.equal(getSetting('voiceVolume'), 0.75);
+  await say('set the volume to 5 percent');
+  await set(r, '5', 'volume');
+  assert.equal(getSetting('voiceVolume'), 0.05);
+  await say('quieter');
+  const floor = await set(r, 'quieter', 'volume');
+  assert.equal(getSetting('voiceVolume'), 0, 'never below 0');
+  await say('even quieter');
+  assert.match((await set(r, 'quieter', 'volume')).next_step, /already as quiet/);
+  updateSettings({ voiceVolume: 0.75 });
+  void floor;
+});
+
+test('the volume setting is a number from 0 to 1', () => {
+  for (const [v, want] of [[0.5, 0.5], [2, 1], [-1, 0], ['0.3', 0.3], [0.333, 0.33], [{ toString: 1 }, 0.33], [NaN, 0.33]]) {
+    updateSettings({ voiceVolume: v });
+    assert.equal(getSetting('voiceVolume'), want, JSON.stringify(v));
+  }
+  updateSettings({ voiceVolume: 0.75 });
+});
+
 test('settings keep only known brains and efforts', () => {
   updateSettings({ claudeVoiceModel: 'gpt-9', claudeVoiceEffort: 'max' });
   assert.equal(getSetting('claudeVoiceModel'), 'haiku');

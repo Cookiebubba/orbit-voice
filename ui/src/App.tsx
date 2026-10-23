@@ -8,6 +8,7 @@ import { desktop, isMac, orbOpacity, orbProps } from "./desktop";
 import { PULSE_DEFAULT, orbParams } from "./orbLook";
 import Settings from "./Settings";
 import { playChime } from "./sounds";
+import { DEFAULT_VOLUME } from "./playback.js";
 import { hotkeyLabel, postJson, useAppState, type Finished } from "./useAppState";
 import { useVoice, type Phase } from "./useVoice";
 import { useWakeWord } from "./useWakeWord";
@@ -27,7 +28,7 @@ export default function App() {
   const wakeRef = useRef<() => void>(() => {});
   const app = useAppState({ onFinished: (f) => finishedRef.current(f), onWake: () => wakeRef.current() });
   const settings = app.config?.settings;
-  const v = useVoice({ listenMode: settings?.listenMode ?? "always", halfDuplex: settings?.halfDuplex ?? false });
+  const v = useVoice({ listenMode: settings?.listenMode ?? "always", halfDuplex: settings?.halfDuplex ?? false, volume: settings?.voiceVolume ?? DEFAULT_VOLUME });
   // "Hey Orbit" / "Hey Grok": offline, and only while Grok is off or asleep. Same effect as the hotkey.
   const { status: wakeStatus, element: wakeFrame } = useWakeWord({
     enabled: !!settings?.wakeWord && !!app.config?.hasKey && (v.phase === "off" || v.asleep),

@@ -1,4 +1,5 @@
 // Little UI chimes, made with oscillators (no audio files). Works whether or not voice is on.
+import { DEFAULT_VOLUME, chimeLevel } from "./playback.js";
 let ctx: AudioContext | null = null;
 
 const NOTES: Record<"wake" | "sleep" | "done", number[]> = {
@@ -7,7 +8,13 @@ const NOTES: Record<"wake" | "sleep" | "done", number[]> = {
   done: [659.25, 783.99, 1046.5], // E5 → G5 → C6
 };
 
-export function playChime(kind: keyof typeof NOTES, volume = 0.12) {
+// The chimes follow Orbit's voice volume (Settings → Voice), staying as loud relative to it as before.
+let chimeVolume = chimeLevel(DEFAULT_VOLUME);
+export function setChimeVolume(voiceVolume: number) {
+  chimeVolume = chimeLevel(voiceVolume);
+}
+
+export function playChime(kind: keyof typeof NOTES, volume = chimeVolume) {
   try {
     ctx ??= new AudioContext();
     if (ctx.state === "suspended") void ctx.resume();

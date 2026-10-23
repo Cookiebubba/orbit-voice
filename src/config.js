@@ -16,6 +16,7 @@ export const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.
 export const DEFAULTS = Object.freeze({
   voice: 'eve',
   speed: 1,
+  voiceVolume: 0.75, // how loud Orbit's voice plays (0–1; squared into the gain, see ui/src/playback.js)
   wakeHotkey: 'Control+Alt+G',
   listenMode: 'always', // 'always' = until you say "go to sleep"; 'tap' = one question per hotkey press
   halfDuplex: false, // true = ignore the mic while Grok is talking (for speakers without headphones)
@@ -172,6 +173,9 @@ function sanitize(input) {
         // Only ever a local absolute path (no network share) to claude.exe on Windows, claude
         // elsewhere (see isClaudeFile in brain.js), or '' for automatic.
         if (val === '' || (typeof val === 'string' && val.length < 400 && path.isAbsolute(val) && !/^[\\/]{2}/.test(val) && ![...val].some((c) => c.charCodeAt(0) < 32 || '"<>|?*'.includes(c)) && isClaudeFile(val))) out.brainClaudePath = val;
+        break;
+      case 'voiceVolume':
+        if (Number.isFinite(val)) out.voiceVolume = Math.min(1, Math.max(0, Math.round(val * 100) / 100));
         break;
       case 'orbPulseAmount':
         if (Number.isFinite(val)) out.orbPulseAmount = Math.min(0.1, Math.max(0.01, Math.round(val * 1000) / 1000));

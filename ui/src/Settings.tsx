@@ -36,10 +36,10 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
         <VoiceEngineSection s={s} update={update} />
         {/* Each engine's own voice card: one closes as the other opens. */}
         <Reveal show={!claude} gap={GAP}>
-          <VoiceSettings engine="grok" />
+          <VoiceSettings engine="grok" volume={s.voiceVolume} onVolume={(voiceVolume) => update({ voiceVolume })} />
         </Reveal>
         <Reveal show={claude} gap={GAP}>
-          <VoiceSettings engine="claude" />
+          <VoiceSettings engine="claude" volume={s.voiceVolume} onVolume={(voiceVolume) => update({ voiceVolume })} />
         </Reveal>
 
         <Reveal show gap={GAP}>

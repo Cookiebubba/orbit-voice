@@ -9,6 +9,7 @@ export type Settings = {
   hotkeyLabel: string;
   listenMode: "always" | "tap";
   halfDuplex: boolean;
+  voiceVolume: number;
   wakeWord: boolean;
   announce: "speak" | "chime" | "off";
   announceWake: boolean;

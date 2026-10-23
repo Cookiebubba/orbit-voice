@@ -1,7 +1,8 @@
 // Mic -> bridge (-> Grok), Grok audio -> speakers, plus everything the UI shows:
 // phase (listening / thinking / speaking), live volume levels for the orb, history, draft.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { playChime } from "./sounds";
+import { playChime, setChimeVolume } from "./sounds";
+import { volumeGain } from "./playback.js";
 import { desktop, isMac } from "./desktop";
 
 /** A plain reason the mic didn't open (on a Mac, where to allow it). */
@@ -40,7 +41,7 @@ type ByeReason = "user" | "sleep" | "idle" | "tap_timeout" | "draft_hold" | "lis
 export type Phase = "off" | "connecting" | "listening" | "thinking" | "speaking";
 export type Caption = { id: string; who: "you" | "grok" | "note" | "error" | "sent"; text: string; at: number };
 export type Draft = { id: number; text: string; targetTitle: string | null } | null;
-export type VoiceOptions = { listenMode: "always" | "tap"; halfDuplex: boolean };
+export type VoiceOptions = { listenMode: "always" | "tap"; halfDuplex: boolean; volume: number };
 
 const TOOL_NOTES: Record<string, string> = {
   get_current_session: "Checking your session…",
@@ -99,7 +100,8 @@ export function useVoice(options: VoiceOptions) {
   const lastActivity = useRef(0); // you spoke or typed
   const toolsRunning = useRef(0); // tool calls still running (a second-brain answer can take minutes)
   const analyser = useRef<AnalyserNode | null>(null);
-  const outBus = useRef<GainNode | null>(null);
+  const outBus = useRef<GainNode | null>(null); // every chunk of the voice, before the volume (the orb and avatar read this level)
+  const volumeNode = useRef<GainNode | null>(null); // Settings → Voice → Volume, between outBus and the speakers
   const playing = useRef(new Set<AudioBufferSourceNode>());
   // When the queued audio should have finished, by the wall clock. "Still playing" is judged by
   // this, not by `ended` events, so audio that never plays (a suspended output) can't keep a
@@ -656,7 +658,7 @@ export function useVoice(options: VoiceOptions) {
     closeMic();
     worklet.current?.disconnect();
     ctx.current?.close();
-    ctx.current = worklet.current = analyser.current = outBus.current = null;
+    ctx.current = worklet.current = analyser.current = outBus.current = volumeNode.current = null;
     playHead.current = 0; // the next call has a new AudioContext, whose clock starts at 0
     ready.current = false;
     thinking.current = false;
@@ -684,11 +686,16 @@ export function useVoice(options: VoiceOptions) {
       audioStats.current = { scheduled: 0, played: 0, firstLead: 0, maxLead: 0, chunks: 0 };
       playing.current.clear();
       if (ac.state === "suspended") void ac.resume();
+      // The voice -> outBus -> volume -> speakers. The level the orb and the avatar move with is read
+      // before the volume (an analyser on outBus), so they react the same however quiet it plays.
       outBus.current = ac.createGain();
       analyser.current = ac.createAnalyser();
       analyser.current.fftSize = 512;
       outBus.current.connect(analyser.current);
-      analyser.current.connect(ac.destination);
+      volumeNode.current = ac.createGain();
+      volumeNode.current.gain.value = volumeGain(opts.current.volume);
+      outBus.current.connect(volumeNode.current);
+      volumeNode.current.connect(ac.destination);
       if (announce) announceRef.current = { stage: "speaking", startedAt: Date.now(), ready: false, readyAt: 0, grace: false };
       else await openMic();
     } catch (e: any) {
@@ -744,6 +751,13 @@ export function useVoice(options: VoiceOptions) {
   }, [phase === "off"]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => () => stop("closed"), [stop]);
+
+  // The volume applies at once, mid-sentence too (a short glide, so it never clicks); the chimes follow it.
+  useEffect(() => {
+    setChimeVolume(options.volume);
+    const ac = ctx.current;
+    if (ac && volumeNode.current) volumeNode.current.gain.setTargetAtTime(volumeGain(options.volume), ac.currentTime, 0.03);
+  }, [options.volume]);
 
   /**
    * Hotkey, orb click/right-click and "Hey Grok": start if asleep (hung up); otherwise go to sleep.
