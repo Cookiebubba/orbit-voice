@@ -130,6 +130,23 @@ export function clearDesktop(text, { expectTitle = null, expectNew = false, expe
   return promptBox(text, { expectTitle, expectNew, expectFolder, extra: ['-Clear'] });
 }
 
+// Orbit is about to change Claude's prompt box ('start': typing a draft in, clearing it, sending)
+// or just did ('done'). The avatar stands on that box, and it grows and shrinks with its text: the
+// desktop shell has the window helper look at it often meanwhile (see electron/claude-window.ps1).
+const boxWork = new Set();
+/** `fn(phase)` with phase 'start' | 'done'. Returns a function that removes it. */
+export function onPromptBoxWork(fn) {
+  boxWork.add(fn);
+  return () => boxWork.delete(fn);
+}
+const tellBoxWork = (phase) => {
+  for (const fn of boxWork) {
+    try {
+      fn(phase);
+    } catch {}
+  }
+};
+
 // ORBIT_DRY_RUN_SENDS=1 (for testing) fills and clears the box instead of sending.
 function promptBox(text, { expectTitle, expectNew, expectFolder, extra }) {
   const clean = String(text || '').trim();
@@ -141,5 +158,8 @@ function promptBox(text, { expectTitle, expectNew, expectFolder, extra }) {
     args.push('-ExpectNew');
     if (expectFolder) args.push('-ExpectFolderB64', b64(expectFolder));
   }
-  return enqueue(() => runPs('send', args, expectNew ? 30000 : 20000));
+  return enqueue(() => {
+    tellBoxWork('start');
+    return runPs('send', args, expectNew ? 30000 : 20000).finally(() => tellBoxWork('done'));
+  });
 }

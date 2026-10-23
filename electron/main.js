@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEFAULTS, getSetting, onSettingsChange, updateSettings } from '../src/config.js';
 import { createClaudeWindowTracker } from './claude-window.js';
 import { DEFAULT_ANCHOR, anchorFor, isAnchor, orbPositionFor } from './orb-stick.js';
-import { getDesktopInfo, setDesktopDriver, setFrontWindowHint } from '../src/desktop.js';
+import { getDesktopInfo, onPromptBoxWork, setDesktopDriver, setFrontWindowHint } from '../src/desktop.js';
 import { getLogDir, logError, logInfo, logWarn } from '../src/log.js';
 import { authUrl, hotkeyLabel, startServer, stopBackgroundWork } from '../src/server.js';
 import { createUpdater } from './updater.js';
@@ -198,6 +198,8 @@ const claudeTracker = createClaudeWindowTracker({
 });
 /** The helper watches the prompt box of the window the avatar is on, only while it shows. */
 const watchBox = () => claudeTracker.watchBox(avatar?.boxWindow || 0);
+// Orbit typing a draft in, clearing it or sending: the box grows or shrinks right then.
+onPromptBoxWork(() => claudeTracker.burst());
 const sticking = () => getSetting('orbStick') && !!claude?.found;
 // Grok's tools act on the same Claude window the orb is on (see src/desktop.ps1 -FrontHwnd).
 setFrontWindowHint(() => (claudeTracker.running && claude?.found ? claude.hwnd : 0));

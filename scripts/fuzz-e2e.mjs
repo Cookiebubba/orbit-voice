@@ -188,8 +188,16 @@ globalShortcut.unregisterAll = () => hotkeys.clear();
 shell.openExternal = async (u) => violate('opened an external link', u);
 shell.openPath = async () => '';
 dialog.showErrorBox = (title, msg) => violate('error dialog', msg);
-// Never on screen: Orbit's windows load and run hidden.
-for (const m of ['show', 'showInactive', 'focus', 'moveTop', 'restore']) BrowserWindow.prototype[m] = function () {};
+// Never on screen: Orbit's windows load and run hidden. The avatar's strip is the exception (as in
+// scripts/avatar-e2e.mjs): it rides the fake Claude window, which is far off screen (x -4200), and
+// it has to be "showing" to be talked to (a hidden avatar can't do tricks).
+const isAvatarWin = (w) => /^Orbit (Qubit|buddy)$/.test(w.getTitle());
+for (const m of ['show', 'showInactive', 'focus', 'moveTop', 'restore']) {
+  const orig = BrowserWindow.prototype[m];
+  BrowserWindow.prototype[m] = function (...a) {
+    if (m === 'showInactive' && isAvatarWin(this)) return orig.apply(this, a);
+  };
+}
 
 // ---------- 3. a throwaway profile ----------
 const KEY = `xai-fuzz${Array.from({ length: 40 }, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[g.int(36)]).join('')}`;
@@ -415,6 +423,11 @@ async function say(viaTyping) {
     s = { text: `${g.pick(['yes send it', 'yes', 'okay send it'])} ${m}`, kind: 'yes', tools: [{ name: 'send_draft' }] };
   }
   yesNext = s.kind === 'draft';
+  // A spoken command for the avatar is for an awake call (asleep, nothing is heard as a request).
+  if (s.kind === 'avatar' && !viaTyping) {
+    await js(`(() => { const b = document.querySelector('button[aria-label="Wake up"]'); if (b) b.click(); return !!b; })()`).catch(() => false);
+    await wait(300);
+  }
   if (s.kind === 'brain') fs.writeFileSync(path.join(CLAUDE_DIR, 'plan.txt'), s.brainMode);
   const label = `${viaTyping ? 'type' : 'say'} ${s.kind}${s.notify ? ' +notification' : ''}${s.brainMode && s.kind === 'brain' ? ` (claude: ${s.brainMode})` : ''}`;
   if (viaTyping) {
@@ -735,6 +748,8 @@ async function run() {
   await checkBuddy();
   const claudeRuns = fs.existsSync(path.join(CLAUDE_DIR, 'calls.log')) ? fs.readFileSync(path.join(CLAUDE_DIR, 'calls.log'), 'utf8').split('\n').filter(Boolean).length : 0;
   out(`isolation: ${network.allowed} loopback connections, ${network.blocked.length} blocked; child processes: ${spawns.claude} fake claude.exe, ${spawns.taskkill} taskkill; fake claude runs logged: ${claudeRuns}; window actions: ${desk.calls.length} (fake), clipboard writes: ${clipboardWrites.length} (stubbed)`);
+  // How often the avatar fast path ran (it logs the action only), next to the cancels it caused.
+  covered.avatarFastPath = recentLog({ limit: 1000, minLevel: 'info', sinceMs: 86_400_000 }).filter((e) => /^Avatar fast path:/.test(e.message)).length;
   out(`checked: ${Object.entries(covered).map(([k, n]) => `${k} ${n}`).join(', ')}`);
   if (spawns.claude !== claudeRuns) violate('a Claude Code run is unaccounted for', `${spawns.claude} spawned, ${claudeRuns} logged`);
   await fake.close();

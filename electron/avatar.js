@@ -6,9 +6,9 @@
 //
 // It also knows where Claude's prompt box is and tells the page, which turns the box's top edge into
 // a platform. Two ways:
-//   - fast (onBoxRect): the Claude window helper watches the box itself and reports where it is
-//     when it moves (the window moving or resizing at once; someone typing or a sidebar opening
-//     within 150 ms; see electron/claude-window.ps1). Only where it is, never its text.
+//   - fast (onBoxRect): the Claude window helper watches the box itself and reports where it is the
+//     moment it moves (someone typing, the window moving or resizing, a sidebar opening, Orbit
+//     typing a draft in; see electron/claude-window.ps1). Only where it is, never its text.
 //   - full (findBox): the same UI Automation script Grok's tools use, now and then (after the window
 //     settles, every 20 s while showing, after a draft or a send): the box and, for Qubit, Claude's
 //     Send button (only there while the box has text), which he stomps when a prompt goes. Between

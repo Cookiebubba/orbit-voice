@@ -1,7 +1,7 @@
 // Runs claude-window.ps1, which reports Claude's windows whenever they change, picks the one the
 // orb docks on (see claude-windows.js) and reports that one ({ found, hwnd, min, front, x, y, w, h }
 // in real screen pixels). While following (see follow()), the helper moves the orb itself, on that
-// window. For the avatar it also watches that window's prompt box (watchBox()) and reports
+// window. For the avatar it also watches that window's prompt box (watchBox(), burst()) and reports
 // where it is (onBox). Restarts the helper if it dies, re-sending the last commands.
 
 import { spawn } from 'node:child_process';
@@ -104,6 +104,11 @@ export function createClaudeWindowTracker({ onChange, onBox = () => {}, onError 
       if (line === (boxCommand || 'box 0')) return;
       boxCommand = line === 'box 0' ? null : line;
       try { child?.stdin.write(`${line}\n`); } catch { /* restarting; replayed on start */ }
+    },
+    /** Orbit is about to type into (or clear) the box: the helper looks often for a moment. */
+    burst() {
+      if (!boxCommand) return;
+      try { child?.stdin.write('burst\n'); } catch { /* restarting */ }
     },
     /** The window the orb docks on (the Claude window you were in last). */
     get current() { return current; },

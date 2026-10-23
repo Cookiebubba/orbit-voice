@@ -77,3 +77,6 @@ export function clearDesktop(text, opts = {}) {
 // The real module's setup hooks (electron/main.js), unused here.
 export function setFrontWindowHint() {}
 export function setDesktopDriver() {}
+export function onPromptBoxWork() {
+  return () => {};
+}

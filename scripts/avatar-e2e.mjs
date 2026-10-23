@@ -593,17 +593,37 @@ async function run() {
   await waitFor(async () => (await qstate()).mode === 'asleep' && !(await qstate()).air, 15_000);
   const base = (await qstate()).box;
   out(`  the box before: ${JSON.stringify(base)}`);
-  // The user types three lines in Claude: the box grows two lines (the helper looks every 150 ms).
+  const bursts0 = desk.bursts || 0;
+  // The user types three lines in Claude: the box grows two lines (the caret moves; the helper looks).
   let t = Date.now();
   desk.windows[0].promptText = 'one\ntwo\nthree';
+  desk.caret();
   let at = await boxSeen((b) => b && b.h >= base.h + 30, t, 2000);
-  check(at > 0 && at - t < 300, 'the user types: he has the taller box within 300 ms', `${at ? at - t : 'never'} ms`);
+  check(at > 0 && at - t < 150, 'the user types: he has the taller box within 150 ms', `${at ? at - t : 'never'} ms`);
   latency.userTypes = at ? at - t : null;
   await expectState('he rides it up: on its new top', { onSurface: (y, st) => st.box && y === st.box.y && st.box.h >= base.h + 30, air: false }, 1500);
+  // A line more with no caret news (a paste, say): the helper's own look every 150 ms finds it.
   t = Date.now();
+  desk.windows[0].promptText = 'one\ntwo\nthree\nfour';
+  at = await boxSeen((b) => b && b.h >= base.h + 48, t, 2000);
+  check(at > 0 && at - t < 300, 'no caret news: still within 300 ms', `${at ? at - t : 'never'} ms`);
+  latency.noEvent = at ? at - t : null;
   desk.windows[0].promptText = '';
-  at = await boxSeen((b) => b && b.h === base.h, t, 2000);
-  check(at > 0 && at - t < 300, 'and cleared: back down within 300 ms', `${at ? at - t : 'never'} ms`);
+  desk.caret();
+  await waitFor(async () => (await qstate()).box?.h === base.h, 2000);
+  // Orbit types a draft in, and takes it out again: the helper looks every 30 ms meanwhile.
+  const { fillDesktop, clearDesktop } = await import('../src/desktop.js');
+  const draftText = 'first line\nsecond line\nthird line\nfourth line\nfifth line';
+  const filled = await fillDesktop(draftText, { expectTitle: TITLE });
+  check(filled.ok && desk.windows[0].promptText === draftText, 'Orbit typed a five-line draft in (fake window)');
+  check((desk.bursts || 0) > bursts0, 'Orbit told the window helper first (a burst)');
+  at = await boxSeen((b) => b && b.h >= base.h + 65, desk.typedAt, 2000);
+  check(at > 0 && at - desk.typedAt < 150, 'Orbit types: he has the taller box within 150 ms', `${at ? at - desk.typedAt : 'never'} ms`);
+  latency.orbitTypes = at ? at - desk.typedAt : null;
+  await clearDesktop(draftText, { expectTitle: TITLE });
+  at = await boxSeen((b) => b && b.h === base.h, desk.typedAt, 2000);
+  check(at > 0 && at - desk.typedAt < 150, 'Orbit clears it: back down within 150 ms', `${at ? at - desk.typedAt : 'never'} ms`);
+  latency.orbitClears = at ? at - desk.typedAt : null;
   await expectState('he rides it back down', { onSurface: (y, st) => st.box && y === st.box.y && st.box.h === base.h, air: false }, 1500);
   // A sidebar opens: the box moves along with no event at all.
   t = Date.now();
@@ -616,7 +636,7 @@ async function run() {
   delete desk.layout;
   await waitFor(async () => (await qstate()).box?.x === base.x, 2000);
   await expectState('the box back where it was: him too', { mode: 'asleep', onSurface: (y, st) => st.box && y === st.box.y, x: (x, st) => near(st.home, 14)(x), air: false }, 20_000);
-  out(`  latency (change to his page having it): resize ${latency.resize} ms, user types ${latency.userTypes} ms, layout ${latency.layout} ms`);
+  out(`  latency (change to his page having it): resize ${latency.resize} ms, user types ${latency.userTypes} ms, no event ${latency.noEvent} ms, Orbit types ${latency.orbitTypes} ms, Orbit clears ${latency.orbitClears} ms, layout ${latency.layout} ms`);
 
   out('15. Active CPU (a call, talking)');
   hot();

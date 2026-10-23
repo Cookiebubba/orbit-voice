@@ -28,7 +28,7 @@ function fakeHelper() {
 }
 const tick = (ms = 10) => new Promise((r) => setTimeout(r, ms));
 
-test('the tracker passes box reports on, and asks the helper to watch the box', async () => {
+test('the tracker passes box reports on, and asks the helper to watch the box and to look often', async () => {
   const h = fakeHelper();
   const changes = [];
   const boxes = [];
@@ -38,10 +38,12 @@ test('the tracker passes box reports on, and asks the helper to watch the box', 
   c.say({ wins: [{ hwnd: 7, min: false, x: 0, y: 0, w: 1200, h: 800 }], fg: 7, front: 'claude' });
   await tick();
   assert.equal(changes.at(-1).hwnd, 7);
+  t.burst(); // not watching yet: nothing to burst
   t.watchBox(7);
   t.watchBox(7); // the same again: not repeated
+  t.burst();
   await tick();
-  assert.deepEqual(c.got, ['pause', 'box 7']);
+  assert.deepEqual(c.got, ['pause', 'box 7', 'burst']);
   const report = { hwnd: 7, rect: { x: 300, y: 700, w: 600, h: 24 }, win: { x: 0, y: 0, w: 1200, h: 800 } };
   c.say({ box: report });
   await tick();
@@ -57,6 +59,9 @@ test('the tracker passes box reports on, and asks the helper to watch the box', 
   t.watchBox(0);
   await tick();
   assert.equal(c2.got.at(-1), 'box 0');
+  t.burst();
+  await tick();
+  assert.equal(c2.got.at(-1), 'box 0', 'no burst while nothing is watched');
   t.stop();
 });
 
@@ -84,7 +89,7 @@ test('box geometry: a grown box, at any scaling, and the Send button moving with
   assert.deepEqual(usableBox(box1, 240), box1);
 });
 
-test('the e2e stand-in for the helper reports the box like the real one: on watch, every 150 ms, on a move', async () => {
+test('the e2e stand-in for the helper reports the box like the real one: on watch, on a caret, in a burst, on a move', async () => {
   globalThis.__orbitE2E = { desktop: { windows: [{ hwnd: 101, kind: 'main', title: 'T', newPage: null, promptText: '', min: false }], sidebar: [], folders: [], calls: [], sends: [], chaos: 0, rng: () => 0, newCount: 0 } };
   const desk = globalThis.__orbitE2E.desktop;
   const { windowHelper } = await import('./e2e/fake-desktop.mjs');
@@ -96,18 +101,20 @@ test('the e2e stand-in for the helper reports the box like the real one: on watc
   await tick(60);
   assert.equal(boxes().length, 1);
   assert.deepEqual(boxes()[0].box.rect, { x: 300, y: 700, w: 600, h: 24 });
-  // Someone types two more lines: seen within 150 ms.
+  // Someone types two more lines: reported 25 ms after the caret moves.
   desk.windows[0].promptText = 'a\nb\nc';
   const t0 = Date.now();
+  desk.caret();
   while (boxes().length < 2 && Date.now() - t0 < 1000) await tick(5);
-  assert.ok(Date.now() - t0 < 200, `${Date.now() - t0} ms`);
+  assert.ok(Date.now() - t0 < 100, `${Date.now() - t0} ms`);
   assert.deepEqual(boxes()[1].box.rect, { x: 300, y: 660, w: 600, h: 64 });
-  // The window moves: at once.
-  desk.windows[0].promptText = '';
+  // A burst: every 30 ms.
+  child.stdin.write('burst\n');
+  await tick(20);
   const t1 = Date.now();
-  desk.nudge();
+  desk.windows[0].promptText = '';
   while (boxes().length < 3 && Date.now() - t1 < 1000) await tick(5);
-  assert.ok(Date.now() - t1 < 60, `move: ${Date.now() - t1} ms`);
+  assert.ok(Date.now() - t1 < 80, `burst: ${Date.now() - t1} ms`);
   // Unchanged: nothing more.
   await tick(200);
   assert.equal(boxes().length, 3);

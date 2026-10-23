@@ -17,14 +17,17 @@
 #   follow <orbHwnd> <claudeHwnd> <tl|tr|bl|br> <dx> <dy>   keep the orb at that spot on that window (DIPs)
 #   pause                                                  stop moving the orb (it's hidden or being dragged)
 #   box <claudeHwnd>                                       watch that window's prompt box (0: stop), for the avatar
+#   burst                                                  Orbit is about to type into (or clear) the box: look often for a moment
 #
 # The prompt box (for the avatar, which stands on it): where it is, as UI Automation reports it, one
 # line per change: {"box":{"hwnd":123,"rect":{"x":..,"y":..,"w":..,"h":..}|null,"win":{...}}} (rect
 # and win in the same UI Automation space, so their ratio is right at any scaling). Only where it
 # is: never what's in it. Read on its own thread, from a cached element (a fraction of a millisecond
-# each), at once when the window moves or resizes, and otherwise every 150 ms while that Claude
-# window is in front (the user typing, a sidebar opening) and every 1.5 s while it isn't. At most
-# 40 reads a second (about 0.4 ms of CPU each), nothing while it's minimized or no avatar wants it.
+# each), when something says it may have moved: the caret moving in Claude (someone typing: the box
+# grows with its text), the window moving or resizing, a burst (Orbit typing: every 30 ms for 2.5 s),
+# and otherwise every 150 ms while that Claude window is in front (the user typing, a sidebar
+# opening) and every 1.5 s while it isn't. At most 40 reads a second (about 0.4 ms of CPU each),
+# nothing while it's minimized or no avatar wants it.
 # The helper exits when stdin closes (Orbit quit or crashed) or its parent process is gone.
 param([int]$ParentPid = 0)
 $ErrorActionPreference = 'Stop'
@@ -74,6 +77,7 @@ public static class ClaudeFollow {
   const uint EVENT_SYSTEM_FOREGROUND = 0x0003, EVENT_SYSTEM_MINIMIZESTART = 0x0016, EVENT_SYSTEM_MINIMIZEEND = 0x0017;
   const uint EVENT_OBJECT_DESTROY = 0x8001, EVENT_OBJECT_SHOW = 0x8002, EVENT_OBJECT_HIDE = 0x8003;
   const uint EVENT_OBJECT_LOCATIONCHANGE = 0x800B, EVENT_OBJECT_CLOAKED = 0x8017, EVENT_OBJECT_UNCLOAKED = 0x8018;
+  const int OBJID_CARET = -8;
   const uint SWP_NOSIZE = 0x1, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_NOOWNERZORDER = 0x200;
   const uint GA_ROOTOWNER = 3;
 
@@ -117,6 +121,8 @@ public static class ClaudeFollow {
   static void OnEvent(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time) {
     events++;
     if (ev == EVENT_OBJECT_LOCATIONCHANGE) {
+      // The caret moved in Claude (someone is typing): the prompt box may have grown.
+      if (idObject == OBJID_CARET) { if (boxHwnd != IntPtr.Zero) { carets++; boxSignal.Set(); } return; }
       if (idObject != 0 || !IsClaude(hwnd)) return; // only Claude's windows themselves, not carets etc.
       if (hwnd == boxHwnd) { winMoved = true; boxSignal.Set(); }
       if (hwnd == target) Reposition();
@@ -170,7 +176,10 @@ public static class ClaudeFollow {
         long w;
         if (long.TryParse(p[1], out w)) WatchBox(new IntPtr(w));
       } else if (p[0] == "stats") {
-        Out("{\"stats\":{\"reads\":" + reads + ",\"finds\":" + finds + ",\"events\":" + events + "}}");
+        Out("{\"stats\":{\"reads\":" + reads + ",\"finds\":" + finds + ",\"carets\":" + carets + ",\"events\":" + events + "}}");
+      } else if (p[0] == "burst") {
+        burstUntil = clock.ElapsedMilliseconds + 2500;
+        boxSignal.Set();
       }
     }
     Environment.Exit(0); // Orbit closed our stdin: it quit or crashed
@@ -279,6 +288,7 @@ public static class ClaudeFollow {
 
   // ---------- the prompt box (see the top) ----------
   static volatile IntPtr boxHwnd = IntPtr.Zero; // the Claude window whose box is watched
+  static long burstUntil;
   static readonly Stopwatch clock = Stopwatch.StartNew();
   static readonly AutoResetEvent boxSignal = new AutoResetEvent(false);
   static Thread boxThread;
@@ -287,7 +297,7 @@ public static class ClaudeFollow {
   static string lastBox = "";
   static long lastFind = -100000, lastRead = -100000, lastWinRead = -100000;
   static volatile bool winMoved = true; // the window moved or resized since its rect was read
-  static long reads, finds, events; // for the stats command
+  static long reads, finds, carets, events; // for the stats command
   static Rect winRect = Rect.Empty;
   static readonly Condition promptCond = new AndCondition(
     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
@@ -313,7 +323,7 @@ public static class ClaudeFollow {
     SetThreadDpiAwarenessContext(new IntPtr(-4)); // the same pixels as the window reports
     for (;;) {
       IntPtr h = boxHwnd;
-      int wait = h == IntPtr.Zero ? Timeout.Infinite : !IsWindow(h) || IsIconic(h) ? 2000 : InFront(h) ? 150 : 1500;
+      int wait = h == IntPtr.Zero ? Timeout.Infinite : !IsWindow(h) || IsIconic(h) ? 2000 : clock.ElapsedMilliseconds < burstUntil ? 30 : InFront(h) ? 150 : 1500;
       boxSignal.WaitOne(wait);
       h = boxHwnd;
       if (h == IntPtr.Zero || !IsWindow(h) || IsIconic(h)) continue;

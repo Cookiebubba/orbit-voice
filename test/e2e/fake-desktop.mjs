@@ -148,7 +148,7 @@ export async function run(mode, args) {
     const same = (a, b) => String(a ?? '').replace(/\r/g, '').trim() === String(b ?? '').replace(/\r/g, '').trim();
     if (o.Clear) {
       const cleared = !!target.promptText && same(target.promptText, text);
-      if (cleared) target.promptText = '';
+      if (cleared) (target.promptText = ''), (st.typedAt = Date.now());
       return { ok: true, cleared, sessionTitle: target.title };
     }
     if (o.Filled) {
@@ -157,6 +157,7 @@ export async function run(mode, args) {
       const mayReplace = o.PrevB64 && target.promptText && same(target.promptText, decode(o.PrevB64));
       if (target.promptText && !mayReplace) return { ok: false, error: 'prompt_box_not_empty', message: 'x', sessionTitle: target.title };
       target.promptText = text;
+      st.typedAt = Date.now(); // the box changed (it grows with its lines) right now
     }
     if (o.Fill) {
       st.fills = (st.fills || 0) + 1;
@@ -183,8 +184,9 @@ export async function run(mode, args) {
  * as if they were on screen (far off to the left, so the avatar's strip that follows them is never
  * in sight; a window's own `rect` overrides that), every second and on each command (and on
  * `S().nudge()`, for a test that moved a window). Child-process shaped: stdin, stdout, 'exit'.
- * Like the real one it watches a window's prompt box ("box <hwnd>"): every 150 ms (the window is
- * "in front"), and at once when a window moves; one line per change.
+ * Like the real one it watches a window's prompt box ("box <hwnd>", "burst"): every 30 ms in a
+ * burst, every 150 ms otherwise (the window is "in front"), at once when a window moves and 25 ms
+ * after `S().caret()` (someone typed); one line per change.
  */
 export function windowHelper() {
   const child = new EventEmitter();
@@ -192,6 +194,7 @@ export function windowHelper() {
   child.stderr = new PassThrough();
   child.stdin = new PassThrough();
   let watching = 0;
+  let burstUntil = 0;
   let lastBox = '';
   const reportBox = () => {
     const st = S();
@@ -207,7 +210,7 @@ export function windowHelper() {
   let tick = 0;
   const boxTimer = setInterval(() => {
     tick++;
-    if (watching && tick % 5 === 0) reportBox();
+    if (watching && (Date.now() < burstUntil || tick % 5 === 0)) reportBox();
   }, 30);
   const report = () => {
     const st = S();
@@ -224,6 +227,9 @@ export function windowHelper() {
         lastBox = '';
         S().boxWatch = watching;
         setTimeout(reportBox, 5);
+      } else if (line.trim() === 'burst') {
+        burstUntil = Date.now() + 2500;
+        S().bursts = (S().bursts || 0) + 1;
       }
     }
     setTimeout(report, 10); // follow / pause
@@ -241,6 +247,7 @@ export function windowHelper() {
     report();
     setTimeout(reportBox, 5); // the window moved: the box with it
   };
+  S().caret = () => setTimeout(reportBox, 25);
   return child;
 }
 
