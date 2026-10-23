@@ -298,3 +298,89 @@ test('a turn handled locally (an avatar command) never reaches Claude; its note 
   assert.ok(warns.some((w) => /local turn/.test(w)));
   sock2.close();
 });
+
+/** Says `transcript` into the engine (one VAD segment) and waits for its reply to end. */
+async function speak(sock, speech, ev, transcript) {
+  const done = ev.filter((e) => e.type === 'response.done').length;
+  speech.transcribe = async () => transcript;
+  speech.vad.segments.push({ start: 0, samples: new Float32Array(1024) });
+  sock.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: Buffer.alloc(2048 * 2).toString('base64') }));
+  await until(() => ev.filter((e) => e.type === 'response.done').length > done, 3000);
+}
+const userMsgs = (call) => call.messages.filter((m) => m.type === 'user').map((m) => m.message.content);
+const promptOf = (call) => fs.readFileSync(call.args[call.args.indexOf('--system-prompt-file') + 1], 'utf8');
+/** fakeClaude's spawnImpl, noting which processes were killed (by their index in calls). */
+function trackKills(fc) {
+  const killed = [];
+  const spawnImpl = (...a) => {
+    const child = fc.spawnImpl(...a);
+    const idx = fc.calls.length - 1;
+    const k = child.kill;
+    child.kill = () => (killed.push(idx), k());
+    return child;
+  };
+  return { killed, spawnImpl };
+}
+
+test('new instructions mid-call (the avatar changed): a new Claude Code takes over between turns, with the call so far', async () => {
+  const fc = fakeClaude((text) => (/Orbit warm-up/.test(text) ? ['OK'] : ['Sure.']));
+  const { killed, spawnImpl } = trackKills(fc);
+  const speech = fakeSpeech();
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech, spawnImpl });
+  const ev = collect(sock);
+  await opened(sock);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'You are Orbit.', tools: [] } }));
+  assert.equal(fc.calls.length, 1);
+  assert.match(promptOf(fc.calls[0]), /You are Orbit\./);
+  await speak(sock, speech, ev, 'what is Claude doing');
+  // The user picks Qubit in Settings mid-call.
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'You are Qubit.', tools: [{ name: 'avatar', description: 'Tricks.', parameters: {} }] } }));
+  assert.equal(fc.calls.length, 2, 'a new process, at once');
+  assert.match(promptOf(fc.calls[1]), /You are Qubit\.[\s\S]*- avatar: Tricks\./);
+  await until(() => userMsgs(fc.calls[1]).length === 1);
+  const warm = userMsgs(fc.calls[1])[0];
+  assert.match(warm, /^\[Orbit warm-up, not the user: what is on screen changed/);
+  assert.match(warm, /In: what is Claude doing\nYou said: Sure\./, 'it knows the call so far');
+  await until(() => killed.includes(0), 2000);
+  // From here on the new one answers; the old one is gone.
+  await speak(sock, speech, ev, 'and now');
+  assert.deepEqual(userMsgs(fc.calls[0]), ['what is Claude doing']);
+  assert.equal(userMsgs(fc.calls[1]).at(-1), 'and now');
+  // The same instructions again: nothing restarts.
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'You are Qubit.', tools: [{ name: 'avatar', description: 'Tricks.', parameters: {} }] } }));
+  assert.equal(fc.calls.length, 2);
+  sock.close();
+});
+
+test('new instructions while the new process is still warming: the old one answers, and the new one hears what it missed', async () => {
+  // The warm-up reply takes a while (long), so the user speaks before it's ready.
+  const fc = fakeClaude((text) => (/Orbit warm-up/.test(text) ? Array.from({ length: 60 }, () => 'OK ') : ['Fine.']));
+  const { killed, spawnImpl } = trackKills(fc);
+  const speech = fakeSpeech();
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech, spawnImpl });
+  const ev = collect(sock);
+  await opened(sock);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'A', tools: [] } }));
+  await speak(sock, speech, ev, 'first');
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'B', tools: [] } }));
+  await speak(sock, speech, ev, 'second');
+  assert.deepEqual(userMsgs(fc.calls[0]), ['first', 'second'], 'the old one answered meanwhile (nobody waited)');
+  assert.ok(!killed.includes(0));
+  await until(() => killed.includes(0), 5000); // the warm-up finished: the new one took over
+  await speak(sock, speech, ev, 'third');
+  const last = userMsgs(fc.calls[1]).at(-1);
+  assert.match(last, /^\[Orbit, not the user: in this call since then, for context only:\nIn: second\nYou said: Fine\.\n\]\n\nthird$/);
+  sock.close();
+});
+
+test('new instructions before anything was said: a plain restart with them', async () => {
+  const fc = fakeClaude(() => ['Hi.']);
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech: fakeSpeech(), spawnImpl: fc.spawnImpl });
+  await opened(sock);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'A', tools: [] } }));
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'B', tools: [] } }));
+  assert.equal(fc.calls.length, 2);
+  assert.match(promptOf(fc.calls[1]), /\n\nB\n\n/);
+  assert.equal(fc.calls[1].messages.length, 0, 'no warm-up needed: nothing to carry over');
+  sock.close();
+});

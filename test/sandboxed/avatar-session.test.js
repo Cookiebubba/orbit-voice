@@ -232,6 +232,49 @@ test('the avatar tool: offered only while an avatar is on, and Grok\x27s call ru
   updateSettings({ avatar: 'qubit' });
 });
 
+test('switching avatars mid-call updates the live session: persona, body and tools, no restart', async () => {
+  updateSettings({ avatar: 'qubit', showOrb: false });
+  const p = await page();
+  const conn = up;
+  const cfg = () => got('session.update').at(-1).session;
+  const updates = () => got('session.update').length;
+  assert.match(cfg().instructions, /^Who you are:\n- You are Qubit/);
+  assert.ok(!cfg().instructions.includes('You are Orbit'));
+  assert.ok(!cfg().instructions.includes('The glowing orb'));
+  let n = updates();
+  updateSettings({ avatar: 'buddy' });
+  await wait(30);
+  assert.equal(updates(), n + 1, 'one session.update');
+  assert.match(cfg().instructions, /^Who you are:\n- You are Buddy, the pixel buddy/);
+  assert.ok(cfg().tools.find((t) => t.name === 'avatar').parameters.properties.action.enum.includes('wave'));
+  n = updates();
+  updateSettings({ avatar: 'none' });
+  await wait(30);
+  assert.equal(updates(), n + 1);
+  assert.match(cfg().instructions, /^Who you are:\n- You are Orbit, the voice of the Orbit app/);
+  assert.ok(!/Qubit|Buddy|Your body/.test(cfg().instructions));
+  assert.ok(!cfg().tools.some((t) => t.name === 'avatar'));
+  updateSettings({ avatar: 'qubit' });
+  await wait(30);
+  n = updates();
+  updateSettings({ showOrb: true });
+  await wait(30);
+  assert.equal(updates(), n + 1, 'toggling the orb updates it too');
+  assert.match(cfg().instructions, /You are Qubit[\s\S]*The glowing orb on screen is the Orbit app/);
+  // The same call all along (no reconnect), and its job text unchanged.
+  assert.equal(up, conn);
+  assert.equal(conns.filter((c) => c.sock.readyState === WebSocket.OPEN).length, 1);
+  assert.match(cfg().instructions, /Only call send_draft after the user clearly says yes in their latest reply\./);
+  await p.bye();
+  // The next call starts with what's on screen now.
+  updateSettings({ avatar: 'buddy', showOrb: false });
+  const p2 = await page();
+  assert.notEqual(up, conn);
+  assert.match(got('session.update')[0].session.instructions, /^Who you are:\n- You are Buddy/);
+  await p2.bye();
+  updateSettings({ avatar: 'qubit', showOrb: true });
+});
+
 test.after(() => {
   fake.close();
   setTimeout(() => process.exit(0), 100).unref();

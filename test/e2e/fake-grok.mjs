@@ -68,6 +68,7 @@ export function createFakeGrok({ g, port = 0 }) {
       if (e.type === 'session.update') {
         c.configured++;
         c.tools = (e.session?.tools || []).map((t) => t.name);
+        c.instructions = typeof e.session?.instructions === 'string' ? e.session.instructions : c.instructions;
         send({ type: 'session.updated', session: { id: `sess_${c.id}` } });
       } else if (e.type === 'input_audio_buffer.append') {
         if (!c.firstAppendAt) c.firstAppendAt = Date.now();

@@ -571,6 +571,31 @@ async function run() {
   check(phys.pops === 0, 'no single-frame jumps of his outline', JSON.stringify(phys.popAt));
   check(phys.bad.length === 0, 'never sinks into or floats above what he stands on (0.75 px)', JSON.stringify(phys.bad.slice(0, 10)));
 
+  out('15b. Context follows the avatar: switching mid-call updates the live session');
+  hot();
+  check(await waitFor(() => fake.current() && fake.current().configured > 0, 10_000), 'a call is on');
+  const c15 = fake.current();
+  const setAvatarTo = (a) => pjs(`fetch('/api/settings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ avatar: ${JSON.stringify(a)} }) }).then((r) => r.ok)`);
+  check(/^Who you are:\n- You are Qubit/.test(c15.instructions || '') && c15.tools.includes('avatar'), 'the call starts as Qubit, with his tool');
+  let n15 = c15.configured;
+  const q15 = qwin;
+  await setAvatarTo('buddy');
+  check(await waitFor(() => c15.configured > n15 && /^Who you are:\n- You are Buddy/.test(c15.instructions), 3000), 'Pixel buddy: the live session is Buddy now (session.update, same call)');
+  check(c15.tools.includes('avatar') && !/You are Qubit|You are Orbit/.test(c15.instructions), 'with his tool, and no one else\x27s persona');
+  check(await waitFor(() => !!avatarWin('buddy'), 4000), 'his window came up');
+  check(await waitFor(() => q15.isDestroyed(), 3000), 'Qubit faded out and his window closed');
+  n15 = c15.configured;
+  await setAvatarTo('none');
+  check(await waitFor(() => c15.configured > n15 && /^Who you are:\n- You are Orbit/.test(c15.instructions), 3000), 'None: Orbit is the face again');
+  check(!c15.tools.includes('avatar') && !/Qubit|Buddy|Your body/.test(c15.instructions), 'no avatar tool or avatar text');
+  await setAvatarTo('qubit');
+  check(await waitFor(() => /^Who you are:\n- You are Qubit/.test(c15.instructions) && c15.tools.includes('avatar'), 3000), 'Qubit again');
+  check(fake.current() === c15 && c15.ws.readyState === 1, 'all in the one call (no reconnect)');
+  check(await waitFor(() => (qwin = avatarWin('qubit')), 4000), 'his window is back');
+  await waitFor(() => qjs('!!(window.__qubit && window.__qubit.q)'), 5000);
+  await clickLabel('Go to sleep');
+  await expectState('asleep after the call', { state: 'asleep', mode: 'asleep', air: false }, 20_000);
+
   out('16. Switch avatars live (Settings -> Avatar)');
   await pjs(`document.querySelector('button[aria-label="Settings"]').click()`);
   await waitFor(() => pjs(`[...document.querySelectorAll('[role=radio]')].some((b) => b.textContent === 'Pixel buddy')`), 5000);
