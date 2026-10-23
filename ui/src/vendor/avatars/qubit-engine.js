@@ -162,10 +162,9 @@
     },
     curious: {
       label: 'Curious',
-      about: 'Orange. His eye turns tall and tilts, and his body tips toward whatever caught his interest for a moment, then settles level.',
+      about: 'Orange. His eye turns tall and tilts toward whatever caught his interest. His body stays level.',
       color: PALETTE.orange,
       eye: { w: 20, h: 24, x: 4, y: -16, rot: -10 },
-      tiltPulse: -5, // a moment, not a pose: held, a tilt balances him on one corner
       breathe: 0.012,
     },
     focused: {

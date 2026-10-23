@@ -348,10 +348,10 @@ test('qubit: entrance (a live switch) drops him in; random seeds stay in bounds'
   }
 });
 
-test('leans and tilts are moments, not poses: he always settles back level', () => {
+test('the listening lean is a moment, and curious never tilts him: he always settles back level', () => {
   const q = E.create({ mount: null, width: W, height: H, size: 40, floor: 3, mode: 'idle', keepAlive: true });
   q.brainT.play = q.brainT.stunt = Infinity;
-  for (const [mode, spring, sign] of [['listening', 'lean', 1], ['curious', 'tilt', -1]]) {
+  for (const [mode, spring, sign] of [['listening', 'lean', 1]]) {
     q.setMode('idle');
     for (let i = 0; i < 120; i++) q.update(1 / 60);
     q.setMode(mode);
@@ -361,4 +361,9 @@ test('leans and tilts are moments, not poses: he always settles back level', () 
     for (let i = 0; i < 150; i++) q.update(1 / 60);
     assert.ok(Math.abs(q.sp.lean.v + q.sp.tilt.v) < 0.3, `${mode}: back level after 3 s (${(q.sp.lean.v + q.sp.tilt.v).toFixed(2)}°)`);
   }
+  // Curious: the eye tilts, the body never does.
+  q.setMode('curious');
+  let most = 0;
+  for (let i = 0; i < 180; i++) (q.update(1 / 60), (most = Math.max(most, Math.abs(q.sp.lean.v + q.sp.tilt.v))));
+  assert.ok(most < 0.3, `curious: body stays level (${most.toFixed(2)}°)`);
 });
