@@ -29,6 +29,7 @@
     "e2e:wake": "electron scripts/wake-audio-e2e.mjs",
     "e2e:avatar": "electron scripts/avatar-e2e.mjs",
     "e2e:avatar-free": "electron scripts/avatar-free-e2e.mjs",
+    "e2e:anywhere": "electron scripts/anywhere-e2e.mjs",
     "fuzz:e2e": "electron scripts/fuzz-e2e.mjs",
     "latency:claude-voice": "node scripts/claude-voice-latency.mjs",
     "eval:intent": "node scripts/intent-eval.mjs",

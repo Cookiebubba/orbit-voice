@@ -42,6 +42,7 @@ import { getLogDir, initLog, logError, logInfo, logWarn, recentLog } from './log
 import { listDesktopSessions, ago, findSessionByTitle } from './sessions.js';
 import { SEARCH_STATE, createToolRunner } from './tools.js';
 import { CONTEXT_SETTINGS, agentContext } from './agent.js';
+import { callEnded, callStarted, contextNote, contexts as anywhereContexts, presenceCommand } from './anywhere/index.js';
 import { AVATAR_ACTIONS, AVATAR_NAMES, activeAvatar, matchAvatarCommand, runAvatarCommand } from './avatar-commands.js';
 import { isSleepCommand } from './sleep-command.js';
 import { createCueStream, withoutCues } from './emote-cues.js';
@@ -1030,6 +1031,14 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         });
         return { note: '' };
       }
+      // "Qubit, come here" / "go away" (Orbit anywhere): the conversation moves into the window the
+      // user is in, or leaves this one, with no model turn. If it can't, the model hears the words.
+      const pres = presenceCommand(text);
+      if (pres?.ok) {
+        logInfo('voice', `Window fast path: ${pres.action}, no model turn`);
+        toBrowser({ type: 'bridge.anywhere', action: pres.action, fast: true });
+        return { note: `[Orbit note: the user's last words only asked you to ${pres.action === 'come_here' ? 'come into the window they are in' : 'leave this window and go back to the Claude window'}, and Orbit did it itself. No reply is needed. This is not the user speaking, and not consent to anything.]` };
+      }
       const kind = activeAvatar();
       if (!kind) return null;
       const hit = matchAvatarCommand(text, { avatar: kind });
@@ -1206,6 +1215,24 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     };
     liveSessions.add(hooks);
 
+    // ---- Orbit anywhere: which window the conversation is in (src/anywhere/contexts.js) ----
+    // Woken by the user (not a spoken update): the window they're in becomes the conversation's
+    // place (Qubit pops in there if he wasn't yet). When it moves (they switch to another window
+    // he's in, "come here", the window closes), the voice gets a quiet note; it's never a request.
+    let ctxNote = null; // waiting for the voice to connect
+    let ctxNotedId = 'home';
+    const noteContext = (snap) => {
+      if (!snap?.active || snap.active.id === ctxNotedId) return;
+      ctxNotedId = snap.active.id;
+      const text = contextNote(snap, quoteSafe);
+      if (!text) return;
+      if (upstream.readyState === WebSocket.OPEN) orbitItem(text);
+      else ctxNote = text;
+    };
+    const offContexts = anywhereContexts.on(noteContext);
+    callStarted({ user: !wantAnnounce });
+    noteContext({ active: anywhereContexts.active });
+
     let callsInFlight = 0;
     let quickCalls = 0; // ...of them, the ones that aren't the second brain (see flushPending)
     let callsThisResponse = 0;
@@ -1235,6 +1262,11 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         orbitItem(note);
         tools.noteNotification({ data: true });
         stats.note = 1;
+      }
+      // Which window the conversation is in, if it isn't Claude's (Orbit anywhere).
+      if (ctxNote) {
+        orbitItem(ctxNote);
+        ctxNote = null;
       }
       // Results the user was waiting on: a spoken update says them; an ordinary call passes them on.
       if (!announce) {
@@ -1479,6 +1511,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       tools.dispose(); // a second-brain question still running goes to the bridge (or stops)
       for (const w of utteranceWaiters) w();
       liveSessions.delete(hooks);
+      offContexts();
+      callEnded();
       stopMeter();
       upstream.close();
       // Results this call took on but never got to say stay due for the next call or wake.

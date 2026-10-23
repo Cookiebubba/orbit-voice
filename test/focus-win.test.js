@@ -96,6 +96,34 @@ test('WPF windows too', { skip, timeout: 120_000 }, async () => {
   }
 });
 
+test('watch: the windows Qubit is in report their moves, minimizing and closing (no focus change)', { skip, timeout: 120_000 }, async () => {
+  const a = await startFakeApp('winforms', `ORBIT-WATCH-A-${process.pid}`);
+  const b = await startFakeApp('wpf', `ORBIT-WATCH-B-${process.pid}`);
+  const wins = [];
+  const gone = [];
+  const t = createWinFocusTracker({ onWins: (w) => wins.push(w), onGone: (g) => gone.push(...g) });
+  t.start();
+  try {
+    assert.equal(await t.watch([a.hwnd, b.hwnd, 'x', -1]), 2);
+    assert.ok(await until(() => wins.some((w) => w.length === 2)), 'both reported');
+    const first = wins.find((w) => w.length === 2).find((w) => w.hwnd === a.hwnd);
+    assert.ok(first.x < -4000 && first.w >= 600, JSON.stringify(first));
+    await a.send({ minimize: true });
+    assert.ok(await until(() => wins.at(-1)?.find((w) => w.hwnd === a.hwnd)?.min === true), 'minimized reported');
+    await a.send({ restore: true });
+    assert.ok(await until(() => wins.at(-1)?.find((w) => w.hwnd === a.hwnd)?.min === false), 'restored reported');
+    await b.close();
+    assert.ok(await until(() => wins.at(-1)?.length === 1), 'a closed window drops out');
+    assert.ok(await until(() => gone.includes(b.hwnd), 4000), 'and is reported gone');
+    assert.equal(await t.watch([]), 0);
+    assert.ok(a.events.every((e) => e.event !== 'activated'), 'never activated');
+  } finally {
+    t.stop();
+    await a.close();
+    await b.close();
+  }
+});
+
 const idle = process.env.ORBIT_TEST_FOCUS === '1' || (canRunApps() && userIdleMs() > 60_000);
 test('following focus for real: our window comes to the front, its title changes, it minimizes and closes', { skip: skip || (!idle && 'someone is using this PC (set ORBIT_TEST_FOCUS=1 to run it anyway)'), timeout: 120_000 }, async () => {
   const app = await startFakeApp('winforms', `ORBIT-FOCUS-LIVE-${process.pid}`);

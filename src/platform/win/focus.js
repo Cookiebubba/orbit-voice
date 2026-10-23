@@ -19,11 +19,12 @@ const REQUEST_MS = 5000;
  * `spawnHelper` (tests): returns a stand-in child ({ stdin, stdout, on('exit') }) or null for the
  * real helper. `parentPid`: Orbit's own process, whose windows report as kind "orbit".
  */
-export function createWinFocusTracker({ onFocus = () => {}, onSwitching = () => {}, onGone = () => {}, onError = () => {}, spawnHelper = null, parentPid = process.pid } = {}) {
+export function createWinFocusTracker({ onFocus = () => {}, onSwitching = () => {}, onGone = () => {}, onWins = () => {}, onError = () => {}, spawnHelper = null, parentPid = process.pid } = {}) {
   let child = null;
   let stopped = true;
   let restarts = [];
   let nextId = 1;
+  let watching = []; // the windows Qubit is in, replayed after a restart
   const pending = new Map(); // id -> { resolve, timer }
 
   const onLine = (line) => {
@@ -37,6 +38,7 @@ export function createWinFocusTracker({ onFocus = () => {}, onSwitching = () => 
     if (j.fg && typeof j.fg === 'object') return onFocus(j.fg);
     if (typeof j.switching === 'boolean') return onSwitching(j.switching);
     if (Array.isArray(j.gone)) return onGone(j.gone.filter(Number.isFinite));
+    if (Array.isArray(j.wins)) return onWins(j.wins.filter((w) => w && Number.isFinite(w.hwnd)));
     if (Number.isFinite(j.id) && pending.has(j.id)) {
       const p = pending.get(j.id);
       pending.delete(j.id);
@@ -60,6 +62,11 @@ export function createWinFocusTracker({ onFocus = () => {}, onSwitching = () => 
       if (err.length < 4000) err += d;
     });
     readline.createInterface({ input: me.stdout }).on('line', onLine);
+    if (watching.length) {
+      try {
+        me.stdin.write(`watch 0 ${watching.join(',')}\n`);
+      } catch {}
+    }
     me.on('exit', (code) => {
       if (child === me) child = null;
       for (const [id, p] of pending) {
@@ -119,6 +126,12 @@ export function createWinFocusTracker({ onFocus = () => {}, onSwitching = () => 
       if (!(h > 0)) return null;
       const r = await request(`describe # ${h}`);
       return r.describe && typeof r.describe === 'object' ? r.describe : null;
+    },
+    /** Follow these windows' moves (Qubit lives on them): onWins gets their bounds on every change. */
+    async watch(hwnds) {
+      watching = [...new Set((Array.isArray(hwnds) ? hwnds : []).map((h) => Math.floor(Number(h))).filter((h) => h > 0))].slice(0, 16);
+      const r = await request(`watch # ${watching.length ? watching.join(',') : '-'}`);
+      return Number.isFinite(r.watching) ? r.watching : -1;
     },
     /** The app windows Alt+Tab would show, front first. */
     async list() {

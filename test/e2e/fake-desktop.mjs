@@ -7,6 +7,7 @@
 
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
+import { fakeFocusState, focusHelper } from './fake-focus.mjs';
 
 const S = () => {
   globalThis.__orbitE2E ??= {};
@@ -283,4 +284,12 @@ export function windowHelper() {
   return child;
 }
 
-export default { run, windowHelper };
+// The focus helper too, for "Orbit anywhere" end-to-end tests only (see fake-focus.mjs): off unless
+// the harness turned it on, so other tests run with no focus helper, as before.
+export default {
+  run,
+  windowHelper,
+  get focusHelper() {
+    return fakeFocusState().on ? focusHelper : null;
+  },
+};

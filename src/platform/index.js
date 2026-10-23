@@ -25,15 +25,16 @@ export { appName, cleanWindow, createFocusStore, describeWindow, focus, focusBac
 
 /**
  * Start following the window in front (the desktop shell calls this). Returns the tracker
- * ({ stop, describe, list }) or null where there's no native helper (macOS for now, unless a test
+ * ({ stop, describe, list, watch }) or null where there's no native helper (macOS for now, unless a test
  * passes `spawnHelper`).
  */
-export function startFocusTracking({ spawnHelper = null, onError = () => {}, parentPid = process.pid, store = focus } = {}) {
+export function startFocusTracking({ spawnHelper = null, onError = () => {}, onWins = () => {}, parentPid = process.pid, store = focus } = {}) {
   if (process.platform !== 'win32' && !spawnHelper) return null;
   const tracker = createWinFocusTracker({
     onFocus: (w) => store.update(w),
     onSwitching: (on) => store.setSwitching(on),
     onGone: (hwnds) => store.gone(hwnds),
+    onWins, // the watched windows (Qubit's) moved: [{ hwnd, min, cloaked, x, y, w, h }]
     onError,
     spawnHelper,
     parentPid,

@@ -9,6 +9,9 @@
 #   {"gone":[hwnd,...]}                windows reported before that no longer exist
 #   {"id":n,"describe":<win>|null}     answer to "describe"
 #   {"id":n,"list":[<win>,...]}        answer to "list": the app windows Alt+Tab would show, front first
+#   {"wins":[{"hwnd","min","cloaked","x","y","w","h"},...]}
+#                                      the watched windows (see "watch"), whenever one moves, resizes,
+#                                      minimizes, hides or changes virtual desktop (Qubit lives on them)
 # <win> = {"hwnd","owner","pid","exe","title","cls","kind","min","max","cloaked","elevated","x","y","w","h","dpi"}
 #   hwnd: the top-level window; owner: its root owner when it's an owned window (a dialog), else 0.
 #   kind: "app" (an ordinary app window) | "orbit" (one of Orbit's own) | "shell" (taskbar, desktop,
@@ -17,7 +20,9 @@
 #   elevated: the app runs as administrator (or as another user), so Windows blocks Orbit from it.
 # The title is the app's own text: it never goes to the log (see focus.js).
 #
-# Commands (stdin): "describe <id> <hwnd>", "list <id>", "quit".
+# Commands (stdin): "describe <id> <hwnd>", "list <id>", "watch <id> <hwnd>,<hwnd>,..." (the
+# windows Qubit is in: their moves come from per-process hooks, so other windows cost nothing;
+# "watch <id> -" stops), "quit".
 # Exits when stdin closes or its parent process (Orbit) is gone.
 param([int]$ParentPid = 0)
 $ErrorActionPreference = 'Stop'
@@ -74,7 +79,8 @@ public static class OrbitFocus {
   const uint WINEVENT_OUTOFCONTEXT = 0, WINEVENT_SKIPOWNPROCESS = 2;
   const uint GA_ROOT = 2, GA_ROOTOWNER = 3, GW_OWNER = 4;
   const int GWL_EXSTYLE = -20; const long WS_EX_TOOLWINDOW = 0x80, WS_EX_NOACTIVATE = 0x08000000;
-  const uint WM_QUIT = 0x0012;
+  const uint WM_QUIT = 0x0012, WM_APP_WATCH = 0x8001;
+  const uint EVENT_OBJECT_DESTROY = 0x8001, EVENT_OBJECT_HIDE = 0x8003, EVENT_OBJECT_LOCATIONCHANGE = 0x800B, EVENT_OBJECT_CLOAKED = 0x8017, EVENT_OBJECT_UNCLOAKED = 0x8018;
 
   static readonly WinEventProc onEvent = OnEvent; // kept in a field so it is never collected
   static readonly TimerProc onTimer = OnTimer;
@@ -106,14 +112,76 @@ public static class OrbitFocus {
     reader.IsBackground = true;
     reader.Start();
     MSG m;
-    while (GetMessage(out m, IntPtr.Zero, 0, 0) > 0) { TranslateMessage(ref m); DispatchMessage(ref m); }
+    while (GetMessage(out m, IntPtr.Zero, 0, 0) > 0) {
+      if (m.hwnd == IntPtr.Zero && m.message == WM_APP_WATCH) { ApplyWatch(); continue; }
+      TranslateMessage(ref m); DispatchMessage(ref m);
+    }
+  }
+
+  // ---------------- watched windows (Qubit's) ----------------
+  static readonly object watchGate = new object();
+  static IntPtr[] wantWatch = null; // set by the stdin thread, applied on the hook thread
+  static IntPtr[] watched = new IntPtr[0];
+  static readonly List<IntPtr> watchHooks = new List<IntPtr>();
+  static uint[] watchPids = new uint[0];
+  static string lastWins = "";
+
+  static void ApplyWatch() {
+    IntPtr[] want;
+    lock (watchGate) { want = wantWatch; wantWatch = null; }
+    if (want == null) return;
+    watched = want;
+    List<uint> pids = new List<uint>();
+    foreach (IntPtr h in watched) { uint p = Pid(h); if (p != 0 && !pids.Contains(p)) pids.Add(p); }
+    pids.Sort();
+    uint[] next = pids.ToArray();
+    bool same = next.Length == watchPids.Length;
+    for (int i = 0; same && i < next.Length; i++) same = next[i] == watchPids[i];
+    if (!same) {
+      foreach (IntPtr hook in watchHooks) UnhookWinEvent(hook);
+      watchHooks.Clear();
+      foreach (uint pid in next) {
+        watchHooks.Add(SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE, IntPtr.Zero, onEvent, pid, 0, WINEVENT_OUTOFCONTEXT));
+        watchHooks.Add(SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, IntPtr.Zero, onEvent, pid, 0, WINEVENT_OUTOFCONTEXT));
+        watchHooks.Add(SetWinEventHook(EVENT_OBJECT_CLOAKED, EVENT_OBJECT_UNCLOAKED, IntPtr.Zero, onEvent, pid, 0, WINEVENT_OUTOFCONTEXT));
+      }
+      watchPids = next;
+    }
+    lastWins = "";
+    EmitWins();
+  }
+
+  static bool IsWatched(IntPtr h) { return Array.IndexOf(watched, h) >= 0; }
+
+  static void EmitWins() {
+    if (watched.Length == 0 && lastWins == "") return;
+    StringBuilder sb = new StringBuilder("{\"wins\":[");
+    bool first = true;
+    foreach (IntPtr h in watched) {
+      if (!IsWindow(h)) continue;
+      RECT r = Bounds(h);
+      if (!first) sb.Append(',');
+      first = false;
+      sb.Append("{\"hwnd\":").Append(h.ToInt64()).Append(",\"min\":").Append(IsIconic(h) ? "true" : "false")
+        .Append(",\"cloaked\":").Append(Cloaked(h) ? "true" : "false")
+        .Append(",\"x\":").Append(r.L).Append(",\"y\":").Append(r.T).Append(",\"w\":").Append(r.R - r.L).Append(",\"h\":").Append(r.B - r.T).Append('}');
+    }
+    sb.Append("]}");
+    string s = sb.ToString();
+    if (s == lastWins) return;
+    lastWins = s;
+    Out(s);
   }
 
   static void OnEvent(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time) {
     try {
       if (ev == EVENT_SYSTEM_FOREGROUND) { Foreground(hwnd); return; }
       if (ev == EVENT_SYSTEM_SWITCHSTART || ev == EVENT_SYSTEM_SWITCHEND) { Out("{\"switching\":" + (ev == EVENT_SYSTEM_SWITCHSTART ? "true" : "false") + "}"); return; }
-      if (ev == EVENT_SYSTEM_MINIMIZESTART || ev == EVENT_SYSTEM_MINIMIZEEND) { if (GetAncestor(hwnd, GA_ROOT) == fgRoot) Foreground(GetForegroundWindow()); return; }
+      if (ev == EVENT_SYSTEM_MINIMIZESTART || ev == EVENT_SYSTEM_MINIMIZEEND) { if (GetAncestor(hwnd, GA_ROOT) == fgRoot) Foreground(GetForegroundWindow()); if (IsWatched(hwnd)) EmitWins(); return; }
+      if (ev == EVENT_OBJECT_LOCATIONCHANGE || ev == EVENT_OBJECT_DESTROY || ev == EVENT_OBJECT_HIDE || ev == EVENT_OBJECT_CLOAKED || ev == EVENT_OBJECT_UNCLOAKED) {
+        if (idObject == 0 && IsWatched(hwnd)) EmitWins();
+        return;
+      }
       if (ev == EVENT_OBJECT_NAMECHANGE && idObject == 0 && hwnd == fgRoot) Foreground(GetForegroundWindow());
     } catch (Exception) { }
   }
@@ -124,7 +192,12 @@ public static class OrbitFocus {
     }
     try {
       Foreground(GetForegroundWindow());
+      EmitWins();
       List<long> gone = new List<long>();
+      // A watched window that closed is reported gone below (once), and no longer watched.
+      List<IntPtr> alive = new List<IntPtr>();
+      foreach (IntPtr w in watched) { if (IsWindow(w)) alive.Add(w); else if (!seen.Contains(w)) seen.Add(w); }
+      if (alive.Count != watched.Length) watched = alive.ToArray();
       for (int i = seen.Count - 1; i >= 0; i--) if (!IsWindow(seen[i])) { gone.Add(seen[i].ToInt64()); seen.RemoveAt(i); }
       if (gone.Count > 0) Out("{\"gone\":[" + string.Join(",", gone) + "]}");
     } catch (Exception) { }
@@ -253,6 +326,12 @@ public static class OrbitFocus {
           long h;
           string d = long.TryParse(p[2], out h) && h > 0 && IsWindow(new IntPtr(h)) ? Describe(new IntPtr(h)) : "null";
           Out("{\"id\":" + id + ",\"describe\":" + d + "}");
+        } else if (p[0] == "watch" && p.Length == 3) {
+          List<IntPtr> want = new List<IntPtr>();
+          if (p[2] != "-") foreach (string part in p[2].Split(',')) { long h; if (long.TryParse(part, out h) && h > 0 && want.Count < 16) want.Add(new IntPtr(h)); }
+          lock (watchGate) { wantWatch = want.ToArray(); }
+          PostThreadMessage(loopThread, WM_APP_WATCH, IntPtr.Zero, IntPtr.Zero);
+          Out("{\"id\":" + id + ",\"watching\":" + want.Count + "}");
         } else if (p[0] == "list") {
           Out("{\"id\":" + id + ",\"list\":" + List() + "}");
         }

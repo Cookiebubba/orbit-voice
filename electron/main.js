@@ -18,8 +18,10 @@ import { getLogDir, logError, logInfo, logWarn } from '../src/log.js';
 import { authUrl, hotkeyLabel, startServer, stopBackgroundWork } from '../src/server.js';
 import { createUpdater } from './updater.js';
 import { createAvatar } from './avatar.js';
+import { createAvatarHost } from './avatar-host.js';
+import { contexts as anywhereContexts } from '../src/anywhere/index.js';
 import { setAvatarSink } from '../src/avatar-commands.js';
-import { startFocusTracking, startUia, stopUia } from '../src/platform/index.js';
+import { focus, startFocusTracking, startUia, stopUia } from '../src/platform/index.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -238,6 +240,7 @@ const claudeTracker = createClaudeWindowTracker({
   spawnHelper: () => fakeWindowHelper?.() || null,
   onChange: (s) => {
     claude = s;
+    anywhereContexts.setHomeWindow(s?.found ? s.hwnd : 0); // the Claude window is Orbit's home context
     placeOrb();
     avatar?.onClaude(s);
     watchBox();
@@ -327,7 +330,10 @@ const orbAllowed = () => getSetting('showOrb') !== false || !avatarKind();
 function setAvatar({ live = false } = {}) {
   const kind = avatarKind();
   const size = getSetting('buddySize');
-  if (avatar && avatar.kind === kind) return avatar.setEnabled(true, size);
+  if (avatar && avatar.kind === kind) {
+    avatarHost.setKind(kind && !freeAvatar() ? kind : null, size);
+    return avatar.setEnabled(true, size);
+  }
   const old = avatar;
   avatar = null;
   if (kind) {
@@ -343,11 +349,14 @@ function setAvatar({ live = false } = {}) {
       free: freeAvatar(),
       onWindow: followSpaces,
     });
-    if (lastOrbState) avatar.onVoice(lastOrbState);
+    if (lastOrbState) avatarHost.onVoice(lastOrbState); // (home gets it, or rests while the talk is elsewhere)
     if (claude) avatar.onClaude(claude);
     avatar.setEnabled(true, size, { entrance: live });
   }
   old?.leave();
+  // The Qubits in other windows (Orbit anywhere) become the same avatar, or go.
+  avatarHost.setKind(kind && !freeAvatar() ? kind : null, size);
+  avatarHost.setEnabled(!!kind && !freeAvatar());
   watchBox();
 }
 
@@ -359,7 +368,34 @@ const freeAvatar = () => (process.platform !== 'win32' && !fakeWindowHelper) || 
 
 // What the user asks the avatar to do (the voice model's `avatar` tool and the fast path that skips
 // the model) goes to its window.
-setAvatarSink((cmd) => (avatar ? avatar.command(cmd) : { ok: false, error: 'There is no avatar on screen.' }));
+setAvatarSink((cmd) => {
+  const a = avatarHost.active();
+  return a ? a.command(cmd) : { ok: false, error: 'There is no avatar on screen.' };
+});
+
+// ---------- Orbit anywhere: a Qubit in every window Orbit is in ----------
+// The home avatar above lives on the Claude window; avatar-host.js hosts one more per window the
+// conversation has been in (src/anywhere/contexts.js), each on that window's bottom edge.
+const avatarHost = createAvatarHost({
+  makeAvatar: (kind) =>
+    createAvatar({
+      kind,
+      url: () => authUrl(kind),
+      webPreferences: secureWebPreferences,
+      lockDown,
+      getDesktopInfo,
+      log: (m) => logWarn('avatar', m),
+      info: (m) => logInfo('avatar', m),
+      boxless: true,
+      onWindow: followSpaces,
+    }),
+  home: () => avatar,
+  watch: (hwnds) => focusTracker?.watch(hwnds),
+  current: () => focus.current,
+  log: (m) => logInfo('avatar', m),
+});
+anywhereContexts.on((snap) => avatarHost.sync(snap));
+focus.on('change', () => avatarHost.onFocus());
 
 // The Claude window watcher runs while the orb sticks to Claude or an avatar is on.
 // (A free-floating avatar doesn't need it.)
@@ -389,7 +425,7 @@ let fakeUiaHelper = null; // developer testing only: a stand-in for uia.ps1
 function setFocusTracking() {
   const want = getSetting('anywhere') !== false && (!fakeDesktop || !!fakeFocusHelper);
   if (want && !focusTracker) {
-    focusTracker = startFocusTracking({ spawnHelper: fakeFocusHelper, onError: (m) => logWarn('focus', m) });
+    focusTracker = startFocusTracking({ spawnHelper: fakeFocusHelper, onError: (m) => logWarn('focus', m), onWins: (wins) => avatarHost.onWins(wins) });
     // Reading other apps' windows (UI Automation): its helper starts on the first read.
     if (!fakeDesktop || fakeUiaHelper) startUia({ spawnHelper: fakeUiaHelper, cacheDir: path.join(app.getPath('userData'), 'cache'), onError: (m) => logWarn('uia', m) });
   } else if (!want && focusTracker) {
@@ -532,12 +568,16 @@ on('orb:restore', () => showMain());
 on('orb:state', (s) => {
   orb?.webContents.send('orb:state', s);
   lastOrbState = s;
-  avatar?.onVoice(s);
+  avatarHost.onVoice(s); // the window the conversation is in gets it; the others rest
 });
 on('buddy:event', (name) => avatar?.event(name));
-on('buddy:emote', (name) => avatar?.emote(name));
+on('buddy:emote', (name) => avatarHost.active()?.emote(name));
 // From the avatar's own page (not one that is fading out after a switch).
-ipcMain.on('buddy:hover', (e, over) => fromUs(e) && avatar?.window && e.sender === avatar.window.webContents && avatar.hover(!!over));
+ipcMain.on('buddy:hover', (e, over) => {
+  if (!fromUs(e)) return;
+  const a = avatar?.window && e.sender === avatar.window.webContents ? avatar : avatarHost.guestFor(e.sender);
+  a?.hover(!!over);
+});
 on('orb:action', (a) => main?.webContents.send('orb:action', a));
 on('orb:drag-start', () => {
   claudeTracker.pause(); // the user is moving the orb; the helper waits until they drop it
@@ -630,6 +670,7 @@ app.on('before-quit', () => {
   focusTracker?.stop();
   stopUia();
   avatar?.stop();
+  avatarHost.stop();
   updater?.stop();
 });
 app.on('window-all-closed', () => app.quit());
