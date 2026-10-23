@@ -264,7 +264,7 @@ test('switching avatars mid-call updates the live session: persona, body and too
   // The same call all along (no reconnect), and its job text unchanged.
   assert.equal(up, conn);
   assert.equal(conns.filter((c) => c.sock.readyState === WebSocket.OPEN).length, 1);
-  assert.match(cfg().instructions, /Only call send_draft after the user clearly says yes in their latest reply/);
+  assert.match(cfg().instructions, /call send_draft only after a clear yes in their latest reply/);
   await p.bye();
   // The next call starts with what's on screen now.
   updateSettings({ avatar: 'buddy', showOrb: false });
