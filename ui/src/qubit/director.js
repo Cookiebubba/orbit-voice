@@ -413,14 +413,6 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
 
   /** Is he standing on the prompt box? */
   const onTheBox = () => !!geo?.box && !q.air && !q.pivot && Math.abs(geo.ground - q.sy - geo.box.y) < 2 && q.cx > geo.box.x && q.cx < geo.box.x + geo.box.w;
-  // (Engine workaround: a flip's deep take-off crouch on top of a solid reads as hitting the solid's
-  // side, which throws him off the box's end. While a flip that starts on the box runs (asked for,
-  // or practised in his own life), the box is a ledge: he still lands on its top.)
-  const setLedge = (on) => {
-    for (const o of q.solids) if (o.id === 'box') o.oneWay = on;
-  };
-  q.on('action', ({ name }) => name === 'flip' && onTheBox() && setLedge(true));
-  q.on('done', ({ name }) => name === 'flip' && setLedge(false));
   const grown = () => q.sp.grow.t > 1.05;
   /** Which way to go (dir 'left' | 'right', else toward the side with more room) and how far there's room. */
   function room(dir) {

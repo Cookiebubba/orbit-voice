@@ -22,7 +22,9 @@
  *     sleep. A low-power mode caps at 30 fps.
  *   - Environments: q.setEnvironment({ solids: [{ id, x, y, w, h }] }) in stage units (CSS px, y down)
  *     gives him things to stand on. Physics stays whole-square: he lands on their tops, is stopped by
- *     their sides and bonks their undersides, and falls when what he stands on goes away.
+ *     their sides (toppling off a corner too: he knocks against one and rocks back) and bonks their
+ *     undersides, and falls when what he stands on goes away. Taking off from a top (a flip's spin
+ *     swings his corners below it) is never a hit on that solid's side.
  *   - Pathing (needs orbit-nav.js, global OrbitNav): q.goTo(x, y) plans a route and runs it with his
  *     own moves: hops along a surface, a ballistic jump that lands exactly on the next platform (up or
  *     across), a small hop off an edge to drop, and a graceful turn (the eye leads) when he reverses.
@@ -347,6 +349,7 @@
       this.av = 0; // degrees per second
       this.air = false;
       this.pivot = null; // { px, d, phi, w, base, push } while rocking or rolling on a corner
+      this.leftFrom = null; // in the air: the height of the surface he left (see _airCollide)
       this.angleSettle = new Spring(0, 9, 0.5); // the last few degrees after a flat landing
 
       const T = TUNING;
@@ -516,6 +519,7 @@
         this.cx = this._rx;
         this.cy = this._rh;
       }
+      if (!this.air) this.leftFrom = this.sy;
       this.vx = vx;
       this.av = av;
       this.air = true;
@@ -562,6 +566,7 @@
         this.cx = this._rx;
         this.cy = this._rh;
       }
+      if (!this.air) this.leftFrom = this.sy;
       const half = this.side / 2;
       const top = Math.max(apex, this.sy, level) + half; // the centre's apex
       const rise = Math.max(0.5, top - this.cy);
@@ -900,7 +905,17 @@
         const push = P.phi < Math.PI / 4 ? P.push * K : 0; // a roll's push, until it tips over the corner
         P.w += (K * Math.sin(P.phi - Math.PI / 4) + push) * dt;
         P.w *= Math.pow(0.6, dt); // a little friction at the corner
+        const phiWas = P.phi;
         P.phi += P.w * dt;
+        // A solid beside him (the prompt box's side, say): the turning square can't swing into it.
+        // He knocks against it and bounces back over his corner onto the face he came from (never
+        // left leaning on it: a lean is only ever a moment).
+        if (this.solids.length && P.w > 0 && this._pivotHits(P)) {
+          P.phi = phiWas;
+          const back = Math.sqrt(2 * K * Math.max(0, 1 - Math.cos(P.phi - Math.PI / 4))); // enough to tip back over the corner
+          P.w = -Math.max(Math.abs(P.w) * 0.35, (P.phi > Math.PI / 4 ? back * 1.15 : 0) + 0.4);
+          this.emit('bump', { pivot: true });
+        }
         let done = null;
         if (P.phi >= Math.PI / 2) done = 1;
         else if (P.phi <= 0) done = 0;
@@ -987,6 +1002,7 @@
         // What he stands on: ride it if it moves a little, fall if it goes away.
         const sup = this.solids.length ? this._supportAt(this.cx, half, this.sy) : 0;
         if (sup < this.sy - 0.5) {
+          this.leftFrom = this.sy; // walked off its edge (or it went away): still above it, falling
           this.air = true;
           this.vy = 0;
         } else this.sy = sup;
@@ -1031,6 +1047,20 @@
       this.emit('land', { how, sideways: !!quarter, quarter, impact });
     }
 
+    /** Would the square turning on corner P (at its phi now) overlap a solid's side? */
+    _pivotHits(P) {
+      const half = this.side / 2;
+      const phi = clamp(P.phi, 0, Math.PI / 2);
+      const cx = P.px - P.d * half * Math.cos(phi) + P.d * half * Math.sin(phi);
+      // Turned by phi off a face, his outline reaches half (cos + sin) to each side of his centre.
+      const ext = half * (Math.cos(phi) + Math.sin(phi));
+      for (const o of this.solids) {
+        if (o.oneWay || !(o.T > this.sy + 1 && o.B < this.sy + this.side - 1)) continue;
+        if (cx + ext > o.L + 0.5 && cx - ext < o.R - 0.5 && (P.d > 0 ? o.L >= P.px - 0.5 : o.R <= P.px + 0.5)) return true;
+      }
+      return false;
+    }
+
     /** Air contact with solids. Returns the highest top he's coming down onto (or the ground, 0). */
     _airCollide(px0, py0, ex, ey) {
       let level = 0;
@@ -1039,8 +1069,12 @@
         if (!(this.cx + ex > o.L + 0.3 && this.cx - ex < o.R - 0.3)) continue;
         const bottom = this.cy - ey;
         const top = this.cy + ey;
-        if (py0 - ey >= o.T - band) {
-          // Above it: a landing when he comes down onto its top.
+        // Above it: his outline was clear of its top a moment ago, or he took off from its top (or
+        // higher) and his centre hasn't dropped below it since. (A flip from the top of the box
+        // swings his corners below its top as he crouches and spins at take-off: that is still
+        // above it, not a hit on its side.)
+        if (py0 - ey >= o.T - band || (this.leftFrom != null && this.leftFrom >= o.T - 0.5 && py0 >= o.T)) {
+          // A landing when he comes down onto its top.
           if (bottom <= o.T && o.T > level) level = o.T;
           continue;
         }

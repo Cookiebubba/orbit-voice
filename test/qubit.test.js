@@ -590,3 +590,89 @@ test('emotes: only while he talks; you talking, asleep, or something you asked h
   assert.deepEqual(s.problems, []);
   s.done();
 });
+
+// ---------- the engine: flips from the top of a solid ----------
+test('a flip from the top of the prompt box lands back on it: his spinning take-off is never a hit on its side', () => {
+  const ground = H - 3;
+  const top = ground - BOX.y;
+  const make = (side, x, sy) => {
+    const q = E.create({ mount: null, width: W, height: H, size: side, floor: 3, mode: 'idle', keepAlive: true });
+    q.brainT.play = q.brainT.stunt = Infinity;
+    q.bounds = [6, W - 6];
+    q.setEnvironment({ solids: [{ id: 'box', x: BOX.x, y: BOX.y, w: BOX.w, h: ground - BOX.y }] });
+    q.cx = x;
+    q.sy = sy;
+    q.cy = sy + side / 2;
+    for (let i = 0; i < 30; i++) q.update(1 / 60);
+    return q;
+  };
+  const realRandom = Math.random;
+  Math.random = seeded(3);
+  try {
+    for (const side of [26, 36, 50]) {
+      for (const dir of [1, -1]) {
+        for (const outcome of ['success', 'side', 'corner']) {
+          for (const x of [BOX.x + 30, BOX.x + 200, BOX.x + BOX.w - 34]) {
+            const q = make(side, x, top);
+            let bumps = 0;
+            let lowest = Infinity;
+            q.on('bump', () => bumps++);
+            q.do('flip', { dir, outcome });
+            for (let i = 0; i < 60 * 5; i++) {
+              q.update(1 / 60);
+              if (!q.air && !q.pivot) lowest = Math.min(lowest, q.sy);
+            }
+            const what = `side ${side}, ${dir > 0 ? 'front' : 'back'}flip (${outcome}) from x ${x}`;
+            assert.equal(bumps, 0, `${what}: no hit on the box's side`);
+            assert.ok(Math.abs(q.sy - top) < 1 && lowest > top - 1, `${what}: back on the box (support ${q.sy.toFixed(0)})`);
+            assert.ok(Math.abs(q.cx - x) < side * 1.3, `${what}: about where he took off (moved ${(q.cx - x).toFixed(0)} px)`);
+            q.destroy();
+          }
+        }
+      }
+    }
+    // On the floor beside the box, a flip that lands on a corner and topples toward it: the turning
+    // square knocks against its side and rocks back, never into it, and is never left leaning on it.
+    for (const side of [26, 36, 50]) {
+      for (const gap of [0.2, 0.5, 0.9]) {
+        for (const [x, d] of [[BOX.x + BOX.w + side * (0.5 + gap), -1], [BOX.x - side * (0.5 + gap), 1]]) {
+          const q = make(side, x, 0);
+          q.do('flip', { dir: d, outcome: 'corner' });
+          let inside = 0;
+          for (let i = 0; i < 60 * 6; i++) {
+            q.update(1 / 60);
+            if (q.cx + side / 2 > BOX.x + 1 && q.cx - side / 2 < BOX.x + BOX.w - 1 && q.sy < 1 && !q.air) inside++;
+          }
+          assert.equal(inside, 0, `side ${side}, ${gap} from the box: never into its side`);
+          assert.ok(!q.air && !q.pivot && Math.abs(q.angle) < 1, `side ${side}, ${gap} from the box: settled flat (angle ${q.angle.toFixed(1)})`);
+          q.destroy();
+        }
+      }
+    }
+    // The box's sides still stop him: a hop from the floor into its side is a bump, and he stays out.
+    const q = make(36, BOX.x - 30, 0);
+    let bumps = 0;
+    q.on('bump', () => bumps++);
+    q.do('hop', { dir: 1, dist: 1.5 });
+    for (let i = 0; i < 60 * 2; i++) q.update(1 / 60);
+    assert.ok(bumps > 0 && q.sy < 1 && q.cx <= BOX.x - 17, `stopped by its side (x ${q.cx.toFixed(0)}, bumps ${bumps})`);
+    q.destroy();
+  } finally {
+    Math.random = realRandom;
+  }
+});
+
+test('flips asked for on the box (no workaround in the director): he lands them on the box, many in a row', async () => {
+  const s = scene({ voice: { phase: 'listening' } });
+  const { q, dir } = s;
+  await s.run(1);
+  const top = dir.geometry.ground - BOX.y;
+  for (let i = 0; i < 6; i++) {
+    dir.command({ action: i % 2 ? 'frontflip' : 'backflip' });
+    await s.run(3.5);
+    assert.ok(Math.abs(q.sy - top) < 1 && !q.air, `flip ${i + 1}: on the box`);
+  }
+  assert.ok(!q.solids.some((o) => o.oneWay), 'the box is never turned into a ledge');
+  assert.deepEqual(s.problems, []);
+  s.done();
+});

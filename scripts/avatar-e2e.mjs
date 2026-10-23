@@ -542,7 +542,7 @@ async function run() {
   const t5 = Date.now();
   void fake.userSays(c, 'Hey Qubit, do a backflip!', { kind: 'avatar', tools: [{ name: 'avatar', args: { action: 'backflip' } }] });
   check(await waitFor(async () => (await qjs('window.__acts')).includes('flip'), 4000), 'he does a backflip', `${Date.now() - t5} ms from the words starting`);
-  await film('backflip', 2200, 20);
+  await film('backflip', 2200, 20, { follow: true }); // (wherever his own life left him)
   check(await waitFor(() => c.cancels.length > cancelsBefore, 3000), 'Grok\x27s own answer was cancelled');
   await waitFor(() => c.responses.length > respBefore && c.responses.at(-1).doneAt, 3000);
   const r5 = c.responses.slice(respBefore);
