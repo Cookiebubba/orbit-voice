@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#000000">
+<meta name="theme-color" content="#ffffff">
 <title>Orbit</title>
 <meta name="description" content="Orbit: a hands-free voice companion for Claude Code Desktop, powered by Grok Voice. Free and open source.">
 <!-- link previews (X, iMessage, Slack, Discord...). Crawlers need absolute URLs. -->
@@ -24,14 +24,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/site.css?v=9">
-<!-- bump ?v= (here and the import in site.js) on each publish so browsers drop the old copy -->
-<script type="module" src="js/site.js?v=9"></script>
+<link rel="stylesheet" href="css/site.css?v=10">
+<!-- bump ?v= (here, the two Qubit scripts and the import in site.js) on each publish so browsers drop the old copy -->
+<!-- Qubit: his engine and pathing, copied as is from ui/src/vendor/avatars/ -->
+<script defer src="js/orbit-nav.js?v=10"></script>
+<script defer src="js/qubit-engine.js?v=10"></script>
+<script type="module" src="js/site.js?v=10"></script>
 </head>
 <body data-page="home">
 
-<!-- the background lives outside the routed view, so page switches never touch it -->
-<canvas id="bg" aria-hidden="true"></canvas>
+<!-- Qubit lives along the bottom of every page, outside the routed view, so page switches never touch him -->
+<div id="qubit" aria-hidden="true"></div>
 
 <div class="app">
   <header class="top">
@@ -68,11 +71,12 @@
     <aside class="install">
       <p class="eyebrow">Free and open source</p>
       <h2>Get your install here.</h2>
-      <a class="download" id="download" href="https://github.com/Cookiebubba/orbit-voice/releases/latest">
+      <a class="download" id="download" href="https://github.com/Cookiebubba/orbit-voice/releases/download/v1.3.0-beta.1/Orbit-Setup-1.3.0-beta.1.exe">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 21h14"/></svg>
-        Download now
+        Download Orbit beta
       </a>
-      <p class="meta" id="dl-meta">Windows 10 / 11</p>
+      <p class="meta" id="dl-meta">v1.3.0-beta.1 · with Qubit · Windows 10/11</p>
+      <p class="stable"><a id="download-stable" href="https://github.com/Cookiebubba/orbit-voice/releases/download/v1.2.0/Orbit-Setup-1.2.0.exe">or download the latest stable release</a></p>
       <p class="links">
         <a href="https://github.com/Cookiebubba/orbit-voice" target="_blank" rel="noopener">GitHub <span aria-hidden="true">↗</span></a>
         <a href="https://github.com/Cookiebubba/orbit-voice/releases" target="_blank" rel="noopener">Releases <span aria-hidden="true">↗</span></a>

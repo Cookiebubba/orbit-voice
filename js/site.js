@@ -1,10 +1,12 @@
 import { marked } from "https://cdn.jsdelivr.net/npm/marked@12.0.2/lib/marked.esm.js";
 import DOMPurify from "https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.es.mjs";
-import { startBackground } from "./background.js?v=9";
+import { startQubit } from "./qubit.js?v=10";
 
 /* --------------------------------- config --------------------------------- */
 const REPO = "Cookiebubba/orbit-voice";
 const X_HANDLE = "brandynships";
+// The main button downloads this beta; the line under it, the latest stable release.
+const BETA_TAG = "v1.3.0-beta.1";
 
 const GITHUB = `https://github.com/${REPO}`;
 const RAW = `https://raw.githubusercontent.com/${REPO}/main/`;
@@ -19,7 +21,7 @@ const PAGES = {
 const FILE_ROUTES = Object.fromEntries(Object.entries(PAGES).map(([route, p]) => [p.file, route]));
 
 /* ---------------------------------- boot ---------------------------------- */
-startBackground(document.getElementById("bg"));
+startQubit(document.getElementById("qubit"));
 
 const handle = document.getElementById("handle");
 handle.querySelector("span").textContent = `@${X_HANDLE}`;
@@ -27,7 +29,7 @@ handle.href = `https://x.com/${X_HANDLE}`;
 
 const view = document.getElementById("view");
 let current = null; // { page, section }
-let release = null; // the latest release's installer, once known
+let release = null; // { beta, stable }: each release's installer, once known
 const cache = new Map(); // fetched markdown, by page
 
 /* --------------------------------- router --------------------------------- */
@@ -69,23 +71,36 @@ function renderHome() {
   if (release) showRelease(); else loadRelease();
 }
 
+// One call for both: the beta by its tag, and the newest published release that isn't a prerelease.
 async function loadRelease() {
   try {
-    const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: "application/vnd.github+json" } });
+    const res = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=20`, { headers: { Accept: "application/vnd.github+json" } });
     if (!res.ok) return;
-    const data = await res.json();
-    const exe = (data.assets || []).find(a => /\.exe$/i.test(a.name));
-    if (!exe) return;
-    release = { url: exe.browser_download_url, version: data.tag_name, mb: Math.round(exe.size / 1048576) };
+    const list = await res.json();
+    const pick = r => {
+      const exe = r && (r.assets || []).find(a => /\.exe$/i.test(a.name));
+      return exe && { url: exe.browser_download_url, version: r.tag_name, mb: Math.round(exe.size / 1048576) };
+    };
+    release = {
+      beta: pick(list.find(r => r.tag_name === BETA_TAG && !r.draft)),
+      stable: pick(list.find(r => !r.draft && !r.prerelease)),
+    };
     showRelease();
-  } catch { /* offline or rate-limited: the button still opens the releases page */ }
+  } catch { /* offline or rate-limited: the links in the page still point at the installers */ }
 }
 
 function showRelease() {
-  const btn = document.getElementById("download"), meta = document.getElementById("dl-meta");
+  const btn = document.getElementById("download"), meta = document.getElementById("dl-meta"), stable = document.getElementById("download-stable");
   if (!btn || !release) return;
-  btn.href = release.url;
-  meta.textContent = `${release.version} · ${release.mb} MB · Windows 10 / 11`;
+  if (release.beta) {
+    btn.href = release.beta.url;
+    meta.textContent = `${release.beta.version} · with Qubit · Windows 10/11`; // one line: the size is in the tooltip
+    btn.title = `Orbit ${release.beta.version} · ${release.beta.mb} MB`;
+  }
+  if (release.stable) {
+    stable.href = release.stable.url;
+    stable.title = `Orbit ${release.stable.version} · ${release.stable.mb} MB`;
+  }
 }
 
 /* ---------------------------------- about --------------------------------- */

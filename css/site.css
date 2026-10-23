@@ -2,39 +2,47 @@
   Scaling: every size is in rem, and the root size follows the viewport. It's
   designed at 1440×900 (1rem = 16px) and scales by whichever of width or height
   is tighter, so a 21:9 or 32:9 screen grows with its height instead of leaving
-  small text stranded at the edges. The tile wall reads the same root size, so
-  the background scales in step (see background.js).
+  small text stranded at the edges. Qubit reads the same root size, so he
+  scales in step (see qubit.js).
 */
 html { font-size: clamp(13px, min(1.1111vw, 1.7778vh), 44px); }
 
 :root {
-  --fg: #f2f3f4;
-  --text: #c6c9cd;
-  --muted: #7d8288;
-  --line: rgba(255, 255, 255, .12);
+  --fg: #0d0d0d;
+  --text: #3d4148;
+  --muted: #6b7076;
+  --line: rgba(0, 0, 0, .1);
   --claude: #d97757;
   --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
   /* page side margin: at least 9rem, and the content never spreads wider than 110rem (ultrawides keep it centred) */
   --edge: max(9rem, calc((100vw - 110rem) / 2));
   --fade: 4.5rem;   /* scroll fade at the top and bottom of docs */
+  /* Qubit's strip along the bottom: his size, the floor under him, and the room the page leaves him */
+  --q-side: 3.5rem;
+  --q-floor: 1.25rem;
+  --q-room: calc(var(--q-floor) + var(--q-side) * 1.35);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
-/* on phones the whole page is a touch surface for the wall: no panning, pinch, bounce or
-   pull-to-refresh, and no text selection while dragging. The docs scroller opts back in below. */
+/* on phones: no panning, bounce or pull-to-refresh on the frame, and no text selection while
+   dragging. The docs scroller opts back in below. */
 body { touch-action: none; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-body { background: #000; color: var(--fg); font: 1rem/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+body { background: #fff; color: var(--fg); font: 1rem/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
 a { color: inherit; }
 img { display: block; }
 
-#bg { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; transform-origin: 50% 50%; z-index: 0; touch-action: none; }
+/* Qubit: fixed to the bottom of the screen, over the page but never taking a click. He stands on a
+   hairline floor; the space above it is open for his hops and flips. */
+#qubit { position: fixed; z-index: 2; left: 0; right: 0; bottom: env(safe-area-inset-bottom); height: calc(var(--q-floor) + var(--q-side) * 3.4);
+         pointer-events: none; }
+#qubit::before { content: ""; position: absolute; left: 0; right: 0; bottom: var(--q-floor); height: 1px; background: #e8e8e8; }
 
 /* ---------------------------------- frame ---------------------------------- */
 /* dvh: the screen that's actually visible on phones, between the browser's toolbars */
 .app { position: relative; z-index: 1; height: 100vh; height: 100dvh; display: grid; grid-template-rows: 4.75rem 1fr 4rem;
-       padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+       padding: env(safe-area-inset-top) env(safe-area-inset-right) calc(env(safe-area-inset-bottom) + var(--q-room)) env(safe-area-inset-left); }
 
 .top, .bottom { display: flex; align-items: center; justify-content: space-between; padding: 0 var(--edge); }
 .brand { display: flex; align-items: center; gap: .5rem; font-weight: 600; font-size: 1.0625rem; letter-spacing: -.02em; text-decoration: none; transition: opacity .25s; }
@@ -50,10 +58,10 @@ body[data-page="home"] .brand { opacity: 0; pointer-events: none; } /* the hero 
 
 /* the X handle: a black pill with the X mark */
 .handle { display: inline-flex; align-items: center; gap: .55rem; height: 2.25rem; padding: 0 1rem 0 .85rem; border-radius: 999px;
-          background: #000; border: 1px solid rgba(255, 255, 255, .14); color: var(--fg); font: 500 .8125rem/1 var(--sans); letter-spacing: -.005em;
+          background: #0d0d0d; border: 1px solid #0d0d0d; color: #fff; font: 500 .8125rem/1 var(--sans); letter-spacing: -.005em;
           transition: border-color .15s, background .15s; }
-.handle:hover { border-color: rgba(255, 255, 255, .35); background: #0a0a0a; }
-.handle .logo-x { width: .85rem; height: .85rem; }
+.bottom .handle:hover { color: #fff; background: #2b2b2b; border-color: #2b2b2b; }
+.handle .logo-x { width: .85rem; height: .85rem; color: #fff; }
 
 #view { min-height: 0; position: relative; transition: opacity .18s ease; }
 #view.leaving { opacity: 0; }
@@ -65,25 +73,28 @@ body[data-page="home"] .brand { opacity: 0; pointer-events: none; } /* the hero 
 
 .lockup { display: flex; align-items: center; margin-top: 2rem; font-size: 1.375rem; font-weight: 600; letter-spacing: -.02em; }
 .lockup .who { display: inline-flex; align-items: center; gap: .55rem; }
-.lockup .bar { width: 1px; height: 1.6rem; margin: 0 1.25rem; background: rgba(255, 255, 255, .4); }
+.lockup .bar { width: 1px; height: 1.6rem; margin: 0 1.25rem; background: rgba(0, 0, 0, .3); }
 /* the brands' own marks, from Simple Icons, tinted with a mask so each can carry its colour */
 .logo { width: 1.2em; height: 1.2em; flex: none; background: currentColor;
         -webkit-mask: var(--src) center / contain no-repeat; mask: var(--src) center / contain no-repeat; }
-.logo-x { --src: url("https://cdn.jsdelivr.net/npm/simple-icons@13.21.0/icons/x.svg"); width: .95em; height: .95em; color: #fff; }
+.logo-x { --src: url("https://cdn.jsdelivr.net/npm/simple-icons@13.21.0/icons/x.svg"); width: .95em; height: .95em; color: var(--fg); }
 .logo-claude { --src: url("https://cdn.jsdelivr.net/npm/simple-icons@13.21.0/icons/claude.svg"); color: var(--claude); }
 .whatis { display: inline-flex; align-items: center; gap: .4rem; margin-top: 1.1rem; font-size: .875rem; font-weight: 500; color: var(--text); text-decoration: none; transition: color .15s; }
 .whatis svg { width: .8rem; height: .8rem; }
 .whatis:hover { color: var(--fg); }
 .fine { margin-top: .9rem; font-size: .8125rem; color: var(--muted); }
 
-.install { width: 19rem; }
+.install { width: 20rem; }
 .eyebrow { font: 500 .75rem/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 .install h2 { margin-top: .875rem; font-size: 1.75rem; font-weight: 600; line-height: 1.15; letter-spacing: -.03em; }
 .download { display: flex; align-items: center; justify-content: center; gap: .625rem; height: 3.375rem; margin-top: 1.625rem; border-radius: 999px;
-            background: #fff; color: #000; font-weight: 600; font-size: .9375rem; text-decoration: none; transition: transform .15s, background .15s; }
-.download:hover { background: #e4e4e4; transform: translateY(-1px); }
+            background: #0d0d0d; color: #fff; font-weight: 600; font-size: .9375rem; text-decoration: none; transition: transform .15s, background .15s; }
+.download:hover { background: #2b2b2b; transform: translateY(-1px); }
 .download svg { width: 1.125rem; height: 1.125rem; }
-.meta { margin-top: .75rem; text-align: center; font: .75rem/1.4 var(--mono); color: var(--muted); }
+.meta { margin-top: .75rem; text-align: center; font: .75rem/1.4 var(--mono); color: var(--muted); text-wrap: balance; } /* never a lone word on its own line */
+.stable { margin-top: .5rem; text-align: center; font-size: .8125rem; }
+.stable a { color: var(--text); text-decoration: underline; text-decoration-color: rgba(0, 0, 0, .25); text-underline-offset: .2em; transition: color .15s, text-decoration-color .15s; }
+.stable a:hover { color: var(--fg); text-decoration-color: var(--fg); }
 .links { display: flex; justify-content: center; gap: 1.375rem; margin-top: 1.375rem; font-size: .875rem; }
 .links a { color: var(--text); text-decoration: none; transition: color .15s; }
 .links a:hover { color: var(--fg); }
@@ -94,7 +105,7 @@ body[data-page="home"] .brand { opacity: 0; pointer-events: none; } /* the hero 
          container-type: size; }
 /* as large as fits: limited by the width, or by the height left after the caption, whichever is tighter */
 .player { flex: none; width: min(100%, calc((100cqh - 4.5rem) * 1540 / 1080)); aspect-ratio: 1540 / 1080; border-radius: 1rem; overflow: hidden;
-          border: 1px solid var(--line); background: #000; box-shadow: 0 2rem 5rem -2rem rgba(0, 0, 0, .9); }
+          border: 1px solid var(--line); background: #000; box-shadow: 0 2rem 5rem -2.5rem rgba(0, 0, 0, .35); }
 .player video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
 .caption { font-size: .8125rem; color: var(--muted); text-align: center; }
 
@@ -127,17 +138,17 @@ body[data-page="home"] .brand { opacity: 0; pointer-events: none; } /* the hero 
 .doc li { margin: .375rem 0; }
 .doc li > ul { margin: .375rem 0 0; }
 .doc strong { color: var(--fg); font-weight: 600; }
-.doc a { color: var(--fg); text-decoration-color: rgba(255, 255, 255, .35); text-underline-offset: .2em; }
+.doc a { color: var(--fg); text-decoration-color: rgba(0, 0, 0, .3); text-underline-offset: .2em; }
 .doc a:hover { text-decoration-color: var(--fg); }
 .doc hr { border: 0; border-top: 1px solid var(--line); margin: 2.5rem 0; }
 .doc blockquote { padding-left: 1rem; border-left: 2px solid var(--line); color: var(--muted); }
-.doc code { font: .86em var(--mono); background: rgba(255, 255, 255, .08); padding: .125rem .375rem; border-radius: .3rem; color: var(--fg); }
-.doc pre { padding: 1rem 1.125rem; border: 1px solid var(--line); border-radius: .75rem; background: rgba(0, 0, 0, .55); overflow-x: auto; }
+.doc code { font: .86em var(--mono); background: rgba(0, 0, 0, .055); padding: .125rem .375rem; border-radius: .3rem; color: var(--fg); }
+.doc pre { padding: 1rem 1.125rem; border: 1px solid var(--line); border-radius: .75rem; background: #f6f6f7; overflow-x: auto; }
 .doc pre code { background: none; padding: 0; font-size: .8125rem; line-height: 1.6; }
 .doc img { max-width: 100%; height: auto; border-radius: .75rem; }
 .doc .table { overflow-x: auto; }
 .doc table { width: 100%; border-collapse: collapse; font-size: .875rem; line-height: 1.5; }
-.doc th { text-align: left; color: var(--fg); font-weight: 600; padding: .625rem .875rem .625rem 0; border-bottom: 1px solid rgba(255, 255, 255, .25); }
+.doc th { text-align: left; color: var(--fg); font-weight: 600; padding: .625rem .875rem .625rem 0; border-bottom: 1px solid rgba(0, 0, 0, .2); }
 .doc td { vertical-align: top; padding: .75rem .875rem .75rem 0; border-bottom: 1px solid var(--line); min-width: 8.5em; }
 
 /* narrow screens (phones, a slim window): stack the hero and tighten the frame */
@@ -169,7 +180,7 @@ body[data-page="home"] .brand { opacity: 0; pointer-events: none; } /* the hero 
   .about { padding-top: .5rem; padding-bottom: .75rem; gap: .5rem; }
   .caption { display: none; }
   .player { width: min(100%, calc((100cqh - 1rem) * 1540 / 1080)); }
-  :root { --fade: 2.5rem; --edge: 2.5rem; }
+  :root { --fade: 2.5rem; --edge: 2.5rem; --q-side: 2.75rem; }
 }
 
 @media (prefers-reduced-motion: reduce) { #view { transition: none; } }
