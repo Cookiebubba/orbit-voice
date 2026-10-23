@@ -106,7 +106,7 @@ test('the tools are offered only with the setting on and a native helper', () =>
   updateSettings({ anywhere: false });
   assert.equal(anywhereAvailable(), false);
   updateSettings({ anywhere: true });
-  assert.deepEqual(ANYWHERE_TOOL_DEFS.map((t) => t.name), ['read_window', 'read_selection', 'look_at_window', 'come_here', 'leave_window', 'list_windows']);
+  assert.deepEqual(ANYWHERE_TOOL_DEFS.map((t) => t.name), ['read_window', 'read_selection', 'look_at_window', 'come_here', 'leave_window', 'list_windows', 'act_in_window', 'confirm_window_action']);
 });
 
 test('read_window: only on the user\x27s own words since the latest notification; text is data', async () => {

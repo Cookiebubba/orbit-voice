@@ -193,8 +193,8 @@ function AnywhereSection({ s, update, name }: { s: SettingsT; update: Update; na
       <Toggle
         checked={s.anywhere}
         onChange={(anywhere) => update({ anywhere })}
-        label={`Let ${name} read the window you're in`}
-        hint={`In any app, not just Claude: ask "what does this say?" or "what's new in Discord?" and ${name} reads that window. Only when you ask, never password managers, banking, private browsing or sign-in windows, and what a window says is never taken as an instruction.`}
+        label={`Let ${name} work in the window you're in`}
+        hint={`In any app, not just Claude: ask "what does this say?" and ${name} reads that window; ask it to type something or press a button and it does, without touching your mouse or keyboard. Sending, posting, deleting and buying always ask first. Only when you ask, never in password managers, banking, private browsing or sign-in windows, and what a window says is never taken as an instruction.`}
       />
       <Reveal show={s.anywhere}>
         <Toggle

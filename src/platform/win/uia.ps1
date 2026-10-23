@@ -23,6 +23,10 @@
 #   -> {"ok":true,"kind":"text","text":"..","from":{"t","n"}} | {"kind":"items","items":[..]} | {"kind":"none"}
 #   Selected text (text pattern, or a classic edit box asked read-only with EM_GETSEL/WM_GETTEXT),
 #   else the selected list items. Nothing is copied: the clipboard is never touched.
+# {"id":n,"op":"act","hwnd":h,"i":index,"rid":"runtime id","t":"Button","action":"set_text|type|press|toggle|select|expand|collapse","value":".."}
+#   -> {"ok":true,"via":"uia-value|wm-char|wm-settext|bn-clicked|uia-invoke|uia-toggle|uia-select|..","verified":true,"stoleFocus":false}
+#   One act on the node `i` of the last scan of that window (found again by its runtime id if the
+#   tree changed). Errors: stale, disabled, password, not_supported.
 # Errors: {"id":n,"ok":false,"error":"code","message":"..."} (codes: no_window, access_denied,
 #   timeout, bad_request, failed).
 param([int]$ParentPid = 0, [string]$Cache = '')
@@ -159,6 +163,7 @@ public static class OrbitUia {
     if (op == "scan") return Scan(req);
     if (op == "read") return Read(req);
     if (op == "selection") return Selection(req);
+    if (op == "act") return Act(req);
     throw new ArgumentException("unknown op");
   }
 
@@ -193,7 +198,8 @@ public static class OrbitUia {
     IUIAutomationCacheRequest cr = Request(values);
     IUIAutomationElement cached = root.BuildUpdatedCache(cr);
     List<object> nodes = new List<object>();
-    bool truncated = Walk(cached, -1, nodes, max, values);
+    List<IUIAutomationElement> els = new List<IUIAutomationElement>();
+    bool truncated = Walk(cached, -1, nodes, max, values, els);
     string fw = S(cached.GetCachedPropertyValue(P_Framework));
     // Chromium and Electron build their tree on the first question (Discord: 8 -> 445 elements):
     // ask again once it has had a moment.
@@ -201,8 +207,11 @@ public static class OrbitUia {
       Thread.Sleep(700);
       cached = root.BuildUpdatedCache(cr);
       nodes.Clear();
-      truncated = Walk(cached, -1, nodes, max, values);
+      els.Clear();
+      truncated = Walk(cached, -1, nodes, max, values, els);
     }
+    lastScan[Long(req, "hwnd")] = els; // acts name a node of this scan (see Act)
+    if (lastScan.Count > 24) { foreach (long k in new List<long>(lastScan.Keys)) if (!IsWindow(new IntPtr(k))) lastScan.Remove(k); }
     if (fw == "") foreach (object o in nodes) { var d = (Dictionary<string, object>)o; if (d.ContainsKey("fw")) { fw = (string)d["fw"]; break; } }
     var res = Ok();
     res["fw"] = fw;
@@ -217,14 +226,15 @@ public static class OrbitUia {
   }
 
   // Depth-first, so a parent always comes before its children. True if it stopped at max.
-  static bool Walk(IUIAutomationElement e, int parentIndex, List<object> nodes, int max, bool values) {
+  static bool Walk(IUIAutomationElement e, int parentIndex, List<object> nodes, int max, bool values, List<IUIAutomationElement> els = null) {
     if (nodes.Count >= max) return true;
     int me = nodes.Count;
     nodes.Add(Node(e, me, parentIndex, values));
+    if (els != null) els.Add(e);
     IUIAutomationElementArray kids = null;
     try { kids = e.GetCachedChildren(); } catch (Exception) { }
     if (kids == null) return false;
-    for (int i = 0; i < kids.Length; i++) if (Walk(kids.GetElement(i), me, nodes, max, values)) return true;
+    for (int i = 0; i < kids.Length; i++) if (Walk(kids.GetElement(i), me, nodes, max, values, els)) return true;
     return false;
   }
 
@@ -430,6 +440,134 @@ public static class OrbitUia {
     res["text"] = Cut(text.Replace("\r\n", "\n"), 40000);
     string type; Types.TryGetValue(e.CurrentControlType, out type);
     res["from"] = new Dictionary<string, object> { { "t", type ?? "Custom" }, { "n", Cut(e.CurrentName ?? "", 120) } };
+    return res;
+  }
+
+  // ---------------- acting without focus (phase 5) ----------------
+  // One act on one control: UI Automation with AutoSetFocus off, or window messages for classic
+  // Win32 controls (WM_CHAR typing into an EDIT, BN_CLICKED to a BUTTON's parent: their UIA proxy
+  // simulates a real click, which pulls the window forward). Checked first (still there, enabled,
+  // not a password field) and read back after. Reports whether the foreground changed anyway.
+  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] static extern IntPtr GetParent(IntPtr h);
+  [DllImport("user32.dll")] static extern int GetDlgCtrlID(IntPtr h);
+  const uint WM_CHAR = 0x0102, WM_COMMAND = 0x0111, WM_SETTEXT = 0x000C;
+  const int InvokePatternId = 10000, ValuePatternId = 10002, ExpandCollapsePatternId = 10005, SelectionItemPatternId = 10010, TogglePatternId = 10015, LegacyPatternId = 10018;
+
+  // The elements of the last scan of each window, by index (acts name a node of a scan just taken).
+  static readonly Dictionary<long, List<IUIAutomationElement>> lastScan = new Dictionary<long, List<IUIAutomationElement>>();
+
+  static string Rid(IUIAutomationElement e) {
+    try { int[] r = e.GetRuntimeId() as int[]; return r == null ? "" : string.Join(".", Array.ConvertAll(r, x => x.ToString())); } catch (Exception) { return ""; }
+  }
+
+  static IUIAutomationElement Target(long hwnd, int i, string rid) {
+    List<IUIAutomationElement> els;
+    if (lastScan.TryGetValue(hwnd, out els) && i >= 0 && i < els.Count) {
+      IUIAutomationElement e = els[i];
+      if (rid == "" || Rid(e) == rid) return e;
+    }
+    if (rid == "") return null;
+    // Not where it was: look for it by its runtime id in a fresh look at the window.
+    IUIAutomationElement root = uia.ElementFromHandle(new IntPtr(hwnd));
+    IUIAutomationElement cached = root.BuildUpdatedCache(Request(false));
+    List<object> nodes = new List<object>();
+    List<IUIAutomationElement> fresh = new List<IUIAutomationElement>();
+    Walk(cached, -1, nodes, 20000, false, fresh);
+    lastScan[hwnd] = fresh;
+    foreach (IUIAutomationElement e in fresh) if (Rid(e) == rid) return e;
+    return null;
+  }
+
+  static string Norm(string s) { return (s ?? "").Replace("\r\n", "\n").Replace("\r", "\n"); }
+
+  static Dictionary<string, object> Act(Dictionary<string, object> req) {
+    long hwnd = Long(req, "hwnd");
+    if (hwnd <= 0 || !IsWindow(new IntPtr(hwnd))) return Fail("no_window", "That window is gone.");
+    string action = Str(req, "action"), value = Str(req, "value");
+    IUIAutomationElement el = Target(hwnd, (int)Long(req, "i", -1), Str(req, "rid"));
+    if (el == null) return Fail("stale", "That control isn't there any more.");
+    string type; Types.TryGetValue(el.CurrentControlType, out type);
+    if (Str(req, "t") != "" && type != Str(req, "t")) return Fail("stale", "That control changed.");
+    if (el.CurrentIsPassword != 0) return Fail("password", "Never a password field.");
+    if (el.CurrentIsEnabled == 0) return Fail("disabled", "That control is turned off.");
+    IntPtr native = el.CurrentNativeWindowHandle;
+    string cls = el.CurrentClassName ?? "";
+    bool classicEdit = native != IntPtr.Zero && cls.IndexOf("EDIT", StringComparison.OrdinalIgnoreCase) >= 0;
+    bool classicButton = native != IntPtr.Zero && cls.IndexOf("BUTTON", StringComparison.OrdinalIgnoreCase) >= 0;
+    IntPtr fgBefore = GetForegroundWindow();
+    string via = ""; bool verified = true;
+
+    if (action == "set_text" || action == "type") {
+      IUIAutomationValuePattern vp = el.GetCurrentPattern(ValuePatternId) as IUIAutomationValuePattern;
+      if (vp == null || vp.CurrentIsReadOnly != 0) return Fail("not_supported", "That control doesn't take text.");
+      string before = vp.CurrentValue ?? "";
+      string want = action == "type" ? before + value : value;
+      if (action == "type" && classicEdit) {
+        // Typed where the caret is, like keys (a classic edit box takes WM_CHAR even unfocused).
+        foreach (char ch in value) PostMessage(native, WM_CHAR, new IntPtr(ch == '\n' ? '\r' : ch), new IntPtr(1));
+        via = "wm-char";
+        Stopwatch w = Stopwatch.StartNew();
+        while (w.ElapsedMilliseconds < 1500 && Norm(vp.CurrentValue).Length < Norm(before).Length + Norm(value).Length) Thread.Sleep(30);
+        verified = Norm(vp.CurrentValue).Contains(Norm(value));
+      } else {
+        vp.SetValue(want);
+        via = "uia-value";
+        verified = Norm(vp.CurrentValue) == Norm(want);
+        if (!verified && classicEdit) {
+          IntPtr r;
+          SendMessageTimeoutText(native, WM_SETTEXT, IntPtr.Zero, new StringBuilder(want), SMTO_ABORTIFHUNG, 1000, out r);
+          via = "wm-settext";
+          verified = Norm(vp.CurrentValue) == Norm(want);
+        }
+      }
+    } else if (action == "press" || (action == "toggle" && el.GetCurrentPattern(TogglePatternId) == null)) {
+      if (classicButton) {
+        // A classic button tells its parent it was clicked (BN_CLICKED): no simulated click.
+        IntPtr parentWin = GetParent(native);
+        int id = GetDlgCtrlID(native);
+        PostMessage(parentWin, WM_COMMAND, new IntPtr(id & 0xFFFF), native);
+        via = "bn-clicked";
+      } else {
+        IUIAutomationInvokePattern ip = el.GetCurrentPattern(InvokePatternId) as IUIAutomationInvokePattern;
+        if (ip != null) { ip.Invoke(); via = "uia-invoke"; }
+        else {
+          IUIAutomationTogglePattern tp = el.GetCurrentPattern(TogglePatternId) as IUIAutomationTogglePattern;
+          if (tp != null) { tp.Toggle(); via = "uia-toggle"; }
+          else {
+            IUIAutomationLegacyIAccessiblePattern lp = el.GetCurrentPattern(LegacyPatternId) as IUIAutomationLegacyIAccessiblePattern;
+            if (lp == null) return Fail("not_supported", "That control can't be pressed.");
+            lp.DoDefaultAction(); via = "msaa-default";
+          }
+        }
+      }
+    } else if (action == "toggle") {
+      IUIAutomationTogglePattern tp = (IUIAutomationTogglePattern)el.GetCurrentPattern(TogglePatternId);
+      ToggleState before = tp.CurrentToggleState;
+      tp.Toggle();
+      via = "uia-toggle";
+      verified = tp.CurrentToggleState != before;
+    } else if (action == "select") {
+      IUIAutomationSelectionItemPattern sp = el.GetCurrentPattern(SelectionItemPatternId) as IUIAutomationSelectionItemPattern;
+      if (sp == null) return Fail("not_supported", "That can't be picked.");
+      sp.Select();
+      via = "uia-select";
+      verified = sp.CurrentIsSelected != 0;
+    } else if (action == "expand" || action == "collapse") {
+      IUIAutomationExpandCollapsePattern ep = el.GetCurrentPattern(ExpandCollapsePatternId) as IUIAutomationExpandCollapsePattern;
+      if (ep == null) return Fail("not_supported", "That can't be opened or closed.");
+      if (action == "expand") ep.Expand(); else ep.Collapse();
+      via = "uia-" + action;
+    } else {
+      return Fail("bad_request", "unknown action");
+    }
+    Thread.Sleep(60);
+    IntPtr fgAfter = GetForegroundWindow();
+    var res = Ok();
+    res["via"] = via;
+    res["verified"] = verified;
+    res["stoleFocus"] = fgAfter != fgBefore && fgAfter != IntPtr.Zero && GetAncestor(fgAfter, 2) == new IntPtr(hwnd);
     return res;
   }
 

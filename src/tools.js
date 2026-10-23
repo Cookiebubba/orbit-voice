@@ -1149,7 +1149,7 @@ export function createToolRunner({
   };
 
   // Orbit anywhere's tools (src/anywhere/tools.js), on the same consent rules: the user's own words.
-  Object.assign(handlers, createAnywhereHandlers({ recentUtterance, lastNotificationAt: () => lastNotificationAt, notify }));
+  Object.assign(handlers, createAnywhereHandlers({ recentUtterance, utteranceSince, lastNotificationAt: () => lastNotificationAt, notify, isClearYes, userWords, wordsNotSaid }));
 
   return {
     async run(name, argsJson) {
