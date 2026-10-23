@@ -604,8 +604,11 @@ app.on('before-quit', () => {
   updater?.stop();
 });
 app.on('window-all-closed', () => app.quit());
-// macOS: clicking the dock icon brings the main window back (from the orb).
+// macOS: clicking the dock icon brings the main window back (from the orb). Not the activation
+// that comes with launching (a login launch stays the orb).
+let activateFrom = Infinity;
+app.whenReady().then(() => (activateFrom = Date.now() + 2000));
 app.on('activate', () => {
-  if (main && !quitting) showMain();
+  if (main && !quitting && Date.now() >= activateFrom) showMain();
 });
 app.on('will-quit', () => globalShortcut.unregisterAll());
