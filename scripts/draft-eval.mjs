@@ -2,7 +2,7 @@
 // through your own Claude Code. For each thing a user might say it checks the first tool the agent
 // reaches for and, for a draft, the prompt itself: spoken straight to Claude ("tell him he forgot X"
 // → "You forgot X."), faithful (Orbit's own word check passes), and formatted as asked.
-//   node scripts/draft-eval.mjs [runs-per-case] [concurrency]
+//   node scripts/draft-eval.mjs [runs-per-case] [concurrency] [only cases containing this]
 // Synthetic words only; nothing is logged but this script's own verdicts.
 
 import { findClaude } from '../src/brain.js';
@@ -109,7 +109,8 @@ async function runCase([said, want, checks = [], context]) {
 }
 
 const jobs = [];
-for (let i = 0; i < runs; i++) for (const c of CASES) jobs.push(c);
+const only = process.argv[4]; // optional: just the cases whose words include this
+for (let i = 0; i < runs; i++) for (const c of CASES) if (!only || c[0].includes(only)) jobs.push(c);
 const results = [];
 let next = 0;
 await Promise.all(
