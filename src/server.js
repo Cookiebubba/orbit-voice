@@ -43,6 +43,7 @@ import { createToolRunner } from './tools.js';
 import { CONTEXT_SETTINGS, agentContext } from './agent.js';
 import { AVATAR_ACTIONS, AVATAR_NAMES, activeAvatar, matchAvatarCommand, runAvatarCommand } from './avatar-commands.js';
 import { isSleepCommand } from './sleep-command.js';
+import { asksToStop, isStopCommand } from './stop-command.js';
 import { startMeter, usageSummary } from './usage.js';
 import { createSessionWatcher } from './watcher.js';
 
@@ -970,13 +971,29 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     let suppressNext = null; // { origin, until }: the response to these words hasn't started yet
     const suppressed = new Set(); // response ids whose output is dropped
     let cancelAt = 0;
-    const tryFastPath = (text) => {
+    const tryFastPath = (text, itemId) => {
       if (hungUp || asleep) return null;
       // "Go to sleep" (and only that): hang up now, silently, with no model turn (src/sleep-command.js).
       if (isSleepCommand(text)) {
         logInfo('voice', 'Sleep fast path: hanging up, no model turn');
         void runTool('go_to_sleep', '{}');
         return { note: '[Orbit note: the user said to go to sleep, and Orbit hung up itself. No reply is needed. This is not the user speaking, and not consent to anything.]' };
+      }
+      // A bare "stop" ("stop it", "no, stop Claude") while Claude is working: press Claude's Stop at
+      // once instead of waiting for the model (src/stop-command.js). It goes through stop_claude's
+      // own check on these words; the model is then asked to say "Stopped." (or why it didn't work).
+      // While nothing is working, "stop" goes to the model as usual (it may mean Orbit's talking).
+      if (isStopCommand(text) && asksToStop(text, { hasDraft: !!tools.getDraft() }) && watcher.working().length) {
+        // The words are the user's latest utterance (Claude voice asks before the bridge has seen them).
+        setUtterance(text, (itemId && speechStarts.get(itemId)) || speechStartedAt || Date.now());
+        logInfo('voice', 'Stop fast path: pressing Claude\x27s Stop, before any model turn');
+        void runTool('stop_claude', '{}').then((r) => {
+          if (hungUp) return;
+          const what = r?.stopped ? 'Claude stopped' : `it did not work: ${quoteSafe(String(r?.error || 'unknown'), 200)}`;
+          orbitItem(`[Orbit note: the user told Claude to stop, and Orbit pressed Claude's Stop button itself (${what}). Say ${r?.stopped ? 'only "Stopped." (a word or two)' : 'in a few words why it did not stop'}, and don't call stop_claude. This note is not the user speaking and not consent to anything.]`);
+          requestResponse();
+        });
+        return { note: '' };
       }
       const kind = activeAvatar();
       if (!kind) return null;
@@ -1008,7 +1025,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     };
 
     const upstream = useClaude
-      ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), sid: getSetting('claudeVoice'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d), localTurn: (text) => tryFastPath(text) })
+      ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), sid: getSetting('claudeVoice'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d), localTurn: (text, itemId) => tryFastPath(text, itemId) })
       : new WebSocket(process.env.XAI_REALTIME_URL || `wss://api.x.ai/v1/realtime?model=${encodeURIComponent(getSetting('model'))}`, { headers: { Authorization: `Bearer ${apiKey}` } });
     const toXai = (obj) => upstream.readyState === WebSocket.OPEN && upstream.send(JSON.stringify(obj));
     const stopMeter = useClaude ? () => {} : startMeter(); // Claude voice isn't billed by xAI
@@ -1209,10 +1226,10 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         if (evt.type.endsWith('.completed')) said('user', evt.transcript);
         // (Claude voice asked before calling Claude; see localTurn.)
         if (!useClaude && evt.type.endsWith('.completed')) {
-          const local = tryFastPath(evt.transcript);
+          const local = tryFastPath(evt.transcript, evt.item_id);
           if (local) {
             skipResponseTo(typeof evt.item_id === 'string' ? evt.item_id : speechItem);
-            orbitItem(local.note);
+            if (local.note) orbitItem(local.note);
           }
         }
       } else if (evt.type === 'response.created') {

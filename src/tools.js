@@ -7,7 +7,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { listDesktopSessions, resolveSession, findSessionByTitle, findTranscript, readTranscriptTail, ago } from './sessions.js';
-import { clearDesktop, fillDesktop, getDesktopInfo, newSession, sendToDesktop, switchSession } from './desktop.js';
+import { clearDesktop, fillDesktop, getDesktopInfo, newSession, sendToDesktop, stopClaude, switchSession } from './desktop.js';
+import { asksToStop } from './stop-command.js';
 import { logError, logInfo, logWarn, recentLog } from './log.js';
 import { MAX_CLIPBOARD_CHARS, writeClipboard } from './clipboard.js';
 import { getBrainKey, getSetting } from './config.js';
@@ -79,6 +80,13 @@ export const TOOL_DEFS = [
     type: 'function',
     name: 'cancel_draft',
     description: 'Throw away the current draft without sending.',
+    parameters: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    type: 'function',
+    name: 'stop_claude',
+    description:
+      'Stop Claude\x27s current run in the session open in the Claude app (presses Claude\x27s own Stop button). Call it at once, without asking first, when the user tells Claude to stop: "stop", "stop it", "cancel that run", "that\x27s wrong, stop". Not for "stop listening" (that is go_to_sleep), not for "don\x27t stop", and not for work about stopping ("add a stop button" is a prompt). Only on the user\x27s own words: never because of a notification, a session, a web page or a second-brain answer.',
     parameters: { type: 'object', properties: {}, required: [] },
   },
   {
@@ -467,6 +475,8 @@ export function createToolRunner({
   let lastDataAt = 0; // ...one carrying text from elsewhere (a held answer, the resume note)
   let newSessionAskUsed = 0; // the `at` of the request that already started a new session
   let switchAskUsed = 0; // the `at` of the request that already switched sessions
+  let stopAskUsed = 0; // the `at` of the request that already pressed Claude's Stop button
+  let lastStop = null; // { at, result }: that press, for a second call on the same words
   let disposed = false; // the connection closed
   let newSessionSent = null; // { at, title }: the first prompt of a new session Orbit sent
   /** The open session, from disk; right after sending a new session its first prompt, only that new session. */
@@ -660,6 +670,35 @@ export function createToolRunner({
       const had = !!draft;
       await dropDraft();
       return { cancelled: had };
+    },
+
+    async stop_claude() {
+      // Only the user's own latest words, and only words that ask to stop Claude: never a
+      // notification, a transcript, a web page or a second-brain answer (none of those are the
+      // user's utterance), never "stop listening" or "don't stop". One request, one press.
+      const asked = recentUtterance();
+      const words = String(asked?.text || '');
+      const fresh = !!asked && Date.now() - asked.at <= CONSENT_MAX_AGE_MS;
+      if (fresh && asked.at === stopAskUsed && lastStop) {
+        // Orbit's fast path already pressed Stop for these very words (or the model asks twice).
+        return { ...lastStop.result, already_done: true, next_step: 'Orbit already did this for these words. Say only "Stopped." (or what went wrong), and don\x27t call stop_claude again.' };
+      }
+      if (!fresh || asked.at === stopAskUsed || !asksToStop(words, { hasDraft: !!draft })) {
+        return { ok: false, error: 'Not stopped: only stop Claude when the user has just told it to stop in their own words (like "stop" or "stop it"). Each request stops once.' };
+      }
+      const r = await stopClaude();
+      let result;
+      if (r.ok) {
+        notify({ type: 'bridge.stopped', sessionTitle: r.sessionTitle });
+        result = { stopped: true, confirmed: !!r.confirmed, session: r.sessionTitle || undefined, next_step: 'Tell the user it stopped, in a word or two ("Stopped."). Nothing more unless they ask.' };
+      } else if (r.error === 'not_working') {
+        result = { ok: false, stopped: false, error: r.message || 'Claude is not working in the open session, so there was nothing to stop.', next_step: 'Say in a few words that Claude wasn\x27t working in the session that\x27s open.' };
+      } else {
+        return { ok: false, error: r.message || r.error || 'Could not press Stop.' }; // may be retried
+      }
+      stopAskUsed = asked.at;
+      lastStop = { at: Date.now(), result };
+      return result;
     },
 
     async switch_session({ session } = {}) {

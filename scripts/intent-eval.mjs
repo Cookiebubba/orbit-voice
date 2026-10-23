@@ -30,6 +30,12 @@ const CASES = [
   ["what's Claude doing right now", 'get_current_session'],
   ['switch to the parser session', 'switch_session'],
   ['what does a 404 error mean', null],
+  // Stopping Claude (a bare "stop" is pressed by Orbit itself while Claude works; the model must get it too).
+  ['stop', 'stop_claude'],
+  ["stop it Claude's going the wrong way", 'stop_claude'],
+  ['stop listening', 'go_to_sleep'],
+  ["don't stop, keep going", [null, 'draft_prompt', 'get_current_session']],
+  ['tell Claude to add a stop button', 'draft_prompt'],
 ];
 const CANT = /\b(can'?t|cannot|unable to|don'?t have (access|the ability))\b/i;
 
@@ -48,7 +54,7 @@ async function runCase([said, want, context]) {
     const x = m ? -1 : out.search(/<(?:invoke|parameter\b|function_calls)/);
     const tool = m ? parseToolCall(m[1])?.name || 'bad-call' : x >= 0 ? parseXmlToolCall(out.slice(x))?.name || 'bad-call' : null;
     const spoken = out.replace(/<(tool>|invoke|parameter\b|function_calls)[\s\S]*$/, '').trim();
-    return { said, want, tool, spoken, ok: tool === want && !(want && CANT.test(spoken)) && !(!want && CANT.test(spoken)) };
+    return { said, want, tool, spoken, ok: (Array.isArray(want) ? want.includes(tool) : tool === want) && !CANT.test(spoken) };
   } finally {
     proc.kill();
   }

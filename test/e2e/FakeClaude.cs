@@ -9,6 +9,14 @@
 //   pids\      <pid>.pid while a run (or a child it started) is alive
 // Modes: valid, plain, malformed, huge, bigvalid, hostile, signed_out, expired, slow, hang,
 //        nonzero, retries, empty.
+//
+// `--window "<title>"`: instead, a stand-in for the Claude desktop app's window, built from what UI
+// Automation shows of the real one (read-only, 2026-10): a Document named "<title> - Claude Code"
+// with a "Prompt" edit box and, on its row, Claude's "Send" button, which turns into "Stop" while
+// Claude works; a background task's "Stop this task" button elsewhere (never to be pressed). It sits
+// far off screen and never takes focus. Commands come in on stdin, one JSON object per line
+// ({"working":true}, {"quit":true}); what was pressed goes out on stdout ({"event":"stop"}).
+// Build it with the WPF references (see test/desktop-uia.test.js). Never named claude.exe.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -22,6 +30,8 @@ static class FakeClaude {
   static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
 
   static int Main(string[] args) {
+    // A stand-in Claude desktop window (see FakeWindow below), for testing src/desktop.ps1 for real.
+    if (args.Length >= 1 && args[0] == "--window") return FakeWindow.Run(args);
     Dir = Environment.GetEnvironmentVariable("ORBIT_FAKE_CLAUDE_DIR");
     if (string.IsNullOrEmpty(Dir) || !Directory.Exists(Dir)) { Console.Error.WriteLine("fake claude: ORBIT_FAKE_CLAUDE_DIR is not set"); return 9; }
     string pids = Path.Combine(Dir, "pids");
@@ -179,5 +189,130 @@ static class FakeClaude {
     }
     Console.Error.WriteLine("fake claude: unknown plan " + mode);
     return 5;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The stand-in Claude window (`--window`). UI Automation sees it the way it sees Claude's own page:
+// control types, names and class names (Chromium reports an element's class attribute as its UIA
+// ClassName) are set to match, so src/desktop.ps1 finds and presses things here exactly as there.
+
+class UiaPanel : System.Windows.Controls.StackPanel {
+  public System.Windows.Automation.Peers.AutomationControlType Kind = System.Windows.Automation.Peers.AutomationControlType.Group;
+  public string AName = "";
+  public string Cls = "";
+  protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() { return new UiaPanelPeer(this); }
+}
+
+class UiaPanelPeer : System.Windows.Automation.Peers.FrameworkElementAutomationPeer {
+  readonly UiaPanel p;
+  public UiaPanelPeer(UiaPanel p) : base(p) { this.p = p; }
+  protected override System.Windows.Automation.Peers.AutomationControlType GetAutomationControlTypeCore() { return p.Kind; }
+  protected override string GetNameCore() { return p.AName ?? ""; }
+  protected override string GetClassNameCore() { return p.Cls ?? ""; }
+  protected override bool IsControlElementCore() { return true; }
+  protected override bool IsContentElementCore() { return true; }
+}
+
+class UiaButton : System.Windows.Controls.Button {
+  public string Cls = "cds-reset group/btn relative isolate inline-flex";
+  protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() { return new UiaButtonPeer(this); }
+}
+
+class UiaButtonPeer : System.Windows.Automation.Peers.ButtonAutomationPeer {
+  readonly UiaButton b;
+  public UiaButtonPeer(UiaButton b) : base(b) { this.b = b; }
+  protected override string GetClassNameCore() { return b.Cls ?? ""; }
+}
+
+static class FakeWindow {
+  static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
+  static System.Windows.Window win;
+  static UiaPanel doc, conversation, composer, tasks;
+  static System.Windows.Controls.TextBox prompt;
+  static string title = "Fake session";
+  static bool working;
+  static readonly object outLock = new object();
+
+  public static void Emit(Dictionary<string, object> e) {
+    lock (outLock) { Console.Out.WriteLine(Json.Serialize(e)); Console.Out.Flush(); }
+  }
+
+  public static int Run(string[] args) {
+    if (args.Length >= 2 && args[1].Trim() != "") title = args[1].Trim();
+    var t = new Thread(Ui);
+    t.SetApartmentState(ApartmentState.STA);
+    t.IsBackground = false;
+    t.Start();
+    t.Join();
+    return 0;
+  }
+
+  static UiaButton Btn(string name, Action onClick, string cls = null) {
+    var b = new UiaButton { Content = name, Width = 90, Height = 28, Margin = new System.Windows.Thickness(4, 0, 0, 0) };
+    if (cls != null) b.Cls = cls;
+    b.Click += (s, e) => onClick();
+    return b;
+  }
+
+  static void Ui() {
+    var app = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
+    win = new System.Windows.Window {
+      Title = "Claude", Width = 1000, Height = 700, Left = -6000, Top = 100,
+      ShowActivated = false, ShowInTaskbar = false, WindowStyle = System.Windows.WindowStyle.ToolWindow,
+    };
+    doc = new UiaPanel { Kind = System.Windows.Automation.Peers.AutomationControlType.Document };
+    conversation = new UiaPanel { AName = "Chat messages", Height = 520 };
+    tasks = new UiaPanel { AName = "Background tasks", Orientation = System.Windows.Controls.Orientation.Horizontal, Height = 40 };
+    tasks.Children.Add(new System.Windows.Controls.TextBlock { Text = "Build watcher" });
+    tasks.Children.Add(Btn("Stop this task", () => Emit(new Dictionary<string, object> { { "event", "stop_task" } })));
+    composer = new UiaPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Height = 40 };
+    prompt = new System.Windows.Controls.TextBox { Width = 600, Height = 26, AcceptsReturn = true };
+    System.Windows.Automation.AutomationProperties.SetName(prompt, "Prompt");
+    doc.Children.Add(tasks);
+    doc.Children.Add(conversation);
+    doc.Children.Add(composer);
+    win.Content = doc;
+    Render();
+    win.Show();
+    new Thread(ReadCommands) { IsBackground = true }.Start();
+    Emit(new Dictionary<string, object> { { "ready", true }, { "pid", Process.GetCurrentProcess().Id } });
+    app.Run();
+  }
+
+  // The composer row: the prompt box, then Send (or Stop while Claude works) at its right end.
+  static void Render() {
+    doc.AName = title + " - Claude Code";
+    composer.Children.Clear();
+    composer.Children.Add(prompt);
+    if (working) composer.Children.Add(Btn("Stop", () => { working = false; Render(); Emit(new Dictionary<string, object> { { "event", "stop" } }); }));
+    else composer.Children.Add(Btn("Send", () => { if (prompt.Text.Trim() == "") return; Emit(new Dictionary<string, object> { { "event", "send" }, { "chars", prompt.Text.Length } }); prompt.Text = ""; working = true; Render(); }));
+    RenderCards();
+  }
+
+  static void RenderCards() { conversation.Children.Clear(); }
+
+  static void ReadCommands() {
+    string line;
+    int n = 0;
+    while ((line = Console.In.ReadLine()) != null) {
+      Dictionary<string, object> cmd;
+      try { cmd = Json.DeserializeObject(line) as Dictionary<string, object>; } catch { continue; }
+      if (cmd == null) continue;
+      if (cmd.ContainsKey("quit")) break;
+      int id = ++n;
+      win.Dispatcher.Invoke(new Action(() => {
+        Apply(cmd);
+        Render();
+      }));
+      Emit(new Dictionary<string, object> { { "ok", id } });
+    }
+    win.Dispatcher.Invoke(new Action(() => System.Windows.Application.Current.Shutdown()));
+  }
+
+  static void Apply(Dictionary<string, object> cmd) {
+    if (cmd.ContainsKey("working")) working = cmd["working"] is bool && (bool)cmd["working"];
+    if (cmd.ContainsKey("title")) title = Convert.ToString(cmd["title"]);
+    if (cmd.ContainsKey("prompt")) prompt.Text = Convert.ToString(cmd["prompt"]);
   }
 }

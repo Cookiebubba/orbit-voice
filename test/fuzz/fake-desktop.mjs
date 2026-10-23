@@ -63,6 +63,12 @@ export function sendToDesktop(text, opts = {}) {
   return Promise.resolve(pick([{ ok: true, sessionTitle: opts.expectTitle || (opts.expectNew ? fz().str() : 't') }, { ok: false, error: 'prompt_box_not_empty', message: 'x' }, { ok: false, error: 'session_ambiguous', message: 'x' }, { ok: false, error: 'prompt_box_changed', message: 'x' }]));
 }
 
+// Pressing Claude's Stop button (recorded; the fuzzer checks each one was asked for).
+export function stopClaude(opts = {}) {
+  record('stop', { expectTitle: opts.expectTitle ?? null });
+  return Promise.resolve(pick([{ ok: true, stopped: true, confirmed: true, sessionTitle: fz().windowTitle() }, { ok: false, error: 'not_working', message: "Claude isn't working in this session (there's no Stop button), so there was nothing to stop." }, { ok: false, error: 'script_failed', message: 'x' }]));
+}
+
 // Typing a draft into the box (not sent), and taking it out again: never a send.
 export function fillDesktop(text, opts = {}) {
   record('fill', { text, expectTitle: opts.expectTitle, expectNew: !!opts.expectNew, replace: opts.replace ?? null });

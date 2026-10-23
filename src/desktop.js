@@ -106,6 +106,16 @@ export function newSession({ project = '' } = {}) {
 }
 
 /**
+ * Halt Claude's current run: press Claude's own Stop button (no keys, no mouse). `expectTitle`:
+ * only in the one window showing that session; otherwise the window you're in.
+ * { ok, stopped, confirmed } or { ok: false, error: 'not_working' | ... }. Not queued behind other
+ * window actions: it touches no prompt box, and a stop shouldn't wait for a draft being typed.
+ */
+export function stopClaude({ expectTitle = null } = {}) {
+  return runPs('stop', expectTitle ? ['-ExpectTitleB64', b64(expectTitle)] : [], 10000);
+}
+
+/**
  * Put `text` into the open session's prompt box and press Claude's Send button.
  * `expectTitle`: refuse unless that session is the one open right now.
  * `expectNew`: refuse unless a new, not yet started session is open (it has no title yet), in

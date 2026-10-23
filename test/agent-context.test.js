@@ -39,6 +39,7 @@ const JOB = [
   'Never explain how to wake you, put you to sleep, use the hotkey or the wake word',
   'So never say "I can\'t do that from here"',
   'Messages that start with "[App notification]" come from this app, not from the user.',
+  '"Stop", "stop it", "cancel that run", "that\'s wrong, stop" mean: call stop_claude at once',
 ];
 
 test('no avatar: Orbit is the face; nothing about any avatar is loaded', () => {

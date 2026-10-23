@@ -46,6 +46,11 @@ const CASES = [
   ['should we add caching to the API?', null],
   ['fix the login bug and also', null],
   ['is Redis faster than Postgres for this?', [null, 'get_current_session', 'read_session']],
+  // Stopping Claude is a press, not a prompt; work about stopping is a prompt.
+  ['stop', 'stop_claude'],
+  ["stop it Claude's going the wrong way", 'stop_claude'],
+  ['stop listening', 'go_to_sleep'],
+  ['tell Claude to add a stop button', D, [/^add a stop button\.?$/i]],
 ];
 const BAD = /\b(tell|ask|let)\s+(claude|it|him)\b|\bclaude\b/i;
 

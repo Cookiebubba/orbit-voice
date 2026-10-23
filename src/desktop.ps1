@@ -26,10 +26,16 @@
 #                  session (in folder -ExpectFolderB64, when given).
 #                  The session is checked again just before Send is pressed.
 #                  -DryRun fills the box, checks it, then clears it again without sending.
+#   -Mode stop   : press Claude's own Stop button (it replaces Send while Claude works) in the front
+#                  window (-ExpectTitleB64: only in the one window showing that session), and confirm
+#                  it went away. Never "Stop this task" (a background task's own button).
 # Everything is looked up only inside Claude's own page, never in a web page shown in its window.
+# -OnlyPid (Orbit's own tests): look only at that process's windows (a stand-in Claude window,
+# test/e2e/FakeClaude.cs --window), never at the real Claude app.
 # Always prints one line of JSON.
 param(
-  [ValidateSet('info', 'list', 'switch', 'new', 'send')][string]$Mode = 'info',
+  [ValidateSet('info', 'list', 'switch', 'new', 'send', 'stop')][string]$Mode = 'info',
+  [long]$OnlyPid = 0,
   [string]$TextB64 = '',
   [string]$TitleB64 = '',
   [string]$ExpectTitleB64 = '',
@@ -74,7 +80,7 @@ $script:Kind = $null # 'main' (Claude's own page, sidebar or not) | 'popout' (a 
 # Claude's top-level windows, highest in z-order first (UI Automation lists the desktop's windows
 # in z-order). @{ el; hwnd; name; min; z }
 function Get-ClaudeWindows {
-  $ids = @(Get-Process -Name 'claude' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+  $ids = if ($OnlyPid) { @($OnlyPid) } else { @(Get-Process -Name 'claude' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }) }
   $out = New-Object System.Collections.ArrayList
   if (-not $ids.Count) { return , $out }
   [System.Windows.Automation.Condition[]]$conds = @($ids | ForEach-Object { New-Object System.Windows.Automation.PropertyCondition($AE::ProcessIdProperty, [int]$_) })
@@ -267,15 +273,20 @@ function Get-BoxText($box) {
   } catch { return '' }
 }
 
+# While Claude works, its Send button turns into "Stop" (seen on the live app, 2026-10: a button
+# named exactly "Stop" on the prompt box's row). The other names are guesses at a rename; "Stop this
+# task" (a background task's row) is never one of them.
+$StopNames = @('Stop', 'Stop response', 'Stop generating', 'Stop Claude', 'Interrupt')
+
 # Claude's Send button sits on the prompt box's row, at its right end. -AnyState: also while it's
-# disabled (an empty box), for where it is rather than to press it.
-function Get-SendButton($root, $box, [switch]$AnyState) {
+# disabled (an empty box), for where it is rather than to press it. -Names: the Stop button instead.
+function Get-SendButton($root, $box, [switch]$AnyState, [string[]]$Names = @('Send')) {
   $boxRect = $box.Current.BoundingRectangle
   $best = $null
   $bestDist = [double]::MaxValue
   foreach ($b in $root.FindAll($Scope::Descendants, $ButtonCond)) {
     $c = $b.Current
-    if ($c.Name -ne 'Send' -or (-not $AnyState -and -not $c.IsEnabled)) { continue }
+    if ($Names -notcontains $c.Name -or (-not $AnyState -and -not $c.IsEnabled)) { continue }
     $r = $c.BoundingRectangle
     $dy = [Math]::Abs(($r.Y + $r.Height / 2) - ($boxRect.Y + $boxRect.Height / 2))
     $dx = [Math]::Abs($r.X - $boxRect.Right)
@@ -384,7 +395,11 @@ function Get-NewSessionPage($root, $title) {
 }
 
 try {
-  if (-not (Get-Process -Name 'claude' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero })) {
+  if ($OnlyPid) {
+    # Tests only: a stand-in window. Never a process named like Claude (the real app is claude.exe).
+    $p = Get-Process -Id $OnlyPid -ErrorAction SilentlyContinue
+    if (-not $p -or $p.ProcessName -ieq 'claude') { Out-Json @{ ok = $false; error = 'test_window_refused'; message = 'OnlyPid must be a running stand-in window, never Claude itself.' } }
+  } elseif (-not (Get-Process -Name 'claude' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero })) {
     Out-Json @{ ok = $false; error = 'claude_window_not_found'; message = 'The Claude desktop app is not open (or is minimized to the tray).' }
   }
   $wins = Get-UsableWindows
@@ -410,7 +425,9 @@ try {
     # -Rects: Claude's Send button too (Qubit stomps it). Only rects; never pressed here.
     $sendRect = $null
     if ($Rects -and $box) { $sb = Get-SendButton $root $box -AnyState; if ($sb) { $sendRect = & $rectOf $sb } }
-    Out-Json @{ ok = $true; sessionTitle = $title; newSession = [bool]$page; folder = $(if ($page) { $page.folder } else { $null }); promptBoxFound = [bool]$box; promptText = $(if ($box) { Get-BoxText $box } else { $null }); windowId = $front.hwnd; windows = $windows; promptBoxRect = $boxRect; windowRect = $winRect; sendButtonRect = $sendRect }
+    # Claude is working in this session: its Stop button is showing.
+    $working = $(if ($box) { [bool](Get-SendButton $root $box -Names $StopNames) } else { $false })
+    Out-Json @{ ok = $true; sessionTitle = $title; newSession = [bool]$page; folder = $(if ($page) { $page.folder } else { $null }); promptBoxFound = [bool]$box; promptText = $(if ($box) { Get-BoxText $box } else { $null }); windowId = $front.hwnd; windows = $windows; promptBoxRect = $boxRect; windowRect = $winRect; sendButtonRect = $sendRect; claudeWorking = $working }
   }
 
   # ---- list ----
@@ -533,6 +550,35 @@ try {
       }
     }
     Out-Json @{ ok = $false; error = 'new_session_not_confirmed'; message = "Pressed New session, but Claude didn't show an empty new session."; sessionTitle = (Get-SessionTitle) }
+  }
+
+  # ---- stop ----
+  if ($Mode -eq 'stop') {
+    # The front window, or the one window showing the expected session.
+    $target = $front
+    if ($ExpectTitleB64) {
+      $expect = Decode $ExpectTitleB64
+      $targets = @($wins | Where-Object { $_.title -ceq $expect })
+      if ($targets.Count -ne 1) { Out-Json @{ ok = $false; error = $(if ($targets.Count) { 'session_ambiguous' } else { 'session_changed' }); message = 'That session is not open in exactly one Claude window, so nothing was stopped.'; sessionTitle = $title } }
+      $target = $targets[0]
+    }
+    [void](Use-Window $target)
+    $root = $script:App
+    $title = $target.title
+    $box = Get-PromptBox $root
+    if (-not $box) { Out-Json @{ ok = $false; error = 'prompt_box_not_found'; message = 'No prompt box is visible, so there is no Stop button to press.'; sessionTitle = $title } }
+    $stop = Get-SendButton $root $box -Names $StopNames
+    if (-not $stop) { Out-Json @{ ok = $false; error = 'not_working'; message = "Claude isn't working in this session (there's no Stop button), so there was nothing to stop."; sessionTitle = $title } }
+    $pattern = $null
+    if (-not $stop.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { Out-Json @{ ok = $false; error = 'stop_not_pressable'; message = "Claude's Stop button can't be pressed from here."; sessionTitle = $title } }
+    $pattern.Invoke()
+    # Claude swaps Stop back to Send once the run has ended.
+    $confirmed = $false
+    for ($i = 0; $i -lt 25; $i++) {
+      Start-Sleep -Milliseconds 100
+      if (-not (Get-SendButton $root $box -Names $StopNames)) { $confirmed = $true; break }
+    }
+    Out-Json @{ ok = $true; stopped = $true; confirmed = $confirmed; sessionTitle = $title; windowId = $target.hwnd }
   }
 
   # ---- send ----

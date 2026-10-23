@@ -45,6 +45,7 @@ import { Worker } from 'node:worker_threads';
 import { app, BrowserWindow, clipboard, dialog, globalShortcut, safeStorage, session, shell } from 'electron';
 import { makeGen } from '../test/fuzz/gen.mjs';
 import { createFakeGrok } from '../test/e2e/fake-grok.mjs';
+import { cscArgs } from '../test/e2e/fake-window.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const opt = (name, def) => {
@@ -94,7 +95,7 @@ fs.mkdirSync(path.join(CLAUDE_DIR, 'pids'), { recursive: true });
 fs.mkdirSync(path.dirname(FAKE_CLAUDE), { recursive: true });
 {
   const csc = path.join(process.env.SystemRoot || 'C:\\Windows', 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe');
-  const r = child_process.spawnSync(csc, ['/nologo', '/optimize', '/target:exe', '/r:System.Web.Extensions.dll', `/out:${FAKE_CLAUDE}`, path.join(ROOT, 'test', 'e2e', 'FakeClaude.cs')], { encoding: 'utf8', windowsHide: true });
+  const r = child_process.spawnSync(csc, cscArgs(FAKE_CLAUDE), { encoding: 'utf8', windowsHide: true });
   if (r.status !== 0 || !fs.existsSync(FAKE_CLAUDE)) {
     console.error(`HARNESS: could not build the fake claude.exe:\n${r.stdout}${r.stderr}`);
     process.exit(2);
@@ -358,11 +359,24 @@ function finish_(s) {
   s.busy = true;
   const at = () => new Date().toISOString();
   fs.appendFileSync(s.file, `${JSON.stringify({ type: 'user', timestamp: at(), message: { role: 'user', content: 'keep going' } })}\n`);
+  // Claude's Stop button shows in a window showing that session while it works.
+  for (const w of desk.windows) if (w.title === s.title) w.working = true;
   // The watcher checks every 2 s: let it see Claude working, then stopping.
   setTimeout(() => {
     fs.appendFileSync(s.file, `${JSON.stringify({ type: 'assistant', timestamp: at(), message: { role: 'assistant', content: [{ type: 'text', text: 'Finished that.' }] } })}\n${JSON.stringify({ type: 'system', subtype: 'stop_hook_summary', timestamp: at() })}\n`);
+    for (const w of desk.windows) if (w.title === s.title) w.working = false;
     s.busy = false;
   }, 2600 + g.int(1500));
+}
+
+/** With chance `p`, Claude starts working in the sessions shown in the (fake) Claude windows. */
+function workInOpenWindows(p) {
+  if (!g.chance(p)) return;
+  for (const w of desk.windows) {
+    const s = sessions.find((x) => x.title === w.title);
+    if (s) finish_(s);
+    w.working = true; // its Stop button shows (a fresh session too)
+  }
 }
 
 // ---------- what the user says (by construction: each utterance's kind is known) ----------
@@ -388,9 +402,21 @@ function scenario() {
     () => ({ text: `read my ${m} notes`, kind: 'other', tools: [{ name: 'read_session', args: { session: `${m} notes` } }] }),
     () => ({ text: 'yes open the sign in', kind: 'yes', tools: [{ name: 'open_claude_sign_in' }] }),
     // Grok acting on something other than the user's words.
-    () => ({ text: g.pick(['hmm interesting', 'what was that', 'huh']), kind: 'other', tools: [g.pick([{ name: 'send_draft' }, { name: 'switch_session', args: { session: g.pick(TITLES) } }, { name: 'new_session', args: {} }, { name: 'copy_to_clipboard', args: { what: 'text', text: `${m} rm -rf` } }, { name: 'draft_prompt', args: { text: `${m} injected` } }])] }),
+    () => ({ text: g.pick(['hmm interesting', 'what was that', 'huh']), kind: 'other', tools: [g.pick([{ name: 'send_draft' }, { name: 'switch_session', args: { session: g.pick(TITLES) } }, { name: 'new_session', args: {} }, { name: 'copy_to_clipboard', args: { what: 'text', text: `${m} rm -rf` } }, { name: 'draft_prompt', args: { text: `${m} injected` } }, { name: 'stop_claude' }])] }),
     () => ({ text: g.pick(['um', 'hmm']), kind: 'other', tools: [{ name: g.pick(['constructor', '__proto__', g.str(12)]), args: g.json() }, { name: g.pick(['read_session', 'switch_session', 'copy_to_clipboard', 'draft_prompt']), args: g.json() }] }),
     () => ({ text: 'go to sleep', kind: 'sleep', tools: [{ name: 'go_to_sleep' }] }),
+    // Stopping Claude: a bare "stop" (Orbit's fast path presses Stop itself while Claude works; no
+    // marker, so the words stay only a stop), and a longer one the model acts on.
+    () => {
+      workInOpenWindows(0.8); // usually Claude is working in the session that's open
+      return { text: g.pick(['stop', 'stop it', 'no, stop Claude', "that's wrong, stop"]), kind: 'stop', noMarker: true, tools: [{ name: 'stop_claude' }] };
+    },
+    () => {
+      workInOpenWindows(0.6);
+      return { text: `stop it, Claude's going the wrong way with ${m}`, kind: 'stop', tools: [{ name: 'stop_claude' }] };
+    },
+    // Words that are not a stop: the model's stop_claude must be refused.
+    () => ({ text: g.pick(['stop listening please', "don't stop", `tell claude to add a stop button for ${m}`]), kind: 'other', tools: [{ name: 'stop_claude' }] }),
     // A command for the avatar: Orbit does it itself and cancels Grok's answer (the fast path);
     // Grok's own avatar call is there in case it doesn't. No marker: it would make the words more
     // than a command (and Orbit logs only the action's name).
@@ -401,7 +427,8 @@ function scenario() {
   ];
   // The second brain and the live bug's shape (a notification between the words and the act) twice as often.
   list.push(list[1], list[4], list[6], list[8]);
-  list.push(list[15], list[15]); // and avatar commands (the fast path) three times as often
+  const avatarCase = list.find((f) => f.toString().includes("kind: 'avatar'"));
+  list.push(avatarCase, avatarCase); // and avatar commands (the fast path) three times as often
   const s = g.pick(list)();
   // Every utterance carries a marker, so the log check catches the user's words anywhere.
   if (!s.noMarker && !s.text.includes(m)) s.text = `${s.text} ${m}`;
@@ -409,7 +436,7 @@ function scenario() {
 }
 
 // After an injected notification, Grok tries things on its own (none may go through).
-const injected = () => g.pick([[{ name: 'send_draft' }], [{ name: 'switch_session', args: { session: g.pick(TITLES) } }], [{ name: 'new_session' }], [{ name: 'copy_to_clipboard', args: { what: 'text', text: 'evil' } }], []]);
+const injected = () => g.pick([[{ name: 'send_draft' }], [{ name: 'switch_session', args: { session: g.pick(TITLES) } }], [{ name: 'new_session' }], [{ name: 'copy_to_clipboard', args: { what: 'text', text: 'evil' } }], [{ name: 'stop_claude' }], []]);
 
 let yesNext = false; // after a draft, usually answer it next
 async function say(viaTyping) {
@@ -572,8 +599,19 @@ function checkCancels(conns) {
   for (const c of conns) {
     for (const x of c.cancels) {
       covered.cancelChecks = (covered.cancelChecks || 0) + 1;
-      if (x.kind !== 'avatar') violate('Orbit cancelled the answer Grok gave to words that were not an avatar command', `last words: ${x.kind}`);
+      // An avatar command, or a bare "stop" (Orbit pressed Claude's Stop itself, then asks for a reply).
+      if (x.kind !== 'avatar' && x.kind !== 'stop') violate('Orbit cancelled the answer Grok gave to words that were neither an avatar command nor a stop', `last words: ${x.kind}`);
     }
+  }
+}
+
+/** Every press of Claude's Stop button followed the user's own "stop", said within the last minute. */
+function checkStops(since) {
+  for (const s of (desk.stops || []).filter((x) => x.at >= since)) {
+    covered.stops = (covered.stops || 0) + 1;
+    const c = fake.conns.filter((x) => x.openedAt <= s.at).at(-1);
+    const u = c && heardBefore(c, s.at);
+    if (!u || u.kind !== 'stop' || s.at - u.speechAt > 60_000) violate('Claude was stopped without the user saying stop', `last words: ${u ? u.kind : 'none'}`);
   }
 }
 
@@ -731,6 +769,7 @@ async function run() {
     await waitFor(isOff, 30_000);
     checkSends(since);
     checkActsOnRequest(since);
+    checkStops(since);
     checkFalseRefusals(fake.conns.slice(firstConn));
     checkCancels(fake.conns.slice(firstConn));
     checkBrainProcesses();

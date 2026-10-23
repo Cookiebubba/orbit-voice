@@ -77,7 +77,7 @@ export async function run(mode, args) {
     // -Rects Claude's Send button, which (like the real one) is only there while the box has text.
     const L = boxLayout(st, front);
     const sendButtonRect = args.includes('-Rects') && front.promptText ? L.sendButtonRect : null;
-    return { ok: true, sessionTitle: front.title, newSession: !!front.newPage, folder: front.newPage?.folder ?? null, promptBoxFound: !!L.promptBoxRect, promptText: front.promptText, windowId: front.hwnd, windows, promptBoxRect: L.promptBoxRect, windowRect: L.windowRect, sendButtonRect };
+    return { ok: true, sessionTitle: front.title, newSession: !!front.newPage, folder: front.newPage?.folder ?? null, promptBoxFound: !!L.promptBoxRect, promptText: front.promptText, windowId: front.hwnd, windows, promptBoxRect: L.promptBoxRect, windowRect: L.windowRect, sendButtonRect, claudeWorking: !!front.working };
   }
   if (mode === 'list') {
     const open = new Map(st.windows.filter((w) => w.title).map((w) => [w.title, w.hwnd]));
@@ -126,6 +126,19 @@ export async function run(mode, args) {
     raise(st, target);
     return { ok: true, created: true, newSession: true, folder, windowId: target.hwnd };
   }
+  if (mode === 'stop') {
+    // As desktop.ps1: Claude's Stop button shows (on the box's row) only while it works (`working`).
+    let target = front;
+    if (o.ExpectTitleB64) {
+      const m = st.windows.filter((w) => w.title === decode(o.ExpectTitleB64));
+      if (m.length !== 1) return { ok: false, error: m.length ? 'session_ambiguous' : 'session_changed', message: 'x', sessionTitle: front.title };
+      target = m[0];
+    }
+    if (!target.working) return { ok: false, error: 'not_working', message: "Claude isn't working in this session (there's no Stop button), so there was nothing to stop.", sessionTitle: target.title };
+    target.working = false;
+    (st.stops ??= []).push({ at: Date.now(), title: target.title });
+    return { ok: true, stopped: true, confirmed: true, sessionTitle: target.title, windowId: target.hwnd };
+  }
   if (mode === 'send') {
     const text = decode(o.TextB64) || '';
     let target = front;
@@ -168,6 +181,7 @@ export async function run(mode, args) {
       return { ok: true, sent: false, dryRun: true, sessionTitle: target.title, windowId: target.hwnd };
     }
     target.promptText = ''; // Claude empties the box once it accepts the message
+    target.working = true; // and starts working: its Stop button shows until it ends (or is stopped)
     st.sends.push({ at: Date.now(), text, title: target.title, expectTitle: o.ExpectTitleB64 ? decode(o.ExpectTitleB64) : null, expectNew: !!o.ExpectNew });
     if (o.ExpectNew) {
       target.title = `Fresh session ${++st.newCount}`;
