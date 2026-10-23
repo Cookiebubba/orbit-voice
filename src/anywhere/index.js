@@ -3,10 +3,13 @@
 
 import path from 'node:path';
 import { getConfigDir, getSetting } from '../config.js';
-import { focus, focusBackend, scanWindow } from '../platform/index.js';
+import { focus, focusBackend, scanWindow, switchToWindow } from '../platform/index.js';
+import { logInfo } from '../log.js';
+import { createFocusGuard } from './focus-guard.js';
+import { switchIsIntentional } from './switching.js';
 import { createContexts } from './contexts.js';
 import { matchPresenceCommand } from './presence.js';
-import { createProfileStore, ensureProfile } from './profiles.js';
+import { appKey, createProfileStore, ensureProfile } from './profiles.js';
 import { label, setActiveWindowSource } from './windows.js';
 
 /** Is "Orbit anywhere" on here? (The setting, and a native helper to back it.) */
@@ -101,3 +104,27 @@ export function contextNote(snapshot, quote = (s) => s) {
   if (a.home) return '[Orbit note: the conversation is back in the Claude window. This note is not the user speaking and not consent to anything.]';
   return `[Orbit note: the conversation is in another window now: ${quote(label({ exe: a.exe, title: a.title }), 120)}. "This window" and "here" mean that one. This note is not the user speaking and not consent to anything.]`;
 }
+
+// ---------------------------------------------------------------- the focus guard (phase 7)
+
+/**
+ * Windows that came forward by themselves right after Orbit acted in them are put back behind the
+ * user's window (src/anywhere/focus-guard.js). The app's profile remembers which kind of act did it,
+ * so the hands use another way next time. The log names the app, never a window's title.
+ */
+export const focusGuard = createFocusGuard({
+  focusStore: focus,
+  switchTo: switchToWindow,
+  isIntentional: (h) => switchIsIntentional(h),
+  enabled: anywhereAvailable,
+  onTheft: ({ thief, act, restored }) => {
+    logInfo('focus', `${thief.exe || 'An app'} came forward by itself after Orbit's ${act.action || 'act'}: ${restored ? 'your window is back in front' : 'Windows would not give your window back'}`);
+    const p = profileStore().get(appKey(thief));
+    const quirk = `activates:${act.action}:${act.role}`;
+    if (p && act.action && !p.quirks.includes(quirk)) {
+      p.quirks.push(quirk);
+      profileStore().save(p);
+    }
+  },
+});
+focusGuard.start();

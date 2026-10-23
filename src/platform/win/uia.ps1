@@ -530,8 +530,11 @@ public static class OrbitUia {
         PostMessage(parentWin, WM_COMMAND, new IntPtr(id & 0xFFFF), native);
         via = "bn-clicked";
       } else {
-        IUIAutomationInvokePattern ip = el.GetCurrentPattern(InvokePatternId) as IUIAutomationInvokePattern;
-        if (ip != null) { ip.Invoke(); via = "uia-invoke"; }
+        // This app came forward on an Invoke before (the focus guard noted it): MSAA's default action.
+        IUIAutomationLegacyIAccessiblePattern pre = Str(req, "prefer") == "legacy" ? el.GetCurrentPattern(LegacyPatternId) as IUIAutomationLegacyIAccessiblePattern : null;
+        IUIAutomationInvokePattern ip = pre == null ? el.GetCurrentPattern(InvokePatternId) as IUIAutomationInvokePattern : null;
+        if (pre != null) { pre.DoDefaultAction(); via = "msaa-default"; }
+        else if (ip != null) { ip.Invoke(); via = "uia-invoke"; }
         else {
           IUIAutomationTogglePattern tp = el.GetCurrentPattern(TogglePatternId) as IUIAutomationTogglePattern;
           if (tp != null) { tp.Toggle(); via = "uia-toggle"; }

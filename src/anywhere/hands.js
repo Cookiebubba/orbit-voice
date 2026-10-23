@@ -19,7 +19,7 @@
 
 import { appName, uiaRequest } from '../platform/index.js';
 import { actable, windowText } from './policy.js';
-import { profileFor, profileStore } from './index.js';
+import { focusGuard, profileFor, profileStore } from './index.js';
 import { heal, isOutwardLabel, locate } from './profiles.js';
 import { label } from './windows.js';
 
@@ -164,7 +164,10 @@ function failure(r) {
  * verifies. Resolves { ok, did, verified, stole_focus } or { ok: false, error }.
  */
 export async function perform({ win, node, action, text = '', control = null, profile = null, scan = null }) {
-  const r = await uiaRequest('act', { hwnd: win.hwnd, i: node.i, rid: node.rid || '', t: node.t, n: node.n || '', action, value: String(text ?? '').slice(0, HAND_LIMITS.textMax) });
+  // An app this kind of act pulled forward before (the focus guard noted it): the other way.
+  const prefer = (profile?.quirks || []).includes(`activates:${action}:${node.t}`) ? 'legacy' : '';
+  focusGuard.noteAct(win.hwnd, { action, role: node.t, app: appName(win) }); // if it comes forward now, that's theft
+  const r = await uiaRequest('act', { hwnd: win.hwnd, i: node.i, rid: node.rid || '', t: node.t, n: node.n || '', action, value: String(text ?? '').slice(0, HAND_LIMITS.textMax), ...(prefer ? { prefer } : {}) });
   if (!r?.ok) return { ok: false, error: failure(r) };
   if (control && profile && scan) {
     const found = locate(control, scan);
