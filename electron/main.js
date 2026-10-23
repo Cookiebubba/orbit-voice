@@ -19,7 +19,7 @@ import { authUrl, hotkeyLabel, startServer, stopBackgroundWork } from '../src/se
 import { createUpdater } from './updater.js';
 import { createAvatar } from './avatar.js';
 import { setAvatarSink } from '../src/avatar-commands.js';
-import { startFocusTracking } from '../src/platform/index.js';
+import { startFocusTracking, startUia, stopUia } from '../src/platform/index.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -384,13 +384,18 @@ onSettingsChange((changed) => {
 // while Settings -> Orbit anywhere is on. Tools read "this window" from it.
 let focusTracker = null;
 let fakeFocusHelper = null; // developer testing only: a stand-in for focus.ps1 (see ORBIT_FAKE_DESKTOP)
-let fakeDesktop = false; // developer testing only: never start the real helper then
+let fakeDesktop = false; // developer testing only: never start the real helpers then
+let fakeUiaHelper = null; // developer testing only: a stand-in for uia.ps1
 function setFocusTracking() {
   const want = getSetting('anywhere') !== false && (!fakeDesktop || !!fakeFocusHelper);
-  if (want && !focusTracker) focusTracker = startFocusTracking({ spawnHelper: fakeFocusHelper, onError: (m) => logWarn('focus', m) });
-  else if (!want && focusTracker) {
+  if (want && !focusTracker) {
+    focusTracker = startFocusTracking({ spawnHelper: fakeFocusHelper, onError: (m) => logWarn('focus', m) });
+    // Reading other apps' windows (UI Automation): its helper starts on the first read.
+    if (!fakeDesktop || fakeUiaHelper) startUia({ spawnHelper: fakeUiaHelper, cacheDir: path.join(app.getPath('userData'), 'cache'), onError: (m) => logWarn('uia', m) });
+  } else if (!want && focusTracker) {
     focusTracker.stop();
     focusTracker = null;
+    stopUia();
   }
 }
 onSettingsChange((changed) => changed.includes('anywhere') && setFocusTracking());
@@ -566,6 +571,7 @@ app.whenReady().then(async () => {
     fakeWindowHelper = (fake.default || fake).windowHelper || null;
     // ...and for the focus watcher (without one, tests run with no focus watcher at all).
     fakeFocusHelper = (fake.default || fake).focusHelper || null;
+    fakeUiaHelper = (fake.default || fake).uiaHelper || null;
     fakeDesktop = true;
   }
   try {
@@ -622,6 +628,7 @@ app.on('before-quit', () => {
   stopBackgroundWork(); // second-brain questions kept past a hang-up stop with the app
   claudeTracker.stop();
   focusTracker?.stop();
+  stopUia();
   avatar?.stop();
   updater?.stop();
 });

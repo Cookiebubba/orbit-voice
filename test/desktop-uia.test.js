@@ -4,6 +4,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { canRun, psWithPid, startFakeWindow } from './e2e/fake-window.mjs';
+import { lockDesktop } from './e2e/desktop-lock.mjs';
+
+if (process.platform === 'win32') await lockDesktop(); // one real-desktop test file at a time
 
 const skip = !canRun() && 'needs Windows with .NET Framework 4 (csc.exe)';
 

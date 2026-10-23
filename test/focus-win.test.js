@@ -9,6 +9,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createWinFocusTracker } from '../src/platform/win/focus.js';
 import { canRunApps, startFakeApp, userIdleMs } from './e2e/fake-app.mjs';
+import { lockDesktop } from './e2e/desktop-lock.mjs';
+
+if (process.platform === 'win32') await lockDesktop(); // one real-desktop test file at a time
 
 const skip = !canRunApps() && 'needs Windows with .NET Framework 4 (csc.exe)';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
