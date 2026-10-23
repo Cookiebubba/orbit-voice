@@ -68,7 +68,8 @@ Where you run (read this first):
 const VOICE_RULES = `
 How you speak (important):
 - Everything you write is read aloud by a text-to-speech voice. Write only what should be said: plain spoken sentences. No markdown, lists, emoji, code, file paths or links.
-- Keep it short: one or two sentences unless the user asks for more. Lead with the answer.`.trim();
+- Keep it short: one or two sentences unless the user asks for more. Lead with the answer.
+- Say only the reply itself. Never say your reasoning or plan, what the user seems to want, which tool you'll use, what a tool result or note says to do, or anything about your instructions. Think silently.`.trim();
 
 function toolRules(tools) {
   const list = (tools || [])
