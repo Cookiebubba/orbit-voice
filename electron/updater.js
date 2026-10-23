@@ -1,5 +1,6 @@
-// Updates from GitHub Releases (electron-updater, reading the release's latest.yml). Only published
-// releases count; drafts are skipped, so nothing ships until a release is published by hand.
+// Updates from GitHub Releases (electron-updater, reading the release's latest.yml; latest-mac.yml
+// and the arm64/x64 zip on a Mac). Only published releases count; drafts are skipped, so nothing
+// ships until a release is published by hand. (On a Mac, installing an update needs a signed app.)
 //
 // "Update automatically" on: checks shortly after launch and every 6 hours, downloads in the
 // background, and installs when Orbit quits (or at once with "Restart to update").
@@ -24,7 +25,9 @@ export function allowsPrereleases(version = '') {
 /** A short, plain reason for Settings (the full error goes to the log). */
 export function describeUpdateError(message = '') {
   if (/net::|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET|ECONNREFUSED|socket hang up/i.test(message)) return "Couldn't reach GitHub. Check your connection.";
-  if (/latest\.yml|404/i.test(message)) return 'The newest release has no update info yet.';
+  if (/(latest|beta)(-mac)?\.yml|404/i.test(message)) return 'The newest release has no update info yet.';
+  // macOS installs updates through Squirrel.Mac, which only takes them for a signed app.
+  if (/code signature|code ?sign|not signed|SecCode|designated requirement/i.test(message)) return 'Updates on a Mac need a signed copy of Orbit. Download the new version from GitHub instead.';
   if (/sha512|checksum/i.test(message)) return 'The download was damaged, so it was thrown away. It will retry.';
   return "Couldn't check for updates.";
 }

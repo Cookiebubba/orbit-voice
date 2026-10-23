@@ -9,6 +9,8 @@ test('update errors read as short plain reasons', () => {
   assert.equal(describeUpdateError('getaddrinfo ENOTFOUND github.com'), "Couldn't reach GitHub. Check your connection.");
   assert.equal(describeUpdateError('Cannot find latest.yml in the latest release artifacts'), 'The newest release has no update info yet.');
   assert.equal(describeUpdateError('sha512 checksum mismatch, expected abc'), 'The download was damaged, so it was thrown away. It will retry.');
+  assert.equal(describeUpdateError('Cannot find latest-mac.yml in the latest release artifacts'), 'The newest release has no update info yet.');
+  assert.match(describeUpdateError('Could not get code signature for running application'), /signed copy of Orbit/);
   assert.equal(describeUpdateError('something else'), "Couldn't check for updates.");
 });
 
@@ -63,7 +65,7 @@ test('the installed version sets the channel', () => {
  * (newest first, as the releases feed lists them). GitHub's /releases/latest is the newest release
  * that isn't a prerelease. Nothing touches the network.
  */
-async function offered(current, releases) {
+async function offered(current, releases, { platform = 'win32', asked = [] } = {}) {
   const au = fakeAutoUpdater(current);
   createUpdater({ isPackaged: true, auto: false, version: current, updater: au }).stop();
   const updater = { allowPrerelease: au.allowPrerelease, currentVersion: au.currentVersion, channel: null, fullChangelog: false };
@@ -76,16 +78,20 @@ async function offered(current, releases) {
       const p = opts.path;
       if (p.endsWith('/releases.atom')) return feed;
       if (p.endsWith('/releases/latest')) return JSON.stringify({ tag_name: latestStable.tag });
-      const m = /\/releases\/download\/([^/]+)\/latest\.yml$/.exec(p);
+      const yml = /\/releases\/download\/([^/]+)\/([a-z]+(?:-mac)?\.yml)$/.exec(p);
+      if (yml) asked.push(yml[2]);
+      // Each release has what electron-builder writes: latest.yml (Windows) and latest-mac.yml (Mac).
+      const m = /\/releases\/download\/([^/]+)\/latest(-mac)?\.yml$/.exec(p);
       if (m) {
         const v = m[1].replace(/^v/, '');
+        if (m[2]) return `version: ${v}\nfiles:\n  - url: Orbit-${v}-arm64.zip\n    sha512: x\n    size: 1\n  - url: Orbit-${v}-x64.zip\n    sha512: x\n    size: 1\npath: Orbit-${v}-arm64.zip\nsha512: x\nreleaseDate: '2026-10-23T00:00:00.000Z'\n`;
         return `version: ${v}\nfiles:\n  - url: Orbit-Setup-${v}.exe\n    sha512: x\n    size: 1\npath: Orbit-Setup-${v}.exe\nsha512: x\nreleaseDate: '2026-10-23T00:00:00.000Z'\n`;
       }
       const err = new (require('builder-util-runtime').HttpError)(404, 'Not Found');
       throw err;
     },
   };
-  const provider = new GitHubProvider({ provider: 'github', owner: 'Cookiebubba', repo: 'orbit-voice' }, updater, { executor, platform: 'win32', isUseMultipleRangeRequest: false });
+  const provider = new GitHubProvider({ provider: 'github', owner: 'Cookiebubba', repo: 'orbit-voice' }, updater, { executor, platform, isUseMultipleRangeRequest: false });
   const info = await provider.getLatestVersion();
   return semver.gt(info.version, current) ? info.version : null;
 }
@@ -111,4 +117,28 @@ test('a beta install gets later betas, then the stable release', async () => {
   assert.equal(await offered('1.3.0-beta.1', [v130, beta2, beta1, v120]), '1.3.0');
   // An older stable hotfix published after the beta is never a downgrade.
   assert.equal(await offered('1.3.0-beta.1', [{ tag: 'v1.2.1' }, beta1, v120]), null);
+});
+
+test('on a Mac the same channels hold, read from latest-mac.yml (never the Windows latest.yml)', async () => {
+  const mac = async (current, releases) => {
+    const asked = [];
+    const v = await offered(current, releases, { platform: 'darwin', asked });
+    return { v, asked };
+  };
+  let r = await mac('1.2.0', [beta2, beta1, v120]);
+  assert.equal(r.v, null, 'a stable Mac install is never offered a beta');
+  r = await mac('1.2.0', [v130, beta2, beta1, v120]);
+  assert.equal(r.v, '1.3.0');
+  assert.deepEqual(r.asked, ['latest-mac.yml']);
+  r = await mac('1.3.0-beta.1', [beta2, beta1, v120]);
+  assert.equal(r.v, '1.3.0-beta.2', 'a beta Mac install gets later betas');
+  // It asks for beta-mac.yml first and falls back to latest-mac.yml, as Windows does with beta.yml.
+  assert.deepEqual(r.asked, ['beta-mac.yml', 'latest-mac.yml']);
+  r = await mac('1.3.0-beta.1', [v130, beta2, beta1, v120]);
+  assert.equal(r.v, '1.3.0', 'then the stable release');
+  assert.ok(r.asked.every((f) => f.endsWith('-mac.yml')), r.asked.join());
+  // (Windows, for comparison, asks for the plain names.)
+  const asked = [];
+  await offered('1.3.0-beta.1', [beta2, beta1, v120], { asked });
+  assert.deepEqual(asked, ['beta.yml', 'latest.yml']);
 });
