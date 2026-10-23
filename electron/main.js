@@ -19,6 +19,7 @@ import { authUrl, hotkeyLabel, startServer, stopBackgroundWork } from '../src/se
 import { createUpdater } from './updater.js';
 import { createAvatar } from './avatar.js';
 import { setAvatarSink } from '../src/avatar-commands.js';
+import { startFocusTracking } from '../src/platform/index.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -378,6 +379,22 @@ onSettingsChange((changed) => {
   placeOrb();
 });
 
+// ---------- Orbit anywhere: the window you're in ----------
+// Follows the window in front in any app (src/platform/win/focus.ps1: window events, no polling),
+// while Settings -> Orbit anywhere is on. Tools read "this window" from it.
+let focusTracker = null;
+let fakeFocusHelper = null; // developer testing only: a stand-in for focus.ps1 (see ORBIT_FAKE_DESKTOP)
+let fakeDesktop = false; // developer testing only: never start the real helper then
+function setFocusTracking() {
+  const want = getSetting('anywhere') !== false && (!fakeDesktop || !!fakeFocusHelper);
+  if (want && !focusTracker) focusTracker = startFocusTracking({ spawnHelper: fakeFocusHelper, onError: (m) => logWarn('focus', m) });
+  else if (!want && focusTracker) {
+    focusTracker.stop();
+    focusTracker = null;
+  }
+}
+onSettingsChange((changed) => changed.includes('anywhere') && setFocusTracking());
+
 // ---------- updates (GitHub Releases) ----------
 let updater = null; // created when the app is ready (the settings are loaded then)
 onSettingsChange((changed) => {
@@ -547,6 +564,9 @@ app.whenReady().then(async () => {
     setDesktopDriver(fake.default || fake);
     // ...and for the Claude window watcher too (the orb and the avatar follow its windows).
     fakeWindowHelper = (fake.default || fake).windowHelper || null;
+    // ...and for the focus watcher (without one, tests run with no focus watcher at all).
+    fakeFocusHelper = (fake.default || fake).focusHelper || null;
+    fakeDesktop = true;
   }
   try {
     const dir = app.getPath('userData');
@@ -579,6 +599,7 @@ app.whenReady().then(async () => {
   createOrb();
   setAvatar();
   if (needTracker()) claudeTracker.start();
+  setFocusTracking();
   createTray();
   updater = createUpdater({
     isPackaged: app.isPackaged,
@@ -600,6 +621,7 @@ app.on('before-quit', () => {
   quitting = true;
   stopBackgroundWork(); // second-brain questions kept past a hang-up stop with the app
   claudeTracker.stop();
+  focusTracker?.stop();
   avatar?.stop();
   updater?.stop();
 });

@@ -58,6 +58,9 @@ export const DEFAULTS = Object.freeze({
   // The floating orb the main window minimizes into. With an avatar on it can be turned off: the
   // avatar stands in for it and Orbit opens from the tray icon. (Without an avatar it always shows.)
   showOrb: true,
+  // "Orbit anywhere": Orbit follows the window you're in, in any app (window events, no polling),
+  // so it can read it when you ask and Qubit can come along. Acting in other apps still asks.
+  anywhere: true,
 });
 
 export const AVATARS = Object.freeze(['buddy', 'qubit', 'none']);
