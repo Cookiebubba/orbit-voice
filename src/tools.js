@@ -308,7 +308,7 @@ export function brainToolResult(result, { label = 'Claude', readProject, note = 
     next_step: [
       'Say "spoken" to the user in your own words (one to three sentences)' + (s.confidence === 'low' ? ', and say plainly that it is not sure' : '') + '.',
       'Keep "details" and "files" for follow-up questions; don\x27t read them out unless asked.',
-      s.suggested_prompt ? 'You may offer once: "Want me to send Claude a prompt for that?" A yes to that offer means: call draft_prompt with the suggested prompt (never send_draft on a draft that was already there), read it back, and send only after a fresh yes.' : '',
+      s.suggested_prompt ? 'You may offer once: "Want me to send Claude a prompt for that?" A yes to that offer means: call draft_prompt with the suggested prompt (never send_draft on a draft that was already there; it goes into the box), and send only after a fresh yes.' : '',
     ].filter(Boolean).join(' '),
   };
 }
@@ -364,6 +364,24 @@ export function removeFillers(text) {
     lineBreak = null;
   }
   return out.map((o) => o.sep + o.word).join('').trim();
+}
+
+/** The same text, whatever the line endings or the space around it (as desktop.ps1 compares). */
+const sameText = (a, b) => String(a ?? '').replace(/\r/g, '').trim() === String(b ?? '').replace(/\r/g, '').trim();
+
+/**
+ * Is `box` Orbit's draft `draft` touched up by the user (a word fixed, a few added or taken out),
+ * rather than something else they typed? At least 60% of the words match, both ways.
+ */
+export function isEditOf(box, draft) {
+  const a = wordsOf(box);
+  const b = wordsOf(draft);
+  if (!a.length || !b.length) return false;
+  const inA = new Set(a);
+  const inB = new Set(b);
+  const kept = b.filter((w) => inA.has(w)).length / b.length;
+  const own = a.filter((w) => inB.has(w)).length / a.length;
+  return kept >= 0.6 && own >= 0.6;
 }
 
 const wordsOf = (text) =>
@@ -575,7 +593,13 @@ export function createToolRunner({
       const prev = draft;
       const sameBox = !!prev?.filled && prev.targetTitle === next.targetTitle && !!prev.targetNew === !!next.targetNew;
       if (prev?.filled && !sameBox) await clearDesktop(prev.text, boxOf(prev)).catch(() => {});
-      const shown = await fillDesktop(clean, { ...boxOf(next), replace: sameBox ? prev.text : null }).catch((e) => ({ ok: false, error: String(e?.message || e) }));
+      // A revision ("make it shorter", "no, say...") retypes the whole box: the box is cleared and the
+      // new draft typed in, never added to the old one. That's Orbit's earlier draft as it is in the
+      // box now, even touched up by the user since (it still holds mostly that draft's words); text
+      // that isn't Orbit's draft is never touched (the fill is refused, as before).
+      const inBox = typeof info.promptText === 'string' ? info.promptText : '';
+      const replace = !sameBox ? null : inBox.trim() && !sameText(inBox, prev.text) && isEditOf(inBox, prev.text) ? inBox : prev.text;
+      const shown = await fillDesktop(clean, { ...boxOf(next), replace }).catch((e) => ({ ok: false, error: String(e?.message || e) }));
       next.filled = !!shown?.ok;
       setDraft(next);
       return {
@@ -583,6 +607,7 @@ export function createToolRunner({
         text: clean,
         verbatim: verbatim || undefined,
         in_prompt_box: next.filled,
+        replaced_earlier_draft: (next.filled && sameBox) || undefined,
         target_session: targetNew ? `a new session${typeof info.folder === 'string' && info.folder ? ` in ${info.folder}` : ''}` : info.sessionTitle,
         note: next.filled
           ? undefined
@@ -590,7 +615,7 @@ export function createToolRunner({
             ? 'The prompt box already has the user\x27s own text in it, so the draft isn\x27t shown there, and sending will be refused until they clear it.'
             : `It couldn't be shown in Claude's prompt box (${String(shown?.message || shown?.error || 'unknown').slice(0, 120)}), so read it out in full.`,
         next_step: next.filled
-          ? 'It\x27s typed into Claude\x27s prompt box (not sent) for the user to read. Say so in a few words and ask "Send it?"; don\x27t read it all out unless they ask. Call send_draft only after a clear yes.'
+          ? 'It\x27s typed into Claude\x27s prompt box (not sent), in place of any earlier draft: the user reads it there. Say one short line, like "It\x27s in the box. Send it?" Don\x27t read it out unless they ask. If they want it changed, call draft_prompt again with the whole new prompt. Call send_draft only after a clear yes.'
           : 'Read the drafted text back as it is, without rewording it (if it\x27s long, its start and that there\x27s more), and ask the user to confirm before calling send_draft.',
       };
     },
@@ -601,11 +626,11 @@ export function createToolRunner({
       // Something came in after this draft was read back (an app notification, a held answer, a
       // second-brain answer with a suggested prompt): a "yes" now may be about that, not the draft.
       if (Math.max(lastNotificationAt, lastBrainAnswerAt) > snapshot.createdAt) {
-        return { ok: false, error: 'Not sent: something else came in after this draft was read back, so a yes now may not be about it. If the user still wants it, call draft_prompt again, read it back, and wait for a fresh yes.' };
+        return { ok: false, error: 'Not sent: something else came in after this draft was read back, so a yes now may not be about it. If the user still wants it, call draft_prompt again (it goes back in the box) and wait for a fresh yes.' };
       }
       const answer = await utteranceSince(snapshot.createdAt);
       if (!answer || Date.now() - answer.at > CONSENT_MAX_AGE_MS) {
-        return { ok: false, error: 'Not sent: the user has not answered since the draft appeared. Read the draft back and wait for them to say yes.' };
+        return { ok: false, error: 'Not sent: the user has not answered since the draft appeared. Ask "Send it?" and wait for them to say yes.' };
       }
       if (!isClearYes(answer.text)) {
         return {

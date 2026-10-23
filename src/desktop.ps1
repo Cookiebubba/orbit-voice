@@ -578,15 +578,23 @@ try {
     $mayReplace = $PrevB64 -and $inBox -and (& $same $inBox (Decode $PrevB64))
     if ($inBox -and -not $mayReplace) { Out-Json @{ ok = $false; error = 'prompt_box_not_empty'; message = 'The prompt box already has text in it, so nothing was typed there (to avoid wiping a draft).'; sessionTitle = $title } }
     if ($vp.Current.IsReadOnly) { Out-Json @{ ok = $false; error = 'prompt_box_read_only'; message = "Claude's prompt box isn't accepting input right now."; sessionTitle = $title } }
+    if ($mayReplace) {
+      # A revision retypes the box: Orbit's earlier draft goes first, so the new one is never added to it.
+      $vp.SetValue('')
+      Start-Sleep -Milliseconds 60
+      if (Get-BoxText $box) { Out-Json @{ ok = $false; error = 'prompt_box_not_cleared'; message = "Couldn't clear the earlier draft from Claude's prompt box, so the new one wasn't typed in (it would have been added to the old one)."; sessionTitle = $title } }
+    }
     $vp.SetValue($text)
     Start-Sleep -Milliseconds 250
 
     $landed = Get-BoxText $box
     $probe = ($text.Trim() -split "`n")[0].Trim()
     if ($probe.Length -gt 30) { $probe = $probe.Substring(0, 30) }
-    if (-not ($landed -and $landed.Contains($probe))) {
+    # It landed, and on its own: not the old draft plus the new one (a box that adds to what it has).
+    $alone = (& $same $landed $text) -or ($landed.Length -le $text.Trim().Length + 20)
+    if (-not ($landed -and $landed.Contains($probe) -and $alone)) {
       try { $vp.SetValue('') } catch {}
-      Out-Json @{ ok = $false; error = 'fill_not_verified'; message = "Couldn't confirm the text reached Claude's prompt box, so nothing was sent."; sessionTitle = $title }
+      Out-Json @{ ok = $false; error = 'fill_not_verified'; message = "Couldn't confirm the text reached Claude's prompt box (on its own), so nothing was sent."; sessionTitle = $title }
     }
   }
 

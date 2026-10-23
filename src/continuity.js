@@ -121,7 +121,7 @@ export function createContinuity({ now = () => Date.now(), limits = CONTINUITY_L
         if (picked.length) lines.push('Last exchanges, oldest first:', ...picked);
       }
       if (note?.draftText) {
-        lines.push(`A prompt that was drafted but never sent: "${quoteSafe(note.draftText, 600)}". It can't be sent from here: if the user wants it, call draft_prompt again, read it back, and send only after a fresh yes.`);
+        lines.push(`A prompt that was drafted but never sent: "${quoteSafe(note.draftText, 600)}". It can't be sent from here: if the user wants it, call draft_prompt again (it goes back in the box), and send only after a fresh yes.`);
       }
       if (waiting.length) {
         lines.push('Still waiting on:');

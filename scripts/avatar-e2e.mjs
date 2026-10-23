@@ -452,6 +452,11 @@ async function run() {
   check(s.sendAt && Math.abs(s.sendAt.x - 884) <= 1,'the Send button\x27s spot is from UI Automation', JSON.stringify(s.sendAt));
   await wait(1200);
   await snap('confirm');
+  // A change by voice retypes the box: only the new draft is in it, never the old one plus the new.
+  void fake.userSays(c, 'make it just add a dark mode toggle', { kind: 'draft', tools: [{ name: 'draft_prompt', args: { text: 'add a dark mode toggle' } }], followUps: [[]] });
+  check(await waitFor(() => desk.windows[0].promptText === 'add a dark mode toggle', 8000), 'a change retypes the box with the new draft alone', JSON.stringify(desk.windows[0].promptText));
+  check(desk.sends.length === 0, 'nothing sent by a change');
+  await expectState('"Send it?" again, by the Send button', { state: 'confirm', air: false }, 9000);
 
   out('7. Yes: sending, the stomp on Send');
   await label('send');

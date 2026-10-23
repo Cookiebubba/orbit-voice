@@ -1068,7 +1068,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           if (details) lines.push(`Details, for follow-ups: "${quoteSafe(details, 1500)}"`);
           if (s?.files?.length) lines.push(`Files: ${s.files.map((f) => quoteSafe(f, 200)).join('; ')}`);
           if (s?.suggested_prompt) tools.allowDraft(s.suggested_prompt); // may be drafted, on a yes
-          if (s?.suggested_prompt) lines.push(`Suggested prompt (only offer it; if the user says yes, call draft_prompt with it, read it back, and send only after a fresh yes): "${quoteSafe(s.suggested_prompt, 800)}"`);
+          if (s?.suggested_prompt) lines.push(`Suggested prompt (only offer it; if the user says yes, call draft_prompt with it (it goes into the box), and send only after a fresh yes): "${quoteSafe(s.suggested_prompt, 800)}"`);
           if (s?.confidence) lines.push(`Confidence: ${s.confidence}`);
         }
         pendingData.push(lines.join('\n'));
