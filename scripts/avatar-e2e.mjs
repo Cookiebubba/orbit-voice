@@ -314,6 +314,27 @@ async function framesPerSecond() {
   return Math.round(((b[0] - a[0]) * 1000) / (b[1] - a[1]));
 }
 const label = (l) => qjs(`window.__phys && (window.__phys.label = ${JSON.stringify(l)})`);
+/** Each geometry his page gets, with when (Date.now()). */
+const BOXLOG = `(() => {
+  const d = window.__qubit.dir;
+  if (window.__boxlog) return true;
+  window.__boxlog = [];
+  const sg = d.setGeometry;
+  d.setGeometry = (g) => { window.__boxlog.push([Date.now(), g.box ? JSON.stringify(g.box) : null]); if (window.__boxlog.length > 400) window.__boxlog.shift(); return sg(g); };
+  return true;
+})()`;
+/** When (Date.now()) his page first got a box that passes `test`, at or after `since`; 0 if not within `ms`. */
+async function boxSeen(test, since, ms = 3000) {
+  let hit = 0;
+  await waitFor(async () => {
+    const log = (await qjs('window.__boxlog')) || [];
+    const e = log.find(([t, b]) => t >= since && test(b && JSON.parse(b)));
+    hit = e ? e[0] : 0;
+    return !!hit;
+  }, ms, 10);
+  return hit;
+}
+const latency = {};
 
 async function expectState(name, want, ms = 4000) {
   let s = null;
@@ -321,7 +342,7 @@ async function expectState(name, want, ms = 4000) {
     s = await qstate();
     return s && Object.entries(want).every(([k, v]) => (typeof v === 'function' ? v(s[k], s) : s[k] === v));
   }, ms);
-  check(ok, name, s ? `state ${s.state}, mode ${s.mode}${s.action ? `, ${s.action}` : ''}, x ${s.x}, surface y ${s.onSurface}` : 'no Qubit');
+  check(ok, name, s ? `state ${s.state}, mode ${s.mode}${s.action ? `, ${s.action}` : ''}, x ${s.x}, surface y ${s.onSurface}${ok ? '' : `, air ${s.air}, box ${JSON.stringify(s.box)}`}` : 'no Qubit');
   if (!ok) out(`       log ${JSON.stringify(await qjs('window.__qubit.dir.log.slice(-12)'))}
        paths ${JSON.stringify(await qjs('window.__phys && window.__phys.paths.slice(-6)'))}`);
   return s;
@@ -538,16 +559,23 @@ async function run() {
   await clickLabel('Go to sleep');
   await expectState('going to sleep: sleepy (dusk)', { mode: (m) => m === 'sleepy' || m === 'asleep' }, 4000);
   await snap('going-to-sleep');
-  await expectState('asleep at home again', { state: 'asleep', mode: 'asleep', x: (x, st) => near(st.home, 14)(x) }, 20_000);
+  // (From wherever idle life took him: across the whole strip and up onto the box, then dozing off.)
+  await expectState('asleep at home again', { state: 'asleep', mode: 'asleep', x: (x, st) => near(st.home, 14)(x) }, 35_000);
   await wait(1500);
   await snap('asleep-again');
 
   out('14. The Claude window moves, resizes and minimizes');
   await label('window');
+  // When his page gets each new geometry (Date.now(), comparable with this process's clock).
+  await qjs(BOXLOG);
+  const t14 = Date.now();
   desk.windows[0].rect = { x: -4600, y: 300, w: 1000, h: 700 };
   desk.nudge?.();
   check(await waitFor(() => { const r = qwin.getBounds(); return r.x === -4600 && r.width === 1000 && r.y === 300 + 700 - 240; }, 4000), 'the strip follows a move and resize', JSON.stringify(qwin.getBounds()));
   s = await expectState('the box re-found for the new size', { box: (bx) => bx && bx.x === 238 && bx.w === 524, W: 1000 }, 5000);
+  const resizeMs = (await boxSeen((b) => b && b.x === 238 && b.w === 524, t14)) - t14;
+  check(resizeMs >= 0 && resizeMs < 250, 'he has the new box right after the resize (not after a full look)', `${resizeMs} ms`);
+  latency.resize = resizeMs;
   await expectState('back asleep at home on the moved box (he sleepwalks there)', { mode: 'asleep', onSurface: (y, st) => st.box && y === st.box.y, x: (x, st) => near(st.home, 14)(x), air: false }, 20_000);
   await snap('resized');
   desk.windows[0].min = true;
@@ -559,6 +587,36 @@ async function run() {
   desk.nudge?.();
   check(await waitFor(() => qwin.isVisible(), 4000), 'back when Claude is restored');
   check(await waitFor(async () => (await qjs('window.__qubit.running')) === true, 3000), 'his frame loop runs again');
+
+  out('14b. The prompt box changes under him: he moves with it at once');
+  await label('box');
+  await waitFor(async () => (await qstate()).mode === 'asleep' && !(await qstate()).air, 15_000);
+  const base = (await qstate()).box;
+  out(`  the box before: ${JSON.stringify(base)}`);
+  // The user types three lines in Claude: the box grows two lines (the helper looks every 150 ms).
+  let t = Date.now();
+  desk.windows[0].promptText = 'one\ntwo\nthree';
+  let at = await boxSeen((b) => b && b.h >= base.h + 30, t, 2000);
+  check(at > 0 && at - t < 300, 'the user types: he has the taller box within 300 ms', `${at ? at - t : 'never'} ms`);
+  latency.userTypes = at ? at - t : null;
+  await expectState('he rides it up: on its new top', { onSurface: (y, st) => st.box && y === st.box.y && st.box.h >= base.h + 30, air: false }, 1500);
+  t = Date.now();
+  desk.windows[0].promptText = '';
+  at = await boxSeen((b) => b && b.h === base.h, t, 2000);
+  check(at > 0 && at - t < 300, 'and cleared: back down within 300 ms', `${at ? at - t : 'never'} ms`);
+  await expectState('he rides it back down', { onSurface: (y, st) => st.box && y === st.box.y && st.box.h === base.h, air: false }, 1500);
+  // A sidebar opens: the box moves along with no event at all.
+  t = Date.now();
+  desk.layout = { promptBoxRect: { x: 420, y: 700, w: 480, h: 24 } };
+  at = await boxSeen((b) => b && b.x !== base.x, t, 2000);
+  check(at > 0 && at - t < 300, 'the layout changes (a sidebar): he has the moved box within 300 ms', `${at ? at - t : 'never'} ms`);
+  latency.layout = at ? at - t : null;
+  await expectState('and goes back to his spot on it', { mode: 'asleep', onSurface: (y, st) => st.box && y === st.box.y, x: (x, st) => near(st.home, 14)(x), air: false }, 20_000);
+  await snap('box-moved');
+  delete desk.layout;
+  await waitFor(async () => (await qstate()).box?.x === base.x, 2000);
+  await expectState('the box back where it was: him too', { mode: 'asleep', onSurface: (y, st) => st.box && y === st.box.y, x: (x, st) => near(st.home, 14)(x), air: false }, 20_000);
+  out(`  latency (change to his page having it): resize ${latency.resize} ms, user types ${latency.userTypes} ms, layout ${latency.layout} ms`);
 
   out('15. Active CPU (a call, talking)');
   hot();

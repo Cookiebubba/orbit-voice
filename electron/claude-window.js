@@ -1,7 +1,8 @@
 // Runs claude-window.ps1, which reports Claude's windows whenever they change, picks the one the
 // orb docks on (see claude-windows.js) and reports that one ({ found, hwnd, min, front, x, y, w, h }
 // in real screen pixels). While following (see follow()), the helper moves the orb itself, on that
-// window. Restarts the helper if it dies, re-sending the last command.
+// window. For the avatar it also watches that window's prompt box (watchBox()) and reports
+// where it is (onBox). Restarts the helper if it dies, re-sending the last commands.
 
 import { spawn } from 'node:child_process';
 import path from 'node:path';
@@ -14,7 +15,7 @@ import { createWindowPicker } from './claude-windows.js';
 const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'claude-window.ps1').replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
 const POWERSHELL = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 
-export function createClaudeWindowTracker({ onChange, onError = () => {}, spawnHelper = null }) {
+export function createClaudeWindowTracker({ onChange, onBox = () => {}, onError = () => {}, spawnHelper = null }) {
   let child = null;
   let stopped = true;
   let restarts = [];
@@ -22,6 +23,7 @@ export function createClaudeWindowTracker({ onChange, onError = () => {}, spawnH
   const picker = createWindowPicker();
   let current = { found: false }; // the window the orb docks on
   let following = null; // { orbHwnd, anchor } while the helper moves the orb
+  let boxCommand = null; // 'box <hwnd>' while the avatar wants the prompt box watched
 
   const send = (line) => {
     command = line;
@@ -41,6 +43,7 @@ export function createClaudeWindowTracker({ onChange, onError = () => {}, spawnH
     } catch {
       return; // a partial line
     }
+    if (s && s.box && typeof s.box === 'object') return onBox(s.box);
     if (!s || !Array.isArray(s.wins)) return;
     const next = picker.pick(s);
     const moved = next.hwnd !== current.hwnd;
@@ -55,6 +58,7 @@ export function createClaudeWindowTracker({ onChange, onError = () => {}, spawnH
     child = spawnHelper?.() || spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT, '-ParentPid', String(process.pid)], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     child.stdin.on('error', () => {});
     child.stdin.write(`${command}\n`);
+    if (boxCommand) child.stdin.write(`${boxCommand}\n`);
     let err = '';
     child.stderr?.on('data', (d) => { if (err.length < 4000) err += d; });
     readline.createInterface({ input: child.stdout }).on('line', onLine);
@@ -79,6 +83,7 @@ export function createClaudeWindowTracker({ onChange, onError = () => {}, spawnH
       stopped = true;
       command = 'pause';
       following = null;
+      boxCommand = null;
       current = { found: false };
       try { child?.kill(); } catch { /* already gone */ }
       child = null;
@@ -92,6 +97,13 @@ export function createClaudeWindowTracker({ onChange, onError = () => {}, spawnH
     pause() {
       following = null;
       if (command !== 'pause') send('pause');
+    },
+    /** Watch this Claude window's prompt box (0: stop): its rects come to onBox as it moves. */
+    watchBox(hwnd) {
+      const line = `box ${Number(hwnd) > 0 ? Math.floor(Number(hwnd)) : 0}`;
+      if (line === (boxCommand || 'box 0')) return;
+      boxCommand = line === 'box 0' ? null : line;
+      try { child?.stdin.write(`${line}\n`); } catch { /* restarting; replayed on start */ }
     },
     /** The window the orb docks on (the Claude window you were in last). */
     get current() { return current; },

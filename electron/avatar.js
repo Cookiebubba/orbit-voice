@@ -4,18 +4,23 @@
 // above it in z-order like the orb (so other apps still cover both), and hides while Claude is
 // minimized or not open (the page is told, so it can stop drawing).
 //
-// It also finds where Claude's prompt box is (through the same UI Automation script Grok's tools
-// use, now and then: after the window settles, every 20 s while showing, and after a draft or a
-// send, when the box grows or shrinks) and tells the page, which turns the box's top edge into a
-// platform. For Qubit it also finds Claude's Send button (only there while the box has text), which
-// he stomps when a prompt goes.
+// It also knows where Claude's prompt box is and tells the page, which turns the box's top edge into
+// a platform. Two ways:
+//   - fast (onBoxRect): the Claude window helper watches the box itself and reports where it is
+//     when it moves (the window moving or resizing at once; someone typing or a sidebar opening
+//     within 150 ms; see electron/claude-window.ps1). Only where it is, never its text.
+//   - full (findBox): the same UI Automation script Grok's tools use, now and then (after the window
+//     settles, every 20 s while showing, after a draft or a send): the box and, for Qubit, Claude's
+//     Send button (only there while the box has text), which he stomps when a prompt goes. Between
+//     full looks the Send button keeps its place from the box's right end and bottom (it sits on the
+//     box's row), so it moves with the box.
 //
 // Switching avatars is a handover: the new one's window comes up (its page plays an entrance) while
 // the old one's page fades out (leave()), and then the old window closes.
 
 import { BrowserWindow, screen } from 'electron';
 
-import { BUDDY_HEIGHT, boxInStrip, buddyBoundsFor, sendInStrip } from './buddy-geometry.js';
+import { BUDDY_HEIGHT, boxInStrip, buddyBoundsFor, sendAtOffset, sendInStrip, sendOffsetFor, usableBox } from './buddy-geometry.js';
 import { isAvatarAction } from '../src/avatar-commands.js';
 
 export { BUDDY_HEIGHT };
@@ -42,6 +47,9 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   let lastSend = null; // Claude's Send button (Qubit), kept while the box is there (it's only there with text)
   let boxKnown = false; // looked for the box at least once since showing
   let boxBusy = false;
+  let lastRaw = null; // the helper's latest report: { rect, win } in UI Automation's space
+  let rawAt = 0; // when it came
+  let sendOffset = null; // the Send button from the box's right end and bottom: { r, b }
   let voice = { phase: 'off' };
   let pendingEntrance = false;
 
@@ -106,6 +114,22 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     }
   }
 
+  /** The box (and Send button) in the strip from the helper's latest report. True if it changed. */
+  function applyRaw() {
+    if (!lastRaw || !visible() || !claudeDip) return false;
+    const strip = win.getBounds();
+    const usable = usableBox(lastRaw.rect ? boxInStrip(lastRaw.rect, lastRaw.win, claudeDip, strip) : null, strip.height);
+    const nextSend = usable && lastSend ? sendAtOffset(usable, sendOffset, lastSend) || lastSend : null;
+    const changed = JSON.stringify(usable) !== JSON.stringify(lastBox) || JSON.stringify(nextSend) !== JSON.stringify(lastSend) || !boxKnown;
+    if (!changed) return false;
+    if (!!usable !== !!lastBox) info_(usable ? `${kind}: standing room on the prompt box (${usable.w}×${strip.height - usable.y} px from the bottom)` : `${kind}: no prompt box to stand on`);
+    lastBox = usable;
+    lastSend = nextSend;
+    boxKnown = true;
+    send();
+    return true;
+  }
+
   /** Re-place (or hide) the strip for the current Claude window. */
   function place() {
     if (leaving) return;
@@ -114,7 +138,10 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     claudeDip = screen.screenToDipRect(null, { x: claude.x, y: claude.y, width: claude.w, height: claude.h });
     const b = buddyBoundsFor(claudeDip);
     const cur = win.getBounds();
-    if (cur.x !== b.x || cur.y !== b.y || cur.width !== b.width || cur.height !== b.height) win.setBounds(b);
+    if (cur.x !== b.x || cur.y !== b.y || cur.width !== b.width || cur.height !== b.height) {
+      win.setBounds(b);
+      applyRaw(); // the box where the helper last saw it, for the new strip (its next report follows)
+    }
     if (!win.isVisible()) {
       win.showInactive();
       layer = null;
@@ -135,16 +162,20 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   async function findBox() {
     if (boxBusy || !enabled || leaving || !visible() || !claudeDip) return;
     boxBusy = true;
+    const askedAt = Date.now();
     try {
       const info = await getDesktopInfo({ rects: K.sendButton });
       if (!visible()) return;
       const strip = win.getBounds();
       // The script reads the Claude window Orbit works with, which is the one the strip is on.
-      const next = info?.ok ? boxInStrip(info.promptBoxRect, info.windowRect, claudeDip, strip) : null;
       // Only the part of the box inside the strip counts (a box taller than the strip has no top here).
-      const usable = next && next.y > 20 && next.y < strip.height ? next : null;
+      let usable = usableBox(info?.ok ? boxInStrip(info.promptBoxRect, info.windowRect, claudeDip, strip) : null, strip.height);
       const sendRect = usable && K.sendButton ? sendInStrip(info.sendButtonRect, info.windowRect, claudeDip, strip) : null;
-      const nextSend = !usable ? null : sendRect || lastSend;
+      // Where Send sits from the box's right end and bottom (so it moves with the box in between).
+      if (usable && sendRect) sendOffset = sendOffsetFor(usable, sendRect);
+      // The helper saw the box since this look began: its report is newer than this one.
+      if (rawAt > askedAt && lastRaw) usable = usableBox(lastRaw.rect ? boxInStrip(lastRaw.rect, lastRaw.win, claudeDip, strip) : null, strip.height);
+      const nextSend = !usable ? null : sendAtOffset(usable, sendOffset, sendRect || lastSend) || sendRect || lastSend;
       const changed = JSON.stringify(usable) !== JSON.stringify(lastBox) || JSON.stringify(nextSend) !== JSON.stringify(lastSend) || !boxKnown;
       if (!!usable !== !!lastBox) info_(usable ? `${kind}: standing room on the prompt box (${usable.w}×${strip.height - usable.y} px from the bottom)` : `${kind}: no prompt box to stand on`);
       lastBox = usable;
@@ -198,6 +229,19 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     onClaude(state) {
       claude = state;
       place();
+    },
+    /** Where the window helper sees the prompt box now ({ hwnd, rect, win }; see claude-window.ps1). */
+    onBoxRect(b) {
+      if (!b || leaving || !enabled || !claude?.found || Number(b.hwnd) !== Number(claude.hwnd)) return;
+      const ok = (r) => r && [r.x, r.y, r.w, r.h].every(Number.isFinite);
+      lastRaw = { rect: ok(b.rect) ? b.rect : null, win: ok(b.win) ? b.win : null };
+      if (!lastRaw.win) return;
+      rawAt = Date.now();
+      applyRaw();
+    },
+    /** It's on screen and wants the box watched: the Claude window it's on (hwnd), or 0. */
+    get boxWindow() {
+      return !leaving && enabled && visible() && claude?.found && !claude.min ? claude.hwnd : 0;
     },
     /** Orbit's voice state (as the orb gets it, plus a few things only the avatars use). */
     onVoice(state) {

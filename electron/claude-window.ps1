@@ -16,12 +16,25 @@
 # Commands from Orbit on stdin, one per line:
 #   follow <orbHwnd> <claudeHwnd> <tl|tr|bl|br> <dx> <dy>   keep the orb at that spot on that window (DIPs)
 #   pause                                                  stop moving the orb (it's hidden or being dragged)
+#   box <claudeHwnd>                                       watch that window's prompt box (0: stop), for the avatar
+#
+# The prompt box (for the avatar, which stands on it): where it is, as UI Automation reports it, one
+# line per change: {"box":{"hwnd":123,"rect":{"x":..,"y":..,"w":..,"h":..}|null,"win":{...}}} (rect
+# and win in the same UI Automation space, so their ratio is right at any scaling). Only where it
+# is: never what's in it. Read on its own thread, from a cached element (a fraction of a millisecond
+# each), at once when the window moves or resizes, and otherwise every 150 ms while that Claude
+# window is in front (the user typing, a sidebar opening) and every 1.5 s while it isn't. At most
+# 40 reads a second (about 0.4 ms of CPU each), nothing while it's minimized or no avatar wants it.
 # The helper exits when stdin closes (Orbit quit or crashed) or its parent process is gone.
 param([int]$ParentPid = 0)
 $ErrorActionPreference = 'Stop'
 
-Add-Type -TypeDefinition @'
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, WindowsBase
+$refs = @([System.Windows.Automation.AutomationElement].Assembly.Location, [System.Windows.Automation.ControlType].Assembly.Location, [System.Windows.Rect].Assembly.Location)
+Add-Type -ReferencedAssemblies $refs -TypeDefinition @'
 using System;
+using System.Windows;
+using System.Windows.Automation;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -102,8 +115,10 @@ public static class ClaudeFollow {
   static bool IsClaude(IntPtr h) { return Array.IndexOf(wins, h) >= 0; }
 
   static void OnEvent(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time) {
+    events++;
     if (ev == EVENT_OBJECT_LOCATIONCHANGE) {
       if (idObject != 0 || !IsClaude(hwnd)) return; // only Claude's windows themselves, not carets etc.
+      if (hwnd == boxHwnd) { winMoved = true; boxSignal.Set(); }
       if (hwnd == target) Reposition();
       Emit();
     } else if (ev == EVENT_OBJECT_DESTROY || ev == EVENT_OBJECT_SHOW || ev == EVENT_OBJECT_HIDE) {
@@ -119,6 +134,7 @@ public static class ClaudeFollow {
       Emit();
     } else if (ev == EVENT_SYSTEM_MINIMIZESTART || ev == EVENT_SYSTEM_MINIMIZEEND) {
       if (!IsClaude(hwnd)) return;
+      if (hwnd == boxHwnd) boxSignal.Set();
       if (hwnd == target) Reposition();
       Emit();
     } else {
@@ -150,6 +166,11 @@ public static class ClaudeFollow {
         Reposition();
       } else if (p[0] == "pause") {
         lock (gate) { follow = false; }
+      } else if (p[0] == "box" && p.Length == 2) {
+        long w;
+        if (long.TryParse(p[1], out w)) WatchBox(new IntPtr(w));
+      } else if (p[0] == "stats") {
+        Out("{\"stats\":{\"reads\":" + reads + ",\"finds\":" + finds + ",\"events\":" + events + "}}");
       }
     }
     Environment.Exit(0); // Orbit closed our stdin: it quit or crashed
@@ -245,8 +266,105 @@ public static class ClaudeFollow {
     string state = sb.ToString();
     if (state == last) return;
     last = state;
-    Console.Out.WriteLine(state);
-    Console.Out.Flush();
+    Out(state);
+  }
+
+  static readonly object outGate = new object();
+  static void Out(string line) {
+    lock (outGate) {
+      Console.Out.WriteLine(line);
+      Console.Out.Flush();
+    }
+  }
+
+  // ---------- the prompt box (see the top) ----------
+  static volatile IntPtr boxHwnd = IntPtr.Zero; // the Claude window whose box is watched
+  static readonly Stopwatch clock = Stopwatch.StartNew();
+  static readonly AutoResetEvent boxSignal = new AutoResetEvent(false);
+  static Thread boxThread;
+  static AutomationElement boxEl, boxWinEl;
+  static IntPtr boxElHwnd = IntPtr.Zero;
+  static string lastBox = "";
+  static long lastFind = -100000, lastRead = -100000, lastWinRead = -100000;
+  static volatile bool winMoved = true; // the window moved or resized since its rect was read
+  static long reads, finds, events; // for the stats command
+  static Rect winRect = Rect.Empty;
+  static readonly Condition promptCond = new AndCondition(
+    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
+    new PropertyCondition(AutomationElement.NameProperty, "Prompt"));
+
+  static void WatchBox(IntPtr h) {
+    boxHwnd = h;
+    lastBox = "";
+    if (boxThread == null && h != IntPtr.Zero) {
+      boxThread = new Thread(BoxLoop);
+      boxThread.IsBackground = true;
+      boxThread.Start();
+    }
+    boxSignal.Set();
+  }
+
+  static bool InFront(IntPtr h) {
+    IntPtr f = GetForegroundWindow();
+    return f != IntPtr.Zero && GetAncestor(f, GA_ROOTOWNER) == h;
+  }
+
+  static void BoxLoop() {
+    SetThreadDpiAwarenessContext(new IntPtr(-4)); // the same pixels as the window reports
+    for (;;) {
+      IntPtr h = boxHwnd;
+      int wait = h == IntPtr.Zero ? Timeout.Infinite : !IsWindow(h) || IsIconic(h) ? 2000 : InFront(h) ? 150 : 1500;
+      boxSignal.WaitOne(wait);
+      h = boxHwnd;
+      if (h == IntPtr.Zero || !IsWindow(h) || IsIconic(h)) continue;
+      long since = clock.ElapsedMilliseconds - lastRead;
+      if (since < 25) Thread.Sleep((int)(25 - since)); // at most 40 a second, however busy
+      lastRead = clock.ElapsedMilliseconds;
+      reads++;
+      try { ReadBox(h); } catch (Exception) { boxEl = null; boxWinEl = null; }
+    }
+  }
+
+  /** The prompt box in that window (in split view, the one with keyboard focus). */
+  static AutomationElement FindBox(AutomationElement root) {
+    AutomationElementCollection all = root.FindAll(TreeScope.Descendants, promptCond);
+    if (all.Count == 0) return null;
+    foreach (AutomationElement b in all) { try { if (b.Current.HasKeyboardFocus) return b; } catch (Exception) { } }
+    return all[0];
+  }
+
+  static string RectJson(Rect r) {
+    if (r.IsEmpty || r.Width <= 0 || r.Height <= 0) return "null";
+    return "{\"x\":" + Math.Round(r.X) + ",\"y\":" + Math.Round(r.Y) + ",\"w\":" + Math.Round(r.Width) + ",\"h\":" + Math.Round(r.Height) + "}";
+  }
+
+  static void ReadBox(IntPtr h) {
+    if (boxElHwnd != h) { boxEl = null; boxWinEl = null; boxElHwnd = h; winMoved = true; }
+    if (boxWinEl == null) boxWinEl = AutomationElement.FromHandle(h);
+    long now = clock.ElapsedMilliseconds;
+    // The window's own rect only when it moved (or now and then): one read of the box is all a
+    // keystroke costs.
+    if (winMoved || winRect.IsEmpty || now - lastWinRead > 3000) {
+      winMoved = false;
+      lastWinRead = now;
+      winRect = boxWinEl.Current.BoundingRectangle;
+    }
+    Rect win = winRect;
+    Rect r = Rect.Empty;
+    if (boxEl != null) { try { r = boxEl.Current.BoundingRectangle; } catch (ElementNotAvailableException) { boxEl = null; } }
+    bool lost = boxEl == null || r.IsEmpty || r.Width <= 0 || r.Bottom < win.Top || r.Top > win.Bottom;
+    // A lost box is looked for again (at most every 1.5 s: it's a search of Claude's whole page), and
+    // now and then anyway while Claude is in front: another session's box is another element.
+    if ((lost && now - lastFind > 1500) || (!lost && now - lastFind > 15000 && InFront(h))) {
+      lastFind = now;
+      finds++;
+      AutomationElement b = FindBox(boxWinEl);
+      if (b != null) { boxEl = b; r = b.Current.BoundingRectangle; } else if (lost) { boxEl = null; r = Rect.Empty; }
+    }
+    string s = "{\"box\":{\"hwnd\":" + h.ToInt64() + ",\"rect\":" + (boxEl == null ? "null" : RectJson(r)) + ",\"win\":" + RectJson(win) + "}}";
+    if (s == lastBox) return;
+    lastBox = s;
+    Out(s);
   }
 }
 '@

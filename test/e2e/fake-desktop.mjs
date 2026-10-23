@@ -37,6 +37,21 @@ function parse(args) {
   return o;
 }
 
+/**
+ * Where Claude's prompt box is, as UI Automation reports it (st.layout can move it), in window `w`:
+ * like the real one it grows upward with its text's lines (20 px a line), and Claude's Send button
+ * stays at its bottom right. Only there while the box has text (as the real Send button).
+ */
+export function boxLayout(st, w) {
+  const L = { promptBoxRect: { x: 300, y: 700, w: 600, h: 24 }, windowRect: { x: 0, y: 0, w: 1200, h: 800 }, sendButtonRect: { x: 868, y: 696, w: 32, h: 32 }, ...st.layout };
+  const lines = Math.min(8, String(w?.promptText || '').split('\n').length);
+  if (lines > 1 && L.promptBoxRect) {
+    const grow = 20 * (lines - 1);
+    L.promptBoxRect = { ...L.promptBoxRect, y: L.promptBoxRect.y - grow, h: L.promptBoxRect.h + grow };
+  }
+  return L;
+}
+
 const raise = (st, w) => {
   st.windows = [w, ...st.windows.filter((x) => x !== w)];
   w.min = false;
@@ -60,7 +75,7 @@ export async function run(mode, args) {
   if (mode === 'info') {
     // Where the prompt box is, as UI Automation reports it (st.layout can change it), and with
     // -Rects Claude's Send button, which (like the real one) is only there while the box has text.
-    const L = { promptBoxRect: { x: 300, y: 700, w: 600, h: 24 }, windowRect: { x: 0, y: 0, w: 1200, h: 800 }, sendButtonRect: { x: 868, y: 696, w: 32, h: 32 }, ...st.layout };
+    const L = boxLayout(st, front);
     const sendButtonRect = args.includes('-Rects') && front.promptText ? L.sendButtonRect : null;
     return { ok: true, sessionTitle: front.title, newSession: !!front.newPage, folder: front.newPage?.folder ?? null, promptBoxFound: !!L.promptBoxRect, promptText: front.promptText, windowId: front.hwnd, windows, promptBoxRect: L.promptBoxRect, windowRect: L.windowRect, sendButtonRect };
   }
@@ -168,12 +183,32 @@ export async function run(mode, args) {
  * as if they were on screen (far off to the left, so the avatar's strip that follows them is never
  * in sight; a window's own `rect` overrides that), every second and on each command (and on
  * `S().nudge()`, for a test that moved a window). Child-process shaped: stdin, stdout, 'exit'.
+ * Like the real one it watches a window's prompt box ("box <hwnd>"): every 150 ms (the window is
+ * "in front"), and at once when a window moves; one line per change.
  */
 export function windowHelper() {
   const child = new EventEmitter();
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
   child.stdin = new PassThrough();
+  let watching = 0;
+  let lastBox = '';
+  const reportBox = () => {
+    const st = S();
+    const w = watching && st.windows.find((x) => x.hwnd === watching);
+    if (!w || w.min || child.stdout.writableEnded) return;
+    const L = boxLayout(st, w);
+    const line = JSON.stringify({ box: { hwnd: watching, rect: L.promptBoxRect, win: L.windowRect } });
+    if (line === lastBox) return;
+    lastBox = line;
+    (st.boxReports ??= []).push({ at: Date.now(), rect: L.promptBoxRect });
+    child.stdout.write(`${line}\n`);
+  };
+  let tick = 0;
+  const boxTimer = setInterval(() => {
+    tick++;
+    if (watching && tick % 5 === 0) reportBox();
+  }, 30);
   const report = () => {
     const st = S();
     const wins = st.windows.map((w, i) => ({ hwnd: w.hwnd, min: !!w.min, x: -4200 + i * 40, y: 120 + i * 30, w: 1200, h: 800, ...w.rect }));
@@ -181,16 +216,31 @@ export function windowHelper() {
     if (!child.stdout.writableEnded) child.stdout.write(`${JSON.stringify({ wins, fg, front: fg ? 'claude' : 'other' })}
 `);
   };
-  child.stdin.on('data', () => setTimeout(report, 10)); // follow / pause
+  child.stdin.on('data', (d) => {
+    for (const line of String(d).split('\n')) {
+      const m = line.trim().match(/^box (\d+)$/);
+      if (m) {
+        watching = Number(m[1]);
+        lastBox = '';
+        S().boxWatch = watching;
+        setTimeout(reportBox, 5);
+      }
+    }
+    setTimeout(report, 10); // follow / pause
+  });
   const timer = setInterval(report, 1000);
   setTimeout(report, 50);
   child.kill = () => {
     clearInterval(timer);
+    clearInterval(boxTimer);
     child.stdout.end();
     setImmediate(() => child.emit('exit', 0));
   };
   S().helperStarted = (S().helperStarted || 0) + 1;
-  S().nudge = report;
+  S().nudge = () => {
+    report();
+    setTimeout(reportBox, 5); // the window moved: the box with it
+  };
   return child;
 }
 

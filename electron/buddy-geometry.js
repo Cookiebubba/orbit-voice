@@ -41,5 +41,14 @@ export function sendInStrip(uiaSend, uiaWin, claudeDip, strip) {
   return r && { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) };
 }
 
+/** Only a box whose top is inside the strip counts (a box taller than the strip has no top here). */
+export const usableBox = (box, stripHeight) => (box && box.y > 20 && box.y < stripHeight ? box : null);
+
+/** Where Claude's Send button sits from the box's right end and bottom (it's on the box's row). */
+export const sendOffsetFor = (box, send) => (box && send ? { r: box.x + box.w - send.x, b: box.y + box.h - send.y } : null);
+
+/** The Send button at that offset from a box that moved or grew (its size as last seen). */
+export const sendAtOffset = (box, offset, size) => (box && offset && size ? { x: box.x + box.w - offset.r, y: box.y + box.h - offset.b, w: size.w, h: size.h } : null);
+
 /** How far Claude's visible prompt box reaches beyond its text field (DIPs). */
 export const BOX_PADDING = Object.freeze({ padX: 12, padTop: 14 });

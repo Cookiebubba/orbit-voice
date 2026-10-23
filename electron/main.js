@@ -190,9 +190,14 @@ const claudeTracker = createClaudeWindowTracker({
     claude = s;
     placeOrb();
     avatar?.onClaude(s);
+    watchBox();
   },
+  // Where Claude's prompt box is, the moment it moves (the avatar stands on it).
+  onBox: (b) => avatar?.onBoxRect(b),
   onError: (message) => logWarn('orb', message),
 });
+/** The helper watches the prompt box of the window the avatar is on, only while it shows. */
+const watchBox = () => claudeTracker.watchBox(avatar?.boxWindow || 0);
 const sticking = () => getSetting('orbStick') && !!claude?.found;
 // Grok's tools act on the same Claude window the orb is on (see src/desktop.ps1 -FrontHwnd).
 setFrontWindowHint(() => (claudeTracker.running && claude?.found ? claude.hwnd : 0));
@@ -288,6 +293,7 @@ function setAvatar({ live = false } = {}) {
     avatar.setEnabled(true, size, { entrance: live });
   }
   old?.leave();
+  watchBox();
 }
 
 // What the user asks the avatar to do (the voice model's `avatar` tool and the fast path that skips
