@@ -15,6 +15,8 @@ import { windowText } from './policy.js';
 import { ACT_TOOL_DEFS, createActHandlers } from './act-tools.js';
 import { SWITCH_TOOL_DEF, createSwitchHandler } from './switch-tool.js';
 import { TASK_GUIDE, TASK_TOOL_DEFS, createTaskHandlers } from './task-tools.js';
+import { MCP_GUIDE, MCP_TOOL_DEFS, createMcpHandlers, toolsForTask } from '../mcp/tools.js';
+import { mcp } from '../mcp/index.js';
 
 export const MAX_READS_PER_CALL = 40;
 
@@ -70,6 +72,7 @@ export const ANYWHERE_TOOL_DEFS = Object.freeze([
   ...ACT_TOOL_DEFS,
   SWITCH_TOOL_DEF,
   ...TASK_TOOL_DEFS,
+  ...MCP_TOOL_DEFS,
 ]);
 
 /** Are the anywhere tools on here? (The setting, and a native helper to back them.) */
@@ -85,7 +88,8 @@ Other windows (Orbit anywhere)
 - You can act in a window too, without the user's mouse or keyboard: act_in_window types their words, presses a button, ticks a box, picks an item. Only what they asked for, only their own words as text. Sending, posting, deleting, buying and the like are held: ask the question Orbit gives you, and call confirm_window_action only after their clear yes. If they dictated a message and said "and send it" in the same breath, type it and press Send: Orbit lets that through, and you read it back once.
 - When the user asks to go to a window ("switch to Discord", "bring up Photoshop", "take me there"), call switch_to_window. It is the only thing that moves their focus; never do it unasked. Claude Code sessions are switch_session, not this.
 - You can be in several windows. The user waking you in a window brings the conversation there; "come here" (come_here) does the same mid-call; "go away" (leave_window) ends your stay in that window. When they switch to another window you're in, the conversation follows them, and an Orbit note says so.
-${TASK_GUIDE}`.trim();
+${TASK_GUIDE}
+${MCP_GUIDE}`.trim();
 
 /**
  * The handlers, for createToolRunner. `ctx`: { recentUtterance(), lastNotificationAt(), notify() }.
@@ -121,12 +125,16 @@ export function createAnywhereHandlers({ recentUtterance = () => null, utterance
   // Switching windows (phase 6): the user's own switch words, or a yes to Orbit's offer.
   const switching = createSwitchHandler({ recentUtterance, isClearYes, available: anywhereAvailable, notify });
   // Background helpers (phase 8): the user's own words start, steer and stop them; a yes answers them.
-  const tasks = createTaskHandlers({ agents, recentUtterance, lastNotificationAt, notify, isClearYes, userWords, wordsNotSaid, available: anywhereAvailable });
+  const connectors = { resolve: (names) => toolsForTask(mcp(), names), forHelper: (ids) => mcp().forHelper(ids) };
+  const tasks = createTaskHandlers({ agents, connectors, recentUtterance, lastNotificationAt, notify, isClearYes, userWords, wordsNotSaid, available: anywhereAvailable });
+  // Connectors (phase 9, src/mcp): searching is automatic; connecting takes the user's yes.
+  const connecting = createMcpHandlers({ manager: mcp, recentUtterance, utteranceSince, lastNotificationAt, isClearYes, available: anywhereAvailable, notify });
 
   return {
     ...acts,
     ...switching,
     ...tasks,
+    ...connecting,
     async read_window({ window } = {}) {
       const no = allowed();
       if (no) return no;

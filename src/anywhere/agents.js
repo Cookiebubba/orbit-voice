@@ -102,14 +102,15 @@ export function createAgents({ engine, engineOptions = () => ({}), mcpUrl = (id)
 
   const api = {
     /** Start a helper on `task` (the user's words) in window `win`. { ok, helper } or { ok: false, error }. */
-    start(win, task, { engineId } = {}) {
+    start(win, task, { engineId, extra = null } = {}) {
       if (!win?.hwnd) return { ok: false, error: 'There is no window to work in.' };
       const busy = [...helpers.values()].find((h) => h.hwnd === win.hwnd && RUNNING.has(h.status));
       if (busy) return { ok: false, error: `A helper is already working in ${busy.label}. Redirect it, or cancel it first.` };
       if (running().length >= limits.running) return { ok: false, error: `${limits.running} helpers are already working, which is the most at once. Wait for one to finish, or cancel one.` };
       const id = crypto.randomBytes(8).toString('hex');
       const token = crypto.randomBytes(24).toString('hex');
-      const h = { id, token, hwnd: win.hwnd, win, label: label(win), app: win.exe || '', task: String(task).slice(0, 2000), status: 'starting', progress: [], steps: 0, startedAt: now(), endedAt: 0, summary: '', run: null, ctxId: null, lastTyped: '' };
+      // extra: connected MCP servers this task was given ({ servers, readTools, writeTools }, see src/mcp).
+      const h = { id, token, hwnd: win.hwnd, win, label: label(win), app: win.exe || '', task: String(task).slice(0, 2000), status: 'starting', progress: [], steps: 0, startedAt: now(), endedAt: 0, summary: '', run: null, ctxId: null, lastTyped: '', extra };
       helpers.set(id, h);
       if (contexts) h.ctxId = contexts.attach?.(win)?.id || null;
       setStatus(h, 'starting');
@@ -119,6 +120,7 @@ export function createAgents({ engine, engineOptions = () => ({}), mcpUrl = (id)
           mcpUrl: mcpUrl(id),
           token,
           tools: typeof tools === 'function' ? tools() : tools,
+          extra,
           ...engineOptions({ engineId }),
           onEvent: (evt) => {
             if (evt.type === 'started') setStatus(h, 'working');
@@ -147,7 +149,7 @@ export function createAgents({ engine, engineOptions = () => ({}), mcpUrl = (id)
     /** An outward act a helper wants: held until the user answers. Returns { id }. */
     requestApproval(helperId, plan) {
       const h = helpers.get(helperId);
-      const typed = h?.lastTyped ? ` (the box says "${windowText(h.lastTyped, 160)}")` : '';
+      const typed = h?.lastTyped && plan?.kind !== 'tool' ? ` (the box says "${windowText(h.lastTyped, 160)}")` : '';
       const a = { id: crypto.randomBytes(6).toString('hex'), helperId, plan, ask: `The helper in ${h?.label || 'a window'} wants to ${describe(plan)}${typed}. OK?`, at: now(), askedAt: 0, reasked: false, state: 'pending', result: null, waiters: [] };
       approvals.push(a);
       if (h) setStatus(h, 'waiting');

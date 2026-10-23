@@ -20,6 +20,7 @@ import { createUpdater } from './updater.js';
 import { createAvatar } from './avatar.js';
 import { createAvatarHost } from './avatar-host.js';
 import { contexts as anywhereContexts } from '../src/anywhere/index.js';
+import { setMcpShell } from '../src/mcp/index.js';
 import { setAvatarSink } from '../src/avatar-commands.js';
 import { focus, startFocusTracking, startUia, stopUia } from '../src/platform/index.js';
 
@@ -121,6 +122,41 @@ function encryptedKeyStore(dir, name = 'xai-key.bin') {
         throw new Error(IS_MAC ? 'Orbit could not use your macOS Keychain (access may have been denied), so the key was not saved. Try again and choose Allow.' : 'Windows encryption failed, so the key was not saved.');
       }
       fs.writeFileSync(file, sealed);
+    },
+  };
+}
+
+/**
+ * Connectors' sign-in tokens (Orbit anywhere, src/mcp/oauth.js): one encrypted file of key -> value,
+ * sealed like the xAI key (Windows DPAPI / macOS Keychain). Without the system's encryption they're
+ * kept in memory only (until Orbit quits).
+ */
+function encryptedMapStore(dir, name) {
+  const file = path.join(dir, name);
+  let memory = null;
+  const available = () => {
+    try {
+      return safeStorage.isEncryptionAvailable();
+    } catch {
+      return false;
+    }
+  };
+  const load = () => {
+    if (memory) return memory;
+    try {
+      memory = JSON.parse(safeStorage.decryptString(fs.readFileSync(file)));
+    } catch {
+      memory = {};
+    }
+    return memory;
+  };
+  return {
+    get: (k) => (typeof load()[k] === 'string' ? load()[k] : null),
+    set(k, v) {
+      const m = load();
+      if (v) m[k] = String(v);
+      else delete m[k];
+      if (available()) fs.writeFileSync(file, safeStorage.encryptString(JSON.stringify(m)));
     },
   };
 }
@@ -625,6 +661,8 @@ app.whenReady().then(async () => {
       models: app.isPackaged ? path.join(process.resourcesPath, 'models') : path.join(ROOT, 'resources', 'models'),
     });
     if (!app.isPackaged && process.env.ORBIT_FAKE_DESKTOP) logInfo('app', 'Developer mode: using a stand-in for the Claude window');
+    // Connectors (Orbit anywhere): sign-in tokens sealed on disk, sign-in pages in the browser (https only).
+    setMcpShell({ store: encryptedMapStore(dir, 'mcp-tokens.bin'), openExternal: (u) => (/^https:\/\//.test(u) ? shell.openExternal(u) : Promise.reject(new Error('Only https sign-in pages open.'))) });
   } catch (e) {
     logError('app', 'Bridge failed to start', e?.message);
     dialog.showErrorBox(

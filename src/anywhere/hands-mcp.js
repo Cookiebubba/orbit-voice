@@ -42,6 +42,11 @@ const TOOL_LIST = [
     },
   },
   {
+    name: 'permission',
+    description: 'Used by Claude Code itself (its permission prompt tool): asks the user, through Orbit, whether a connected tool that writes, posts or deletes may run now.',
+    inputSchema: { type: 'object', properties: { tool_name: { type: 'string' }, input: { type: 'object' }, tool_use_id: { type: 'string' } }, required: ['tool_name'] },
+  },
+  {
     name: 'wait_for_approval',
     description: 'Wait (up to a minute per call) for the user\x27s answer to a held act. Returns approved (and the act\x27s result), denied, or still_waiting (call again).',
     inputSchema: { type: 'object', properties: { approval_id: { type: 'string' } }, required: ['approval_id'], additionalProperties: false },
@@ -97,6 +102,17 @@ export function createHandsServer(helper) {
         if (r.ok && (action === 'type' || action === 'set_text')) helper.onTyped?.(typed);
         return text(r, !r.ok);
       }
+      case 'permission': {
+        // A connected server's write tool: only ones this helper was given, and only on the user's yes.
+        const tool = String(args.tool_name || '');
+        const input = args.input && typeof args.input === 'object' ? args.input : {};
+        if (!helper.mayAsk?.(tool)) return text({ behavior: 'deny', message: 'That tool is not one this task was given.' });
+        helper.onProgress?.('waiting for your OK');
+        const a = helper.requestApproval({ kind: 'tool', tool, input });
+        let r = { state: 'still_waiting' };
+        for (let i = 0; i < 5 && r.state === 'still_waiting'; i++) r = await helper.waitApproval(a.id, 55_000);
+        return text(r.state === 'approved' ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: r.state === 'denied' ? 'The user said no.' : 'Nobody answered, so it was not done.' });
+      }
       case 'wait_for_approval': {
         const r = await helper.waitApproval(String(args.approval_id || ''), 55_000);
         return text(r);
@@ -120,7 +136,7 @@ export function createHandsServer(helper) {
           return { jsonrpc: '2.0', id, result: { tools: TOOL_LIST } };
         case 'tools/call': {
           const name = String(params?.name || '');
-          if (!HANDS_TOOLS.includes(name)) return { jsonrpc: '2.0', id, result: text({ error: 'No such tool.' }, true) };
+          if (!HANDS_TOOLS.includes(name) && name !== 'permission') return { jsonrpc: '2.0', id, result: text({ error: 'No such tool.' }, true) };
           const args = params?.arguments && typeof params.arguments === 'object' ? params.arguments : {};
           return { jsonrpc: '2.0', id, result: await call(name, args) };
         }

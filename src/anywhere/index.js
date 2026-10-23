@@ -15,6 +15,7 @@ import { switchIsIntentional } from './switching.js';
 import { createContexts } from './contexts.js';
 import { matchPresenceCommand } from './presence.js';
 import { appKey, createProfileStore, ensureProfile } from './profiles.js';
+import { windowText } from './policy.js';
 import { label, setActiveWindowSource } from './windows.js';
 
 /** Is "Orbit anywhere" on here? (The setting, and a native helper to back it.) */
@@ -161,7 +162,7 @@ export const agents = createAgents({
   mcpUrl: (id) => `${bridgeBase}/mcp/hands/${id}`,
   tools: () => HANDS_TOOLS, // (late: hands-mcp.js imports this module)
   contexts,
-  describe: (plan) => describeAct(plan),
+  describe: (plan) => (plan?.kind === 'tool' ? describeToolCall(plan) : describeAct(plan)),
 });
 
 /**
@@ -183,7 +184,9 @@ export function createHandsEndpoint(manager) {
         onProgress: (line) => manager.progress(h.id, line),
         onTyped: (text) => manager.noteTyped(h.id, text),
         requestApproval: (plan) => manager.requestApproval(h.id, plan),
-        waitApproval: (approvalId, ms) => manager.waitApproval(h.id, approvalId, ms, (plan) => perform(plan)),
+        // (A connected tool's call is run by the helper itself once allowed: nothing to do here.)
+        waitApproval: (approvalId, ms) => manager.waitApproval(h.id, approvalId, ms, (plan) => (plan?.kind === 'tool' ? { ok: true } : perform(plan))),
+        mayAsk: (tool) => (h.extra?.writeTools || []).includes(tool),
       });
       servers.set(h.id, serve);
       if (servers.size > 20) servers.delete(servers.keys().next().value);
@@ -193,5 +196,14 @@ export function createHandsEndpoint(manager) {
     return body ? { status: 200, body } : { status: 202 };
   };
 }
+/** A connected tool's call, as Orbit asks about it: "use notion's create_page ("Trip plan")". */
+export function describeToolCall(plan) {
+  const m = /^mcp__([^_]+(?:_[^_]+)*?)__(.+)$/.exec(String(plan?.tool || ''));
+  const server = m ? m[1] : 'a connected tool';
+  const tool = (m ? m[2] : String(plan?.tool || 'a tool')).replace(/_/g, ' ');
+  const vals = Object.values(plan?.input || {}).filter((v) => typeof v === 'string' && v.trim()).slice(0, 2).map((v) => `"${windowText(v, 120)}"`);
+  return `use ${server} to ${tool}${vals.length ? ` (${vals.join(', ')})` : ''}`;
+}
+
 /** Orbit's own (the bridge serves it). */
 export const handsEndpoint = createHandsEndpoint(agents);

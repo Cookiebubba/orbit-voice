@@ -166,6 +166,17 @@ test('a held act reaches the voice; the user\x27s yes releases it; "stop everyth
   await pg.bye();
 });
 
+test("a connector's sign-in comes back to /oauth/callback: only one Orbit started is accepted", async () => {
+  const r = await new Promise((resolve) => http.get({ host: '127.0.0.1', port: PORT, path: '/oauth/callback?state=forged&code=x', headers: { host } }, (res) => {
+    let s = '';
+    res.on('data', (d) => (s += d));
+    res.on('end', () => resolve({ status: res.statusCode, csp: res.headers['content-security-policy'], text: s }));
+  }));
+  assert.equal(r.status, 400);
+  assert.match(r.text, /not one Orbit is waiting for/);
+  assert.equal(r.csp, "default-src 'none'");
+});
+
 test.after(() => {
   fake.close();
   setTimeout(() => process.exit(0), 100).unref();

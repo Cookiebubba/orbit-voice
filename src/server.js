@@ -45,6 +45,7 @@ import { CONTEXT_SETTINGS, agentContext } from './agent.js';
 import { agents, callEnded, callStarted, contextNote, contexts as anywhereContexts, handsEndpoint, presenceCommand, setBridgeBase } from './anywhere/index.js';
 import { isStopEverything } from './anywhere/presence.js';
 import { offerSwitch } from './anywhere/switch-tool.js';
+import { mcp, setMcpBridge } from './mcp/index.js';
 import { AVATAR_ACTIONS, AVATAR_NAMES, activeAvatar, matchAvatarCommand, runAvatarCommand } from './avatar-commands.js';
 import { isSleepCommand } from './sleep-command.js';
 import { createCueStream, withoutCues } from './emote-cues.js';
@@ -546,6 +547,14 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         'referrer-policy': 'no-referrer',
       });
       return res.end();
+    }
+
+    // A connector's sign-in (Orbit anywhere, src/mcp/oauth.js): the browser comes back here. Only a
+    // sign-in Orbit started (the state) is accepted; the page says nothing but done or not.
+    if (req.method === 'GET' && url.pathname === '/oauth/callback') {
+      const r = mcp().oauth.callback(Object.fromEntries(url.searchParams));
+      res.writeHead(r.ok ? 200 : 400, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'content-security-policy': "default-src 'none'" });
+      return res.end(`<!doctype html><meta charset="utf-8"><title>Orbit</title><p style="font:16px system-ui;margin:3em">${r.ok ? 'Signed in. You can close this tab and go back to Orbit.' : 'This sign-in link is not one Orbit is waiting for (it may have timed out). You can close this tab.'}</p>`);
     }
 
     // orbit-hands (Orbit anywhere): a background helper's tool server for its one window, over MCP's
@@ -1592,6 +1601,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       const url = `http://${HOST}:${port}`;
       baseUrl = url;
       setBridgeBase(url); // helpers reach orbit-hands here
+      setMcpBridge(url); // connectors' sign-ins come back here
       console.log(`\n  Orbit bridge running:  ${url}\n`);
       if (!getApiKey()) console.log('  ! No xAI API key yet. Open the app and paste it on the setup screen.\n');
       resolve(url);

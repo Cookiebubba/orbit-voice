@@ -81,7 +81,7 @@ test('a helper types into our window, its Send waits for the user, then it finis
     for (let i = 0; i < 100 && !events.some((e) => e.type === 'done' || e.type === 'failed'); i++) await sleep(100);
     const done = events.find((e) => e.type === 'done' || e.type === 'failed');
     assert.equal(done?.type, 'done', JSON.stringify(done));
-    assert.match(done.helper.summary, /Typed it and sent it\. \(tools: 6, read: yes, typed: true\)/);
+    assert.match(done.helper.summary, /Typed it and sent it\. \(tools: 7, read: yes, typed: true\)/, 'its six tools and the permission prompt');
     assert.ok(events.filter((e) => e.type === 'progress').length >= 4, 'progress along the way');
     // Its token stops working once it's done.
     const tok = await fetch(`${base}/mcp/hands/${r.helper.id}`, { method: 'POST', headers: { authorization: 'Bearer nope' }, body: '{}' });

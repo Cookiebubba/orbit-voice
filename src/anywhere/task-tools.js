@@ -21,6 +21,7 @@ export const TASK_TOOL_DEFS = Object.freeze([
       properties: {
         window: { type: 'string', description: 'Which window: empty for the one the conversation is in, or the app or title words the user used.' },
         task: { type: 'string', description: 'What the user wants done, in their own words.' },
+        tools: { type: 'array', items: { type: 'string' }, description: 'Optional: connected connectors (by name, see connected_tools) the helper may use for this task.' },
       },
       required: ['task'],
     },
@@ -55,7 +56,7 @@ export const TASK_TOOL_DEFS = Object.freeze([
 export const TASK_GUIDE = `- For bigger jobs in a window ("go through these and archive the old ones"), start_task hands it to a background helper while you keep talking. Its sends, posts, deletes and purchases come back as a question: say it in one line and answer with approve_task_action only on the user's yes. "How's it going" is task_status or list_tasks; "stop it" in a helper's window is cancel_task; "stop everything" stops all of them.`;
 
 /** ctx: { agents, recentUtterance, lastNotificationAt, notify, isClearYes, userWords, wordsNotSaid, available } */
-export function createTaskHandlers({ agents, recentUtterance = () => null, lastNotificationAt = () => 0, notify = () => {}, isClearYes = () => false, userWords = () => '', wordsNotSaid = () => ['?'], available = () => true } = {}) {
+export function createTaskHandlers({ agents, connectors = null, recentUtterance = () => null, lastNotificationAt = () => 0, notify = () => {}, isClearYes = () => false, userWords = () => '', wordsNotSaid = () => ['?'], available = () => true } = {}) {
   let usedAt = 0; // the words that already started, redirected or cancelled something
   const fresh = (acting) => {
     if (!available()) return { ok: false, error: 'Orbit anywhere is off (Settings -> Orbit anywhere), or not available on this computer.' };
@@ -81,7 +82,7 @@ export function createTaskHandlers({ agents, recentUtterance = () => null, lastN
   };
 
   return {
-    async start_task({ window, task } = {}) {
+    async start_task({ window, task, tools } = {}) {
       const no = fresh('started');
       if (no) return no;
       const spoke = recentUtterance();
@@ -92,11 +93,20 @@ export function createTaskHandlers({ agents, recentUtterance = () => null, lastN
       if (extra) return { ok: false, error: `Not started: the task has words the user didn't say (${extra.map((w) => `"${w}"`).join(', ')}). Use their own words.` };
       const t = await resolveWindow(typeof window === 'string' ? window.slice(0, 120) : '');
       if (!t.win) return { ok: false, error: t.say, ...(t.candidates ? { open_windows: t.candidates } : {}) };
-      const r = agents.start(t.win, words);
+      // Connected connectors for this task (src/mcp): only ones whose tools still match their approval.
+      let connected = null;
+      let notUsable = [];
+      if (Array.isArray(tools) && tools.length && connectors) {
+        const want = connectors.resolve(tools);
+        const got = await connectors.forHelper(want.ids);
+        connected = Object.keys(got.servers).length ? got : null;
+        notUsable = [...want.unknown.map((n) => `${n} (not connected)`), ...got.skipped.map((x) => `${x.id} (${x.why})`)];
+      }
+      const r = agents.start(t.win, words, { extra: connected });
       if (!r.ok) return r;
       usedAt = spoke.at;
       notify({ type: 'bridge.anywhere', action: 'task', app: r.helper.app });
-      return { started: true, window: r.helper.window, next_step: 'Say in a few words that a helper is on it. Orbit tells the user when it needs them or finishes.' };
+      return { started: true, window: r.helper.window, connectors_not_used: notUsable.length ? notUsable : undefined, next_step: `Say in a few words that a helper is on it${notUsable.length ? ', and which connectors it could not use and why' : ''}. Orbit tells the user when it needs them or finishes.` };
     },
     async list_tasks() {
       const list = agents.list();

@@ -148,7 +148,7 @@ test('orbit-hands speaks MCP, only for its window, and holds outward acts', asyn
   assert.equal(init.result.serverInfo.name, 'orbit-hands');
   assert.equal(await handle({ jsonrpc: '2.0', method: 'notifications/initialized' }), null, 'notifications get no answer');
   const list = await handle({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
-  assert.deepEqual(list.result.tools.map((t) => t.name), HANDS_TOOLS);
+  assert.deepEqual(list.result.tools.map((t) => t.name), [...HANDS_TOOLS.slice(0, 5), 'permission', 'wait_for_approval'], "the helper's tools, and Claude Code's permission prompt");
   assert.ok(list.result.tools.every((t) => !JSON.stringify(t.inputSchema).includes('hwnd')), 'no tool can name another window');
   const call = async (name, args) => JSON.parse((await handle({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name, arguments: args } })).result.content[0].text);
   const read = await call('read', {});
