@@ -416,6 +416,31 @@ async function run() {
   check(maxOut > 0.05, 'the live voice level reaches him (setLevels output)', `max ${maxOut.toFixed(2)}`);
   await waitFor(async () => (await qstate()).state === 'listening', 6000);
 
+  out('5b. Talking to Qubit: "do a backflip" (the fast path: no model turn), and a trick by Grok\x27s tool');
+  await label('backflip');
+  await qjs('(window.__acts = window.__acts || (window.__qubit.q.on("action", (a) => window.__acts.push(a.name)), [])).length = 0');
+  const cancelsBefore = c.cancels.length;
+  const respBefore = c.responses.length;
+  const t5 = Date.now();
+  void fake.userSays(c, 'Hey Qubit, do a backflip!', { kind: 'avatar', tools: [{ name: 'avatar', args: { action: 'backflip' } }] });
+  check(await waitFor(async () => (await qjs('window.__acts')).includes('flip'), 4000), 'he does a backflip', `${Date.now() - t5} ms from the words starting`);
+  await film('backflip', 2200, 20);
+  check(await waitFor(() => c.cancels.length > cancelsBefore, 3000), 'Grok\x27s own answer was cancelled');
+  await waitFor(() => c.responses.length > respBefore && c.responses.at(-1).doneAt, 3000);
+  const r5 = c.responses.slice(respBefore);
+  check(r5.length === 1 && r5[0].cancelled && !c.toolCalls.some((t) => t.at > t5 && t.name === 'avatar'), 'no model answer: cancelled before any tool call', JSON.stringify(r5.map((r) => ({ audio: r.audioChunks, cancelled: r.cancelled }))));
+  s = await expectState('the backflip landed (no embarrassment) and he is listening again', { state: 'listening', mode: 'listening', air: false, reaction: null }, 8000);
+  const flipModes = await qjs('window.__qubit.dir.log.filter((l) => l.what.startsWith("command")).map((l) => l.what)');
+  check(flipModes.includes('command backflip'), 'the director ran the command', JSON.stringify(flipModes));
+  // Words that aren't only a command: Grok answers, and its avatar tool does it.
+  await label('roll');
+  const cancels2 = c.cancels.length;
+  void fake.userSays(c, 'show me what you can do', { kind: 'other', tools: [{ name: 'avatar', args: { action: 'roll', direction: 'left' } }], followUps: [[]] });
+  check(await waitFor(async () => (await qjs('window.__acts')).includes('roll'), 6000), 'Grok\x27s avatar tool: he rolls');
+  check(c.cancels.length === cancels2, 'and that answer was not cancelled');
+  await expectState('listening again after the roll', { state: 'listening', air: false, reaction: null }, 8000);
+  await snap('after-tricks');
+
   out('6. A draft into Claude\x27s box, then "Send it?"');
   await label('draft');
   void fake.userSays(c, 'tell claude to add a dark mode toggle to settings', { kind: 'draft', tools: [{ name: 'draft_prompt', args: { text: 'add a dark mode toggle to settings' } }], followUps: [[]] });

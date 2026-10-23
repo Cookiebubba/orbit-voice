@@ -21,6 +21,14 @@ export const FLOOR = 3; // px between the floor line and the strip's bottom edge
 export const QUIET_TO_IDLE_S = 8; // a call with nothing going on for this long: idle life takes over
 const SIDES = { 1: 26, 2: 36, 3: 50 }; // body side (px) per avatar size setting
 
+/**
+ * What he can be asked to do (src/avatar-commands.js AVATAR_ACTIONS for Qubit): "do a backflip".
+ * A command overrides idle life and whatever he's doing (his engine takes over from where he is, so
+ * it's smooth), and Orbit's own state waits for it like a reaction, then takes over again.
+ */
+export const COMMANDS = Object.freeze(['backflip', 'frontflip', 'roll', 'jump', 'hop', 'grow', 'shrink', 'celebrate', 'dance', 'nod', 'shake', 'look_around', 'stretch', 'blink', 'happy', 'sad', 'surprised', 'curious', 'move', 'go_home', 'nap', 'wake']);
+export const COMMAND_TIMES = Object.freeze({ dance: 6, mood: 4, nap: 12, grow: 15 }); // seconds: dancing, a mood, a nap, staying big
+
 /** Qubit's side in px for the avatar size setting (1 tiny, 2 small, 3 big). */
 export const sideFor = (scale) => SIDES[Math.round(Number(scale))] || SIDES[2];
 
@@ -117,6 +125,7 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
   let sleeping = false; // the walk home and doze-off is under way
   let wander = false;
   let relocate = false; // the box moved (the window resized): back to his place once he's settled
+  let grownUntil = 0; // "get bigger": he shrinks back by himself then
   const log = []; // what it did, for tests and the e2e harness (state and reaction names only)
   const note = (what) => {
     log.push({ t: Math.round(t * 100) / 100, what });
@@ -253,7 +262,128 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
     }
   }
 
+  /** Is he standing on the prompt box? */
+  const onTheBox = () => !!geo?.box && !q.air && !q.pivot && Math.abs(geo.ground - q.sy - geo.box.y) < 2 && q.cx > geo.box.x && q.cx < geo.box.x + geo.box.w;
+  const grown = () => q.sp.grow.t > 1.05;
+  /** Which way to go (dir 'left' | 'right', else toward the side with more room) and how far there's room. */
+  function room(dir) {
+    const half = side() / 2;
+    const lo = onTheBox() ? geo.box.x + half : 6 + half;
+    const hi = onTheBox() ? geo.box.x + geo.box.w - half : geo.W - 6 - half;
+    const left = q.cx - lo;
+    const right = hi - q.cx;
+    const d = dir === 'left' ? -1 : dir === 'right' ? 1 : right >= left ? 1 : -1;
+    return { d, space: d > 0 ? right : left, lo, hi };
+  }
+
+  /** A command for him ({ action, dir }; see COMMANDS). Returns false if it isn't one, or he isn't placed yet. */
+  function command(cmd) {
+    const a = cmd?.action;
+    if (!geo || !COMMANDS.includes(a)) return false;
+    const g = geo;
+    const base = baseState(v, t - lastActive);
+    note(`command ${a}`);
+    lastActive = t;
+    if (a === 'wake') {
+      react = { kind: 'command', mode: null, until: t + 0.6, action: a };
+      if (asleepLike()) wakeInto(MODE_FOR[base] || 'listening');
+      else q.do('hopInPlace', {}, { interrupt: true });
+      return true;
+    }
+    if (a === 'nap') {
+      // A short nap with the call still on: Orbit's state takes over again when it ends (he wakes).
+      sleeping = true;
+      if (q.mode !== 'asleep') q.setMode('sleepy');
+      q.do('sleep', {}, { interrupt: true }).then(() => (sleeping = false));
+      react = { kind: 'command', mode: 'asleep', until: t + COMMAND_TIMES.nap, action: a };
+      return true;
+    }
+    const mode = { celebrate: 'happy', dance: 'music', happy: 'happy', sad: 'sad', curious: 'curious', surprised: 'surprised' }[a] || null;
+    const woke = asleepLike();
+    if (woke) wakeInto(mode || MODE_FOR[base] || 'listening'); // the trick follows the wake-up
+    else if (mode) q.setMode(mode);
+    const opt = { interrupt: !woke };
+    let hold = 0.5;
+    switch (a) {
+      case 'backflip':
+      case 'frontflip': {
+        // (Engine workaround: a flip's deep take-off crouch on top of a solid reads as hitting the
+        // solid's side, which throws him off the box's end. While it runs, the box is a ledge: he
+        // still lands on its top; nothing else changes while he flips in place.)
+        const ledge = onTheBox();
+        const setLedge = (on) => {
+          for (const o of q.solids) if (o.id === 'box') o.oneWay = on;
+        };
+        if (ledge) setLedge(true);
+        q.do('flip', { dir: a === 'backflip' ? -1 : 1, outcome: 'success' }, opt).then(() => ledge && setLedge(false));
+        break;
+      }
+      case 'roll': {
+        let r = room(cmd.dir);
+        if (r.space < side() * 0.9) r = room(r.d > 0 ? 'left' : 'right'); // no room that way: the other
+        q.do('roll', { dir: r.d, n: Math.max(1, Math.min(4, Math.floor(r.space / side()))) }, opt);
+        break;
+      }
+      case 'jump':
+        q.do('jump', { height: 1.6 }, opt);
+        break;
+      case 'hop':
+        q.do('hopInPlace', {}, opt);
+        break;
+      case 'grow':
+        if (!grown()) q.do('grow', { scale: 1.5 }, opt);
+        else q.do('hopInPlace', {}, opt);
+        grownUntil = t + COMMAND_TIMES.grow;
+        break;
+      case 'shrink':
+        if (grown()) q.do('shrink', {}, opt);
+        else q.do('doubleBlink', {}, opt); // already his own size
+        grownUntil = 0;
+        break;
+      case 'celebrate':
+        hold = 1.6;
+        q.do('celebrate', {}, opt);
+        break;
+      case 'dance':
+        // (music: he bops on the beat, his colour stepping round the wheel)
+        hold = COMMAND_TIMES.dance;
+        q.do('hopInPlace', {}, opt);
+        break;
+      case 'nod':
+      case 'shake':
+      case 'stretch':
+        q.do(a, {}, opt);
+        break;
+      case 'look_around':
+        q.do('lookAround', {}, opt);
+        break;
+      case 'blink':
+        q.do('doubleBlink', {}, opt);
+        break;
+      case 'happy':
+      case 'sad':
+      case 'curious':
+      case 'surprised':
+        hold = COMMAND_TIMES.mood;
+        if (a === 'happy') q.do('hopInPlace', {}, opt);
+        if (a === 'surprised') q.do('wonder', {}, opt);
+        break;
+      case 'move': {
+        const r = room(cmd.dir);
+        const x = Math.max(r.lo, Math.min(r.hi, q.cx + r.d * side() * 3));
+        moveTo(onTheBox() ? g.onBox(x) : { x, y: g.ground, onBox: false }, { interrupt: !woke });
+        break;
+      }
+      case 'go_home':
+        moveTo(g.home, { interrupt: !woke });
+        break;
+    }
+    react = { kind: 'command', mode, until: t + hold, action: a };
+    return true;
+  }
+
   return {
+    command,
     /** Orbit's voice state (see baseState). */
     setVoice(next) {
       if (next && typeof next === 'object') v = next;
@@ -273,6 +403,7 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
         const old = q.side;
         q.S = S;
         q.sp.grow.snap(old / S).to(1);
+        grownUntil = 0;
         q.nav = null; // the nav graph is for a body this size
       }
       // He can always jump onto the box, however tall it gets (a long draft makes it taller).
@@ -335,6 +466,11 @@ export function createDirector(q, { seed = 1, reduceMotion = false } = {}) {
       q.setLevels(v.muted ? 0 : Number(v.input) || 0, Number(v.output) || 0);
       if (v.phase !== 'listening' || v.hearing || v.draft || v.sending || v.claudeWorking || v.asleep || v.muted) lastActive = t;
       const s = baseState(v, t - lastActive);
+      // Big for a while after "get bigger", then back to his own size.
+      if (grownUntil && t > grownUntil && !react && !q.busy && !q.air && !q.pivot) {
+        grownUntil = 0;
+        if (grown()) q.do('shrink');
+      }
       if (react) {
         if (t < react.until || q.busy || q.air || q.pivot) {
           // Modes still follow the state while a reaction without its own mode runs.

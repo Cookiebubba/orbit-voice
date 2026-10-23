@@ -172,6 +172,11 @@ desktop?.onBuddyEvent?.((name) => {
   } else if (typeof name === 'string') events.push(name);
 });
 
+// Something you asked it to do ("dance"), by voice.
+desktop?.onBuddyCommand?.((c) => {
+  if (c && typeof c === 'object' && !leaving) bd.command({ action: String(c.action), dir: c.dir });
+});
+
 // ---------- demo (no Orbit) ----------
 let demoT = 0;
 const DEMO_SCRIPT = [

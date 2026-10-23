@@ -29,6 +29,7 @@ type DesktopApi = {
   sendOrbState(s: OrbSync): void;
   /** Tell the avatar (pixel buddy or Qubit) something happened. */
   buddyEvent?(name: "finished" | "draft" | "sent" | "error"): void;
+  onBuddyCommand?(cb: (c: { action: string; dir?: "left" | "right" }) => void): () => void;
   onOrbState(cb: (s: OrbSync) => void): () => void;
   onOrbAction(cb: (action: "toggle-sleep") => void): () => void;
   orbRestore(): void;

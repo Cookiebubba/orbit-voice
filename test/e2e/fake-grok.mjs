@@ -48,6 +48,8 @@ export function createFakeGrok({ g, port = 0 }) {
       toolCalls: [], // { name, call_id, args, at, expect }
       followUps: [], // tool lists for the responses that follow a tool call
       responding: false,
+      cancels: [], // response.cancel from the bridge: { at, kind (of the user's last words), responding }
+      cancelNow: false,
       chaos: false, // this connection was dropped or errored on purpose
       dropped: false,
     };
@@ -95,6 +97,13 @@ export function createFakeGrok({ g, port = 0 }) {
         }
       } else if (e.type === 'response.create') {
         void respond(c, { tools: c.followUps.shift() || [] });
+      } else if (e.type === 'response.cancel') {
+        // Like the real one: the response in progress stops (no more audio, no tool calls). Each
+        // cancel is noted with what the user had last said (the harness checks only avatar
+        // commands are ever cancelled).
+        const last = c.utterances.at(-1);
+        c.cancels.push({ at: Date.now(), kind: last?.kind || 'none', responding: c.responding });
+        if (c.responding) c.cancelNow = true;
       }
     });
     ws.on('close', (code) => {
@@ -115,7 +124,8 @@ export function createFakeGrok({ g, port = 0 }) {
     if (c.responding) return void (c.queued ??= []).push(opts);
     const { tools = [], wake = c.isWake, calm = false, delay = null } = opts;
     c.responding = true;
-    const r = { at: Date.now(), doneAt: 0, audioChunks: 0, tools: tools.map((t) => t.name), chaos: '' };
+    c.cancelNow = false;
+    const r = { at: Date.now(), doneAt: 0, audioChunks: 0, tools: tools.map((t) => t.name), chaos: '', cancelled: false };
     c.responses.push(r);
     try {
       const chaotic = !calm && !wake;
@@ -133,6 +143,7 @@ export function createFakeGrok({ g, port = 0 }) {
       const rhythm = wake ? g.pick(['steady', 'burst']) : g.pick(['steady', 'burst', 'slow']);
       for (let i = 0; i < n; i++) {
         if (c.ws.readyState !== 1) return;
+        if (c.cancelNow) break;
         c.send({ type: 'response.output_audio.delta', response_id: id, item_id: `${id}_a`, delta: CHUNKS[i % CHUNKS.length] });
         r.audioChunks++;
         c.audioSentMs += 100;
@@ -145,6 +156,12 @@ export function createFakeGrok({ g, port = 0 }) {
           c.ws.terminate(); // an abrupt close: the bridge sees 1006
           return;
         }
+      }
+      if (c.cancelNow) {
+        r.cancelled = true;
+        c.send({ type: 'response.done', response: { id, status: 'cancelled' } });
+        r.doneAt = Date.now();
+        return;
       }
       c.send({ type: 'response.output_audio_transcript.done', response_id: id, item_id: `${id}_a`, transcript: wake ? 'Claude finished something.' : 'Okay.' });
       for (const t of tools) {

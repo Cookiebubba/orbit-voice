@@ -473,6 +473,14 @@ export function useVoice(options: VoiceOptions) {
           caption({ id: `copied-${Date.now()}`, who: "note", text: `Copied to clipboard ✓ (${evt.chars} characters): ${preview}${evt.chars > preview.length ? "…" : ""}` });
           return;
         }
+        case "bridge.avatar":
+          // The avatar is doing what you asked. By the fast path (no model turn): nothing more is
+          // coming, so stop anything Grok had already started saying, and stop "thinking".
+          if (evt.fast) {
+            stopPlayback();
+            thinking.current = false;
+          }
+          return;
         case "bridge.brain":
           caption({ id: `brain-${Date.now()}`, who: "note", text: `Claude is reading ${evt.project}…` });
           return;

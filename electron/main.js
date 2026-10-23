@@ -12,6 +12,7 @@ import { getLogDir, logError, logInfo, logWarn } from '../src/log.js';
 import { authUrl, hotkeyLabel, startServer, stopBackgroundWork } from '../src/server.js';
 import { createUpdater } from './updater.js';
 import { createAvatar } from './avatar.js';
+import { setAvatarSink } from '../src/avatar-commands.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -288,6 +289,10 @@ function setAvatar({ live = false } = {}) {
   }
   old?.leave();
 }
+
+// What the user asks the avatar to do (the voice model's `avatar` tool and the fast path that skips
+// the model) goes to its window.
+setAvatarSink((cmd) => (avatar ? avatar.command(cmd) : { ok: false, error: 'There is no avatar on screen.' }));
 
 // The Claude window watcher runs while the orb sticks to Claude or an avatar is on.
 const needTracker = () => !!getSetting('orbStick') || !!avatarKind();

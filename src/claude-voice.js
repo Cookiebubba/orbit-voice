@@ -377,7 +377,13 @@ const SLOW_FILLERS = ['Hmm.', 'Let me think.'];
  * A realtime "socket" backed by local speech models and Claude Code. Same surface the bridge uses
  * on a ws WebSocket: readyState, send(json), close(), and 'open' / 'message' / 'close' / 'error'.
  */
-export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = CLAUDE_VOICE.sid, onMetrics = () => {}, onWarn = () => {}, speech: injectedSpeech, spawnImpl, now = () => Date.now() }) {
+/**
+ * `localTurn(text, itemId)`: the bridge's look at each finished transcript before Claude is asked.
+ * If it returns { note } the turn was handled on this PC (a command for the avatar, see
+ * src/avatar-commands.js): Claude isn't asked at all (no tokens, no wait), and the note joins
+ * Claude's next turn so it knows what happened.
+ */
+export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = CLAUDE_VOICE.sid, onMetrics = () => {}, onWarn = () => {}, speech: injectedSpeech, spawnImpl, localTurn = null, now = () => Date.now() }) {
   const sock = new EventEmitter();
   sock.readyState = 0;
   const emit = (obj) => sock.readyState === OPEN && sock.emit('message', JSON.stringify(obj), false);
@@ -489,6 +495,16 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
     if (sock.readyState !== OPEN) return;
     emit({ type: 'conversation.item.input_audio_transcription.completed', item_id: item.id, transcript: text });
     if (!/[\p{L}\p{N}]/u.test(text)) return; // a cough: no words, no reply
+    let local = null;
+    try {
+      local = localTurn?.(text, item.id) || null;
+    } catch (e) {
+      warnOnce('Claude voice: the local turn check failed', e);
+    }
+    if (local) {
+      if (typeof local.note === 'string' && local.note) input.push(local.note);
+      return; // done here: no reply from Claude for this turn
+    }
     input.push(text);
     respond({ endedAt, heardAt, textAt: now() });
   };

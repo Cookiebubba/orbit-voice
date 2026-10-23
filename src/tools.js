@@ -12,6 +12,7 @@ import { logError, logInfo, logWarn, recentLog } from './log.js';
 import { MAX_CLIPBOARD_CHARS, writeClipboard } from './clipboard.js';
 import { getBrainKey, getSetting } from './config.js';
 import { BRAIN_MODELS, askBrain, findClaude, openClaudeSignIn } from './brain.js';
+import { AVATAR_ACTIONS, AVATAR_NAMES, activeAvatar, actionsFor, avatarToolDef, isAvatarAction, runAvatarCommand } from './avatar-commands.js';
 
 export const TOOL_DEFS = [
   {
@@ -180,10 +181,13 @@ export const SIGN_IN_TOOL_DEF = {
   parameters: { type: 'object', properties: {}, required: [] },
 };
 
-/** Grok's tools for the current settings. */
-export function toolDefs(settings = { brainEnabled: getSetting('brainEnabled'), brainModel: getSetting('brainModel'), brainExplore: getSetting('brainExplore'), brainConnection: getSetting('brainConnection') }) {
-  if (!settings.brainEnabled) return TOOL_DEFS;
-  return [...TOOL_DEFS, brainToolDef(settings), ...(settings.brainConnection === 'api-key' ? [] : [SIGN_IN_TOOL_DEF])];
+/**
+ * Grok's tools for the current settings. `avatar` ('qubit' | 'buddy' | null): the avatar on screen,
+ * whose `avatar` tool is offered only while it's there.
+ */
+export function toolDefs(settings = { brainEnabled: getSetting('brainEnabled'), brainModel: getSetting('brainModel'), brainExplore: getSetting('brainExplore'), brainConnection: getSetting('brainConnection'), avatar: activeAvatar() }) {
+  const base = !settings.brainEnabled ? TOOL_DEFS : [...TOOL_DEFS, brainToolDef(settings), ...(settings.brainConnection === 'api-key' ? [] : [SIGN_IN_TOOL_DEF])];
+  return settings.avatar === 'qubit' || settings.avatar === 'buddy' ? [...base, avatarToolDef(settings.avatar)] : base;
 }
 
 function sessionSummary(s) {
@@ -848,6 +852,19 @@ export function createToolRunner({
         ok: true,
         next_step: 'Tell the user briefly: a Claude Code sign-in window opened and their browser will ask them to sign in. Once they have, they can ask the question again.',
       };
+    },
+
+    async avatar({ action, direction } = {}) {
+      // Harmless and only on screen, so no consent check: but only while an avatar is on.
+      const kind = activeAvatar();
+      if (!kind) return { done: false, note: 'There is no avatar on screen right now (Settings -> Avatar is None). Say so in a few words.' };
+      if (!isAvatarAction(kind, action)) {
+        return { done: false, note: `${AVATAR_NAMES[kind]} can't do that. He can do: ${actionsFor(kind).map((a) => AVATAR_ACTIONS[a].label).join(', ')}. Say so in a few words, in character.` };
+      }
+      const r = runAvatarCommand({ action, dir: direction }, { source: 'model' });
+      if (!r.ok) return { done: false, note: `${String(r.error || 'It did not work.').slice(0, 200)} Say so in a few words.` };
+      notify({ type: 'bridge.avatar', action });
+      return { done: true, did: AVATAR_ACTIONS[action].label, next_step: 'It is happening on screen now. Say at most a few words about it (or nothing), in character.' };
     },
 
     async go_to_sleep() {

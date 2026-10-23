@@ -158,6 +158,11 @@ desktop?.onBuddyEvent?.((name) => {
   } else if (typeof name === 'string' && q && !gone) dir.event(name);
 });
 
+// Something you asked him to do ("do a backflip"), by voice.
+desktop?.onBuddyCommand?.((c) => {
+  if (c && typeof c === 'object' && q && !gone) dir.command({ action: String(c.action), dir: c.dir === 'left' || c.dir === 'right' ? c.dir : undefined });
+});
+
 // For the tests (read-only use): the engine, his instance and the director.
 window.__qubit = {
   E,

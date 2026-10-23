@@ -36,6 +36,14 @@ export function modeFor(v = {}) {
 
 const EVENT_NAMES = new Set(['finished', 'draft', 'sent', 'poke']);
 
+/**
+ * What it can be asked to do (src/avatar-commands.js AVATAR_ACTIONS for the pixel buddy): "dance".
+ * A command takes over from what it's doing (Orbit's events wait for it), and Orbit's state carries
+ * on when it ends.
+ */
+export const COMMANDS = Object.freeze(['jump', 'hop', 'celebrate', 'dance', 'look_around', 'stretch', 'wave', 'trip', 'kick_ball', 'sit', 'climb', 'move', 'go_home', 'nap', 'wake']);
+const NAP_S = 10;
+
 export function createBuddy({ rng = Math.random, x = 40 } = {}) {
   const b = {
     x,
@@ -52,6 +60,7 @@ export function createBuddy({ rng = Math.random, x = 40 } = {}) {
     prop: null, // { g, dx, dy, color, color2 } carried or used (laptop, letter)
     fx: [], // effects: { g, x, y, vx, vy, age, life, color, color2, grav, fade, follow }
     events: [],
+    commands: [], // { action, dir } asked for by voice, in order
     grab: null, // { x, y } while the user holds it
     fallFrom: 0, // the height a fall started at (for dizzy landings)
     squashT: 0, // landing squash time left
@@ -242,6 +251,11 @@ export function createBuddy({ rng = Math.random, x = 40 } = {}) {
   }
 
   function* wakeUp() {
+    yield* wakeMoves();
+    b.taskName = b.mode;
+    yield* loopFor(b.mode);
+  }
+  function* wakeMoves() {
     b.prop = null;
     say('!', '#fde68a', 0.6);
     yield* hold(0.25, { legs: 'sit', eyes: 'wide', facing: 0 });
@@ -250,9 +264,50 @@ export function createBuddy({ rng = Math.random, x = 40 } = {}) {
     // A quick shake awake.
     for (let i = 0; i < 4; i++) yield* hold(0.07, { facing: i % 2 ? 1 : -1, eyes: 'closed' });
     yield* hold(0.35, { facing: 0, eyes: 'happy', mouth: 'smile' });
-    b.taskName = b.mode;
-    yield* loopFor(b.mode);
   }
+
+  // ---------- commands (see COMMANDS) ----------
+  /** Run `gen` for at most `s` seconds. */
+  function* forAWhile(gen, s) {
+    const until = b.t + s;
+    let r = gen.next();
+    while (!r.done && b.t < until) r = gen.next(yield);
+  }
+  function* bigJump() {
+    yield* hop(18);
+    yield* hold(0.3, { facing: 0, eyes: 'happy', mouth: 'smile' });
+  }
+  function* stepAside(dir) {
+    const d = dir === 'left' ? -1 : dir === 'right' ? 1 : b.x < b.world.w / 2 ? 1 : -1;
+    yield* walkTo(b.x + d * 30, b.on || 'floor');
+    yield* hold(0.3, { facing: 0 });
+  }
+  function* goHome() {
+    const h = home();
+    yield* walkTo(h.x, h.level);
+    yield* hold(0.3, { facing: 0, mouth: 'smile' });
+  }
+  function* napAWhile() {
+    yield* forAWhile(sleepLoop({ settle: true }), NAP_S);
+    yield* wakeMoves();
+  }
+  const COMMAND_ROUTINES = {
+    jump: () => bigJump(),
+    hop: () => littleHop(),
+    celebrate: () => celebrate(),
+    dance: () => dance(),
+    look_around: () => lookAround(),
+    stretch: () => yawnStretch(),
+    wave: () => waveHello(),
+    trip: () => trip(),
+    kick_ball: () => kickBall(),
+    sit: () => sitAndKick(),
+    climb: () => (b.on === 'box' ? littleHop() : climbAbout()),
+    move: (dir) => stepAside(dir),
+    go_home: () => goHome(),
+    nap: () => napAWhile(),
+    wake: () => wakeMoves(),
+  };
 
   /** Its nap spot: on top of the prompt box near its right end (out of the way), else mid-window. */
   function home() {
@@ -641,7 +696,9 @@ export function createBuddy({ rng = Math.random, x = 40 } = {}) {
       b.mode = mode;
       // Connecting then listening is one wake-up: don't cut it short.
       const keepWaking = b.taskName === 'wake' && (mode === 'connecting' || mode === 'listen');
-      if (!keepWaking) start(...modeRoutine(mode, from));
+      // Doing what it was asked: it finishes first (then carries on in the new mode), unless the call ended.
+      const keepCommand = b.taskKind === 'command' && mode !== 'sleep';
+      if (!keepWaking && !keepCommand) start(...modeRoutine(mode, from));
       if (mode === 'listen') b.idleSince = b.t;
     }
 
@@ -654,7 +711,14 @@ export function createBuddy({ rng = Math.random, x = 40 } = {}) {
     if (b.mode !== 'sleep') b.homed = true; // awake, it goes where it likes
 
     // Events (one at a time, in order), unless it's being held.
-    if (!b.grab && b.events.length && !['event', 'grabbed'].includes(b.taskKind)) {
+    // Commands (one at a time, in order): over whatever it's doing, unless it's being held.
+    if (!b.grab && b.commands.length) {
+      const c = b.commands.shift();
+      const make = Object.hasOwn(COMMAND_ROUTINES, c.action) ? COMMAND_ROUTINES[c.action] : null;
+      if (make) start(then(make(c.dir)), `cmd:${c.action}`, 'command');
+    }
+
+    if (!b.grab && b.events.length && !['event', 'grabbed', 'command'].includes(b.taskKind)) {
       const e = b.events.shift();
       const asleep = b.mode === 'sleep';
       const routine =
@@ -826,6 +890,13 @@ export function createBuddy({ rng = Math.random, x = 40 } = {}) {
 
   return {
     step,
+    /** Something asked of it by voice ({ action, dir }; see COMMANDS). false if it isn't one. */
+    command(cmd) {
+      if (!cmd || !COMMANDS.includes(cmd.action)) return false;
+      b.commands.push({ action: cmd.action, dir: cmd.dir === 'left' || cmd.dir === 'right' ? cmd.dir : undefined });
+      if (b.commands.length > 4) b.commands.shift();
+      return true;
+    },
     /** A click on it. */
     poke() {
       b.events.push('poke');

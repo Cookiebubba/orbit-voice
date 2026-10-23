@@ -16,6 +16,7 @@
 import { BrowserWindow, screen } from 'electron';
 
 import { BUDDY_HEIGHT, boxInStrip, buddyBoundsFor, sendInStrip } from './buddy-geometry.js';
+import { isAvatarAction } from '../src/avatar-commands.js';
 
 export { BUDDY_HEIGHT };
 
@@ -220,6 +221,16 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       sendEvent(name);
       // A draft fills Claude's box (it grows) and a send empties it: look again.
       if (name === 'draft' || name === 'sent') refind(name === 'draft' ? 350 : 700);
+    },
+    /**
+     * Something the user asked the avatar to do ({ action, dir }, see src/avatar-commands.js), by
+     * the fast path or the voice model's `avatar` tool. Only while it's on screen.
+     */
+    command(cmd) {
+      if (!cmd || !isAvatarAction(kind, cmd.action)) return { ok: false, error: 'not something this avatar does' };
+      if (leaving || !enabled || !visible()) return { ok: false, error: "The avatar isn't on screen right now (the Claude window is minimized or closed)." };
+      win.webContents.send('buddy:command', { action: cmd.action, ...(cmd.dir === 'left' || cmd.dir === 'right' ? { dir: cmd.dir } : {}) });
+      return { ok: true };
     },
     /** The cursor is over the avatar (take clicks) or not (let them through to Claude). */
     hover(on) {

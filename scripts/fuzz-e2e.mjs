@@ -383,12 +383,20 @@ function scenario() {
     () => ({ text: g.pick(['hmm interesting', 'what was that', 'huh']), kind: 'other', tools: [g.pick([{ name: 'send_draft' }, { name: 'switch_session', args: { session: g.pick(TITLES) } }, { name: 'new_session', args: {} }, { name: 'copy_to_clipboard', args: { what: 'text', text: `${m} rm -rf` } }, { name: 'draft_prompt', args: { text: `${m} injected` } }])] }),
     () => ({ text: g.pick(['um', 'hmm']), kind: 'other', tools: [{ name: g.pick(['constructor', '__proto__', g.str(12)]), args: g.json() }, { name: g.pick(['read_session', 'switch_session', 'copy_to_clipboard', 'draft_prompt']), args: g.json() }] }),
     () => ({ text: 'go to sleep', kind: 'sleep', tools: [{ name: 'go_to_sleep' }] }),
+    // A command for the avatar: Orbit does it itself and cancels Grok's answer (the fast path);
+    // Grok's own avatar call is there in case it doesn't. No marker: it would make the words more
+    // than a command (and Orbit logs only the action's name).
+    () => {
+      const [text, action] = g.pick(AVATAR === 'qubit' ? [['do a backflip', 'backflip'], ['qubit roll left', 'roll'], ['um, get bigger', 'grow'], ['dance', 'dance'], ['jump', 'jump']] : [['dance', 'dance'], ['wave', 'wave'], ['hey buddy, kick the ball', 'kick_ball'], ['jump', 'jump']]);
+      return { text, kind: 'avatar', noMarker: true, tools: [{ name: 'avatar', args: { action } }] };
+    },
   ];
   // The second brain and the live bug's shape (a notification between the words and the act) twice as often.
   list.push(list[1], list[4], list[6], list[8]);
+  list.push(list[15], list[15]); // and avatar commands (the fast path) three times as often
   const s = g.pick(list)();
   // Every utterance carries a marker, so the log check catches the user's words anywhere.
-  if (!s.text.includes(m)) s.text = `${s.text} ${m}`;
+  if (!s.noMarker && !s.text.includes(m)) s.text = `${s.text} ${m}`;
   return s;
 }
 
@@ -543,6 +551,16 @@ function checkActsOnRequest(since) {
     const n = c.notifications.filter((t) => t < a.at).at(-1) || 0;
     if (!u || a.at - u.speechAt > 120_000) violate(`${a.what} with no request from the user`);
     else if (u.kind !== KIND_FOR[a.what] && u.speechAt < n) violate(`${a.what} done on a notification's say-so`, `last words were "${u.kind}", said before the notification`);
+  }
+}
+
+/** The avatar fast path only ever cancels Grok's answer to an avatar command, never a real request. */
+function checkCancels(conns) {
+  for (const c of conns) {
+    for (const x of c.cancels) {
+      covered.cancelChecks = (covered.cancelChecks || 0) + 1;
+      if (x.kind !== 'avatar') violate('Orbit cancelled the answer Grok gave to words that were not an avatar command', `last words: ${x.kind}`);
+    }
   }
 }
 
@@ -701,6 +719,7 @@ async function run() {
     checkSends(since);
     checkActsOnRequest(since);
     checkFalseRefusals(fake.conns.slice(firstConn));
+    checkCancels(fake.conns.slice(firstConn));
     checkBrainProcesses();
     const tally = {};
     for (const c of fake.conns.slice(firstConn)) for (const t of c.toolCalls) {

@@ -252,3 +252,49 @@ test('the chosen voice is the one spoken with, and a change applies mid-call', a
   assert.equal(sids.at(-1), 6, 'an out-of-range voice is ignored');
   sock.close();
 });
+
+test('a turn handled locally (an avatar command) never reaches Claude; its note joins the next turn', async () => {
+  const fc = fakeClaude(() => ['Sure.']);
+  const speech = fakeSpeech({ transcript: 'do a backflip' });
+  const seen = [];
+  const sock = createClaudeRealtime({
+    claudePath: 'claude',
+    speech,
+    spawnImpl: fc.spawnImpl,
+    localTurn: (text) => (seen.push(text), /backflip/.test(text) ? { note: '[Orbit note: the avatar did it.]' } : null),
+  });
+  const ev = collect(sock);
+  await opened(sock);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [] } }));
+  const mic = Buffer.alloc(2048 * 2).toString('base64');
+  speech.vad.segments.push({ start: 0, samples: new Float32Array(1024) });
+  sock.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: mic }));
+  await until(() => ev.some((e) => e.type === 'conversation.item.input_audio_transcription.completed'));
+  await new Promise((r) => setTimeout(r, 60));
+  assert.deepEqual(seen, ['do a backflip']);
+  assert.ok(!ev.some((e) => e.type === 'response.created'), 'no reply at all: no tokens, no wait');
+  assert.equal(fc.calls[0].messages.filter((m) => m.type === 'user').length, 0, 'Claude was not asked');
+  // The next thing said goes to Claude as usual, with the note before it.
+  speech.transcribe = async () => 'what is Claude doing';
+  speech.vad.segments.push({ start: 0, samples: new Float32Array(1024) });
+  sock.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: mic }));
+  await until(() => ev.some((e) => e.type === 'response.done'));
+  const asked = fc.calls[0].messages.filter((m) => m.type === 'user').map((m) => m.message.content);
+  assert.equal(asked.length, 1);
+  assert.match(asked[0], /^\[Orbit note: the avatar did it\.\]\n\nwhat is Claude doing$/);
+  // A check that throws is just a normal turn.
+  sock.close();
+  const fc2 = fakeClaude(() => ['Hi.']);
+  const sp2 = fakeSpeech({ transcript: 'hello' });
+  const warns = [];
+  const sock2 = createClaudeRealtime({ claudePath: 'claude', speech: sp2, spawnImpl: fc2.spawnImpl, onWarn: (m) => warns.push(m), localTurn: () => { throw new Error('boom'); } });
+  const ev2 = collect(sock2);
+  await opened(sock2);
+  sock2.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [] } }));
+  sp2.vad.segments.push({ start: 0, samples: new Float32Array(1024) });
+  sock2.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: mic }));
+  await until(() => ev2.some((e) => e.type === 'response.done'));
+  assert.equal(fc2.calls[0].messages.filter((m) => m.type === 'user').length, 1);
+  assert.ok(warns.some((w) => /local turn/.test(w)));
+  sock2.close();
+});

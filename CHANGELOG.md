@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Talk to the avatar.** Ask Qubit for a backflip, a roll left, a jump, to get bigger, dance or look happy (the pixel buddy: dance, wave, jump, kick a ball, trip over, sit...). The voice model has an `avatar` tool for it, offered only while an avatar is on. A command takes over from whatever he's doing, and Orbit's own states take over again when it ends.
+  - **No model turn for a plain command:** when the whole utterance is just a command ("um, hey Qubit, do a backflip please"), Orbit runs it at once and doesn't ask the model (no tokens, no wait). The matcher is deliberately strict: ten words at most, nothing about Claude, prompts, code, drafts, sending, sessions or sleep, every word part of one command, and misheard words allowed only on longer words (the worst word must score 0.85). Anything else goes to the model as before. On Claude voice the Haiku call is skipped; on Grok its own answer is cancelled and none of it is played, shown or run.
 - **Avatar choice: Pixel buddy, Qubit or None** (Settings → Avatar, with the size). It switches live: the new one comes in (Qubit drops onto the prompt box) while the old one fades out. The pixel buddy stays the default; "Pixel buddy" off from before means None.
 - **Qubit, a square with one eye, as an avatar on your Claude window.** He uses only his own moods and moves (his engine and pathing are vendored in `ui/src/vendor/avatars/`):
   - Asleep (night blue, slow breathing) on the prompt box while Orbit sleeps; the hotkey or wake word wakes him (the lid lifts, a little hop).

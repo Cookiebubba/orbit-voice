@@ -34,6 +34,12 @@ contextBridge.exposeInMainWorld('desktop', {
     ipcRenderer.on('buddy:event', fn);
     return () => ipcRenderer.removeListener('buddy:event', fn);
   },
+  // Something the user asked the avatar to do ({ action, dir }): "do a backflip".
+  onBuddyCommand: (cb) => {
+    const fn = (_e, c) => cb(c);
+    ipcRenderer.on('buddy:command', fn);
+    return () => ipcRenderer.removeListener('buddy:command', fn);
+  },
   openLogs: () => ipcRenderer.invoke('app:open-logs'),
   startWithWindows: {
     get: () => ipcRenderer.invoke('app:get-login'),
