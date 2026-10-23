@@ -33,6 +33,7 @@
     "fuzz:e2e": "electron scripts/fuzz-e2e.mjs",
     "latency:claude-voice": "node scripts/claude-voice-latency.mjs",
     "eval:intent": "node scripts/intent-eval.mjs",
+    "eval:listen": "node scripts/listen-eval.mjs",
     "eval:emote": "node scripts/emote-eval.mjs"
   },
   "engines": {

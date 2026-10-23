@@ -13,7 +13,7 @@ const FILLER = /^(?:u+h*m+|u+h+|e+r+m*|a+h+|h+m+|m{2,})$/;
 const norm = (text) =>
   String(text || '')
     .toLowerCase()
-    .replace(/[â€™']/g, '')
+    .replace(/[’']/g, '')
     .replace(/[^a-z\s]/g, ' ')
     .split(/\s+/)
     .filter((w) => w && !FILLER.test(w));
@@ -70,7 +70,7 @@ const RUN_GERUND = new Set(['working', 'doing', 'going', 'running', 'generating'
  * "cancel that" is about the draft (cancel_draft), not Claude.
  */
 export function asksToStop(text, { hasDraft = false } = {}) {
-  const w = String(text || '').toLowerCase().replace(/[â€™']/g, '').replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  const w = String(text || '').toLowerCase().replace(/[’']/g, '').replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!w || FOR_ORBIT.test(w) || NEGATED.test(w) || STATUS_QUESTION.test(w)) return false;
   const hits = [...w.matchAll(STOP_RE)];
   if (!hits.length) return false;

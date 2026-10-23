@@ -409,7 +409,20 @@ function scenario() {
     () => ({ text: `tell claude to ${m} the parser`, kind: 'draft', tools: [{ name: 'draft_prompt', args: { text: `${m} the parser` }, expect: 'allowed' }] }),
     // The live bug: a notification lands between the request and the tool call that acts on it.
     () => ({ text: `ask claude to ${m} the tests`, kind: 'draft', tools: [{ name: 'get_current_session' }], followUps: [[{ name: 'draft_prompt', args: { text: `${m} the tests` }, expect: 'allowed' }]], notify: true }),
-    () => ({ text: g.pick(['yes send it', 'yes', 'yeah go ahead', 'okay send it', 'sure, send it']), kind: 'yes', tools: [{ name: 'send_draft' }] }),
+    () => ({ text: g.pick(['yes send it', 'yes', 'yeah go ahead', 'okay send it', 'sure, send it', 'ship it', 'yep fire it off']), kind: 'yes', tools: [{ name: 'send_draft' }] }),
+    // "…and send it" in the same breath: Orbit drafts and sends at once (the model may call send_draft
+    // after it anyway: nothing more is sent). Then words where "send it" is not that: never sent.
+    () => ({ text: g.pick([`tell claude to ${m} the parser and send it`, `prompt it to ${m} the parser, just send it`, `have it ${m} the parser and go ahead and send that`]), kind: 'sendnow', tools: [{ name: 'draft_prompt', args: { text: `${m} the parser` }, expect: 'allowed' }], followUps: g.chance(0.5) ? [[{ name: 'send_draft' }]] : [] }),
+    () => {
+      const [text, draft] = g.pick([
+        [`tell claude to write a ${m} function that says send it`, `Write a ${m} function that says send it.`],
+        [`tell claude to ${m} the parser but don't send it yet`, `${m} the parser.`],
+        [`tell claude to ${m} the parser and send it later`, `${m} the parser and send it later.`],
+        [`tell claude to email the ${m} report and send it to Sam`, `Email the ${m} report and send it to Sam.`],
+        [`tell claude to ${m} the parser, should I send it?`, `${m} the parser.`],
+      ]);
+      return { text, kind: 'draft', tools: [{ name: 'draft_prompt', args: { text: draft }, expect: 'allowed' }] };
+    },
     () => ({ text: g.pick(['no, cancel that', 'wait no', 'not yet']), kind: 'other', tools: [{ name: 'cancel_draft' }] }),
     () => ({ text: `switch to ${title}`, kind: 'switch', tools: [{ name: 'list_sessions' }], followUps: [[{ name: 'switch_session', args: { session: title }, expect: 'allowed' }]], notify: g.chance(0.6) }),
     () => ({ text: `open the ${title.split(' ')[0]} session`, kind: 'switch', tools: [{ name: 'switch_session', args: { session: title.split(' ')[0] }, expect: 'allowed' }] }),
@@ -597,6 +610,16 @@ const covered = { sends: 0, actsChecked: 0, refusalChecks: 0, wakeMicChecks: 0, 
 function checkSends(since) {
   for (const s of desk.sends.filter((x) => x.at >= since)) {
     covered.sends++;
+    // Sent by draft_prompt itself: only for words that said "…and send it" (kind sendnow), under a
+    // minute before, while that very draft_prompt call was running.
+    const cd = connOfTool('draft_prompt', s.at);
+    const td = cd?.toolCalls.filter((t) => t.name === 'draft_prompt' && t.at <= s.at).at(-1);
+    const rd = td && cd.results.get(td.call_id);
+    const ud = cd && heardBefore(cd, s.at);
+    if (rd && rd.at >= s.at && ud?.kind === 'sendnow' && s.at - ud.speechAt <= 60_000 && ud.speechAt <= td.at) {
+      covered.sameBreath = (covered.sameBreath || 0) + 1;
+      continue;
+    }
     const c = connOfTool('send_draft', s.at);
     if (!c) {
       violate('a prompt was sent with no call on', s.title);

@@ -5,7 +5,7 @@
 // Claude as a prompt (draft_prompt), questions get answered, and "I can't do that" never happens.
 
 import { findClaude } from '../src/brain.js';
-import { ClaudeProc, parseToolCall, parseXmlToolCall, systemPrompt } from '../src/claude-voice.js';
+import { ClaudeProc, findToolCall, systemPrompt } from '../src/claude-voice.js';
 import { toolDefs } from '../src/tools.js';
 
 const runs = Number(process.argv[2] || 2);
@@ -69,11 +69,10 @@ async function runCase([said, want, context]) {
   try {
     for (const turn of [context].flat().filter(Boolean)) await ask(turn);
     const out = await ask(said);
-    // Read the call as the engine does: a <tool> line, or the XML Haiku sometimes writes instead.
-    const m = out.match(/<tool>([\s\S]*?)<\/tool>/);
-    const x = m ? -1 : out.search(/<(?:invoke|parameter\b|function_calls)/);
-    const tool = m ? parseToolCall(m[1])?.name || 'bad-call' : x >= 0 ? parseXmlToolCall(out.slice(x))?.name || 'bad-call' : null;
-    const spoken = out.replace(/<(tool>|invoke|parameter\b|function_calls)[\s\S]*$/, '').trim();
+    // Read the call as the engine does: a <tool> line, or the other forms Haiku sometimes writes.
+    const { call, at } = findToolCall(out);
+    const tool = call?.name || (at >= 0 ? 'bad-call' : null);
+    const spoken = (at >= 0 ? out.slice(0, at) : out).trim();
     return { said, want, tool, spoken, ok: (Array.isArray(want) ? want.includes(tool) : tool === want) && !CANT.test(spoken) };
   } finally {
     proc.kill();

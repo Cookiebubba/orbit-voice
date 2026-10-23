@@ -6,7 +6,7 @@
 // Synthetic words only; nothing is logged but this script's own verdicts.
 
 import { findClaude } from '../src/brain.js';
-import { ClaudeProc, parseToolCall, parseXmlToolCall, systemPrompt } from '../src/claude-voice.js';
+import { ClaudeProc, findToolCall, systemPrompt } from '../src/claude-voice.js';
 import { agentContext } from '../src/agent.js';
 import { wordsNotSaid } from '../src/tools.js';
 
@@ -83,11 +83,9 @@ async function runCase([said, want, checks = [], context]) {
   try {
     for (const turn of [context].flat().filter(Boolean)) await ask(turn);
     const out = await ask(said);
-    // Read the call as the engine does: a <tool> line, or the XML Haiku sometimes writes instead.
-    const m = out.match(/<tool>([\s\S]*?)<\/tool>/);
-    const x = m ? -1 : out.search(/<(?:invoke|parameter\b|function_calls)/);
-    const call = m ? parseToolCall(m[1]) : x >= 0 ? parseXmlToolCall(out.slice(x)) : null;
-    const tool = call?.name || (m || x >= 0 ? 'bad-call' : null);
+    // Read the call as the engine does: a <tool> line, or the other forms Haiku sometimes writes.
+    const { call, at } = findToolCall(out);
+    const tool = call?.name || (at >= 0 ? 'bad-call' : null);
     const why = [];
     if (Array.isArray(want) ? !want.includes(tool) : tool !== want) why.push(`tool ${tool} (wanted ${want})`);
     if (want === D && tool === D) {

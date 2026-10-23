@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { createClaudeRealtime, isJunk, parseToolCall, parseXmlToolCall, speakableText, systemPrompt, takeChunks } from '../src/claude-voice.js';
+import { createClaudeRealtime, findToolCall, isJunk, parseToolCall, parseXmlToolCall, speakableText, systemPrompt, takeChunks } from '../src/claude-voice.js';
 import { downloadModels, downloadStatus, modelsReady } from '../src/voice-models.js';
 
 test('streamed text is cut into speakable pieces: the first early, sentences whole, numbers intact', () => {
@@ -43,6 +43,20 @@ test('tool calls are parsed strictly, and only the spoken text is said', () => {
   assert.deepEqual(parseXmlToolCall('<parameter name="get_current_session">{}</parameter>\n</invoke>'), { name: 'get_current_session', args: {} });
   assert.deepEqual(parseXmlToolCall('<invoke_tool>\n{"name": "get_current_session", "arguments": {}}\n</invoke_tool>\noutput>\n[Tool result: made up]'), { name: 'get_current_session', args: {} });
   assert.equal(parseXmlToolCall('<invoke name="rm -rf"></invoke>'), null);
+  // Other wrappers Haiku wrote in scripts/listen-eval.mjs: still the call it meant, never spoken.
+  assert.deepEqual(parseXmlToolCall('<tool_call>\n<tool_name>get_current_session</tool_name>\n<parameters>{}</parameters>\n</tool_call>'), { name: 'get_current_session', args: {} });
+  assert.deepEqual(parseXmlToolCall('<tool_call><tool_name>read_session</tool_name><arguments>{"last_n": 2}</arguments></tool_call>'), { name: 'read_session', args: { last_n: 2 } });
+  assert.deepEqual(parseXmlToolCall('<parse>\n{"tool": "draft_prompt", "text": "Make the footer sticky."}\n</parse>'), { name: 'draft_prompt', args: { text: 'Make the footer sticky.' } });
+  assert.deepEqual(parseXmlToolCall('<function>{"name": "switch_session", "parameters": {"session": "auth"}}</function>'), { name: 'switch_session', args: { session: 'auth' } });
+  assert.deepEqual(parseToolCall('{"tool": "send_draft"}'), { name: 'send_draft', args: {} });
+  assert.equal(parseToolCall('{"tool": "rm -rf /"}'), null);
+  assert.equal(parseXmlToolCall('<parse>\n</parse>'), null);
+  assert.deepEqual(findToolCall('<draft_prompt>{"text": "Rename the utils folder to helpers."}</draft_prompt>\n=====\n<draft_prompt>\n{"text": "Rena').call, { name: 'draft_prompt', args: { text: 'Rename the utils folder to helpers.' } });
+  assert.deepEqual(findToolCall('<send_draft>{}</send_draft>').call, { name: 'send_draft', args: {} });
+  assert.deepEqual(findToolCall('<happy> Done! The tests pass.'), { call: null, at: -1 }, 'an emote cue is not a call');
+  assert.deepEqual(findToolCall('One sec. <tool>{"name": "list_sessions", "arguments": {}}</tool>'), { call: { name: 'list_sessions', args: {} }, at: 9 });
+  assert.deepEqual(findToolCall('Checking. <tool_call><tool_name>list_sessions</tool_name></tool_call>').call, { name: 'list_sessions', args: {} });
+  assert.deepEqual(findToolCall('Paris is the capital.'), { call: null, at: -1 });
   assert.equal(speakableText('Run **`git status`** — see https://example.com/x'), 'Run git status — see a link');
   assert.equal(speakableText('git reset --soft HEAD~1'), 'git reset --soft HEAD tilde 1');
   for (const junk of ['_check', '="">', '<invoke', '...', '']) assert.equal(isJunk(junk), true, junk);
@@ -50,7 +64,8 @@ test('tool calls are parsed strictly, and only the spoken text is said', () => {
   const p = systemPrompt({ instructions: 'Be Orbit.', tools: [{ name: 'list_sessions', description: 'Lists sessions.', parameters: { type: 'object' } }] });
   assert.match(p, /^Where you run/, 'first: the environment Claude Code adds is not the user\x27s project');
   assert.match(p, /\n\nBe Orbit\./);
-  assert.match(p, /<tool>\{"name": "tool_name"/);
+  assert.match(p, /<tool>\{"name": "get_current_session", "arguments": \{\}\}<\/tool>/);
+  assert.ok(!/"tool_name"/.test(p), 'no placeholder name to copy (Haiku called a tool "tool_name")');
   assert.match(p, /- list_sessions: Lists sessions\./);
 });
 

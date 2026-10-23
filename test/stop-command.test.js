@@ -30,6 +30,11 @@ test('the gate: the user\x27s words must ask to stop Claude', () => {
   for (const t of ["don't stop", 'keep going', 'keep going, never stop', 'stop listening', 'stop talking', 'tell Claude to add a stop button', 'tell claude to stop using var', 'ask it to stop adding comments', 'did it stop?', 'why does it stop there', 'yes', 'send it', 'what is Claude doing', '']) assert.equal(asksToStop(t), false, t);
 });
 
+test('a curly apostrophe (as typed or transcribed) reads like a straight one', () => {
+  assert.equal(asksToStop('don’t stop'), false);
+  assert.equal(isStopCommand('that’s wrong, stop'), true);
+});
+
 test('"cancel that" with a draft waiting is about the draft', () => {
   assert.equal(asksToStop('cancel that'), false, 'no run named');
   assert.equal(asksToStop('cancel that', { hasDraft: true }), false);

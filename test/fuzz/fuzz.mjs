@@ -130,6 +130,7 @@ const log = await import('../../src/log.js');
 const sessions = await import('../../src/sessions.js');
 const tools = await import('../../src/tools.js');
 const { asksToStop } = await import('../../src/stop-command.js');
+const { withoutSendTail } = await import('../../src/send-intent.js');
 const { decisionFrom } = await import('../../src/claude-prompt.js');
 const brain = await import('../../src/brain.js?real'); // the real parser (the loader fakes only askBrain's process)
 const continuity = await import('../../src/continuity.js');
@@ -291,7 +292,8 @@ async function fuzzTools() {
     let utter = null; // { text, at }
     // Some words ask for an action themselves: those stay a request even if a notification comes
     // in before Grok acts (see tools.js asksFor); others count only if said after it.
-    const sayPool = consent ? ['yes', 'yes send it', 'ok', 'sure', g.str(30), 'stop it', 'allow it', 'the second one'] : ['no', 'wait', g.str(30), 'what?', 'copy that', 'switch to the other one', "don't switch", 'tell claude to fix it', 'start a new session', "don't stop", 'stop listening', 'stop', 'deny that', 'should I allow it?'];
+    // (Without consent, words with "send it" that never send: the prompt's own words, "not yet", a question.)
+    const sayPool = consent ? ['yes', 'yes send it', 'ok', 'sure', g.str(30), 'stop it', 'allow it', 'the second one', 'tell claude to fix it and send it', 'ship it'] : ['no', 'wait', g.str(30), 'what?', 'copy that', 'switch to the other one', "don't switch", 'tell claude to fix it', 'start a new session', "don't stop", 'stop listening', 'stop', 'deny that', 'should I allow it?', 'tell claude to write a function that says send it', "tell claude to fix it but don't send it yet", 'tell claude to fix it and send it later', 'tell claude to fix it, should I send it?', 'tell claude to send it', `${g.str(20)} and send it to Sam`];
     const MAX_ASK_MS = 2 * 60 * 1000;
     const fresh = () => !!utter && Date.now() - utter.at <= MAX_ASK_MS;
     const say = () => {
@@ -335,6 +337,7 @@ async function fuzzTools() {
         try {
           const t = String(JSON.parse(args)?.text ?? '').trim().slice(0, 8000);
           if (t) drafted.add(t);
+          if (t) drafted.add(withoutSendTail(t)); // ("…and send it" said: those words aren't sent)
         } catch {}
       }
       let r;

@@ -9,6 +9,7 @@ import path from 'node:path';
 import { listDesktopSessions, resolveSession, findSessionByTitle, findTranscript, readTranscriptTail, ago } from './sessions.js';
 import { answerPrompt, clearDesktop, fillDesktop, getDesktopInfo, getPendingPrompt, newSession, sendToDesktop, stopClaude, switchSession } from './desktop.js';
 import { asksToStop } from './stop-command.js';
+import { sendInstruction, withoutSendTail } from './send-intent.js';
 import { CHOICE_NAMES, decisionFrom, describePrompt } from './claude-prompt.js';
 import { logError, logInfo, logWarn, recentLog } from './log.js';
 import { MAX_CLIPBOARD_CHARS, writeClipboard } from './clipboard.js';
@@ -54,7 +55,7 @@ export const TOOL_DEFS = [
     type: 'function',
     name: 'draft_prompt',
     description:
-      'Your main tool. Turn what the user wants done (in their code, project, terminal, git...) into a prompt for the Claude Code session open in the desktop app: Claude does the work. Use it whenever the user asks for something to be done, even if they said it to you rather than "tell Claude". It types the draft into Claude\x27s prompt box but does NOT send it: then ask the user "Send it?".',
+      'Your main tool. Turn what the user wants done (in their code, project, terminal, git...) into a prompt for the Claude Code session open in the desktop app: Claude does the work. Use it whenever the user asks for something to be done, even if they said it to you rather than "tell Claude". It types the draft into Claude\x27s prompt box. If their request itself said to send it ("…and send it", "just send it", "send Claude: …"), Orbit sends it at once (the result says sent); otherwise it is not sent: ask "Send it?".',
     parameters: {
       type: 'object',
       properties: {
@@ -385,16 +386,24 @@ export function brainToolResult(result, { label = 'Claude', readProject, note = 
 }
 
 // A spoken or typed answer counts as consent only if it's a clear yes with no "no / wait / don't".
-const AFFIRMATIVE = /^(yes|yeah|yep|yup|ya|sure|ok|okay|send|send it|go|go ahead|do it|confirm|confirmed|correct|right|absolutely|affirmative|sounds good|perfect|please)\b/;
+// (People say yes many ways after "Send it?": "ship it", "fire away", "looks good, send it", "mhm".)
+const AFFIRMATIVE = /^(yes|yeah|yea|yep|yup|ya|sure|ok|okay|k|alright|all right|cool|great|fine|good|send|send it|submit|go|go ahead|do it|let'?s do it|let'?s go|ship it|fire away|fire it off|hit send|confirm|confirmed|correct|right|absolutely|definitely|affirmative|sounds good|sounds great|looks good|looks great|that'?s good|that'?s fine|that'?s great|that works|perfect|please|please do|mhm+|mm hmm|uh huh|why not)\b/;
 const NEGATIVE = /\b(no|nope|nah|don'?t|do not|wait|stop|cancel|hold on|hang on|not|never|change|instead|actually)\b/;
 export function isClearYes(utterance) {
   const t = String(utterance || '')
     .toLowerCase()
+    .replace(/[’‘]/g, "'")
     .replace(/[^a-z' ]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/^((um+|uh+|oh|well|so|hmm+|ah) )+/, '');
-  return !!t && AFFIRMATIVE.test(t) && !NEGATIVE.test(t);
+  // "why not" is a yes; every other "not" is a no.
+  if (!t || !AFFIRMATIVE.test(t) || NEGATIVE.test(t.replace(/^why not\b/, ''))) return false;
+  // A question, or more to say ("okay what does it do", "yes and also..."), is not an answer.
+  if (/\b(what|whats|how|where|who|which|when|also|plus)\b/.test(t) || /\bwhy\b(?! not)/.test(t)) return false;
+  // "Fine", "cool", "okay", "mhm" mean yes on their own; at the start of a longer reply only with a send in it.
+  const weak = /^(ok|okay|k|alright|all right|cool|great|fine|good|right|perfect|sounds|looks|that'?s|that works|mhm+|mm hmm|uh huh|why not|please)\b/.test(t);
+  return !weak || t.split(' ').length <= 5 || /\b(send|ship|fire|submit|go|do it)\b/.test(t);
 }
 
 /**
@@ -601,6 +610,8 @@ export function createToolRunner({
   const suggestions = [];
   let copyAskUsed = 0; // the `at` of the copy request already used: one request, one copy
   let settingAskUsed = 0; // the `at` of the words that already changed a setting
+  let sameBreathUsed = 0; // the `at` of the request whose "and send it" already sent a prompt
+  let lastSameBreath = null; // { at, result }: that send, for a send_draft the model calls after it anyway
 
   /** A session named by the model: its exact title when Orbit knows it, else the words. */
   const sessionArg = (session) => {
@@ -703,7 +714,7 @@ export function createToolRunner({
 
     async draft_prompt({ text, verbatim = false } = {}) {
       // (An emote cue the voice slipped in, <happy>, is its face, never words for Claude.)
-      const raw = withoutKnownCues(String(text || '')).trim().slice(0, 8000);
+      let raw = withoutKnownCues(String(text || '')).trim().slice(0, 8000);
       if (!raw) return { error: 'Draft text was empty.' };
       // The words must come from the user: not from an app notification, a transcript Grok read, or
       // a second-brain answer (its suggested prompt is only drafted once the user asks for it).
@@ -721,6 +732,10 @@ export function createToolRunner({
       if (!asked || !/[\p{L}\p{N}]/u.test(String(asked.text))) {
         return { error: 'Not drafted: ask the user what they want to tell Claude first. A draft needs their own words, said after the latest app notification or second-brain answer.' };
       }
+      // "…and send it" in the same breath (src/send-intent.js): the words that asked for this draft
+      // also told Orbit to send it. Those send words are never part of the prompt.
+      const intent = sendInstruction(asked.text);
+      if (intent.send && !verbatim) raw = withoutSendTail(raw);
       // ...and they are the user's own words: every word in the draft is one they said (or typed) in
       // this call, or comes from a prompt the second brain suggested. Verbatim, none may differ;
       // otherwise one in ten may (a number written as digits, a name the transcript split).
@@ -728,9 +743,18 @@ export function createToolRunner({
       verbatim = verbatim === true || asksVerbatim(said);
       const notSaid = wordsNotSaid(raw, [said, ...suggestions].join(' '), { direct: !verbatim });
       const allowed = verbatim ? 0 : Math.max(1, Math.floor(wordsOf(raw).length / 10));
+      // Sent at once only on the user's own words in this very request: said after anything else came
+      // in (a notification, a second-brain answer, the resume note), under a minute old, used once,
+      // and a prompt made of their words alone (not one the second brain suggested).
+      const sendNow =
+        intent.send &&
+        asked.at > Math.max(lastNotificationAt, lastBrainAnswerAt, lastDataAt) &&
+        asked.at !== sameBreathUsed &&
+        Date.now() - asked.at <= CONSENT_MAX_AGE_MS &&
+        wordsNotSaid(raw, said, { direct: !verbatim }).length <= allowed;
       if (notSaid.length > allowed) {
         return {
-          error: `Not drafted: the draft has words the user didn't say (${[...new Set(notSaid)].slice(0, 8).map((w) => `"${w}"`).join(', ')}). Use their own words for everything Claude should do or know: only drop what they said to you (like "tell Claude to") and turn it to speak to Claude directly. Don't add, explain or improve anything.`,
+          error: `Not drafted: the draft has words the user didn't say (${[...new Set(notSaid)].slice(0, 8).map((w) => `"${w}"`).join(', ')}). Use their own words for everything Claude should do or know: only drop what they said to you (like "tell Claude to") and turn it to speak to Claude directly. Don't add, explain or improve anything. If they pointed at something ("the second one", "that"), keep their words: Claude knows what they mean.`,
         };
       }
       const clean = verbatim ? raw : removeFillers(raw) || raw;
@@ -757,6 +781,28 @@ export function createToolRunner({
       const shown = await fillDesktop(clean, { ...boxOf(next), replace }).catch((e) => ({ ok: false, error: String(e?.message || e) }));
       next.filled = !!shown?.ok;
       setDraft(next);
+      if (sendNow && next.filled) {
+        sameBreathUsed = asked.at;
+        const sent = await doSend(next);
+        if (sent.ok) {
+          lastSameBreath = { at: Date.now(), result: sent };
+          return {
+            drafted: true,
+            sent: true,
+            text: clean,
+            target_session: sent.sessionTitle || (targetNew ? 'a new session' : info.sessionTitle),
+            next_step: 'The user said to send it, so Orbit sent it. Say only "Sent." (or a word or two). Don\x27t ask to send it, and don\x27t call send_draft.',
+          };
+        }
+        return {
+          drafted: true,
+          sent: false,
+          text: clean,
+          in_prompt_box: true,
+          send_error: String(sent.message || sent.error || 'unknown').slice(0, 200),
+          next_step: 'The user asked to send it, but sending failed (see send_error). Say so in a few words; the draft is still in the box. Ask "Send it?" and call send_draft only after a clear yes.',
+        };
+      }
       return {
         drafted: true,
         text: clean,
@@ -777,7 +823,16 @@ export function createToolRunner({
 
     async send_draft() {
       const snapshot = draft; // the exact draft being confirmed
-      if (!snapshot) return { ok: false, error: 'There is no draft to send. Use draft_prompt first.' };
+      // Orbit just sent it itself ("…and send it"), and the model asks too: nothing more to send.
+      if (!snapshot && lastSameBreath && Date.now() - lastSameBreath.at < 30_000) {
+        return { ok: true, already_sent: true, sessionTitle: lastSameBreath.result.sessionTitle, next_step: 'Orbit already sent it, as the user asked. Say only "Sent." and don\x27t call send_draft again.' };
+      }
+      if (!snapshot) {
+        // "…and send it" with nothing drafted yet: the request comes first (Orbit then sends it itself).
+        const u = recentUtterance();
+        if (u && sendInstruction(u.text).send) return { ok: false, error: 'There is no draft yet.', next_step: 'Call draft_prompt with what the user asked for (without the send words). Orbit sends it at once, since they said to.' };
+        return { ok: false, error: 'There is no draft to send. Use draft_prompt first.' };
+      }
       // Something came in after this draft was read back (an app notification, a held answer, a
       // second-brain answer with a suggested prompt): a "yes" now may be about that, not the draft.
       if (Math.max(lastNotificationAt, lastBrainAnswerAt) > snapshot.createdAt) {
