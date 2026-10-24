@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { isSignInProblem, speakable } from '../brain.js';
-import { childEnv, groupOptions, killTree } from '../platform.js';
+import { childEnv, groupOptions, killTree } from '../platform/system.js';
 
 export const VISION_LIMITS = { model: 'sonnet', timeoutMs: 90_000, budgetUsd: 0.3, answerChars: 600 };
 

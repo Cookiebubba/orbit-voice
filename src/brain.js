@@ -14,7 +14,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { childEnv, claudeNames, desktopClaudeCandidates, groupOptions, killTree as killProcessTree, searchDirs } from './platform.js';
+import { childEnv, claudeNames, desktopClaudeCandidates, groupOptions, killTree as killProcessTree, searchDirs } from './platform/system.js';
 
 export const BRAIN_MODELS = Object.freeze({
   haiku: { label: 'Haiku', timeoutMs: 60_000, budgetUsd: 0.5 },
@@ -79,7 +79,7 @@ You can look at the user's project with read-only tools (Read, Glob, Grep); you 
  * claude.cmd shim to the real claude.exe), then the copy bundled with the Claude desktop app.
  * On macOS "PATH" also means the login shell's PATH and the usual install folders (~/.local/bin,
  * ~/.claude/local, Homebrew, /usr/local/bin, ~/.npm-global/bin), since an app opened from Finder
- * doesn't inherit the terminal's PATH (see src/platform.js). Returns { path, source } or null.
+ * doesn't inherit the terminal's PATH (see src/platform/system.js). Returns { path, source } or null.
  * `opts` ({ platform, homedir, shellPath }) is for tests.
  */
 export function findClaude(configured = '', env = process.env, opts = {}) {
@@ -535,7 +535,7 @@ export const shellQuote = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
 export const signInScript = (file, claudePath) => `#!/bin/sh\nrm -f ${shellQuote(file)}\nexec ${shellQuote(claudePath)} auth login\n`;
 
 // Runs still going when Orbit exits are ended too (on Windows a child outlives its parent; on
-// macOS each run is its own process group, see src/platform.js).
+// macOS each run is its own process group, see src/platform/system.js).
 const live = new Set();
 /** End the run and anything it started (Claude Code runs ripgrep as child processes). */
 const killTree = (child, sync = false) => killProcessTree(child, { sync });

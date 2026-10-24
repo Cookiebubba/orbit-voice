@@ -8,11 +8,11 @@
 // <Claude app data> is %APPDATA%\Claude for the regular installer on Windows, but the Microsoft
 // Store version keeps it in %LOCALAPPDATA%\Packages\Claude_<id>\LocalCache\Roaming\Claude (only
 // processes started by Claude itself see that redirected; everything else, like this app, has to
-// look there explicitly). On macOS it is ~/Library/Application Support/Claude. See src/platform.js.
+// look there explicitly). On macOS it is ~/Library/Application Support/Claude. See src/platform/system.js.
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { projectsDir, sessionRootCandidates } from './platform.js';
+import { projectsDir, sessionRootCandidates } from './platform/system.js';
 
 const PROJECTS_DIR = projectsDir();
 

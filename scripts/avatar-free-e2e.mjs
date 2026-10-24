@@ -141,7 +141,7 @@ const display = () => ({ id: 1, bounds: { x: workArea.x, y: 0, width: workArea.w
 const { getConfigDir } = await import('../src/config.js');
 // The Claude app can't be driven, as on a Mac: every desktop.js call gets the Mac's answer.
 const { setDesktopDriver } = await import('../src/desktop.js');
-const { desktopUnsupportedMessage } = await import('../src/platform.js');
+const { desktopUnsupportedMessage } = await import('../src/platform/system.js');
 const desktopCalls = [];
 setDesktopDriver({ run: (mode) => (desktopCalls.push(mode), { ok: false, error: 'unsupported_platform', message: desktopUnsupportedMessage('darwin') }) });
 let finished = false;

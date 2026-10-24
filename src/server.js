@@ -32,7 +32,7 @@ import {
   updateSettings,
 } from './config.js';
 import { askBrain, claudeAuthStatus, findClaude, openClaudeSignIn, speakable } from './brain.js';
-import { hotkeyLabel as platformHotkeyLabel, primeLoginShellPath } from './platform.js';
+import { hotkeyLabel as platformHotkeyLabel, primeLoginShellPath } from './platform/system.js';
 import { createClaudeRealtime, keepSpare, loadSpeech, stopClaudeVoice, systemPrompt } from './claude-voice.js';
 import { downloadModels, downloadStatus, modelsReady, VOICE_MODELS_MB } from './voice-models.js';
 import { setClipboardWriter } from './clipboard.js';
@@ -104,7 +104,7 @@ export function stopBackgroundWork() {
   stopClaudeVoice();
 }
 
-/** "Ctrl+Alt+G" on Windows, "⌃⌥G" on a Mac (see src/platform.js). */
+/** "Ctrl+Alt+G" on Windows, "⌃⌥G" on a Mac (see src/platform/system.js). */
 export const hotkeyLabel = (accel) => platformHotkeyLabel(accel);
 const wakeLabel = () => hotkeyLabel(getSetting('wakeHotkey'));
 

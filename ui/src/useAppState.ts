@@ -98,7 +98,7 @@ export function useAppState({ onFinished, onWake }: { onFinished: (f: Finished) 
 }
 
 const MAC_MODS: Record<string, string> = { Control: "⌃", Ctrl: "⌃", Alt: "⌥", Option: "⌥", Shift: "⇧", Command: "⌘", Cmd: "⌘", CommandOrControl: "⌘", CmdOrCtrl: "⌘", Super: "⌘", Meta: "⌘" };
-/** "Ctrl+Alt+G" on Windows, "⌃⌥G" on a Mac (the same as src/platform.js hotkeyLabel). */
+/** "Ctrl+Alt+G" on Windows, "⌃⌥G" on a Mac (the same as src/platform/system.js hotkeyLabel). */
 export const hotkeyLabel = (accel = "") => {
   if (!isMac) return accel.replace(/CommandOrControl|CmdOrCtrl|Control/g, "Ctrl").replace(/Super|Meta/g, "Win");
   const parts = accel.split("+").filter(Boolean);

@@ -17,7 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 import { isSignInProblem, speakable } from '../brain.js';
-import { childEnv, groupOptions, killTree } from '../platform.js';
+import { childEnv, groupOptions, killTree } from '../platform/system.js';
 
 export const HELPER_LIMITS = Object.freeze({ budgetUsd: 2, maxMinutes: 20, model: 'sonnet' });
 

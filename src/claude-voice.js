@@ -31,7 +31,7 @@ import { createRequire } from 'node:module';
 import { isSignInProblem } from './brain.js';
 import { createCueStream } from './emote-cues.js';
 import { modelPaths } from './voice-models.js';
-import { childEnv, groupOptions, killTree } from './platform.js';
+import { childEnv, groupOptions, killTree } from './platform/system.js';
 
 const require = createRequire(import.meta.url);
 
@@ -464,7 +464,7 @@ export class ClaudeProc {
     try {
       this.child.stdin?.end();
     } catch {}
-    // The whole tree: taskkill /T on Windows, the process group elsewhere (src/platform.js).
+    // The whole tree: taskkill /T on Windows, the process group elsewhere (src/platform/system.js).
     killTree(this.child, { sync });
   }
 }

@@ -1,6 +1,7 @@
 // What differs between Windows and macOS (and Linux, for running from source), in one place:
 // where Claude keeps its files, where Claude Code may be installed, the PATH a child process needs,
 // how to end a process and everything it started, and how a hotkey reads.
+// (Other apps' windows, for Orbit anywhere, are src/platform/index.js.)
 //
 // Every function takes the platform, environment and home folder as options (defaulting to this
 // machine's), so tests can ask "what would a Mac do?" on any machine.

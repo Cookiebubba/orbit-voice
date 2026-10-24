@@ -1,8 +1,12 @@
 // "Orbit anywhere": the one interface between Orbit's shared core and the native layer that reads
 // and acts on other apps' windows. The core (tools, contexts, helpers) only calls what's exported
 // here; Windows backs it with PowerShell/C# helpers in platform/win/, and a Mac helper can slot in
-// behind the same calls later. (Not to be confused with src/platform.js: paths, PATH and process
-// trees for Claude Code.)
+// behind the same calls later.
+//
+// What's in src/platform/: system.js (paths, PATH and process trees: what differs between Windows
+// and macOS for Claude Code), this file and focus.js (the window layer), and win/ (the Windows
+// helpers: focus.ps1 and uia.ps1 for Orbit anywhere, OrbitAuto.cs for desktop.ps1, and
+// uia-interop.ps1, the COM UI Automation interop both share).
 //
 // Phase 1 is focus: which window is in front, in any app, from window events (no polling).
 // Phase 2 adds reading a window's UI Automation tree (scanWindow), for app profiles.

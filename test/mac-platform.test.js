@@ -28,7 +28,7 @@ import {
   sessionRootCandidates,
   tarPath,
   wellKnownBinDirs,
-} from '../src/platform.js';
+} from '../src/platform/system.js';
 import { desktopSessionRoots } from '../src/sessions.js';
 import { findClaude, openClaudeSignIn, shellQuote, signInScript } from '../src/brain.js';
 

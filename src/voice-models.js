@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { tarPath } from './platform.js';
+import { tarPath } from './platform/system.js';
 
 const BASE = 'https://github.com/k2-fsa/sherpa-onnx/releases/download';
 

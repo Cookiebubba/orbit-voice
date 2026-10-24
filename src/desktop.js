@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logError, logWarn } from './log.js';
-import { desktopUnsupportedMessage } from './platform.js';
+import { desktopUnsupportedMessage } from './platform/system.js';
 
 // In the installed app this file is inside app.asar, which PowerShell can't read; the script
 // itself is shipped unpacked next to it.
