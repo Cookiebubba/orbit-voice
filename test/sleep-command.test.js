@@ -19,3 +19,8 @@ test('anything more goes to the model', () => {
     'go to sleep go to sleep go to sleep go to sleep',
   ]) assert.equal(isSleepCommand(s), false, s);
 });
+
+test('the name as speech to text often hears it, and "for a bit", still just mean sleep', () => {
+  for (const s of ['Go to sleep or bit.', 'go to sleep, orb it', 'Go to sleep for a bit.', 'go to sleep a little bit', 'Qubit, go to sleep for a while', 'go to sleep for now']) assert.equal(isSleepCommand(s), true, s);
+  for (const s of ['go to sleep or bit and send it', 'a bit more sleep in the retry loop']) assert.equal(isSleepCommand(s), false, s);
+});

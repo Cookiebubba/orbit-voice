@@ -1521,8 +1521,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       const micSecs = (stats.micBytes / 2 / 24000).toFixed(1); // pcm16 mono at 24 kHz
       // Counts and codes only: Grok's audio length tells "Grok never spoke" from "spoke, not heard".
       const grokSecs = (stats.grokAudioBytes / 2 / 24000).toFixed(1);
-      const heard = `mic audio sent ${micSecs}s, loudest ${Math.round((stats.micPeak / 32768) * 100)}%, heard you ${stats.heard}x, replied ${stats.replies}x, tools ${stats.tools}, Grok audio received ${grokSecs}s${stats.note ? ', resume note given' : ''}${pageReason ? `, page: ${pageReason}` : ''}`;
-      if (pageClosed) logInfo('xai', `Grok session ended by Orbit after ${secs}s (${wasAnnounce ? 'spoken update' : 'hang up / sleep'})`, heard);
+      const heard = `mic audio sent ${micSecs}s, loudest ${Math.round((stats.micPeak / 32768) * 100)}%, heard you ${stats.heard}x, replied ${stats.replies}x, tools ${stats.tools}, ${useClaude ? 'voice' : 'Grok'} audio received ${grokSecs}s${stats.note ? ', resume note given' : ''}${pageReason ? `, page: ${pageReason}` : ''}`;
+      if (pageClosed) logInfo('xai', `${useClaude ? 'Claude voice' : 'Grok'} session ended by Orbit after ${secs}s (${wasAnnounce ? 'spoken update' : 'hang up / sleep'})`, heard);
       else if (code !== 1000 && code !== 1005) logWarn('xai', `Grok closed the connection after ${secs}s (code ${code})`, `${why} · ${heard}`);
       else logWarn('xai', `Grok ended the session after ${secs}s (code ${code})`, `${why || 'no reason given'} · ${heard}`);
       toBrowser({ type: 'bridge.closed', code, reason: reason.toString() });

@@ -259,7 +259,7 @@ test('the weights the timing uses: punctuation stands for its pause', () => {
 });
 
 // ---------- Claude voice: cues never reach the speech engine or the captions ----------
-const FILLERS = ['One sec.', 'Let me check.', 'Checking.', 'Hmm.', 'Let me think.']; // made ahead, at the start of a call
+const FILLERS = ['One sec.', 'Let me check.', 'Checking.', 'One moment.', 'Let me think.']; // made ahead, at the start of a call
 function fakeSpeech() {
   const vad = { detected: false, segments: [], acceptWaveform() {}, isDetected() { return false; }, isEmpty() { return true; }, front() {}, pop() {}, reset() {} };
   return { said: [], get words() { return this.said.filter((s) => !FILLERS.includes(s)); }, newVad: () => vad, newResampler: () => ({ resample: (f) => f }), async transcribe() { return ''; }, async speak(text) { this.said.push(text); return new Float32Array(240); } };

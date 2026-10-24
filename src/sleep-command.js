@@ -15,7 +15,8 @@ const SLEEP_PHRASES = new Set([
 const FILLER = /^(?:u+h*m+|u+h+|e+r+m*|a+h+|h+m+|m{2,})$/;
 const NAMES = new Set(['orbit', 'grok', 'qubit', 'buddy']);
 const LEAD = ['hey', 'okay', 'ok', 'alright', 'all right', 'right', 'cool', 'great', 'perfect', 'thanks', 'thank you', 'so', 'and', 'now', 'you can', 'please', 'just', 'go ahead and'];
-const TAIL = ['thanks', 'thank you', 'please', 'now', 'for now', 'then', 'buddy', 'orbit', 'grok', 'qubit'];
+// (Speech to text often hears the name as 'or bit', and 'for a bit' is still just sleep.)
+const TAIL = ['thanks', 'thank you', 'please', 'now', 'for now', 'then', 'buddy', 'orbit', 'grok', 'qubit', 'or bit', 'orb it', 'a bit', 'for a bit', 'a little bit', 'for a little bit', 'for a while'];
 
 const norm = (text) =>
   String(text || '')
@@ -33,7 +34,7 @@ function strip(words, list, fromEnd) {
       again = true;
       continue;
     }
-    for (const p of list) {
+    for (const p of [...list].sort((a, b) => b.split(' ').length - a.split(' ').length)) { // longest first ("for now" before "now")
       const pw = p.split(' ');
       const at = fromEnd ? words.slice(-pw.length) : words.slice(0, pw.length);
       if (pw.length < words.length && at.join(' ') === p) {

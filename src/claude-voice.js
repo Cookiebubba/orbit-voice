@@ -40,7 +40,7 @@ export const CLAUDE_VOICE = Object.freeze({
   model: 'haiku',
   effort: 'low',
   endOfTurnS: 0.45, // silence that ends your turn
-  slowFillerMs: 1500, // no words from Claude this long after you finish: a short filler
+  slowFillerMs: 1500, // no words from Claude this long after you finish: a short filler ("Let me think.")
   unfinishedHoldMs: 1000, // words that plainly go on ("…and also", "so, um"): wait this much longer for the rest
   spareMs: 20 * 60 * 1000, // a warm Claude Code process waits this long for the next call
   threads: 4,
@@ -555,7 +555,8 @@ export function stopClaudeVoice() {
 // ---------------------------------------------------------------- the engine
 
 const TOOL_FILLERS = ['One sec.', 'Let me check.', 'Checking.'];
-const SLOW_FILLERS = ['Hmm.', 'Let me think.'];
+// (Not 'Hmm.': Kitten says it as 'Hum.')
+const SLOW_FILLERS = ['One moment.', 'Let me think.'];
 
 /**
  * A realtime "socket" backed by local speech models and Claude Code. Same surface the bridge uses
