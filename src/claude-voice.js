@@ -40,7 +40,8 @@ export const CLAUDE_VOICE = Object.freeze({
   model: 'haiku',
   effort: 'low',
   endOfTurnS: 0.45, // silence that ends your turn
-  slowFillerMs: 1500, // no words from Claude this long after you finish: a short "Hmm."
+  slowFillerMs: 1500, // no words from Claude this long after you finish: a short filler
+  unfinishedHoldMs: 1000, // words that plainly go on ("…and also", "so, um"): wait this much longer for the rest
   spareMs: 20 * 60 * 1000, // a warm Claude Code process waits this long for the next call
   threads: 4,
   sid: 0,
@@ -66,6 +67,20 @@ const effortOk = (e) => CLAUDE_VOICE_EFFORTS.includes(e);
 const [M0, M1] = [String.fromCharCode(0xe000), String.fromCharCode(0xe001)]; // (private-use characters: never in text)
 const MARK = new RegExp(`${M0}([a-z]+)${M1}`, 'g');
 const mark = (name) => `${M0}${name}${M1}`;
+
+/**
+ * Words that plainly go on: they end on a joining word, an article, a filler or a comma ("tell Claude
+ * that I'd like to", "and also", "so, um"). A short pause there is a breath, not the end of the turn.
+ */
+const GOES_ON = new Set('and but or so because cause like the a an to of for with which um umm uh uhh er erm also then if when my your our is was are were about into than from'.split(' '));
+export const soundsUnfinished = (text) => {
+  const t = String(text || '').trim();
+  if (!t || /\?\s*$/.test(t)) return false;
+  if (/[,…–—-]\s*$/.test(t)) return true;
+  // (Speech to text often puts a full stop after a fragment: "…I would like to be able to.")
+  const last = t.replace(/[.!\s]+$/, '').split(/\s+/).pop().toLowerCase().replace(/[^a-z']/g, '');
+  return GOES_ON.has(last);
+};
 
 const OPEN = 1;
 const CLOSED = 3;
@@ -623,6 +638,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
         speaking = true;
         speechItem = { id: id('item'), startedAt: now() };
         emit({ type: 'input_audio_buffer.speech_started', item_id: speechItem.id, audio_start_ms: 0 });
+        if (hold) clearTimeout(hold.timer); // they went on: these words join the ones held
         if (turn && !turn.finished) cancelTurn('interrupted'); // you talked over it
       }
       while (!vad.isEmpty()) {
@@ -654,7 +670,11 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
     }
     if (sock.readyState !== OPEN) return;
     emit({ type: 'conversation.item.input_audio_transcription.completed', item_id: item.id, transcript: text });
-    if (!/[\p{L}\p{N}]/u.test(text)) return; // a cough: no words, no reply
+    if (!/[\p{L}\p{N}]/u.test(text)) {
+      // A cough: no words, no reply (but words held a moment ago still get theirs).
+      if (hold) respondHeld();
+      return;
+    }
     let local = null;
     try {
       local = localTurn?.(text, item.id) || null;
@@ -666,7 +686,25 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
       return; // done here: no reply from Claude for this turn
     }
     input.push(text);
-    respond({ endedAt, heardAt, textAt: now() });
+    if (hold) clearTimeout(hold.timer);
+    const timing = { endedAt: hold?.timing.endedAt ?? endedAt, heardAt, textAt: now() };
+    // Words that plainly go on: wait a moment for the rest before asking Claude (a long dictation
+    // with breaths in it is one turn, not a turn started and cancelled at every pause).
+    if (soundsUnfinished(text)) {
+      hold = { timing, timer: setTimeout(respondHeld, CLAUDE_VOICE.unfinishedHoldMs) };
+      return;
+    }
+    hold = null;
+    respond(timing);
+  };
+  let hold = null; // { timing, timer }: words held a moment because they sounded unfinished
+  const respondHeld = () => {
+    const h = hold;
+    hold = null;
+    if (!h) return;
+    clearTimeout(h.timer);
+    if (speaking) return; // they're talking again: the next words carry these along
+    if (sock.readyState === OPEN && input.length) respond(h.timing);
   };
 
   // --- Claude ---------------------------------------------------------------
@@ -990,6 +1028,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
 
   sock.close = (code = 1000, reason = '') => {
     if (sock.readyState === CLOSED) return;
+    if (hold) clearTimeout(hold.timer);
     if (turn && !turn.finished) {
       turn.cancelled = true;
       clearTimeout(turn.slowTimer);

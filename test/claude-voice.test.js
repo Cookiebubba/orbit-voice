@@ -467,3 +467,39 @@ test('new instructions before anything was said: a plain restart with them', asy
   assert.equal(fc.calls[1].messages.length, 0, 'no warm-up needed: nothing to carry over');
   sock.close();
 });
+
+test('words that plainly go on wait a moment for the rest: one turn for a dictation with breaths in it', async () => {
+  const { soundsUnfinished, CLAUDE_VOICE } = await import('../src/claude-voice.js');
+  for (const t of ['Tell Claude that I would like to be able to.', 'and also', 'So, um', 'in some of these apps,']) assert.equal(soundsUnfinished(t), true, t);
+  for (const t of ['Fix the login bug.', 'What time is it?', 'Yeah, send it.', 'Thank you.', '']) assert.equal(soundsUnfinished(t), false, t);
+  const fc = fakeClaude(() => ['OK.']);
+  const speech = fakeSpeech();
+  const texts = ['Tell Claude that the inputs in some apps are not,', 'mapped very well.'];
+  speech.transcribe = async () => texts.shift() || '';
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech, spawnImpl: fc.spawnImpl });
+  const ev = collect(sock);
+  await opened(sock);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [] } }));
+  const mic = Buffer.alloc(2048 * 2).toString('base64');
+  const utter = () => {
+    speech.vad.detected = true;
+    sock.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: mic }));
+    speech.vad.detected = false;
+    speech.vad.segments.push({ start: 0, samples: new Float32Array(1024) });
+    sock.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: mic }));
+  };
+  utter();
+  await until(() => ev.filter((e) => e.type === 'conversation.item.input_audio_transcription.completed').length === 1);
+  await new Promise((r) => setTimeout(r, 200));
+  assert.ok(!ev.some((e) => e.type === 'response.created'), 'no turn yet: the words went on');
+  utter(); // the rest, after a breath
+  await until(() => ev.some((e) => e.type === 'response.done'), CLAUDE_VOICE.unfinishedHoldMs + 2000);
+  assert.equal(ev.filter((e) => e.type === 'response.created').length, 1, 'one turn');
+  const asked = fc.calls[0].messages.filter((m) => m.type === 'user').map((m) => m.message.content).join('\n');
+  assert.match(asked, /are not,\n\nmapped very well\./, 'both parts in that one turn');
+  // Unfinished words and then nothing more: they still get their reply after the hold.
+  texts.push('and also');
+  utter();
+  await until(() => ev.filter((e) => e.type === 'response.created').length === 2, CLAUDE_VOICE.unfinishedHoldMs + 2000);
+  sock.close();
+});
