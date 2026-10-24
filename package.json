@@ -66,6 +66,8 @@
     "asarUnpack": [
       "src/desktop.ps1",
       "electron/claude-window.ps1",
+      "src/platform/win/*.ps1",
+      "src/platform/win/*.cs",
       "node_modules/sherpa-onnx-node/**",
       "node_modules/sherpa-onnx-win-x64/**",
       "node_modules/sherpa-onnx-darwin-arm64/**",

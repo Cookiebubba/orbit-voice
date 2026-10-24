@@ -136,6 +136,41 @@ test('cards are still found by their structure if Claude renames its classes', {
   }
 });
 
+test('typing a draft, Send, Stop and answering cards never pull the window forward', { skip, timeout: 240_000 }, async () => {
+  // The stand-in sits off screen, never active. Orbit acts through UI Automation with AutoSetFocus
+  // off, so none of these may activate it (with it on, each act focused the control first).
+  const w = await startFakeWindow('Fake session');
+  try {
+    const text = 'Run the tests, then tell me what failed.';
+    const fill = await w.ps('send', ['-TextB64', w.b64(text), '-Fill']);
+    assert.equal(fill.ok, true, JSON.stringify(fill));
+    assert.equal(fill.filled, true);
+    assert.equal((await w.ps('info')).promptText, text, 'the draft is in the box');
+    const revised = 'Run the unit tests only.';
+    const again = await w.ps('send', ['-TextB64', w.b64(revised), '-Fill', '-PrevB64', w.b64(text)]);
+    assert.equal(again.ok, true, JSON.stringify(again));
+    const sent = await w.ps('send', ['-TextB64', w.b64(revised), '-Filled']);
+    assert.equal(sent.ok, true, JSON.stringify(sent));
+    assert.equal(sent.confirmed, true);
+    assert.deepEqual(w.events.at(-1), { event: 'send', chars: revised.length });
+    const stop = await w.ps('stop');
+    assert.equal(stop.confirmed, true, JSON.stringify(stop));
+    await w.send({ permission: { command: 'npm test' } });
+    const p = (await w.ps('pending')).pending;
+    const allow = await w.ps('answer', ['-KeyB64', w.b64(p.key), '-Choice', 'allow_once']);
+    assert.equal(allow.confirmed, true, JSON.stringify(allow));
+    await w.send({ question: { questions: [{ q: 'Which one?', options: [['Left', ''], ['Right', '']] }] } });
+    const q = (await w.ps('pending')).pending;
+    const pick = await w.ps('answer', ['-KeyB64', w.b64(q.key), '-Choice', 'option', '-Option', '2']);
+    assert.equal(pick.ok, true, JSON.stringify(pick));
+    assert.deepEqual(w.events.map((e) => e.event), ['send', 'stop', 'permission', 'submit']);
+    await new Promise((r) => setTimeout(r, 300)); // (a late activation would show up by now)
+    assert.equal(w.activations.length, 0, 'the stand-in window was never activated');
+  } finally {
+    await w.close();
+  }
+});
+
 test('-OnlyPid never reaches a process that is not a running stand-in', { skip, timeout: 60_000 }, async () => {
   const r = await psWithPid('stop', 999_999_999);
   assert.equal(r.ok, false);
@@ -198,6 +233,13 @@ test('Claude\x27s own controls: status, sidebar, Code / chat, panels, scrolling'
     assert.ok(w.events.some((e) => e.event === 'scroll'), 'the conversation itself scrolled');
     assert.equal((await app('load_earlier')).ok, true);
     assert.deepEqual(w.events.at(-1), { event: 'load_earlier' });
+
+    // Switching sessions in the sidebar of the same window.
+    const sw = await w.ps('switch', ['-TitleB64', w.b64('Auth work')]);
+    assert.equal(sw.ok, true, JSON.stringify(sw));
+    assert.equal(sw.sessionTitle, 'Auth work');
+    assert.deepEqual(w.events.at(-1), { event: 'open', title: 'Auth work' });
+    assert.equal(w.activations.length, 0, 'none of it activated the window');
   } finally {
     await w.close();
   }
@@ -227,6 +269,7 @@ test('Claude\x27s model and permission pickers: only a choice it offers, and the
     assert.deepEqual(w.events.at(-1), { event: 'permission_mode', value: 'Accept edits' });
     assert.equal((await app('permission', 'accept_edits')).changed, false);
     assert.equal((await app('permission', 'everything')).error, 'bad_value');
+    assert.equal(w.activations.length, 0, 'opening menus and picking never activated the window');
   } finally {
     await w.close();
   }
@@ -255,6 +298,7 @@ test('rename, archive and delete a session (delete through Claude\x27s own confi
     assert.equal(d.ok, true, JSON.stringify(d));
     assert.deepEqual(w.events.slice(-1), [{ event: 'delete', title: 'Old spike, renamed' }], 'the menu, then Claude\x27s own Delete in its confirmation');
     assert.deepEqual((await w.ps('list')).sessions.map((s) => s.title), ['Regex parser fixes']);
+    assert.equal(w.activations.length, 0, 'typing a new name, the menus and the confirmation never activated the window');
   } finally {
     await w.close();
   }
@@ -287,6 +331,7 @@ test('a new session with no folder chosen: seen as one, never sent from, and a f
     const sent = await w.ps('send', ['-TextB64', w.b64('Run the tests.'), '-ExpectNew', '-ExpectFolderB64', w.b64('beta')]);
     assert.equal(sent.ok, true, JSON.stringify(sent));
     assert.deepEqual(w.events.at(-1), { event: 'send', chars: 14, folder: 'beta' });
+    assert.equal(w.activations.length, 0, 'New, the folder button and Send never activated the window');
   } finally {
     await w.close();
   }

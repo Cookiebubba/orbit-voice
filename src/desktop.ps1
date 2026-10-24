@@ -72,21 +72,46 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 
 function Out-Json($obj) { $obj | ConvertTo-Json -Compress -Depth 6; exit 0 }
+
+# UI Automation through COM (CUIAutomation8) with AutoSetFocus off, so pressing Send, typing a draft
+# or answering a card never pulls Claude's window forward: src/platform/win/OrbitAuto.cs, with the
+# same names as .NET's System.Windows.Automation (which this script must never load: once it has
+# talked to a window, COM acts on that window focus it again). Compiled once into Orbit's cache.
+function Import-OrbitAuto {
+  . (Join-Path $PSScriptRoot 'platform\win\uia-interop.ps1')
+  $interop = Get-UiaInterop ''
+  $dir = Split-Path $interop
+  $src = Join-Path $PSScriptRoot 'platform\win\OrbitAuto.cs'
+  $sha = [System.Security.Cryptography.SHA256]::Create() # (not Get-FileHash: loading its module costs ~90 ms a call)
+  $name = 'OrbitAuto-' + ([BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes($src))) -replace '-', '').Substring(0, 12).ToLower() + '.dll'
+  $dll = Join-Path $dir $name
+  [void][Reflection.Assembly]::LoadFrom($interop)
+  if (-not (Test-Path $dll)) {
+    # Built in a folder of its own first, so another Orbit process never loads a half-written file.
+    $tmp = Join-Path $dir ('tmp-auto-' + $PID)
+    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+    Add-Type -Path $src -ReferencedAssemblies $interop -OutputAssembly (Join-Path $tmp $name) -OutputType Library
+    try { Move-Item -Path (Join-Path $tmp $name) -Destination $dll -ErrorAction Stop } catch { if (-not (Test-Path $dll)) { throw } }
+    Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+  }
+  if (-not ('OrbitAuto.AutomationElement' -as [type])) { Add-Type -Path $dll }
+  [OrbitAuto.Interop]::Register($interop)
+}
+try { Import-OrbitAuto } catch { Out-Json @{ ok = $false; error = 'script_exception'; message = "UI Automation couldn't be loaded: $($_.Exception.Message)" } }
 function Decode($b64) { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64)) }
 
-$AE = [System.Windows.Automation.AutomationElement]
-$Scope = [System.Windows.Automation.TreeScope]
-$CT = [System.Windows.Automation.ControlType]
-$ButtonCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Button)
-$Walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
-$DocCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Document)
-$SidebarCond = New-Object System.Windows.Automation.AndCondition(
-  (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Group)),
-  (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, 'Sidebar')))
-function ButtonNamed($name) { New-Object System.Windows.Automation.AndCondition($ButtonCond, (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, $name))) }
+$AE = [OrbitAuto.AutomationElement]
+$Scope = [OrbitAuto.TreeScope]
+$CT = [OrbitAuto.ControlType]
+$ButtonCond = New-Object OrbitAuto.PropertyCondition($AE::ControlTypeProperty, $CT::Button)
+$Walker = [OrbitAuto.TreeWalker]::ControlViewWalker
+$DocCond = New-Object OrbitAuto.PropertyCondition($AE::ControlTypeProperty, $CT::Document)
+$SidebarCond = New-Object OrbitAuto.AndCondition(
+  (New-Object OrbitAuto.PropertyCondition($AE::ControlTypeProperty, $CT::Group)),
+  (New-Object OrbitAuto.PropertyCondition($AE::NameProperty, 'Sidebar')))
+function ButtonNamed($name) { New-Object OrbitAuto.AndCondition($ButtonCond, (New-Object OrbitAuto.PropertyCondition($AE::NameProperty, $name))) }
 
 # The window being worked on (see Use-Window). Everything below looks only inside $script:App.
 $script:Win = $null
@@ -99,15 +124,15 @@ function Get-ClaudeWindows {
   $ids = if ($OnlyPid) { @($OnlyPid) } else { @(Get-Process -Name 'claude' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }) }
   $out = New-Object System.Collections.ArrayList
   if (-not $ids.Count) { return , $out }
-  [System.Windows.Automation.Condition[]]$conds = @($ids | ForEach-Object { New-Object System.Windows.Automation.PropertyCondition($AE::ProcessIdProperty, [int]$_) })
-  $cond = if ($conds.Count -gt 1) { [System.Windows.Automation.OrCondition]::new($conds) } else { $conds[0] }
+  [OrbitAuto.Condition[]]$conds = @($ids | ForEach-Object { New-Object OrbitAuto.PropertyCondition($AE::ProcessIdProperty, [int]$_) })
+  $cond = if ($conds.Count -gt 1) { [OrbitAuto.OrCondition]::new($conds) } else { $conds[0] }
   $z = 0
   foreach ($el in $AE::RootElement.FindAll($Scope::Children, $cond)) {
     try {
       $c = $el.Current
       if ($c.ControlType -ne $CT::Window -or -not $c.Name -or $c.NativeWindowHandle -eq 0) { continue }
       $min = $false; $wp = $null
-      if ($el.TryGetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern, [ref]$wp)) { $min = $wp.Current.WindowVisualState -eq [System.Windows.Automation.WindowVisualState]::Minimized }
+      if ($el.TryGetCurrentPattern([OrbitAuto.WindowPattern]::Pattern, [ref]$wp)) { $min = $wp.Current.WindowVisualState -eq [OrbitAuto.WindowVisualState]::Minimized }
       [void]$out.Add(@{ el = $el; hwnd = [long]$c.NativeWindowHandle; name = $c.Name; min = $min; z = $z })
       $z++
     } catch { } # closed while we looked
@@ -128,7 +153,7 @@ function Get-Depth($el) {
 # Is this element inside exactly this document (its nearest document)?
 function Test-InDoc($el, $doc) {
   $d = Get-OwnDocument $el
-  return [bool]($d -and $doc -and [System.Windows.Automation.Automation]::Compare($d, $doc))
+  return [bool]($d -and $doc -and [OrbitAuto.Automation]::Compare($d, $doc))
 }
 
 # Claude's own page inside a window: @{ doc; kind } or $null. Web pages Claude shows (the Browser
@@ -269,9 +294,9 @@ function Get-SessionTitle {
 }
 
 function Get-PromptBox($root) {
-  $cond = New-Object System.Windows.Automation.AndCondition(
-    (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Edit)),
-    (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, 'Prompt')))
+  $cond = New-Object OrbitAuto.AndCondition(
+    (New-Object OrbitAuto.PropertyCondition($AE::ControlTypeProperty, $CT::Edit)),
+    (New-Object OrbitAuto.PropertyCondition($AE::NameProperty, 'Prompt')))
   $boxes = @($root.FindAll($Scope::Descendants, $cond) | Where-Object { Test-InApp $_ })
   if ($boxes.Count -eq 0) { return $null }
   # In split view there can be more than one; prefer the one that has keyboard focus.
@@ -281,7 +306,7 @@ function Get-PromptBox($root) {
 
 function Get-BoxText($box) {
   try {
-    $vp = $box.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+    $vp = $box.GetCurrentPattern([OrbitAuto.ValuePattern]::Pattern)
     $v = ($vp.Current.Value -replace '\s+$', '')
     # An empty box on a new-session page reports its "/" hint as its value.
     if ($v.Trim() -eq '/') { return '' }
@@ -334,7 +359,7 @@ function Get-SidebarSessions($root) {
       $sn = $s.Current.Name
       if ($sn -and ($sn -eq $t -or $sn.StartsWith("$t ")) -and -not $sn.StartsWith('More options')) {
         $pattern = $null
-        if ($s.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { $match = $s; break }
+        if ($s.TryGetCurrentPattern([OrbitAuto.InvokePattern]::Pattern, [ref]$pattern)) { $match = $s; break }
       }
     }
     if ($match) {
@@ -356,7 +381,7 @@ function Test-SidebarButton($b) {
 function Get-SidebarButton($root, $name) {
   foreach ($b in $root.FindAll($Scope::Descendants, (ButtonNamed $name))) {
     $pattern = $null
-    if ($b.Current.IsEnabled -and (Test-SidebarButton $b) -and $b.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { return $b }
+    if ($b.Current.IsEnabled -and (Test-SidebarButton $b) -and $b.TryGetCurrentPattern([OrbitAuto.InvokePattern]::Pattern, [ref]$pattern)) { return $b }
   }
   return $null
 }
@@ -372,7 +397,7 @@ function Get-NewInFolderButtons($root) {
     $folder = if ($i -ge 0) { $rest.Substring(0, $i) } else { $rest }
     $group = if ($i -ge 0) { $rest.Substring($i + ', added to '.Length) } else { '' }
     $pattern = $null
-    if ($folder -and (Test-SidebarButton $b) -and $b.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
+    if ($folder -and (Test-SidebarButton $b) -and $b.TryGetCurrentPattern([OrbitAuto.InvokePattern]::Pattern, [ref]$pattern)) {
       [void]$out.Add(@{ folder = $folder; group = $group; button = $b })
     }
   }
@@ -386,9 +411,9 @@ function Get-NewSessionPage($root, $title) {
   if ($null -ne $title) { return $null }
   try { if ($script:App.Current.Name -ne 'Claude') { return $null } } catch { return $null }
   if (-not (Get-PromptBox $root)) { return $null }
-  $cond = New-Object System.Windows.Automation.AndCondition(
-    (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Text)),
-    (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, 'New session')))
+  $cond = New-Object OrbitAuto.AndCondition(
+    (New-Object OrbitAuto.PropertyCondition($AE::ControlTypeProperty, $CT::Text)),
+    (New-Object OrbitAuto.PropertyCondition($AE::NameProperty, 'New session')))
   $heading = $null
   foreach ($t in $root.FindAll($Scope::Descendants, $cond)) {
     if ($t.Current.IsOffscreen -or -not (Test-InApp $t)) { continue }
@@ -430,14 +455,14 @@ $DenyNames = @('Deny', "Don't allow", "Don${Apos}t allow", 'Reject', 'Decline', 
 $StrongNames = @('Allow once', 'Allow', 'Always allow', 'Allow always', 'Allow for this session', 'Approve', 'Deny', "Don't allow", "Don${Apos}t allow", 'Reject')
 $QuestionActionNames = @('Submit', 'Next', 'Skip')
 $CommandRegionNames = @('The command Claude wants to run', "Claude${Apos}s description and the command Claude wants to run", "Claude's description and the command Claude wants to run", 'What Claude is asking to do')
-$TextCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Text)
-$GroupCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Group)
+$TextCond = New-Object OrbitAuto.PropertyCondition($AE::ControlTypeProperty, $CT::Text)
+$GroupCond = New-Object OrbitAuto.PropertyCondition($AE::ControlTypeProperty, $CT::Group)
 
 function Get-ClassName($el) { try { return [string]$el.Current.ClassName } catch { return '' } }
 function Test-Class($el, $cls) { return (' ' + (Get-ClassName $el) + ' ').Contains(" $cls ") }
 function Clip($s, $n) { $s = ([string]$s -replace '\s+', ' ').Trim(); if ($s.Length -gt $n) { return $s.Substring(0, $n) + '...' }; return $s }
 function Get-Parent($el) { try { return $Walker.GetParent($el) } catch { return $null } }
-function Same($a, $b) { return [bool]($a -and $b -and [System.Windows.Automation.Automation]::Compare($a, $b)) }
+function Same($a, $b) { return [bool]($a -and $b -and [OrbitAuto.Automation]::Compare($a, $b)) }
 function Get-Key($s) {
   $sha = [System.Security.Cryptography.SHA256]::Create()
   return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes([string]$s))) -replace '-', '').Substring(0, 16).ToLower()
@@ -466,17 +491,17 @@ function Get-Texts($el, $max = 12) {
   }
   return , $out
 }
-function Test-Toggle($b) { $p = $null; return $b.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$p) }
+function Test-Toggle($b) { $p = $null; return $b.TryGetCurrentPattern([OrbitAuto.TogglePattern]::Pattern, [ref]$p) }
 function Test-Pressed($b) {
   $p = $null
-  if ($b.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$p)) { return $p.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On }
+  if ($b.TryGetCurrentPattern([OrbitAuto.TogglePattern]::Pattern, [ref]$p)) { return $p.Current.ToggleState -eq [OrbitAuto.ToggleState]::On }
   return $false
 }
 # Press a button: Invoke, or Toggle for a toggle button that can't be invoked. $true if pressed.
 function Press($b) {
   $p = $null
-  if ($b.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$p)) { $p.Invoke(); return $true }
-  if ($b.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$p)) { $p.Toggle(); return $true }
+  if ($b.TryGetCurrentPattern([OrbitAuto.InvokePattern]::Pattern, [ref]$p)) { $p.Invoke(); return $true }
+  if ($b.TryGetCurrentPattern([OrbitAuto.TogglePattern]::Pattern, [ref]$p)) { $p.Toggle(); return $true }
   return $false
 }
 
@@ -563,7 +588,7 @@ function Read-Card($card) {
       [void]$choices.Add(@{ n = $n; label = $label; description = $desc; selected = (Test-Pressed $o) })
     }
     $radio = $false
-    foreach ($x in $card.FindAll($Scope::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) { if (Test-Class $x 'epitaxy-radio-mark') { $radio = $true; break } }
+    foreach ($x in $card.FindAll($Scope::Descendants, [OrbitAuto.Condition]::TrueCondition)) { if (Test-Class $x 'epitaxy-radio-mark') { $radio = $true; break } }
     $acts = @($buttons | Where-Object { $QuestionActionNames -contains $_.Current.Name } | ForEach-Object { [string]$_.Current.Name })
     $p = $(if ($page.Count) { $page[0] } else { '' })
     $sig = "question|$q|$p|" + (($choices | ForEach-Object { $_.label }) -join '|')
@@ -690,7 +715,7 @@ try {
       Out-Json @{ ok = $false; error = 'window_not_raised'; message = "That session is open in another Claude window, but Windows didn't let Orbit bring it to the front. Click that window to use it."; sessionTitle = $title }
     }
     [void](Use-Window $hitWin)
-    $hit.button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $hit.button.GetCurrentPattern([OrbitAuto.InvokePattern]::Pattern).Invoke()
     for ($i = 0; $i -lt 20; $i++) {
       Start-Sleep -Milliseconds 100
       $now = Get-SessionTitle
@@ -742,7 +767,7 @@ try {
       $button = Get-SidebarButton $root 'New'
     }
     if (-not $button) { Out-Json @{ ok = $false; error = 'new_button_not_found'; message = "Couldn't find Claude's New session button. Is the sidebar hidden?"; sessionTitle = $ttitle } }
-    $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $button.GetCurrentPattern([OrbitAuto.InvokePattern]::Pattern).Invoke()
     for ($i = 0; $i -lt 30; $i++) {
       Start-Sleep -Milliseconds 100
       $now = Get-SessionTitle
@@ -847,7 +872,7 @@ try {
     $stop = Get-SendButton $root $box -Names $StopNames
     if (-not $stop) { Out-Json @{ ok = $false; error = 'not_working'; message = "Claude isn't working in this session (there's no Stop button), so there was nothing to stop."; sessionTitle = $title } }
     $pattern = $null
-    if (-not $stop.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { Out-Json @{ ok = $false; error = 'stop_not_pressable'; message = "Claude's Stop button can't be pressed from here."; sessionTitle = $title } }
+    if (-not $stop.TryGetCurrentPattern([OrbitAuto.InvokePattern]::Pattern, [ref]$pattern)) { Out-Json @{ ok = $false; error = 'stop_not_pressable'; message = "Claude's Stop button can't be pressed from here."; sessionTitle = $title } }
     $pattern.Invoke()
     # Claude swaps Stop back to Send once the run has ended.
     $confirmed = $false
@@ -870,15 +895,15 @@ try {
   # result instead of assuming it.
   if ($Mode -eq 'app') {
     $value = $(if ($ValueB64) { (Decode $ValueB64).Trim() } else { '' })
-    $all = { param($ct) @($root.FindAll($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $ct))) | Where-Object { Test-InApp $_ }) }
+    $all = { param($ct) @($root.FindAll($Scope::Descendants, (New-Object OrbitAuto.PropertyCondition($AE::ControlTypeProperty, $ct))) | Where-Object { Test-InApp $_ }) }
     $named = { param($ct, $name) @(& $all $ct | Where-Object { $_.Current.Name -eq $name }) | Select-Object -First 1 }
     $pat = { param($el, $p) $x = $null; if ($el -and $el.TryGetCurrentPattern($p::Pattern, [ref]$x)) { $x } else { $null } }
-    $EC = [System.Windows.Automation.ExpandCollapsePattern]
-    $IP = [System.Windows.Automation.InvokePattern]
-    $TP = [System.Windows.Automation.TogglePattern]
-    $SIP = [System.Windows.Automation.SelectionItemPattern]
-    $SP = [System.Windows.Automation.ScrollPattern]
-    $VP = [System.Windows.Automation.ValuePattern]
+    $EC = [OrbitAuto.ExpandCollapsePattern]
+    $IP = [OrbitAuto.InvokePattern]
+    $TP = [OrbitAuto.TogglePattern]
+    $SIP = [OrbitAuto.SelectionItemPattern]
+    $SP = [OrbitAuto.ScrollPattern]
+    $VP = [OrbitAuto.ValuePattern]
     # Open a menu button (ExpandCollapse; Invoke if that's all it has).
     $expand = { param($b) $e = & $pat $b $EC; if ($e) { $e.Expand(); return $true }; $i = & $pat $b $IP; if ($i) { $i.Invoke(); return $true }; return $false }
     $collapse = { param($b) try { $e = & $pat $b $EC; if ($e) { $e.Collapse() } } catch { } }
@@ -899,14 +924,14 @@ try {
     $sideBtn = $buttons | Where-Object { $_.Current.Name -eq 'Hide sidebar' -or $_.Current.Name -eq 'Show sidebar' } | Select-Object -First 1
     $modeGrp = & $all $CT::Group | Where-Object { $_.Current.Name -eq 'Mode' } | Select-Object -First 1
     $tabNow = $null
-    if ($modeGrp) { foreach ($r in $modeGrp.FindAll($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::RadioButton)))) { $s = & $pat $r $SIP; if ($s -and $s.Current.IsSelected) { $tabNow = $(if ($r.Current.Name -eq 'Code') { 'code' } else { 'chat' }) } } }
+    if ($modeGrp) { foreach ($r in $modeGrp.FindAll($Scope::Descendants, (New-Object OrbitAuto.PropertyCondition($AE::ControlTypeProperty, $CT::RadioButton)))) { $s = & $pat $r $SIP; if ($s -and $s.Current.IsSelected) { $tabNow = $(if ($r.Current.Name -eq 'Code') { 'code' } else { 'chat' }) } } }
     $PANELS = @{ terminal = 'Terminal'; changes = 'Changes'; browser = 'Browser'; files = 'Files'; rail = 'Hide session rail' }
     $panelState = @{}
-    foreach ($k in $PANELS.Keys) { $b = $buttons | Where-Object { $_.Current.Name -eq $PANELS[$k] } | Select-Object -First 1; $t = & $pat $b $TP; if ($t) { $panelState[$k] = $t.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On } }
+    foreach ($k in $PANELS.Keys) { $b = $buttons | Where-Object { $_.Current.Name -eq $PANELS[$k] } | Select-Object -First 1; $t = & $pat $b $TP; if ($t) { $panelState[$k] = $t.Current.ToggleState -eq [OrbitAuto.ToggleState]::On } }
     $page = Get-NewSessionPage $root $title
     # The conversation's scroll container: the largest scrollable area outside the sidebar.
     $scroller = $null; $best = 0
-    foreach ($e in $root.FindAll($Scope::Descendants, (New-Object System.Windows.Automation.PropertyCondition($AE::IsScrollPatternAvailableProperty, $true)))) {
+    foreach ($e in $root.FindAll($Scope::Descendants, (New-Object OrbitAuto.PropertyCondition($AE::IsScrollPatternAvailableProperty, $true)))) {
       if ($e.Current.ControlType -eq $CT::Document -or -not (Test-InApp $e)) { continue }
       $s = & $pat $e $SP
       if (-not $s -or -not $s.Current.VerticallyScrollable) { continue }
@@ -933,7 +958,7 @@ try {
       }
       'tab' {
         $want = $(if ($value -eq 'chat') { 'Claude' } else { 'Code' })
-        $r = $(if ($modeGrp) { @($modeGrp.FindAll($Scope::Descendants, (ButtonNamed $want))) + @($modeGrp.FindAll($Scope::Descendants, (New-Object System.Windows.Automation.AndCondition((New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::RadioButton)), (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, $want)))))) | Select-Object -First 1 } else { $null })
+        $r = $(if ($modeGrp) { @($modeGrp.FindAll($Scope::Descendants, (ButtonNamed $want))) + @($modeGrp.FindAll($Scope::Descendants, (New-Object OrbitAuto.AndCondition((New-Object OrbitAuto.PropertyCondition($AE::ControlTypeProperty, $CT::RadioButton)), (New-Object OrbitAuto.PropertyCondition($AE::NameProperty, $want)))))) | Select-Object -First 1 } else { $null })
         if (-not $r) { Out-Json @{ ok = $false; error = 'control_not_found'; message = "Couldn't find Claude's Code / chat switch." } }
         $s = & $pat $r $SIP
         if ($s -and $s.Current.IsSelected) { Out-Json @{ ok = $true; tab = $value; changed = $false; sessionTitle = $title } }
@@ -954,21 +979,21 @@ try {
         $b = $(if ($name) { $buttons | Where-Object { $_.Current.Name -eq $name } | Select-Object -First 1 } else { $null })
         $t = & $pat $b $TP
         if (-not $t) { Out-Json @{ ok = $false; error = 'control_not_found'; message = "Couldn't find that panel's button." } }
-        $on = $t.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On
+        $on = $t.Current.ToggleState -eq [OrbitAuto.ToggleState]::On
         $want = $(if ($parts[1] -eq 'on') { $true } elseif ($parts[1] -eq 'off') { $false } else { -not $on })
         if ($want -ne $on) { $t.Toggle() }
         Start-Sleep -Milliseconds 150
-        $now = $t.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On
+        $now = $t.Current.ToggleState -eq [OrbitAuto.ToggleState]::On
         Out-Json @{ ok = ($now -eq $want); panel = $parts[0]; on = $now; changed = ($want -ne $on); sessionTitle = $title }
       }
       'scroll' {
         if (-not $scroller) { Out-Json @{ ok = $false; error = 'control_not_found'; message = "Couldn't find the conversation to scroll." } }
         $s = & $pat $scroller $SP
         $before = $s.Current.VerticalScrollPercent
-        $SA = [System.Windows.Automation.ScrollAmount]
+        $SA = [OrbitAuto.ScrollAmount]
         switch ($value) {
-          'top' { $s.SetScrollPercent([System.Windows.Automation.ScrollPattern]::NoScroll, 0) }
-          'bottom' { $s.SetScrollPercent([System.Windows.Automation.ScrollPattern]::NoScroll, 100) }
+          'top' { $s.SetScrollPercent([OrbitAuto.ScrollPattern]::NoScroll, 0) }
+          'bottom' { $s.SetScrollPercent([OrbitAuto.ScrollPattern]::NoScroll, 100) }
           'down' { if ($before -lt 100) { $s.Scroll($SA::NoAmount, $SA::LargeIncrement) } }
           default { if ($before -gt 0) { $s.Scroll($SA::NoAmount, $SA::LargeDecrement) } }
         }
@@ -1086,7 +1111,7 @@ try {
   if (-not $box) { Out-Json @{ ok = $false; error = 'prompt_box_not_found'; message = 'No prompt box is visible. Open a Code session in the Claude app.'; sessionTitle = $title } }
   $text = Decode $TextB64
   if (-not $text.Trim()) { Out-Json @{ ok = $false; error = 'empty_text' } }
-  $vp = $box.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+  $vp = $box.GetCurrentPattern([OrbitAuto.ValuePattern]::Pattern)
   # The same text, whatever the line endings or trailing space.
   $same = { param($a, $b) (([string]$a -replace "`r", '').Trim()) -ceq (([string]$b -replace "`r", '').Trim()) }
   $inBox = Get-BoxText $box
@@ -1144,7 +1169,7 @@ try {
     try { $vp.SetValue('') } catch {}
     Out-Json @{ ok = $false; error = 'send_button_not_found'; message = "Couldn't find Claude's Send button, so nothing was sent."; sessionTitle = $title }
   }
-  $send.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+  $send.GetCurrentPattern([OrbitAuto.InvokePattern]::Pattern).Invoke()
 
   # Claude empties the box once it accepts the message.
   $confirmed = $false

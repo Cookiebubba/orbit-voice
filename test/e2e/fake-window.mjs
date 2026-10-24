@@ -39,12 +39,14 @@ export function buildFakeWindow() {
 
 /**
  * Start a stand-in window showing session `title`. Returns { pid, send(cmd), events, ps(mode, args),
- * close() }. `events`: what was pressed in it ({ event: 'stop' }, ...), in order.
+ * close() }. `events`: what was pressed in it ({ event: 'stop' }, ...), in order. `activations`:
+ * each time it became the active window (Orbit's acts never pull it forward, so this stays empty).
  */
 export async function startFakeWindow(title = 'Fake session') {
   const exe = buildFakeWindow();
   const child = spawn(exe, ['--window', title], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
   const events = [];
+  const activations = [];
   const acks = [];
   let ready = null;
   readline.createInterface({ input: child.stdout }).on('line', (l) => {
@@ -55,6 +57,7 @@ export async function startFakeWindow(title = 'Fake session') {
       return;
     }
     if (j.ready) ready = j;
+    else if (j.activated === true) activations.push(Date.now());
     else if (j.event) events.push(j);
     else if (j.ok) acks.push(j.ok);
   });
@@ -65,6 +68,7 @@ export async function startFakeWindow(title = 'Fake session') {
   const w = {
     pid: ready.pid,
     events,
+    activations,
     b64,
     /** Change the stand-in (e.g. { working: true }); resolves once it's applied. */
     async send(cmd) {

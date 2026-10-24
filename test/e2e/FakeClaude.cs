@@ -18,7 +18,9 @@
 // PermissionCard / QuestionCard: modelled on the app's own markup). Commands come in on stdin, one
 // JSON object per line ({"working":true}, {"permission":{"command":"npm test","always":true}},
 // {"question":{"questions":[{"q":"Which?","options":[["A","first"],["B",""]]}]}}, {"quit":true});
-// what was pressed goes out on stdout ({"event":"stop"}, {"event":"permission","choice":"Deny"}).
+// what was pressed goes out on stdout ({"event":"stop"}, {"event":"permission","choice":"Deny"}),
+// and {"activated":true} / {"activated":false} whenever it becomes / stops being the active window
+// (nothing Orbit does to it may ever activate it).
 // Build it with the WPF references (see test/desktop-uia.test.js). Never named claude.exe.
 using System;
 using System.Collections.Generic;
@@ -344,6 +346,8 @@ static class FakeWindow {
     doc.Children.Add(composer);
     win.Content = doc;
     Render();
+    win.Activated += (s, e) => Emit(new Dictionary<string, object> { { "activated", true } });
+    win.Deactivated += (s, e) => Emit(new Dictionary<string, object> { { "activated", false } });
     win.Show();
     new Thread(ReadCommands) { IsBackground = true }.Start();
     Emit(new Dictionary<string, object> { { "ready", true }, { "pid", Process.GetCurrentProcess().Id } });
