@@ -27,6 +27,10 @@ const WAITING = '[App notification] Claude is waiting for the user in the sessio
 const PERM_READ = '[Tool result: read_claude_prompt] {"waiting":true,"session":"Database setup","kind":"permission","asks":"Allow Claude to run a command?","command":"npm install pg","answers":["allow","deny"],"labels":["Allow once","Deny"]}';
 const QUESTION_READ = '[Tool result: read_claude_prompt] {"waiting":true,"session":"Database setup","kind":"question","question":"Which database should I use?","options":[{"number":1,"label":"Redis"},{"number":2,"label":"Postgres"}],"can_skip":true}';
 const PERM_CTX = [WAITING, PERM_READ];
+// A draft in Claude's box, and Orbit's own idea offered out loud (as in scripts/listen-eval.mjs).
+const DRAFT_RESULT = '[Tool result: draft_prompt] {"drafted":true,"text":"Fix the login bug.","in_prompt_box":true,"target_session":"Auth work","next_step":"It\'s typed into Claude\'s prompt box (not sent), in place of any earlier draft: the user reads it there. Say one short line, like \\"It\'s in the box. Want me to send it?\\" Don\'t read it out unless they ask. If they want it changed, call draft_prompt again with the whole new prompt. Call send_draft when their reply is any clear yes; never tell them which words to say."}';
+const DRAFTED = ['tell it to fix the login bug', DRAFT_RESULT];
+const OFFERED = '[Orbit, not the user: in this call since then, for context only:\nIn: how could we stop uploads failing on a bad connection?\nYou said: I could ask Claude to add a retry to the upload, three times with a short wait. Want me to?\n]';
 const QUESTION_CTX = [WAITING.replace('it needs their OK to go on (a permission prompt)', 'it asked them a question with options'), QUESTION_READ];
 // [what the user says, the tool expected (null = just talk), checks on the draft text, context]
 const D = 'draft_prompt';
@@ -67,6 +71,13 @@ const CASES = [
   ['go with the second option', 'answer_claude_prompt', [/"answer":"option"/, /"option":2\b/], QUESTION_CTX],
   ["what's it asking", 'read_claude_prompt'],
   ['use MongoDB instead', D, [/mongodb/i], QUESTION_CTX],
+  // Sending on a natural yes; Orbit's own offer drafted once accepted, never when it isn't.
+  ['yeah that looks good', 'send_draft', [], DRAFTED],
+  ['sure, go for it', 'send_draft', [], DRAFTED],
+  ['wait, not yet', [null, 'cancel_draft'], [], DRAFTED],
+  ['yeah, good idea', D, [/retry/i, /upload/i], OFFERED],
+  ['sure, do that', D, [/retry/i], OFFERED],
+  ['no thanks', [null, 'cancel_draft'], [], OFFERED],
   // Web search: looked up, with the question as asked; asking Claude to search is a prompt.
   ['search the web for the latest Node LTS version', 'search_web', [/node/i, /lts/i]],
   ['tell Claude to search the web for the latest Node version', D, [/search the web for the latest node version/i]],
