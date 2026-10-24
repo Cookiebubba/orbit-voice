@@ -252,9 +252,36 @@ public static class OrbitUia {
     if (pat.Length > 0) d["pat"] = pat.ToString();
     if (pat.ToString().Contains("V") && B(e.GetCachedPropertyValue(P_ValueReadOnly))) d["ro"] = 1;
     if (values && !pw && pat.ToString().Contains("V")) { string v = S(e.GetCachedPropertyValue(P_Value)); if (v != "") d["v"] = Cut(v, 4000); }
+    if (IsRich(e, true)) d["rich"] = 1;
     int[] rid = e.GetCachedPropertyValue(P_RuntimeId) as int[];
     if (rid != null) d["rid"] = string.Join(".", Array.ConvertAll(rid, x => x.ToString()));
     return d;
+  }
+
+  /**
+   * A rich text editor in web content (contenteditable: Slate, as in Discord; ProseMirror, Lexical,
+   * Draft...): an editable text box of Chromium's that has content of its own in the tree (Chromium
+   * shows native input and textarea boxes as leaves; an empty Slate box still has its placeholder
+   * and zero-width marks; tested on our own Slate test app and read-only on Discord). Its app keeps a
+   * model of its own and changes it only on input events, so SetValue there only puts text in the
+   * page that the app doesn't know about (and that can confuse it): never used on these.
+   */
+  static bool IsRich(IUIAutomationElement e, bool cached) {
+    try {
+      string fw = cached ? S(e.GetCachedPropertyValue(P_Framework)) : (e.CurrentFrameworkId ?? "");
+      if (fw != "Chrome") return false;
+      int ct = cached ? I(e.GetCachedPropertyValue(P_ControlType)) : e.CurrentControlType;
+      if (ct != 50004 && ct != 50030 && ct != 50025 && ct != 50026) return false; // Edit, Document, Custom, Group
+      bool hasValue = cached ? B(e.GetCachedPropertyValue(P_HasValue)) : e.GetCurrentPattern(10002) != null;
+      if (!hasValue) return false;
+      bool ro;
+      if (cached) ro = B(e.GetCachedPropertyValue(P_ValueReadOnly));
+      else { IUIAutomationValuePattern vp = e.GetCurrentPattern(10002) as IUIAutomationValuePattern; ro = vp == null || vp.CurrentIsReadOnly != 0; }
+      if (ro) return false;
+      // (Its ARIA role doesn't tell: Chromium says "textbox" for a native input too.)
+      IUIAutomationElementArray kids = cached ? e.GetCachedChildren() : e.FindAll(TreeScope.TreeScope_Children, uia.ControlViewCondition);
+      return kids != null && kids.Length > 0;
+    } catch (Exception) { return false; }
   }
 
   // ---------------- reading what's in a window (phase 3) ----------------
@@ -488,7 +515,11 @@ public static class OrbitUia {
       bool web = false;
       try { web = el.CurrentFrameworkId == "Chrome"; } catch (Exception) { }
       watch = web ? NearbyButtons(el) : null;
+      bool rich = web && IsRich(el, false);
       if (Str(req, "method") == "borrow") return Borrow(el, hwnd, action, value, before, vp, watch, fgBefore);
+      // A rich editor (Discord's Slate box): SetValue would only put text in the page that the app
+      // doesn't know about. Nothing is written; the caller goes on to a way the app takes.
+      if (rich) { var no = Fail("rich_box", "That box only takes real typing."); no["registered"] = false; no["before"] = Cut(before, 4000); return no; }
       string want = action == "type" ? before + value : value;
       if (action == "type" && classicEdit) {
         // Typed where the caret is, like keys (a classic edit box takes WM_CHAR even unfocused).
@@ -574,16 +605,22 @@ public static class OrbitUia {
   // Send-like controls near a text box: its Send (or Submit, Post, Reply...) follows whether the
   // app has the text. Up to three levels up, buttons only, at most 40.
   static readonly System.Text.RegularExpressions.Regex SendLike = new System.Text.RegularExpressions.Regex(@"\b(send|submit|post|reply|comment|save|search|go|ok|run|start|ask|chat|message|continue)\b|^$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+  // Only buttons beside the box itself count (its row, a little above or below): three levels up can
+  // be the whole app in a web page (Discord: its "Go forward" in the title bar is always off).
   static List<Tuple<IUIAutomationElement, bool>> NearbyButtons(IUIAutomationElement el) {
     var found = new List<Tuple<IUIAutomationElement, bool>>();
     try {
+      tagRECT box = el.CurrentBoundingRectangle;
       IUIAutomationTreeWalker w = uia.ControlViewWalker;
       IUIAutomationElement up = el;
       for (int i = 0; i < 3; i++) { IUIAutomationElement p = w.GetParentElement(up); if (p == null) break; up = p; }
       IUIAutomationElementArray bs = up.FindAll(TreeScope.TreeScope_Descendants, uia.CreatePropertyCondition(P_ControlType, 50000));
       for (int i = 0; i < bs.Length && found.Count < 40; i++) {
         IUIAutomationElement b = bs.GetElement(i);
-        if (SendLike.IsMatch(b.CurrentName ?? "")) found.Add(Tuple.Create(b, b.CurrentIsEnabled != 0));
+        if (!SendLike.IsMatch(b.CurrentName ?? "")) continue;
+        tagRECT r = b.CurrentBoundingRectangle;
+        bool beside = r.bottom >= box.top - 80 && r.top <= box.bottom + 80 && r.right >= box.left - 240 && r.left <= box.right + 240;
+        if (beside || (box.right <= box.left)) found.Add(Tuple.Create(b, b.CurrentIsEnabled != 0));
       }
     } catch (Exception) { }
     return found;
@@ -600,14 +637,16 @@ public static class OrbitUia {
       IUIAutomationValuePattern vp = el.GetCurrentPattern(ValuePatternId) as IUIAutomationValuePattern;
       string now = vp != null ? Norm(vp.CurrentValue).Trim() : null;
       if (want != null && now != null && now != Norm(want).Trim()) return false;
-      bool anyOff = false;
+      int seen = 0, off = 0;
       foreach (var t in watch ?? new List<Tuple<IUIAutomationElement, bool>>()) {
         bool on = false;
         try { on = t.Item1.CurrentIsEnabled != 0; } catch (Exception) { continue; }
         if (!t.Item2 && on) return true;
-        if (!on) anyOff = true;
+        seen++;
+        if (!on) off++;
       }
-      if (anyOff && now != null && now != "") return false;
+      // Every Send-like button beside it still off, with text in the box: not taken.
+      if (seen > 0 && off == seen && now != null && now != "") return false;
     } catch (Exception) { }
     return null;
   }

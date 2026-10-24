@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ORBIT-SLATE-CHAT</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 0; background: #313338; color: #dbdee1; }
+  .app { display: flex; height: 100vh; }
+  nav { width: 150px; background: #2b2d31; padding: 8px; }
+  nav ul { list-style: none; padding: 0; margin: 0; }
+  nav a { color: #949ba4; display: block; padding: 4px; text-decoration: none; }
+  nav a[aria-current] { color: #fff; background: #404249; }
+  main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  header { display: flex; gap: 6px; padding: 6px; border-bottom: 1px solid #222; }
+  #messages { flex: 1; overflow-y: auto; margin: 0; padding: 8px 24px; }
+  .composer { display: flex; align-items: center; gap: 4px; margin: 8px; padding: 6px; background: #383a40; border-radius: 8px; }
+  .slateTextArea { flex: 1; min-height: 22px; max-height: 120px; overflow-y: auto; outline: none; padding: 4px; }
+  button { background: none; color: #b5bac1; border: 0; }
+</style>
+</head>
+<body>
+<!-- A stand-in for Discord's chat (our own test app, see editor.jsx). -->
+<div id="root"></div>
+<script src="slate-bundle.js"></script>
+</body>
+</html>
