@@ -73,7 +73,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-function Out-Json($obj) { $obj | ConvertTo-Json -Compress -Depth 6; exit 0 }
+# JSON out, every character past ASCII written as \uXXXX: the console's code page would otherwise turn
+# Claude's curly quotes into plain ones (breaking the JSON) and other letters into look-alikes.
+function Out-Json($obj) {
+  $json = $obj | ConvertTo-Json -Compress -Depth 6
+  [regex]::Replace($json, '[^\x00-\x7F]', { param($m) '\u{0:x4}' -f [int][char]$m.Value })
+  exit 0
+}
 
 # UI Automation through COM (CUIAutomation8) with AutoSetFocus off, so pressing Send, typing a draft
 # or answering a card never pulls Claude's window forward: src/platform/win/OrbitAuto.cs, with the
@@ -329,12 +335,17 @@ function Get-SendButton($root, $box, [switch]$AnyState, [string[]]$Names = @('Se
     $c = $b.Current
     if ($Names -notcontains $c.Name -or (-not $AnyState -and -not $c.IsEnabled)) { continue }
     $r = $c.BoundingRectangle
-    $dy = [Math]::Abs(($r.Y + $r.Height / 2) - ($boxRect.Y + $boxRect.Height / 2))
+    $cy = $r.Y + $r.Height / 2
+    # Not a "Send" somewhere else on screen (or on a web page): beside the box or under its bottom
+    # edge, toward its right end. Its row is the box's last line: a long draft makes the box tall
+    # while Send stays at the bottom right, so it's measured from the box's bottom-right corner,
+    # anywhere along the box's height (a centre-to-centre limit missed it on a four-paragraph draft).
+    if ($cy -lt $boxRect.Top - 40 -or $cy -gt $boxRect.Bottom + 80) { continue }
     $dx = [Math]::Abs($r.X - $boxRect.Right)
-    # Not a "Send" somewhere else on screen (or on a web page): same row, close to the box.
-    if ($dy -gt 80 -or $r.X -lt $boxRect.Left -or $dx -gt 200) { continue }
+    if ($r.X -lt $boxRect.Left -or $dx -gt 200) { continue }
     if (-not (Test-InApp $b)) { continue }
-    if ($dy + $dx -lt $bestDist) { $best = $b; $bestDist = $dy + $dx }
+    $d = [Math]::Abs($cy - $boxRect.Bottom) + $dx
+    if ($d -lt $bestDist) { $best = $b; $bestDist = $d }
   }
   return $best
 }
@@ -1112,8 +1123,10 @@ try {
   $text = Decode $TextB64
   if (-not $text.Trim()) { Out-Json @{ ok = $false; error = 'empty_text' } }
   $vp = $box.GetCurrentPattern([OrbitAuto.ValuePattern]::Pattern)
-  # The same text, whatever the line endings or trailing space.
-  $same = { param($a, $b) (([string]$a -replace "`r", '').Trim()) -ceq (([string]$b -replace "`r", '').Trim()) }
+  # The same text, whatever the line endings, spacing or quote marks (Claude's editor may turn " into
+  # curly quotes, or a space into a no-break space).
+  $norm = { param($t) ((([string]$t -replace "`r", '') -replace '[\u2018\u2019\u201A\u2032]', "'" -replace '[\u201C\u201D\u201E\u2033]', '"' -replace '[\u00A0\u2007\u202F]', ' ') -replace '[ \t]+', ' ' -replace ' ?\n ?', "`n").Trim() }
+  $same = { param($a, $b) (& $norm $a) -ceq (& $norm $b) }
   $inBox = Get-BoxText $box
 
   if ($Clear) {
@@ -1143,7 +1156,7 @@ try {
     if ($probe.Length -gt 30) { $probe = $probe.Substring(0, 30) }
     # It landed, and on its own: not the old draft plus the new one (a box that adds to what it has).
     $alone = (& $same $landed $text) -or ($landed.Length -le $text.Trim().Length + 20)
-    if (-not ($landed -and $landed.Contains($probe) -and $alone)) {
+    if (-not ($landed -and (& $norm $landed).Contains((& $norm $probe)) -and $alone)) {
       try { $vp.SetValue('') } catch {}
       Out-Json @{ ok = $false; error = 'fill_not_verified'; message = "Couldn't confirm the text reached Claude's prompt box (on its own), so nothing was sent."; sessionTitle = $title }
     }
@@ -1153,7 +1166,8 @@ try {
   $still = Get-SessionTitle
   $stillOk = $(if ($ExpectTitleB64) { $still -ceq $expect } elseif ($ExpectNew) { -not $still -and [bool](Get-NewSessionPage $script:App $null) } else { $still -eq $title })
   if (-not $stillOk) {
-    try { $vp.SetValue('') } catch {}
+    # Typed just now for this send: taken out again. A draft the user has been looking at stays.
+    if (-not $Filled) { try { $vp.SetValue('') } catch {} }
     Out-Json @{ ok = $false; error = 'session_changed'; message = 'The session changed while the prompt was being typed in, so nothing was sent.'; sessionTitle = $still }
   }
 
@@ -1166,8 +1180,18 @@ try {
 
   $send = Get-SendButton $root $box
   if (-not $send) {
-    try { $vp.SetValue('') } catch {}
-    Out-Json @{ ok = $false; error = 'send_button_not_found'; message = "Couldn't find Claude's Send button, so nothing was sent."; sessionTitle = $title }
+    # Why, so Orbit can say what's really going on (not a guess): Claude is working (Stop is where
+    # Send goes), or Send is there but turned off (the app didn't take the text), or it isn't there.
+    $why = $(if (Get-SendButton $root $box -Names $StopNames) { 'claude_working' } elseif (Get-SendButton $root $box -AnyState) { 'send_disabled' } else { 'not_found' })
+    # A draft the user has been looking at stays in the box (they can press Send themselves); text
+    # typed just now for this send is taken out again.
+    if (-not $Filled) { try { $vp.SetValue('') } catch {} }
+    $msg = switch ($why) {
+      'claude_working' { "Claude is still working in that session (its Stop button is where Send goes), so nothing was sent." }
+      'send_disabled' { "Claude's Send button is there but turned off, so nothing was sent." }
+      default { "Couldn't find Claude's Send button, so nothing was sent." }
+    }
+    Out-Json @{ ok = $false; error = 'send_button_not_found'; why = $why; message = $msg; draftKept = [bool]$Filled; sessionTitle = $title }
   }
   $send.GetCurrentPattern([OrbitAuto.InvokePattern]::Pattern).Invoke()
 

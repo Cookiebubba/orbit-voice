@@ -302,6 +302,7 @@ static class FakeWindow {
   static System.Windows.Window win;
   static UiaPanel doc, conversation, composer, tasks;
   static System.Windows.Controls.TextBox prompt;
+  static bool tall, smartQuotes;
   static string title = "Fake session";
   static bool working;
   static readonly object outLock = new object();
@@ -341,6 +342,10 @@ static class FakeWindow {
     composer = new UiaPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Height = 40 };
     prompt = new System.Windows.Controls.TextBox { Width = 600, Height = 26, AcceptsReturn = true };
     System.Windows.Automation.AutomationProperties.SetName(prompt, "Prompt");
+    prompt.TextChanged += (s, e) => {
+      if (!smartQuotes || (prompt.Text.IndexOf('"') < 0 && prompt.Text.IndexOf('\'') < 0)) return;
+      prompt.Text = prompt.Text.Replace("\"", "\u201C").Replace("'", "\u2019");
+    };
     doc.Children.Add(tasks);
     doc.Children.Add(conversation);
     doc.Children.Add(composer);
@@ -538,8 +543,10 @@ static class FakeWindow {
     doc.AName = title + " - Claude Code";
     composer.Children.Clear();
     composer.Children.Add(prompt);
-    if (working) composer.Children.Add(Btn("Stop", () => { working = false; Render(); Emit(new Dictionary<string, object> { { "event", "stop" } }); }));
-    else composer.Children.Add(Btn("Send", () => { if (prompt.Text.Trim() == "") return; Emit(new Dictionary<string, object> { { "event", "send" }, { "chars", prompt.Text.Length } }); prompt.Text = ""; working = true; Render(); }));
+    var action = working ? Btn("Stop", () => { working = false; Render(); Emit(new Dictionary<string, object> { { "event", "stop" } }); })
+      : Btn("Send", () => { if (prompt.Text.Trim() == "") return; Emit(new Dictionary<string, object> { { "event", "send" }, { "chars", prompt.Text.Length } }); prompt.Text = ""; working = true; Render(); });
+    if (tall) action.VerticalAlignment = System.Windows.VerticalAlignment.Bottom;
+    composer.Children.Add(action);
     RenderCards();
   }
 
@@ -672,6 +679,10 @@ static class FakeWindow {
     if (cmd.ContainsKey("working")) working = cmd["working"] is bool && (bool)cmd["working"];
     if (cmd.ContainsKey("title")) title = Convert.ToString(cmd["title"]);
     if (cmd.ContainsKey("prompt")) prompt.Text = Convert.ToString(cmd["prompt"]);
+    // {"tall":true}: a long draft's box, many lines tall, with Send at its bottom-right (as Claude's is).
+    if (cmd.ContainsKey("tall")) { tall = B(cmd, "tall"); prompt.Height = tall ? 260 : 26; composer.Height = tall ? 270 : 40; }
+    // {"smartQuotes":true}: the editor turns typed quote marks into curly ones (as rich editors do).
+    if (cmd.ContainsKey("smartQuotes")) smartQuotes = B(cmd, "smartQuotes");
     if (cmd.ContainsKey("plain")) plain = B(cmd, "plain");
     if (cmd.ContainsKey("permission")) permission = cmd["permission"] as Dictionary<string, object>;
     if (cmd.ContainsKey("question")) {

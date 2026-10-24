@@ -339,3 +339,31 @@ test('a new session with no folder chosen: seen as one, never sent from, and a f
     await w.close();
   }
 });
+
+test('a long draft\x27s tall box: Send at its bottom-right is found; a failed send keeps the draft; smart quotes still match', { skip, timeout: 180_000 }, async () => {
+  const w = await startFakeWindow('Fake session');
+  try {
+    // Four paragraphs make the box tall, with Send at its bottom-right corner (not level with its middle).
+    await w.send({ tall: true });
+    const text = 'First paragraph about the inputs.\n\nSecond paragraph about sending.\n\nThird paragraph about the model.\n\nFourth, "quoted" and it\'s fine.';
+    await w.send({ smartQuotes: true });
+    const fill = await w.ps('send', ['-TextB64', w.b64(text), '-Fill']);
+    assert.equal(fill.ok, true, JSON.stringify(fill));
+    assert.match((await w.ps('info')).promptText, /“quoted“ and it’s/, 'the editor curled the quotes');
+    // While Claude works there is no Send: refused with the real reason, and the draft stays.
+    await w.send({ working: true });
+    const busy = await w.ps('send', ['-TextB64', w.b64(text), '-Filled']);
+    assert.equal(busy.ok, false);
+    assert.equal(busy.error, 'send_button_not_found');
+    assert.equal(busy.why, 'claude_working', JSON.stringify(busy));
+    assert.equal(busy.draftKept, true);
+    assert.ok((await w.ps('info')).promptText.includes('Fourth'), 'a failed send never wipes the draft the user is looking at');
+    await w.send({ working: false });
+    const sent = await w.ps('send', ['-TextB64', w.b64(text), '-Filled']);
+    assert.equal(sent.ok, true, JSON.stringify(sent));
+    assert.equal(sent.confirmed, true);
+    assert.equal(w.events.at(-1).event, 'send');
+  } finally {
+    await w.close();
+  }
+});

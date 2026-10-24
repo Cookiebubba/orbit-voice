@@ -344,6 +344,28 @@ async function findOpenSession(info, waitMs = TOOL_TIMING.openSessionWaitMs, sto
   return { pending: title };
 }
 
+/**
+ * What to tell the user when a send didn't go through: the real reason from Claude's window, so the
+ * voice never guesses ("bring the window up", "Claude is still working") when the window said otherwise.
+ * Sending works with Claude's window in the background; it never needs to be in front.
+ */
+export function sendFailureStep(r) {
+  const kept = r?.draftKept !== false;
+  const box = kept ? 'The draft is still in Claude\x27s box.' : '';
+  switch (r?.error) {
+    case 'send_button_not_found':
+      if (r.why === 'claude_working') return `Say Claude is still working in that session, so it wasn't sent. ${box} Offer to send it once Claude finishes.`;
+      if (r.why === 'send_disabled') return `Say Claude's Send button is greyed out, so it wasn't sent. ${box} The user can press Send there, or edit the box and ask again.`;
+      return `Say Orbit couldn't find Claude's Send button, so it wasn't sent. ${box} The user can press Send there. Don't suggest bringing the window forward: Orbit sends with it in the background.`;
+    case 'prompt_box_changed':
+      return 'Say the text in Claude\x27s box is not the draft any more (edited or cleared), so nothing was sent. Offer to type the draft in again.';
+    case 'session_changed':
+      return 'Say the session changed, so nothing was sent. Offer to draft it again for the session that is open now.';
+    default:
+      return `Say in a few words that it wasn't sent and why (from the error). ${box}`;
+  }
+}
+
 const MIN_GAP_BETWEEN_SENDS_MS = 3000;
 const CONSENT_MAX_AGE_MS = 60_000; // a "yes" older than this doesn't approve anything
 const CONSENT_WINDOW_MS = 3 * 60_000; // the yes must come this soon after the draft appeared
@@ -893,7 +915,8 @@ export function createToolRunner({
                   : 'If you are unsure, ask in a few words whether to send it. Never tell the user which words to say.',
         };
       }
-      return doSend(snapshot);
+      const sent = await doSend(snapshot);
+      return sent.ok ? sent : { ...sent, next_step: sendFailureStep(sent) };
     },
 
     async cancel_draft() {
