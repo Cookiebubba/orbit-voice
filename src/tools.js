@@ -10,6 +10,7 @@ import { listDesktopSessions, resolveSession, findSessionByTitle, findTranscript
 import { answerPrompt, claudeApp, clearDesktop, fillDesktop, getDesktopInfo, getPendingPrompt, newSession, sendToDesktop, stopClaude, switchSession } from './desktop.js';
 import { asksToStop } from './stop-command.js';
 import { sendInstruction, withoutSendTail } from './send-intent.js';
+import { consentOf, isClearYes } from './consent.js';
 import { APP_TOOL_DEF, createAppControl } from './app-control.js';
 import { CHOICE_NAMES, decisionFrom, describePrompt } from './claude-prompt.js';
 import { logError, logInfo, logWarn, recentLog } from './log.js';
@@ -57,7 +58,7 @@ export const TOOL_DEFS = [
     type: 'function',
     name: 'draft_prompt',
     description:
-      'Your main tool. Turn what the user wants done (in their code, project, terminal, git...) into a prompt for the Claude Code session open in the desktop app: Claude does the work. Use it whenever the user asks for something to be done, even if they said it to you rather than "tell Claude". It types the draft into Claude\x27s prompt box. If their request itself said to send it ("…and send it", "just send it", "send Claude: …"), Orbit sends it at once (the result says sent); otherwise it is not sent: ask "Send it?".',
+      'Your main tool. Turn what the user wants done (in their code, project, terminal, git...) into a prompt for the Claude Code session open in the desktop app: Claude does the work. Use it whenever the user asks for something to be done, even if they said it to you rather than "tell Claude". It types the draft into Claude\x27s prompt box. If their request itself said to send it ("…and send it", "just send it", "send Claude: …"), Orbit sends it at once (the result says sent); otherwise it is not sent: ask whether to send it ("Want me to send it?").',
     parameters: {
       type: 'object',
       properties: {
@@ -78,7 +79,7 @@ export const TOOL_DEFS = [
     type: 'function',
     name: 'send_draft',
     description:
-      'Send the current draft to Claude (presses Send on it in the Claude desktop app). Only call this when the user has clearly said yes / send it in their most recent turn.',
+      'Send the current draft to Claude (presses Send on it in the Claude desktop app). Call it when the user\x27s latest reply to the draft is any clear yes, however they say it ("yeah", "sure", "looks good", "go for it", "send it over", "mhm"). Not for a no, a "wait", a question or a change.',
     parameters: { type: 'object', properties: {}, required: [] },
   },
   {
@@ -344,6 +345,8 @@ async function findOpenSession(info, waitMs = TOOL_TIMING.openSessionWaitMs, sto
 
 const MIN_GAP_BETWEEN_SENDS_MS = 3000;
 const CONSENT_MAX_AGE_MS = 60_000; // a "yes" older than this doesn't approve anything
+const CONSENT_WINDOW_MS = 3 * 60_000; // the yes must come this soon after the draft appeared
+const CONSENT_MAX_REPLIES = 2; // ...as one of the user's first two replies after it
 const COPY_ASK_MAX_AGE_MS = 2 * 60 * 1000;
 const SIGN_IN_OFFER_MAX_AGE_MS = 5 * 60 * 1000; // a "yes" to opening the sign-in must follow the offer soon
 const MAX_BRAIN_RUNS = 10; // per conversation; each one also needs the user to have spoken since the last
@@ -390,26 +393,8 @@ export function brainToolResult(result, { label = 'Claude', readProject, note = 
   };
 }
 
-// A spoken or typed answer counts as consent only if it's a clear yes with no "no / wait / don't".
-// (People say yes many ways after "Send it?": "ship it", "fire away", "looks good, send it", "mhm".)
-const AFFIRMATIVE = /^(yes|yeah|yea|yep|yup|ya|sure|ok|okay|k|alright|all right|cool|great|fine|good|send|send it|submit|go|go ahead|do it|let'?s do it|let'?s go|ship it|fire away|fire it off|hit send|confirm|confirmed|correct|right|absolutely|definitely|affirmative|sounds good|sounds great|looks good|looks great|that'?s good|that'?s fine|that'?s great|that works|perfect|please|please do|mhm+|mm hmm|uh huh|why not)\b/;
-const NEGATIVE = /\b(no|nope|nah|don'?t|do not|wait|stop|cancel|hold on|hang on|not|never|change|instead|actually)\b/;
-export function isClearYes(utterance) {
-  const t = String(utterance || '')
-    .toLowerCase()
-    .replace(/[’‘]/g, "'")
-    .replace(/[^a-z' ]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^((um+|uh+|oh|well|so|hmm+|ah) )+/, '');
-  // "why not" is a yes; every other "not" is a no.
-  if (!t || !AFFIRMATIVE.test(t) || NEGATIVE.test(t.replace(/^why not\b/, ''))) return false;
-  // A question, or more to say ("okay what does it do", "yes and also..."), is not an answer.
-  if (/\b(what|whats|how|where|who|which|when|also|plus)\b/.test(t) || /\bwhy\b(?! not)/.test(t)) return false;
-  // "Fine", "cool", "okay", "mhm" mean yes on their own; at the start of a longer reply only with a send in it.
-  const weak = /^(ok|okay|k|alright|all right|cool|great|fine|good|right|perfect|sounds|looks|that'?s|that works|mhm+|mm hmm|uh huh|why not|please)\b/.test(t);
-  return !weak || t.split(' ').length <= 5 || /\b(send|ship|fire|submit|go|do it)\b/.test(t);
-}
+// Consent: any clear yes in the user's own words (src/consent.js has the design).
+export { isClearYes } from './consent.js';
 
 /**
  * Does the user's own utterance ask for this action? Their words carry the request, so an app
@@ -570,6 +555,8 @@ export function createToolRunner({
   userWords = () => recentUtterance()?.text || '',
   // Has the user spoken (or typed) after `ts`? The bridge also counts speech still being transcribed.
   heardSince = (ts) => (recentUtterance()?.at || 0) > ts,
+  // How many times the user has spoken (or typed) since `ts` (0 when the bridge can't say).
+  repliesSince = () => 0,
   brain = askBrain,
   search = searchWeb,
   signIn = (claudePath) => openClaudeSignIn({ claudePath }),
@@ -827,7 +814,7 @@ export function createToolRunner({
           text: clean,
           in_prompt_box: true,
           send_error: String(sent.message || sent.error || 'unknown').slice(0, 200),
-          next_step: 'The user asked to send it, but sending failed (see send_error). Say so in a few words; the draft is still in the box. Ask "Send it?" and call send_draft only after a clear yes.',
+          next_step: 'The user asked to send it, but sending failed (see send_error). Say so in a few words; the draft is still in the box. Ask whether to try again, and call send_draft on any clear yes.',
         };
       }
       return {
@@ -843,7 +830,7 @@ export function createToolRunner({
             ? 'The prompt box already has the user\x27s own text in it, so the draft isn\x27t shown there, and sending will be refused until they clear it.'
             : `It couldn't be shown in Claude's prompt box (${String(shown?.message || shown?.error || 'unknown').slice(0, 120)}), so read it out in full.`,
         next_step: next.filled
-          ? 'It\x27s typed into Claude\x27s prompt box (not sent), in place of any earlier draft: the user reads it there. Say one short line, like "It\x27s in the box. Send it?" Don\x27t read it out unless they ask. If they want it changed, call draft_prompt again with the whole new prompt. Call send_draft only after a clear yes.'
+          ? 'It\x27s typed into Claude\x27s prompt box (not sent), in place of any earlier draft: the user reads it there. Say one short line, like "It\x27s in the box. Send it?" Don\x27t read it out unless they ask. If they want it changed, call draft_prompt again with the whole new prompt. Call send_draft when their reply is any clear yes; never tell them which words to say.'
           : 'Read the drafted text back as it is, without rewording it (if it\x27s long, its start and that there\x27s more), and ask the user to confirm before calling send_draft.',
       };
     },
@@ -865,14 +852,28 @@ export function createToolRunner({
       if (Math.max(lastNotificationAt, lastBrainAnswerAt) > snapshot.createdAt) {
         return { ok: false, error: 'Not sent: something else came in after this draft was read back, so a yes now may not be about it. If the user still wants it, call draft_prompt again (it goes back in the box) and wait for a fresh yes.' };
       }
+      // Consent (src/consent.js): the user's latest reply, one of their first replies after the
+      // draft appeared and soon after it, is a clear yes in their own words: any way of saying it.
       const answer = await utteranceSince(snapshot.createdAt);
       if (!answer || Date.now() - answer.at > CONSENT_MAX_AGE_MS) {
-        return { ok: false, error: 'Not sent: the user has not answered since the draft appeared. Ask "Send it?" and wait for them to say yes.' };
+        return { ok: false, error: 'Not sent: the user has not answered since the draft appeared.', next_step: 'Ask in a few words whether to send it ("Want me to send it?") and wait for their answer.' };
       }
-      if (!isClearYes(answer.text)) {
+      if (answer.at - snapshot.createdAt > CONSENT_WINDOW_MS || repliesSince(snapshot.createdAt) > CONSENT_MAX_REPLIES) {
+        return { ok: false, error: 'Not sent: the draft has been in the box a while and the talk moved on, so this reply may not be about it.', next_step: 'Ask once, in a few words, whether to send what is in the box.' };
+      }
+      const c = consentOf(answer.text);
+      if (!c.yes) {
         return {
           ok: false,
-          error: `Not sent: the user's reply ("${String(answer.text).slice(0, 80)}") isn't a clear yes. Ask them to say "yes, send it".`,
+          error: `Not sent: the user's reply ("${String(answer.text).slice(0, 80)}") ${c.why === 'change' ? 'asks for a change' : c.why === 'question' ? 'is a question' : c.why === 'negation' ? 'says no or not yet' : "doesn't sound like a yes"}.`,
+          next_step:
+            c.why === 'change'
+              ? 'Make the change with draft_prompt (the whole new prompt), then ask again.'
+              : c.why === 'question'
+                ? 'Answer their question briefly; the draft stays in the box.'
+                : c.why === 'negation'
+                  ? 'Leave the draft in the box (or cancel_draft if they want it gone) and do what they said.'
+                  : 'If you are unsure, ask in a few words whether to send it. Never tell the user which words to say.',
         };
       }
       return doSend(snapshot);

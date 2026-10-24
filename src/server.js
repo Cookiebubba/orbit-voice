@@ -934,6 +934,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           .filter(Boolean)
           .join(' '),
       heardSince: (ts) => speechStartedAt > ts || utterance.at > ts,
+      repliesSince: (ts) => exchanges.filter((x) => x.who === 'user' && x.at > ts).length,
       brainHolder,
     });
 

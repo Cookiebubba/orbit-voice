@@ -29,7 +29,7 @@ const { instructions, tools } = agentContext({ face: 'orbit', avatar: null, orb:
 const prompt = systemPrompt({ instructions, tools });
 
 // A draft is in Claude's box (what draft_prompt returns), and the reply Orbit gave.
-const DRAFT_RESULT = '[Tool result: draft_prompt] {"drafted":true,"text":"Fix the login bug.","in_prompt_box":true,"target_session":"Auth work","next_step":"It\'s typed into Claude\'s prompt box (not sent), in place of any earlier draft: the user reads it there. Say one short line, like \\"It\'s in the box. Send it?\\" Don\'t read it out unless they ask. If they want it changed, call draft_prompt again with the whole new prompt. Call send_draft only after a clear yes."}';
+const DRAFT_RESULT = '[Tool result: draft_prompt] {"drafted":true,"text":"Fix the login bug.","in_prompt_box":true,"target_session":"Auth work","next_step":"It\'s typed into Claude\'s prompt box (not sent), in place of any earlier draft: the user reads it there. Say one short line, like \\"It\'s in the box. Want me to send it?\\" Don\'t read it out unless they ask. If they want it changed, call draft_prompt again with the whole new prompt. Call send_draft when their reply is any clear yes; never tell them which words to say."}';
 const DRAFTED = ['tell it to fix the login bug', DRAFT_RESULT];
 
 const D = 'draft_prompt';
@@ -83,6 +83,19 @@ const CASES = [
   ['yeah do it', S, [], DRAFTED],
   ['sure send it over', S, [], DRAFTED],
   ['send it', S, [], DRAFTED],
+  // Sending on a natural yes: no exact words needed (src/consent.js)
+  ['yeah that looks good', S, [], DRAFTED],
+  ['perfect', S, [], DRAFTED],
+  ['mhm', S, [], DRAFTED],
+  ['sounds good', S, [], DRAFTED],
+  ['go for it', S, [], DRAFTED],
+  ['yeah that looks good, send it over', S, [], DRAFTED],
+  ['can you send it?', S, [], DRAFTED],
+  ['sent it', S, [], DRAFTED],
+  ['the send button is there now, look for it and press it', S, [], DRAFTED],
+  // ...and what still isn't a yes
+  ['what does it say?', [null, 'read_session', 'get_current_session', 'copy_to_clipboard'], [], DRAFTED],
+  ['hold on a sec', null, [], DRAFTED],
   // Cancelling
   ['nah scrap that', 'cancel_draft', [], DRAFTED],
   ['never mind, forget it', 'cancel_draft', [], DRAFTED],
