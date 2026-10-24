@@ -8,6 +8,7 @@ import VoiceSettings, { prefetchVoices } from "./VoiceSettings";
 import PillScroll from "./components/PillScroll";
 import Reveal from "./components/Reveal";
 import { PULSE_MAX, PULSE_MIN } from "./orbLook";
+import { ARROW_PATH, PREVIEW, css } from "./mouse/shape.js";
 
 export const REPO_URL = "https://github.com/Cookiebubba/orbit-voice";
 
@@ -211,9 +212,35 @@ function AnywhereSection({ s, update, name }: { s: SettingsT; update: Update; na
           label="Also use apps' own debugging ports"
           hint={`Only for an app you started yourself with --remote-debugging-port. Usually not needed: for apps that only notice real typing (Discord, OpenCode), ${name} asks once to restart them under its own control instead.`}
         />
+        <Toggle
+          className="mt-4"
+          checked={s.anywhereMouse !== false}
+          onChange={(anywhereMouse) => update({ anywhereMouse })}
+          label="Show Orbit's mouse"
+          hint={`A second cursor of ${name}'s own, in its colours: it shows you where to click when you ask how to do something, and moves to whatever ${name} works on in a window. It never moves or clicks with your mouse.`}
+        />
+        <Reveal show={s.anywhereMouse !== false}>
+          <MousePreview />
+        </Reveal>
         <UnderOrbitList apps={s.anywhereUnderOrbit || []} name={name} onStop={(app) => update({ anywhereUnderOrbit: (s.anywhereUnderOrbit || []).filter((a) => a !== app) })} />
       </Reveal>
     </Section>
+  );
+}
+
+/** Orbit's mouse in each of its colours (Qubit's, as he wears them): a tiny still preview. */
+function MousePreview() {
+  return (
+    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5" aria-hidden>
+      {PREVIEW.map((p) => (
+        <span key={p.mode} className="flex items-center gap-1.5 text-[11.5px] text-white/45">
+          <svg width="13" height="20" viewBox="0 0 12.2 19.2">
+            <path d={ARROW_PATH} fill={css(p.lch)} />
+          </svg>
+          {p.label}
+        </span>
+      ))}
+    </div>
   );
 }
 
