@@ -30,7 +30,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { isSignInProblem } from './brain.js';
 import { createCueStream } from './emote-cues.js';
-import { modelPaths } from './voice-models.js';
+import { STT_MODELS, modelPaths, sttModelConfig, sttOk, sttReady } from './voice-models.js';
 import { joinTranscripts, splitForStt } from './stt-chunks.js';
 import { childEnv, groupOptions, killTree } from './platform/system.js';
 
@@ -347,17 +347,8 @@ export function loadSpeech(root, { threads = CLAUDE_VOICE.threads } = {}) {
     return {
       newVad: () => new sherpa.Vad({ sileroVad: { model: p.vad, threshold: 0.5, minSpeechDuration: 0.25, minSilenceDuration: CLAUDE_VOICE.endOfTurnS, windowSize: WINDOW, maxSpeechDuration: 30 }, sampleRate: VAD_RATE, numThreads: 1, provider: 'cpu' }, 60),
       newResampler: () => new sherpa.LinearResampler(IN_RATE, VAD_RATE),
-      async transcribe(samples) {
-        // Moonshine returns nothing for more than ~9 s at once (src/stt-chunks.js): long speech in pieces.
-        const texts = [];
-        for (const piece of splitForStt(samples, MOONSHINE_MAX_S)) {
-          const s = recognizer.createStream();
-          s.acceptWaveform({ samples: piece, sampleRate: VAD_RATE });
-          await recognizer.decodeAsync(s);
-          texts.push(String(recognizer.getResult(s).text || ''));
-        }
-        return joinTranscripts(texts);
-      },
+      // Moonshine returns nothing for more than ~9 s at once (src/stt-chunks.js): long speech in pieces.
+      transcribe: transcriber(recognizer, MOONSHINE_MAX_S),
       async speak(text, { speed = 1, sid = CLAUDE_VOICE.sid } = {}) {
         // No external buffers: Electron's memory cage refuses them (the audio would never arrive).
         const a = await tts.generateAsync({ text, sid, speed, enableExternalBuffer: false });
@@ -370,6 +361,39 @@ export function loadSpeech(root, { threads = CLAUDE_VOICE.threads } = {}) {
     if (speechJob?.promise === promise) speechJob = null;
   });
   return promise;
+}
+
+/** Speech to text with one recognizer: audio past the model's limit goes in pieces (src/stt-chunks.js). */
+function transcriber(recognizer, maxSeconds) {
+  return async (samples) => {
+    const texts = [];
+    for (const piece of splitForStt(samples, maxSeconds)) {
+      const s = recognizer.createStream();
+      s.acceptWaveform({ samples: piece, sampleRate: VAD_RATE });
+      await recognizer.decodeAsync(s);
+      texts.push(String(recognizer.getResult(s).text || ''));
+    }
+    return joinTranscripts(texts);
+  };
+}
+
+// The speech-to-text choice other than Moonshine (Settings), loaded once and kept: one at a time.
+const recognizers = new Map(); // `${root}|${id}` -> Promise<{ id, transcribe }>
+/** Loads a downloaded speech-to-text choice (src/voice-models.js STT_MODELS); rejects if it can't. */
+export function loadRecognizer(root, id, { threads = CLAUDE_VOICE.threads } = {}) {
+  const key = `${root}|${id}`;
+  if (recognizers.has(key)) return recognizers.get(key);
+  if (!sttOk(id) || id === 'moonshine') return Promise.reject(new Error('Moonshine comes with the speech models'));
+  if (!sttReady(root, id)) return Promise.reject(new Error(`${STT_MODELS[id].label} isn't downloaded`));
+  recognizers.clear(); // the one chosen before goes (its memory with it)
+  const p = (async () => {
+    const sherpa = loadSherpa();
+    const rec = await sherpa.OfflineRecognizer.createAsync({ featConfig: { sampleRate: VAD_RATE, featureDim: 80 }, modelConfig: { ...sttModelConfig(root, id), numThreads: threads, provider: 'cpu' } });
+    return { id, transcribe: transcriber(rec, STT_MODELS[id].maxSeconds) };
+  })();
+  recognizers.set(key, p);
+  p.catch(() => recognizers.get(key) === p && recognizers.delete(key));
+  return p;
 }
 
 // ---------------------------------------------------------------- Claude Code, kept open
@@ -543,7 +567,7 @@ const SLOW_FILLERS = ['Hmm.', 'Let me think.'];
  * src/avatar-commands.js): Claude isn't asked at all (no tokens, no wait), and the note joins
  * Claude's next turn so it knows what happened.
  */
-export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = CLAUDE_VOICE.sid, model = CLAUDE_VOICE.model, effort = CLAUDE_VOICE.effort, onMetrics = () => {}, onWarn = () => {}, speech: injectedSpeech, spawnImpl, localTurn = null, now = () => Date.now() }) {
+export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = CLAUDE_VOICE.sid, model = CLAUDE_VOICE.model, effort = CLAUDE_VOICE.effort, stt = 'moonshine', onMetrics = () => {}, onWarn = () => {}, speech: injectedSpeech, spawnImpl, localTurn = null, now = () => Date.now() }) {
   const sock = new EventEmitter();
   sock.readyState = 0;
   if (!modelOk(model)) model = CLAUDE_VOICE.model;
@@ -558,6 +582,27 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
   };
 
   let speech = null;
+  // Speech to text: Moonshine (with the speech models) unless another is chosen and loaded. A change
+  // mid-call loads the new one in the background and takes over from the next utterance; until then,
+  // or if it can't load, Moonshine carries on.
+  let sttWant = 'moonshine';
+  let sttNow = null; // { id, transcribe } of the chosen one, once loaded
+  const switchStt = (id) => {
+    if (!sttOk(id)) id = 'moonshine';
+    // Not downloaded (yet): Moonshine, until the download's done and the bridge says so again.
+    if (id !== 'moonshine' && !injectedSpeech?.loadStt && !sttReady(modelsRoot, id)) id = 'moonshine';
+    if (id === sttWant) return;
+    sttWant = id;
+    if (id === 'moonshine') return void (sttNow = null);
+    const load = injectedSpeech?.loadStt ? Promise.resolve().then(() => injectedSpeech.loadStt(id)) : loadRecognizer(modelsRoot, id);
+    load.then(
+      (r) => sttWant === id && (sttNow = { id, transcribe: r.transcribe }),
+      (e) => {
+        warnOnce(`Claude voice: ${STT_MODELS[id].label} couldn't load, using Moonshine`, e);
+        if (sttWant === id) sttNow = null;
+      },
+    );
+  };
   let vad = null;
   let resampler = null;
   let pendingSamples = new Float32Array(0);
@@ -662,8 +707,9 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
     emit({ type: 'input_audio_buffer.speech_stopped', item_id: item.id, ended_ms_ago: Math.round(heardAt - endedAt) });
     emit({ type: 'input_audio_buffer.committed', item_id: item.id });
     let text = '';
+    const sttUsed = sttNow;
     try {
-      text = await speech.transcribe(samples);
+      text = await (sttUsed ? sttUsed.transcribe(samples) : speech.transcribe(samples));
     } catch (e) {
       warnOnce('Claude voice: speech to text failed', e);
       text = '';
@@ -687,7 +733,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
     }
     input.push(text);
     if (hold) clearTimeout(hold.timer);
-    const timing = { endedAt: hold?.timing.endedAt ?? endedAt, heardAt, textAt: now() };
+    const timing = { endedAt: hold?.timing.endedAt ?? endedAt, heardAt, textAt: now(), stt: sttUsed?.id || 'moonshine' };
     // Words that plainly go on: wait a moment for the rest before asking Claude (a long dictation
     // with breaths in it is one turn, not a turn started and cancelled at every pause).
     if (soundsUnfinished(text)) {
@@ -990,6 +1036,8 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
         // The brain behind the voice (Settings, or "use Opus"): a new model is a new process too.
         if (modelOk(s.claude_model)) model = s.claude_model;
         if (effortOk(s.claude_effort)) effort = s.claude_effort;
+        // Speech to text (Settings): its own models, no new process.
+        if (typeof s.claude_stt === 'string') switchStt(s.claude_stt);
         // A new prompt needs a new process; the first one starts here (or is the warm spare).
         const prompt = systemPrompt({ instructions, tools });
         const key = ClaudeProc.key({ exe: claudePath, prompt, model, effort });
@@ -1047,6 +1095,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
     try {
       if (!claudePath) throw new Error('Claude Code was not found. Install it, or set its path in Settings → Second brain.');
       speech = injectedSpeech || (await loadSpeech(modelsRoot));
+      switchStt(stt);
       vad = speech.newVad();
       resampler = speech.newResampler();
     } catch (e) {

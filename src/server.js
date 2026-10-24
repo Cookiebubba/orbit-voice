@@ -33,8 +33,8 @@ import {
 } from './config.js';
 import { askBrain, claudeAuthStatus, findClaude, openClaudeSignIn, speakable } from './brain.js';
 import { hotkeyLabel as platformHotkeyLabel, primeLoginShellPath } from './platform/system.js';
-import { createClaudeRealtime, keepSpare, loadSpeech, stopClaudeVoice, systemPrompt } from './claude-voice.js';
-import { downloadModels, downloadStatus, modelsReady, VOICE_MODELS_MB } from './voice-models.js';
+import { createClaudeRealtime, keepSpare, loadRecognizer, loadSpeech, stopClaudeVoice, systemPrompt } from './claude-voice.js';
+import { downloadModels, downloadStatus, downloadStt, modelsReady, STT_MODELS, sttOk, sttReady, sttStatus, VOICE_MODELS_MB } from './voice-models.js';
 import { setClipboardWriter } from './clipboard.js';
 import { createContinuity, quoteSafe } from './continuity.js';
 import { getDesktopInfo, getPendingPrompt, listSidebarSessions, switchSession } from './desktop.js';
@@ -281,6 +281,9 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     const claude = findClaude(getSetting('brainClaudePath'));
     if (!claude) return;
     loadSpeech(voiceModelsDir).catch((e) => logWarn('voice', 'Claude voice: speech models failed to load', String(e?.message || e).slice(0, 200)));
+    // The chosen speech to text too, if it isn't Moonshine and it's downloaded (else Moonshine carries on).
+    const stt = getSetting('claudeVoiceStt');
+    if (stt !== 'moonshine' && sttReady(voiceModelsDir, stt)) loadRecognizer(voiceModelsDir, stt).catch((e) => logWarn('voice', `Claude voice: ${STT_MODELS[stt].label} failed to load`, String(e?.message || e).slice(0, 200)));
     const { instructions: text, tools } = agentContext();
     keepSpare({ exe: claude.path, prompt: systemPrompt({ instructions: text, tools }), model: getSetting('claudeVoiceModel'), effort: getSetting('claudeVoiceEffort') });
   };
@@ -291,7 +294,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     logInfo(
       'voice',
       `Claude voice turn: you stopped → first audio ${total}`,
-      `end of turn ${s(m.heardAt, m.endedAt)}, speech to text ${s(m.textAt, m.heardAt)}, Claude first word ${s(m.firstTokenAt, m.textAt)}, first audio ${s(m.firstAudioAt, m.firstTokenAt)}${m.fillerAt ? `, filler at ${s(m.fillerAt, m.endedAt)}` : ''}${m.tool ? `, tool ${m.tool}` : ''}, ${m.status}`,
+      `end of turn ${s(m.heardAt, m.endedAt)}, speech to text ${s(m.textAt, m.heardAt)}${m.stt && m.stt !== 'moonshine' ? ` (${m.stt})` : ''}, Claude first word ${s(m.firstTokenAt, m.textAt)}, first audio ${s(m.firstAudioAt, m.firstTokenAt)}${m.fillerAt ? `, filler at ${s(m.fillerAt, m.endedAt)}` : ''}${m.tool ? `, tool ${m.tool}` : ''}, ${m.status}`,
     );
   };
   // On macOS, ask the login shell for its PATH in the background first (an app opened from Finder
@@ -496,7 +499,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     const { orbPosition, orbStickAnchor, ...visible } = all;
     broadcast({ type: 'settings.changed', changed, settings: visible });
     // What the voice model is told follows these (src/agent.js): a live call gets it at once.
-    if (changed.some((k) => ['voice', 'claudeVoice', 'claudeVoiceModel', 'claudeVoiceEffort', 'speed', 'wakeHotkey', ...CONTEXT_SETTINGS].includes(k))) {
+    if (changed.some((k) => ['voice', 'claudeVoice', 'claudeVoiceModel', 'claudeVoiceEffort', 'claudeVoiceStt', 'speed', 'wakeHotkey', ...CONTEXT_SETTINGS].includes(k))) {
       for (const s of liveSessions) s.pushConfig();
       if (changed.some((k) => CONTEXT_SETTINGS.includes(k))) logInfo('voice', `Context now: ${agentContext().face}${liveSessions.size ? ` (live call${liveSessions.size > 1 ? 's' : ''} updated)` : ''}`);
     }
@@ -614,7 +617,20 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
 
         case 'GET /api/claude-voice':
           // Claude voice (beta) for Settings: the speech models' state, and whether Claude Code is here.
-          return sendJson(res, 200, { models: downloadStatus(voiceModelsDir), mb: VOICE_MODELS_MB, claudeFound: !!findClaude(getSetting('brainClaudePath')) });
+          return sendJson(res, 200, { models: downloadStatus(voiceModelsDir), mb: VOICE_MODELS_MB, claudeFound: !!findClaude(getSetting('brainClaudePath')), stt: sttStatus(voiceModelsDir) });
+
+        case 'POST /api/claude-voice/stt-download': {
+          // One speech-to-text model (pinned checksum), when it's chosen; Settings polls GET for progress.
+          const { id } = await readJson(req);
+          if (!sttOk(id)) return sendJson(res, 400, { error: 'Unknown speech-to-text model.' });
+          downloadStt(voiceModelsDir, id, { log: (m) => logInfo('voice', m) })
+            .then(() => {
+              prewarmClaudeVoice();
+              for (const s of liveSessions) s.pushConfig(); // a live call switches to it now
+            })
+            .catch((e) => logWarn('voice', `Claude voice: ${STT_MODELS[id].label} download failed`, String(e?.message || e).slice(0, 200)));
+          return sendJson(res, 200, { ok: true, stt: sttStatus(voiceModelsDir) });
+        }
 
         case 'POST /api/claude-voice/download':
           // Fetch the speech models (pinned checksums); Settings polls GET for progress.
@@ -1162,7 +1178,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     };
 
     const upstream = useClaude
-      ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), sid: getSetting('claudeVoice'), model: getSetting('claudeVoiceModel'), effort: getSetting('claudeVoiceEffort'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d), localTurn: (text, itemId) => tryFastPath(text, itemId) })
+      ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), sid: getSetting('claudeVoice'), model: getSetting('claudeVoiceModel'), effort: getSetting('claudeVoiceEffort'), stt: getSetting('claudeVoiceStt'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d), localTurn: (text, itemId) => tryFastPath(text, itemId) })
       : new WebSocket(process.env.XAI_REALTIME_URL || `wss://api.x.ai/v1/realtime?model=${encodeURIComponent(getSetting('model'))}`, { headers: { Authorization: `Bearer ${apiKey}` } });
     const toXai = (obj) => upstream.readyState === WebSocket.OPEN && upstream.send(JSON.stringify(obj));
     const stopMeter = useClaude ? () => {} : startMeter(); // Claude voice isn't billed by xAI
@@ -1263,7 +1279,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       // Claude voice also takes its own voice choice (Grok would reject an unknown field).
       pushConfig: () => {
         configAt = Date.now();
-        toXai({ type: 'session.update', session: useClaude ? { ...sessionConfig(), claude_voice: getSetting('claudeVoice'), claude_model: getSetting('claudeVoiceModel'), claude_effort: getSetting('claudeVoiceEffort') } : sessionConfig() });
+        toXai({ type: 'session.update', session: useClaude ? { ...sessionConfig(), claude_voice: getSetting('claudeVoice'), claude_model: getSetting('claudeVoiceModel'), claude_effort: getSetting('claudeVoiceEffort'), claude_stt: getSetting('claudeVoiceStt') } : sessionConfig() });
       },
       /** A spoken update (a session finished). Returns true if this conversation will speak it. */
       announce: (entry) => {

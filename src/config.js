@@ -54,6 +54,9 @@ export const DEFAULTS = Object.freeze({
   // The brain behind Claude voice: 'haiku' (fastest), 'sonnet', 'opus' or 'fable', and its effort.
   claudeVoiceModel: 'haiku',
   claudeVoiceEffort: 'low',
+  // Claude voice's speech to text: 'moonshine' (comes with it, fastest), 'parakeet-110m' or
+  // 'parakeet-v2' (more accurate, downloaded when chosen). See STT_MODELS in voice-models.js.
+  claudeVoiceStt: 'moonshine',
   // The avatar that lives along the bottom of the Claude window: 'buddy' (the pixel buddy), 'qubit'
   // (a square with one eye) or 'none'. (Settings saved before there was a choice have buddy: false
   // for none; see initConfig.)
@@ -174,6 +177,9 @@ function sanitize(input) {
         break;
       case 'claudeVoiceEffort':
         if (['low', 'medium', 'high'].includes(val)) out.claudeVoiceEffort = val;
+        break;
+      case 'claudeVoiceStt':
+        if (['moonshine', 'parakeet-110m', 'parakeet-v2'].includes(val)) out.claudeVoiceStt = val;
         break;
       case 'avatar':
         if (AVATARS.includes(val)) out.avatar = val;

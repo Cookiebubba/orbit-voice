@@ -503,3 +503,55 @@ test('words that plainly go on wait a moment for the rest: one turn for a dictat
   await until(() => ev.filter((e) => e.type === 'response.created').length === 2, CLAUDE_VOICE.unfinishedHoldMs + 2000);
   sock.close();
 });
+
+test('speech to text: the chosen model transcribes; a change mid-call takes the next utterance; one that can\x27t load leaves Moonshine', async () => {
+  const fc = fakeClaude(() => ['OK.']);
+  const speech = fakeSpeech({ transcript: 'from moonshine' });
+  const loads = [];
+  speech.loadStt = async (id) => {
+    loads.push(id);
+    if (id === 'parakeet-110m') throw new Error('broken model');
+    return { transcribe: async () => `from ${id}` };
+  };
+  const warns = [];
+  const metrics = [];
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech, spawnImpl: fc.spawnImpl, stt: 'parakeet-v2', onWarn: (m) => warns.push(m), onMetrics: (m) => metrics.push(m) });
+  const ev = collect(sock);
+  await opened(sock);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [] } }));
+  await new Promise((r) => setTimeout(r, 20)); // (the chosen model loads in the background)
+  const mic = Buffer.alloc(2048 * 2).toString('base64');
+  const heard = () => ev.filter((e) => e.type === 'conversation.item.input_audio_transcription.completed').map((e) => e.transcript);
+  const utter = async () => {
+    const n = heard().length;
+    speech.vad.segments.push({ start: 0, samples: new Float32Array(1024) });
+    sock.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: mic }));
+    await until(() => heard().length > n);
+    await until(() => !ev.length || ev.filter((e) => e.type === 'response.done').length >= heard().length);
+  };
+  await utter();
+  assert.equal(heard().at(-1), 'from parakeet-v2');
+  sock.send(JSON.stringify({ type: 'session.update', session: { claude_stt: 'moonshine' } }));
+  await utter();
+  assert.equal(heard().at(-1), 'from moonshine', 'back to Moonshine from the next utterance');
+  sock.send(JSON.stringify({ type: 'session.update', session: { claude_stt: 'parakeet-110m' } }));
+  await new Promise((r) => setTimeout(r, 20));
+  await utter();
+  assert.equal(heard().at(-1), 'from moonshine', 'a model that can\x27t load leaves Moonshine');
+  assert.ok(warns.some((w) => /couldn't load, using Moonshine/.test(w)));
+  sock.send(JSON.stringify({ type: 'session.update', session: { claude_stt: 'nonsense' } }));
+  assert.deepEqual(loads, ['parakeet-v2', 'parakeet-110m']);
+  assert.equal(metrics[0].stt, 'parakeet-v2');
+  sock.close();
+});
+
+test('a speech-to-text download refuses a file that fails its checksum, and keeps nothing', async () => {
+  const { downloadStt, sttReady, sttStatus } = await import('../src/voice-models.js');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-stt-'));
+  const fetchImpl = async () => ({ ok: true, status: 200, body: (async function* () { yield Buffer.from('not the model'); })() });
+  await assert.rejects(downloadStt(root, 'parakeet-110m', { fetchImpl }), /checksum/);
+  assert.equal(sttReady(root, 'parakeet-110m'), false);
+  assert.equal(sttStatus(root)['parakeet-110m'].state, 'error');
+  assert.deepEqual(fs.readdirSync(root), [], 'nothing kept');
+  await assert.rejects(downloadStt(root, 'whisper-huge', { fetchImpl }), /Unknown/);
+});

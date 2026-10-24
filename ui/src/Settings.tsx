@@ -368,8 +368,18 @@ const BRAIN_SPEED: Record<SettingsT["claudeVoiceModel"], string> = {
   fable: "Fable: the slowest, about 3 seconds to the first word.",
 };
 
+// Claude voice's speech to text: honest hints, from a benchmark on a real recorded session (2026-10-24,
+// CPU): word errors on everyday speech and on quiet, mumbled speech, and the time per utterance.
+type SttId = SettingsT["claudeVoiceStt"];
+const STT: { value: SttId; label: string; hint: string }[] = [
+  { value: "moonshine", label: "Fastest", hint: "Moonshine base: about 0.1 s per sentence. Misses the most when you mumble (about 1 word in 5 when quiet)." },
+  { value: "parakeet-110m", label: "Balanced", hint: "Parakeet 110M: just as fast, about 0.1 s. Fewer misses when you mumble (about 1 in 6). A 100 MB download." },
+  { value: "parakeet-v2", label: "Accurate", hint: "Parakeet 0.6B: the most accurate, about 1 word in 8 even when mumbling, about 0.3 s slower per sentence. A 460 MB download. Recommended if you mumble." },
+];
+type SttState = { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string; mb: number };
+
 // ---------- second brain ----------
-type ClaudeVoiceStatus = { models: { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string }; mb: number; claudeFound: boolean };
+type ClaudeVoiceStatus = { models: { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string }; mb: number; claudeFound: boolean; stt?: Record<SttId, SttState> };
 
 /** Grok, or (beta) Claude through your own Claude Code with speech models on this PC. */
 function VoiceEngineSection({ s, update }: { s: SettingsT; update: Update }) {
@@ -383,11 +393,24 @@ function VoiceEngineSection({ s, update }: { s: SettingsT; update: Update }) {
     refresh();
   }, [s.voiceEngine]);
   // While the models download, check progress every second.
+  const sttDownloading = !!status?.stt && Object.values(status.stt).some((x) => x.state === "downloading");
   useEffect(() => {
-    if (status?.models.state !== "downloading") return;
+    if (status?.models.state !== "downloading" && !sttDownloading) return;
     const id = setInterval(refresh, 1000);
     return () => clearInterval(id);
-  }, [status?.models.state]);
+  }, [status?.models.state, sttDownloading]);
+  const downloadStt = async (id: SttId) => {
+    const r = await (await postJson("/api/claude-voice/stt-download", { id })).json().catch(() => null);
+    if (r?.stt) setStatus((st) => (st ? { ...st, stt: r.stt } : st));
+    else refresh();
+  };
+  // Choosing one that isn't here yet downloads it; Moonshine is used until it's ready.
+  const chooseStt = (claudeVoiceStt: SttId) => {
+    update({ claudeVoiceStt });
+    const st = status?.stt?.[claudeVoiceStt];
+    if (claudeVoiceStt !== "moonshine" && st && st.state !== "ready" && st.state !== "downloading") downloadStt(claudeVoiceStt);
+  };
+  const stt = status?.stt?.[s.claudeVoiceStt];
   const download = async () => {
     const r = await (await postJson("/api/claude-voice/download", {})).json().catch(() => null);
     if (r?.models) setStatus((st) => (st ? { ...st, models: r.models } : st));
@@ -441,6 +464,28 @@ function VoiceEngineSection({ s, update }: { s: SettingsT; update: Update }) {
         <p className="mt-2 text-[12px] leading-snug text-white/45">
           {s.claudeVoiceEffort === "low" ? "Answers right away. Best for talking." : "Thinks longer before it speaks: slower to answer, especially on Opus and Fable."}
         </p>
+        <div className="mt-4 mb-1.5 text-[12.5px] text-white/70">Speech to text</div>
+        <Segmented value={s.claudeVoiceStt} onChange={chooseStt} options={STT.map(({ value, label }) => ({ value, label }))} />
+        <p className="mt-2 text-[12px] leading-snug text-white/45">{STT.find((o) => o.value === s.claudeVoiceStt)?.hint} All on {thisComputer}. (Grok hears you on xAI's side: this is for Claude voice only.)</p>
+        {s.claudeVoiceStt !== "moonshine" && stt && stt.state !== "ready" && (
+          <div className="mt-1.5 text-[12px] leading-snug">
+            {stt.state === "downloading" ? (
+              <>
+                <p className="text-white/70">Downloading… {stt.percent}% (Moonshine listens until it's ready)</p>
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/10">
+                  <div className="h-full rounded-full bg-white transition-[width] duration-700 ease-out" style={{ width: `${stt.percent}%` }} />
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-3">
+                <p className={cn("flex-1", stt.state === "error" ? "text-amber-300/90" : "text-white/55")}>{stt.state === "error" ? `Download failed: ${stt.error}` : `Needs a ${stt.mb} MB download. Moonshine listens until then.`}</p>
+                <button onClick={() => downloadStt(s.claudeVoiceStt)} className="shrink-0 rounded-lg border border-white/15 px-2.5 py-1 text-[12px] text-white/85 hover:bg-white/10">
+                  {stt.state === "error" ? "Retry" : "Download"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {status && (
           <div className="mt-3 text-[12px] leading-snug">
             <Reveal show={!status.claudeFound}>

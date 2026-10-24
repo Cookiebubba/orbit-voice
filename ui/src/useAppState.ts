@@ -26,6 +26,7 @@ export type Settings = {
   claudeVoice: number;
   claudeVoiceModel: "haiku" | "sonnet" | "opus" | "fable";
   claudeVoiceEffort: "low" | "medium" | "high";
+  claudeVoiceStt: "moonshine" | "parakeet-110m" | "parakeet-v2";
   avatar: "buddy" | "qubit" | "none";
   buddySize: number;
   showOrb: boolean;
