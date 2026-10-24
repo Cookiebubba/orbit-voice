@@ -44,7 +44,10 @@ Settings → Orbit anywhere: **Let Grok work in the window you're in** (on by de
 5. **A real connector:** "is there a tool for Notion?", then connect it (sign-in in the browser). Local (npm/PyPI) connectors download and run code: try one you trust first.
 6. **The focus guard** in daily use: tell me if an app ever pops to the front after Orbit acts in it.
 
+## Orbit's own Claude-window actions
+
+`src/desktop.ps1` (typing drafts, Send, Stop, answering cards, switching sessions, Claude's own controls) now acts with AutoSetFocus off too. It no longer loads the managed UI Automation library: `src/platform/win/OrbitAuto.cs` has the same names, built on COM UI Automation (the interop from `uia-interop.ps1`, shared with `uia.ps1`), compiled once into the cache. The two can't share a process: once the managed library has talked to a window, COM acts on that window focus it again (tested on the stand-in). `test/desktop-uia.test.js` checks that the stand-in Claude window never activates.
+
 ## Not done yet (follow-ups)
 
-- `src/desktop.ps1` (Orbit's Claude-window actions) still uses the managed UI Automation library with AutoSetFocus on. Moving it to the new no-focus helper touches the same file as the voice-brain work on main, so it waits for that merge.
 - The Mac platform layer (a Swift helper behind `src/platform/index.js`), the Codex engine, app bridges (Photoshop UXP, Office COM, DevTools), borrowing the screen, and a "waiting on you" pose for a helper's Qubit.

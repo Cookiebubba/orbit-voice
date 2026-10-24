@@ -1,7 +1,7 @@
 # The COM UI Automation interfaces (CUIAutomation8, IUIAutomation2: AutoSetFocus can be turned off)
 # as a .NET interop assembly, converted from Windows' own type library (UIAutomationCore.dll) once
 # per UIAutomationCore version and kept in the cache, so nothing is shipped. Dot-sourced by
-# desktop.ps1 (the Claude window).
+# desktop.ps1 (the Claude window) and uia.ps1 (Orbit anywhere's helper).
 
 # Path of Interop.UIAutomationClient.dll in <Cache>\uia-<version> (made first if it isn't there).
 function Get-UiaInterop([string]$Cache) {
