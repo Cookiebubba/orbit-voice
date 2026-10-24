@@ -24,7 +24,11 @@
 #   Selected text (text pattern, or a classic edit box asked read-only with EM_GETSEL/WM_GETTEXT),
 #   else the selected list items. Nothing is copied: the clipboard is never touched.
 # {"id":n,"op":"act","hwnd":h,"i":index,"rid":"runtime id","t":"Button","action":"set_text|type|press|toggle|select|expand|collapse","value":".."}
-#   -> {"ok":true,"via":"uia-value|wm-char|wm-settext|bn-clicked|uia-invoke|uia-toggle|uia-select|..","verified":true,"stoleFocus":false}
+#   -> {"ok":true,"via":"uia-value|wm-char|wm-settext|bn-clicked|uia-invoke|uia-toggle|uia-select|borrow-keys|..","verified":true,"stoleFocus":false,
+#       "registered":true|false|null (text acts: did the app itself take the text? see Registered)}
+#   Text acts take "method": "value" (default: no focus at all) or "borrow" (only with the user's
+#   OK for that app: focus moves to the box for a moment and the text is typed as keystrokes; the
+#   caller puts the user's window back). "fg" in the answer: the window that was in front before.
 #   One act on the node `i` of the last scan of that window (found again by its runtime id if the
 #   tree changed). Errors: stale, disabled, password, not_supported.
 # Errors: {"id":n,"ok":false,"error":"code","message":"..."} (codes: no_window, access_denied,
@@ -473,10 +477,18 @@ public static class OrbitUia {
     IntPtr fgBefore = GetForegroundWindow();
     string via = ""; bool verified = true;
 
+    List<Tuple<IUIAutomationElement, bool>> watch = null; // buttons near a text box, and whether each was on
+    string textBefore = null;
     if (action == "set_text" || action == "type") {
       IUIAutomationValuePattern vp = el.GetCurrentPattern(ValuePatternId) as IUIAutomationValuePattern;
       if (vp == null || vp.CurrentIsReadOnly != 0) return Fail("not_supported", "That control doesn't take text.");
       string before = vp.CurrentValue ?? "";
+      textBefore = before;
+      // (Web content only: a desktop form's buttons say nothing about whether its box took the text.)
+      bool web = false;
+      try { web = el.CurrentFrameworkId == "Chrome"; } catch (Exception) { }
+      watch = web ? NearbyButtons(el) : null;
+      if (Str(req, "method") == "borrow") return Borrow(el, hwnd, action, value, before, vp, watch, fgBefore);
       string want = action == "type" ? before + value : value;
       if (action == "type" && classicEdit) {
         // Typed where the caret is, like keys (a classic edit box takes WM_CHAR even unfocused).
@@ -545,6 +557,120 @@ public static class OrbitUia {
     res["via"] = via;
     res["verified"] = verified;
     res["stoleFocus"] = fgAfter != fgBefore && fgAfter != IntPtr.Zero && GetAncestor(fgAfter, 2) == new IntPtr(hwnd);
+    if (watch != null) res["registered"] = Registered(el, watch, action == "type" ? null : value);
+    if (textBefore != null) res["before"] = Cut(textBefore, 4000); // (for a retry another way; never passed on)
+    return res;
+  }
+
+  // ---------------- text that web apps really take (2026-10) ----------------
+  // A web app (Chromium, Electron, WebView2: OpenCode, Discord...) keeps its own model of a text box
+  // and changes it only on input events. UI Automation's SetValue writes the text without one: it
+  // shows, but the app never takes it (its Send stays grey). Tested on our own Electron app: keys
+  // posted to its window without focus never arrive either (Chromium drops key input while it isn't
+  // focused), so the no-focus ways are SetValue and, for apps started with a debugging port, the
+  // DevTools protocol (src/anywhere/cdp.js). Here: noticing that the app didn't take it, and the
+  // last resort the user must OK per app: borrowing focus for a moment to type it as keystrokes.
+
+  // Send-like controls near a text box: its Send (or Submit, Post, Reply...) follows whether the
+  // app has the text. Up to three levels up, buttons only, at most 40.
+  static readonly System.Text.RegularExpressions.Regex SendLike = new System.Text.RegularExpressions.Regex(@"\b(send|submit|post|reply|comment|save|search|go|ok|run|start|ask|chat|message|continue)\b|^$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+  static List<Tuple<IUIAutomationElement, bool>> NearbyButtons(IUIAutomationElement el) {
+    var found = new List<Tuple<IUIAutomationElement, bool>>();
+    try {
+      IUIAutomationTreeWalker w = uia.ControlViewWalker;
+      IUIAutomationElement up = el;
+      for (int i = 0; i < 3; i++) { IUIAutomationElement p = w.GetParentElement(up); if (p == null) break; up = p; }
+      IUIAutomationElementArray bs = up.FindAll(TreeScope.TreeScope_Descendants, uia.CreatePropertyCondition(P_ControlType, 50000));
+      for (int i = 0; i < bs.Length && found.Count < 40; i++) {
+        IUIAutomationElement b = bs.GetElement(i);
+        if (SendLike.IsMatch(b.CurrentName ?? "")) found.Add(Tuple.Create(b, b.CurrentIsEnabled != 0));
+      }
+    } catch (Exception) { }
+    return found;
+  }
+
+  /**
+   * Did the app take the text? true: a Send-like button near the box came on with it. false: the
+   * box went back to what it had (the app put its own state back), or its Send-like buttons all
+   * stayed off with text in the box. null: nothing to tell by (a plain form box).
+   */
+  static object Registered(IUIAutomationElement el, List<Tuple<IUIAutomationElement, bool>> watch, string want) {
+    Thread.Sleep(350); // apps re-render after input
+    try {
+      IUIAutomationValuePattern vp = el.GetCurrentPattern(ValuePatternId) as IUIAutomationValuePattern;
+      string now = vp != null ? Norm(vp.CurrentValue).Trim() : null;
+      if (want != null && now != null && now != Norm(want).Trim()) return false;
+      bool anyOff = false;
+      foreach (var t in watch ?? new List<Tuple<IUIAutomationElement, bool>>()) {
+        bool on = false;
+        try { on = t.Item1.CurrentIsEnabled != 0; } catch (Exception) { continue; }
+        if (!t.Item2 && on) return true;
+        if (!on) anyOff = true;
+      }
+      if (anyOff && now != null && now != "") return false;
+    } catch (Exception) { }
+    return null;
+  }
+
+  [DllImport("user32.dll")] static extern uint SendInput(uint n, INPUT[] inputs, int size);
+  [StructLayout(LayoutKind.Sequential)] struct KEYBDINPUT { public ushort wVk; public ushort wScan; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
+  [StructLayout(LayoutKind.Sequential)] struct MOUSEINPUT { public int dx, dy; public uint mouseData, dwFlags, time; public IntPtr dwExtraInfo; }
+  [StructLayout(LayoutKind.Explicit)] struct INPUTU { [FieldOffset(0)] public KEYBDINPUT ki; [FieldOffset(0)] public MOUSEINPUT mi; }
+  [StructLayout(LayoutKind.Sequential)] struct INPUT { public uint type; public INPUTU u; }
+  const uint KEYEVENTF_UNICODE = 0x0004, KEYEVENTF_KEYUP = 0x0002;
+
+  /**
+   * Typing as keystrokes, with focus borrowed for a moment (only on the user's OK for this app): the
+   * box gets the focus through UI Automation, its text is selected (set_text: replaced) or the caret
+   * put at its end (type), the text goes in as Unicode keystrokes, and the answer says which window
+   * was in front before ("fg") so the caller puts it back at once. Nothing is typed unless the box
+   * really has the keyboard focus (never into whatever else is in front).
+   */
+  static Dictionary<string, object> Borrow(IUIAutomationElement el, long hwnd, string action, string value, string before, IUIAutomationValuePattern vp, List<Tuple<IUIAutomationElement, bool>> watch, IntPtr fgBefore) {
+    el.SetFocus();
+    bool focused = false;
+    for (int i = 0; i < 20 && !focused; i++) {
+      Thread.Sleep(25);
+      try { IUIAutomationElement f = uia.GetFocusedElement(); focused = f != null && uia.CompareElements(f, el) != 0; } catch (Exception) { }
+    }
+    IntPtr fg = GetForegroundWindow();
+    bool ours = fg != IntPtr.Zero && GetAncestor(fg, 2) == GetAncestor(new IntPtr(hwnd), 2);
+    var res = Ok();
+    res["fg"] = fgBefore.ToInt64();
+    res["before"] = Cut(before, 4000);
+    if (!focused || !ours) { res["ok"] = false; res["error"] = "no_focus"; res["message"] = "The box didn't take the focus, so nothing was typed."; return res; }
+    IUIAutomationTextPattern tp = el.GetCurrentPattern(10014) as IUIAutomationTextPattern;
+    if (tp != null) {
+      IUIAutomationTextRange r = tp.DocumentRange;
+      if (action == "type") r.MoveEndpointByRange(TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start, r, TextPatternRangeEndpoint.TextPatternRangeEndpoint_End);
+      r.Select();
+    } else if (action == "set_text" && vp != null && before != "") {
+      vp.SetValue(""); // (a box with no text pattern: emptied first, then typed)
+    }
+    Thread.Sleep(30);
+    var keys = new List<INPUT>();
+    foreach (char c in value) {
+      ushort ch = c == '\n' ? (ushort)0x0D : (ushort)c;
+      foreach (uint up in new uint[] { 0, KEYEVENTF_KEYUP }) {
+        var k = new INPUT { type = 1 };
+        k.u.ki = new KEYBDINPUT { wVk = 0, wScan = ch, dwFlags = KEYEVENTF_UNICODE | up };
+        keys.Add(k);
+      }
+    }
+    // Only while the box still has the focus: one chunk at a time, checked between chunks.
+    for (int at = 0; at < keys.Count; at += 40) {
+      try { IUIAutomationElement f = uia.GetFocusedElement(); if (f == null || uia.CompareElements(f, el) == 0) { res["ok"] = false; res["error"] = "focus_lost"; res["message"] = "The focus moved away while typing, so Orbit stopped."; return res; } } catch (Exception) { }
+      INPUT[] chunk = keys.GetRange(at, Math.Min(40, keys.Count - at)).ToArray();
+      SendInput((uint)chunk.Length, chunk, Marshal.SizeOf(typeof(INPUT)));
+      Thread.Sleep(10);
+    }
+    string want = action == "type" ? before + value : value;
+    Stopwatch w = Stopwatch.StartNew();
+    while (vp != null && w.ElapsedMilliseconds < 1500 && Norm(vp.CurrentValue).Trim() != Norm(want).Trim()) Thread.Sleep(30);
+    res["via"] = "borrow-keys";
+    res["verified"] = vp == null || Norm(vp.CurrentValue).Trim() == Norm(want).Trim();
+    res["stoleFocus"] = false; // borrowed on purpose, and given back by the caller
+    res["registered"] = Registered(el, watch, action == "type" ? null : value);
     return res;
   }
 

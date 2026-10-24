@@ -27,9 +27,29 @@ Built from the research brief (`orbit-anywhere-brief/`, v4), phase by phase. Eac
 - **Connectors** are pinned with a fingerprint of every tool; any change means asking again. Local ones run at low integrity in a Job Object; remote ones sign in in your browser (OAuth 2.1, PKCE) and the tokens are sealed with Windows DPAPI.
 - **"Orbit, stop everything"** stops every helper at once.
 
+## Typing into web apps
+
+Web-based apps (OpenCode, Discord, anything Chromium, Electron or WebView2) keep their own model of a text box and only change it on input events. UI Automation's SetValue writes the text without one: it shows in the box, but the app never takes it, and its Send stays grey. Keys posted to the window without focus don't help either: Chromium drops key input while it isn't focused (tested on our own Electron app, Chrome and Edge, with WM_CHAR, WM_IME_CHAR and a space-and-backspace "nudge").
+
+So every text act is checked: after typing, uia.ps1 looks at the app's own state (a Send-like button next to the box came on, or the box was put back) and reports `registered`. If the app didn't take it, Orbit tries the next way by itself and says so in a few words:
+
+1. **SetValue** (UI Automation, no focus at all): the way for desktop apps, and the first try everywhere.
+2. **The app's DevTools protocol** (no focus either): only with **Type into web apps through their debugging port** on, and only for an app the user started with `--remote-debugging-port`. `src/anywhere/cdp.js` finds the window's own page on 127.0.0.1, focuses the box by its accessible name, and uses `Input.insertText`. It never runs code in the page.
+3. **Borrowing focus for a second**: the box takes the keyboard focus, the text goes in as keystrokes (only while that box has the focus), and the user's window comes straight back. Orbit asks once per app ("OpenCode didn't take the typed text. Want me to type it by borrowing focus for a second?"); a yes is remembered in the app's profile.
+
+The way that worked is saved in the app's profile (`inputMethod`, `borrowFocusOk`) and tried first next time.
+
+| Test app (our own instances only) | SetValue | Debugging port | Borrowed focus |
+|---|---|---|---|
+| Electron test app (`test/e2e/web-input/`: a contenteditable editor and a controlled textarea) | shows, not taken (noticed) | taken, never activated | taken, user's window back |
+| Chrome, fresh profile, local page | shows, not taken (noticed) | taken | taken |
+| Edge, fresh profile, local page | shows, not taken (noticed) | taken (box found by its attributes while the page is in the background) | taken |
+
+OpenCode wasn't tested directly: it's a single-instance desktop app, and a second copy could reach the user's running one.
+
 ## Settings
 
-Settings → Orbit anywhere: **Let Grok work in the window you're in** (on by default) and **Let Claude see windows** (off by default: looking stays on this PC).
+Settings → Orbit anywhere: **Let Grok work in the window you're in** (on by default), **Let Claude see windows** (off by default: looking stays on this PC) and **Type into web apps through their debugging port** (off by default).
 
 ## Tests
 

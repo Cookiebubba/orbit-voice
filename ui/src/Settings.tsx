@@ -204,6 +204,13 @@ function AnywhereSection({ s, update, name }: { s: SettingsT; update: Update; na
           label="Let Claude see windows"
           hint={`When you ask ${name} to look at a window (a picture, a chart), a picture of that one window goes to Claude through your Claude Code. Off: looking stays on this PC, reading only the text in it.`}
         />
+        <Toggle
+          className="mt-4"
+          checked={s.anywhereCdp}
+          onChange={(anywhereCdp) => update({ anywhereCdp })}
+          label="Type into web apps through their debugging port"
+          hint={`Some web-based apps (Electron, Chromium) only notice real typing. If you start one with a debugging port (--remote-debugging-port), ${name} can type into it that way, still without your mouse or keyboard. Without it, ${name} asks once per app before borrowing focus for a second to type.`}
+        />
       </Reveal>
     </Section>
   );

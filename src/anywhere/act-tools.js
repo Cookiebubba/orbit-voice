@@ -15,6 +15,9 @@
 //     time: a new act replaces a held one.
 //   - The exception the user chose: a message they dictated and told Orbit to send in the same
 //     breath ("type 'running late' in Discord and send it"): typed, sent, read back once.
+//   - Text a web app didn't take (hands.js: it shows, but the app's Send stays grey): Orbit tries
+//     the other no-focus way by itself, and if none works it asks once, for that app, whether it may
+//     borrow the focus for a moment to type it ("borrow"), held like an outward act until a clear yes.
 
 import crypto from 'node:crypto';
 import { appName } from '../platform/index.js';
@@ -107,14 +110,34 @@ export function createActHandlers(ctx) {
       }
       const r = await perform(pl);
       if (!r.ok) return r;
+      const boxBefore = r.before; // (never passed on)
+      delete r.before;
       if (action === 'type' || action === 'set_text') tally.typed = typed;
       notify({ type: 'bridge.anywhere', action: 'act', app: appName(t.win) });
+      const app = appName(t.win) || 'That app';
+      if (r.registered === false && r.needs_borrow) {
+        // It shows in the box, but the app didn't take it, and the no-focus ways are used up.
+        held = { key: keyOf(pl), plan: pl, at: Date.now(), kind: 'borrow', before: boxBefore, ask: `${app} didn't take the typed text (it only notices real typing). Want me to type it by borrowing focus for a second?` };
+        return {
+          held: true,
+          confirm_key: held.key,
+          ask: held.ask,
+          why: 'Typing it the way the app notices means its box takes the keyboard focus for a moment (the user\x27s window comes straight back). Orbit asks once per app; a yes is remembered for it.',
+          next_step: 'Ask the user exactly that, in one short sentence, and wait. Call confirm_window_action with the key only after their clear yes.',
+        };
+      }
       return {
         done: true,
         did: r.did,
         verified: r.verified,
-        note: r.stole_focus ? 'That app brought its window forward by itself.' : undefined,
-        next_step: 'Say it is done in a word or two, or go on with the next step the user asked for.',
+        registered: r.registered === false ? false : undefined,
+        typed_how: r.how || undefined,
+        note: r.stole_focus ? 'That app brought its window forward by itself.' : r.registered === false ? 'It shows in the box, but the app may not have taken it (its Send didn\x27t come on).' : undefined,
+        next_step: r.how
+          ? `Say it's typed, and in a few words that ${app} only noticed it the second way (${r.how}).`
+          : r.registered === false
+            ? 'Say it is in the box but the app may not have noticed it, so the user should check before sending.'
+            : 'Say it is done in a word or two, or go on with the next step the user asked for.',
       };
     },
 
@@ -138,10 +161,21 @@ export function createActHandlers(ctx) {
         return { ok: false, error: 'Not done: that control changed since the question. Read the window again and ask again.' };
       }
       confirmUsed = answer.at;
+      const kind = h.kind;
       held = null;
-      const r = await perform(again.plan);
+      // A yes to borrowing focus: typed that way now (the whole box, as it was meant to read), and
+      // remembered for this app (hands.js).
+      const r = await perform(again.plan, kind === 'borrow' ? { borrowOk: true, only: 'borrow', before: h.before ?? null } : {});
       if (!r.ok) return r;
-      notify({ type: 'bridge.anywhere', action: 'act', app: appName(again.plan.win), outward: true });
+      notify({ type: 'bridge.anywhere', action: 'act', app: appName(again.plan.win), outward: kind !== 'borrow' });
+      if (kind === 'borrow') {
+        return {
+          done: true,
+          did: r.did,
+          registered: r.registered,
+          next_step: r.registered === false ? 'Say it still didn\x27t take, so the user should type it there themselves.' : 'Say it is typed now, in a word or two.',
+        };
+      }
       return { done: true, did: r.did, verified: r.verified, next_step: 'Say it is done in a word or two.' };
     },
   };

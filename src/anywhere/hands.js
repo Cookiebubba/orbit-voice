@@ -16,8 +16,24 @@
 //     can't change underneath). The one exception: a message the user dictated and said to send in
 //     the same breath ("type 'running late' in Discord and send it"); Orbit reads it back once.
 //     Never an exception for deleting, buying or anything else outward.
+//
+// Text in web apps (2026-10): a web app (OpenCode, Discord, anything Chromium, Electron or WebView2)
+// only takes text that arrives as input events; UI Automation's SetValue shows it in the box but the
+// app never sees it (its Send stays grey). So a text act is checked for whether the app really took
+// it (uia.ps1: its Send-like button came on, or the box was put back), and if not, Orbit tries the
+// next way, without asking, and says so briefly:
+//   1. "value": UI Automation, no focus at all (every app; the only way for most desktop apps);
+//   2. "cdp": the app's own DevTools protocol, no focus either: only with the setting on and only for
+//      an app the user started with a debugging port (src/anywhere/cdp.js);
+//   3. "borrow": the box takes the focus for a moment and the text goes in as keystrokes, then the
+//      user's window comes straight back. Only after the user said yes to it for that app (asked
+//      once, remembered in the app's profile).
+// The way that worked is remembered in the app's profile (inputMethod) and tried first next time.
 
-import { appName, uiaRequest } from '../platform/index.js';
+import { appName, switchToWindow, uiaRequest } from '../platform/index.js';
+import { getSetting } from '../config.js';
+import { cdpType } from './cdp.js';
+import { markIntentional } from './switching.js';
 import { actable, windowText } from './policy.js';
 import { focusGuard, isHomeWindow, profileFor, profileStore } from './index.js';
 import { heal, isOutwardLabel, locate } from './profiles.js';
@@ -154,16 +170,110 @@ function failure(r) {
       return 'That app took too long to answer.';
     case 'unavailable':
       return r.message || 'Acting in other apps works only on Windows for now.';
+    case 'no_focus':
+    case 'focus_lost':
+      return r.message || 'The box would not take the focus, so nothing was typed.';
     default:
       return 'Orbit could not do that in that window.';
   }
 }
 
+export const INPUT_METHODS = Object.freeze(['value', 'cdp', 'borrow']);
+const METHOD_SAYS = { cdp: "through the app's debugging port", borrow: 'by borrowing focus for a moment' };
+
+/**
+ * The order to try the ways of typing in this app: the one that worked last time first. 'borrow'
+ * only with the user's OK for this app (`borrowOk`: given now, or remembered in the profile).
+ */
+export function inputOrder(profile, { borrowOk = false, cdpOn = false } = {}) {
+  const ok = { value: true, cdp: cdpOn, borrow: borrowOk || profile?.borrowFocusOk === true };
+  const first = INPUT_METHODS.includes(profile?.inputMethod) ? [profile.inputMethod] : [];
+  return [...new Set([...first, ...INPUT_METHODS])].filter((m) => ok[m]);
+}
+
+/**
+ * Typing that the app really takes (see the top): each way in order until one registers. Resolves
+ * like uia's act, plus { method, needs_borrow }: needs_borrow when no way allowed so far worked
+ * (the text may show in the box, but the app didn't take it).
+ */
+async function typeText({ win, node, action, text, profile }, { borrowOk = false, only = '', before: known = null } = {}) {
+  const order = only ? [only] : inputOrder(profile, { borrowOk, cdpOn: getSetting('anywhereCdp') === true });
+  let before = typeof known === 'string' ? known : null; // the box's text before the first try (a retry replaces the whole box)
+  let first = null;
+  for (const method of order) {
+    const act = before !== null && action === 'type' ? 'set_text' : action;
+    const value = before !== null && action === 'type' ? before + text : text;
+    let r;
+    if (method === 'cdp') {
+      r = await cdpType(win, { name: node.n || node.a || '', text: value, action: act });
+      if (!r.ok) continue; // not available for this app: the next way
+      const check = await uiaRequest('scan', { hwnd: win.hwnd, maxNodes: 4000, values: true }).catch(() => null);
+      const box = check?.nodes?.find((n) => n.rid && n.rid === node.rid) || check?.nodes?.find((n) => n.n === node.n && n.t === node.t);
+      const same = (a, b) => String(a || '').replace(/\r/g, '').trim() === String(b || '').replace(/\r/g, '').trim();
+      r = { ok: true, via: 'cdp', verified: !box || same(box.v, value), registered: true };
+    } else if (method === 'borrow') {
+      markIntentional(win.hwnd); // focus moves there on purpose, for a moment: not the guard's business
+      r = await uiaRequest('act', { hwnd: win.hwnd, i: node.i, rid: node.rid || '', t: node.t, n: node.n || '', action: act, value: String(value).slice(0, HAND_LIMITS.textMax), method: 'borrow' });
+      // The user's window back in front at once (whatever happened).
+      const back = Number(r?.fg) || 0;
+      if (back && back !== Number(win.hwnd)) {
+        for (let i = 0; i < 3; i++) {
+          const sw = await Promise.resolve(switchToWindow(back)).catch(() => null);
+          if (sw?.switched) break;
+          await new Promise((res) => setTimeout(res, 150)); // (Windows can refuse while the app is still activating)
+        }
+      }
+      if (!r?.ok) {
+        first ??= r;
+        continue;
+      }
+    } else {
+      const prefer = (profile?.quirks || []).includes(`activates:${action}:${node.t}`) ? 'legacy' : '';
+      r = await uiaRequest('act', { hwnd: win.hwnd, i: node.i, rid: node.rid || '', t: node.t, n: node.n || '', action: act, value: String(value).slice(0, HAND_LIMITS.textMax), ...(prefer ? { prefer } : {}) });
+      if (!r?.ok) return r;
+    }
+    if (before === null && typeof r.before === 'string') before = r.before;
+    first ??= r;
+    // Taken (or nothing tells otherwise: a desktop app's box): done, and remembered for this app.
+    if (r.registered !== false) {
+      if (profile && profile.inputMethod !== method && (method !== 'value' || profile.inputMethod)) {
+        profile.inputMethod = method;
+        if (method === 'borrow') profile.borrowFocusOk = true;
+        profileStore().save(profile);
+      }
+      return { ...r, method, before };
+    }
+  }
+  return { ...first, ok: first?.ok !== false, registered: false, method: 'value', before, needs_borrow: !only && !inputOrder(profile, { borrowOk }).includes('borrow') };
+}
+
 /**
  * Do one act now (the gate was passed by the caller). Scans, finds the control, checks it, acts,
- * verifies. Resolves { ok, did, verified, stole_focus } or { ok: false, error }.
+ * verifies. Resolves { ok, did, verified, stole_focus } or { ok: false, error }. Text acts may try
+ * more than one way (see the top): `borrowOk` is the user's yes to borrowing focus in this app.
  */
-export async function perform({ win, node, action, text = '', control = null, profile = null, scan = null }) {
+export async function perform({ win, node, action, text = '', control = null, profile = null, scan = null }, { borrowOk = false, only = '', before = null } = {}) {
+  if (action === 'type' || action === 'set_text') {
+    focusGuard.noteAct(win.hwnd, { action, role: node.t, app: appName(win) });
+    const r = await typeText({ win, node, action, text, profile }, { borrowOk, only, before });
+    if (!r?.ok) return { ok: false, error: failure(r) };
+    if (control && profile && scan) {
+      const found = locate(control, scan);
+      if (found && heal(profile, control, scan, found)) profileStore().save(profile);
+    }
+    return {
+      ok: true,
+      did: describeAct({ action, node, text, win }),
+      verified: r.verified !== false,
+      registered: r.registered,
+      via: r.via,
+      method: r.method,
+      how: METHOD_SAYS[r.method],
+      needs_borrow: r.needs_borrow || undefined,
+      before: r.before, // (internal: a retry the other way replaces the whole box; never passed on)
+      stole_focus: !!r.stoleFocus,
+    };
+  }
   // An app this kind of act pulled forward before (the focus guard noted it): the other way.
   const prefer = (profile?.quirks || []).includes(`activates:${action}:${node.t}`) ? 'legacy' : '';
   focusGuard.noteAct(win.hwnd, { action, role: node.t, app: appName(win) }); // if it comes forward now, that's theft

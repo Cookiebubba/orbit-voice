@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ORBIT-WEB-INPUT</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 16px; background: #111; color: #eee; }
+  .row { display: flex; gap: 8px; align-items: flex-end; margin: 12px 0; }
+  #editor { min-height: 48px; width: 420px; border: 1px solid #555; padding: 6px; white-space: pre-wrap; }
+  textarea { width: 420px; height: 48px; }
+  button[disabled] { opacity: .4; }
+</style>
+</head>
+<body>
+<!--
+  Two web inputs that, like real web apps (OpenCode, Discord, React forms), keep their own state and
+  only notice input that comes as input events, never a value written into the page from outside:
+  - "Prompt": a contenteditable editor whose model is updated from beforeinput/input events (as
+    ProseMirror, Lexical or Solid editors are). Its Send button turns on only when the model has text.
+  - "Message": a controlled textarea: the page's state changes only on real typing (input events of
+    a typing kind); any other change to the box (an accessibility SetValue) is reverted to the state
+    on the next render, as React does. Its Send turns on only when the state has text.
+-->
+<div class="row">
+  <div id="editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Prompt"></div>
+  <button id="sendPrompt" disabled>Send prompt</button>
+</div>
+<div class="row">
+  <textarea id="message" aria-label="Message"></textarea>
+  <button id="sendMessage" disabled>Send message</button>
+</div>
+<script>
+  const editor = document.getElementById('editor');
+  const message = document.getElementById('message');
+  const sendPrompt = document.getElementById('sendPrompt');
+  const sendMessage = document.getElementById('sendMessage');
+  const TYPING = new Set(['insertText', 'insertCompositionText', 'insertFromPaste', 'insertLineBreak', 'insertParagraph', 'deleteContentBackward', 'deleteContentForward', 'deleteByCut', 'insertFromDrop']);
+  const state = { prompt: '', message: '', sent: [] };
+  const report = () => window.webInput?.report({ ...state, sendPrompt: !sendPrompt.disabled, sendMessage: !sendMessage.disabled, focus: document.activeElement?.id || null });
+  const render = () => {
+    sendPrompt.disabled = !state.prompt.trim();
+    sendMessage.disabled = !state.message.trim();
+    if (message.value !== state.message) message.value = state.message; // controlled: the state wins
+    report();
+  };
+  // The editor's model follows typing (input events), never its DOM being rewritten from outside.
+  editor.addEventListener('input', (e) => {
+    if (!TYPING.has(e.inputType)) return;
+    state.prompt = editor.innerText.replace(/\n$/, '');
+    render();
+  });
+  message.addEventListener('input', (e) => {
+    if (TYPING.has(e.inputType)) state.message = message.value;
+    render(); // anything else is undone
+  });
+  sendPrompt.addEventListener('click', () => { state.sent.push(['prompt', state.prompt]); state.prompt = ''; editor.textContent = ''; render(); });
+  sendMessage.addEventListener('click', () => { state.sent.push(['message', state.message]); state.message = ''; render(); });
+  setInterval(render, 300); // re-renders now and then, as apps do
+  render();
+</script>
+</body>
+</html>

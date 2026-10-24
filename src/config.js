@@ -71,6 +71,9 @@ export const DEFAULTS = Object.freeze({
   // ...and with this on, "look at this window" may show Claude a picture of that one window (through
   // the user's own Claude Code). Off: looking stays on this PC (its text, and Windows' own OCR).
   anywhereVision: false,
+  // ...and with this on, Orbit may type into an app through its own debugging port (only an app the
+  // user started with --remote-debugging-port) when typing the usual way doesn't register there.
+  anywhereCdp: false,
   // Background helpers (Orbit anywhere): the engine they run on. 'claude-code' (the user's Claude
   // sign-in) for now; 'codex' is planned.
   helperEngine: 'claude-code',
