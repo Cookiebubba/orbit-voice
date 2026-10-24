@@ -31,6 +31,7 @@ import { createRequire } from 'node:module';
 import { isSignInProblem } from './brain.js';
 import { createCueStream } from './emote-cues.js';
 import { modelPaths } from './voice-models.js';
+import { joinTranscripts, splitForStt } from './stt-chunks.js';
 import { childEnv, groupOptions, killTree } from './platform/system.js';
 
 const require = createRequire(import.meta.url);
@@ -71,6 +72,7 @@ const CLOSED = 3;
 const IN_RATE = 24000; // what the page sends and plays
 const VAD_RATE = 16000;
 const WINDOW = 512;
+const MOONSHINE_MAX_S = 8; // its longest piece (it answers nothing past ~9 s)
 
 // Claude Code appends its own "Environment" block (a working directory, shell, advice on running
 // code) to every system prompt, and there's no switch for it here: without this, the model takes
@@ -331,10 +333,15 @@ export function loadSpeech(root, { threads = CLAUDE_VOICE.threads } = {}) {
       newVad: () => new sherpa.Vad({ sileroVad: { model: p.vad, threshold: 0.5, minSpeechDuration: 0.25, minSilenceDuration: CLAUDE_VOICE.endOfTurnS, windowSize: WINDOW, maxSpeechDuration: 30 }, sampleRate: VAD_RATE, numThreads: 1, provider: 'cpu' }, 60),
       newResampler: () => new sherpa.LinearResampler(IN_RATE, VAD_RATE),
       async transcribe(samples) {
-        const s = recognizer.createStream();
-        s.acceptWaveform({ samples, sampleRate: VAD_RATE });
-        await recognizer.decodeAsync(s);
-        return String(recognizer.getResult(s).text || '').trim();
+        // Moonshine returns nothing for more than ~9 s at once (src/stt-chunks.js): long speech in pieces.
+        const texts = [];
+        for (const piece of splitForStt(samples, MOONSHINE_MAX_S)) {
+          const s = recognizer.createStream();
+          s.acceptWaveform({ samples: piece, sampleRate: VAD_RATE });
+          await recognizer.decodeAsync(s);
+          texts.push(String(recognizer.getResult(s).text || ''));
+        }
+        return joinTranscripts(texts);
       },
       async speak(text, { speed = 1, sid = CLAUDE_VOICE.sid } = {}) {
         // No external buffers: Electron's memory cage refuses them (the audio would never arrive).
