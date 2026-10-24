@@ -201,14 +201,17 @@ const qubitOn = (win) =>
     const b = q.getBounds();
     return q.isVisible() && b.x === win.x && b.y + b.height === win.y + win.h;
   });
-const qstateOf = (q) => q.webContents.executeJavaScript('(() => { const Q = window.__qubit; if (!Q || !Q.q) return null; return { state: Q.dir.state, mode: Q.q.mode, box: Q.dir.geometry && Q.dir.geometry.box }; })()', true).catch(() => null);
+const qstateOf = (q) => (!q || q.isDestroyed() ? Promise.resolve(null) : q.webContents.executeJavaScript('(() => { const Q = window.__qubit; if (!Q || !Q.q) return null; return { state: Q.dir.state, mode: Q.q.mode, box: Q.dir.geometry && Q.dir.geometry.box }; })()', true).catch(() => null));
 const notes = (c) => (c.notes || []).slice();
 
 async function run() {
   const found = await waitFor(() => (page = BrowserWindow.getAllWindows().find((w) => /^http:\/\/127\.0\.0\.1:\d+\/(#?)$/.test(w.webContents.getURL()))), 20_000);
   if (!found) throw new Error("Orbit's main window never loaded (is the UI built? npm --prefix ui run build)");
   if (!path.resolve(getConfigDir()).startsWith(tmp)) throw new Error(`Orbit is using a config folder outside the temp profile: ${getConfigDir()}`);
-  await waitFor(() => pjs(`[...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('Start talking'))`), 20_000);
+  // Without a current UI build the page has no Start button and the hotkey starts nothing: say so plainly.
+  if (!(await waitFor(() => pjs(`[...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('Start talking'))`), 20_000))) {
+    throw new Error("Orbit's page never showed Start talking (build the UI first: npm --prefix ui run build)");
+  }
   check(await waitFor(() => F.started > 0, 5000), 'the focus helper (stand-in) is running');
   check(await waitFor(() => qubits().length === 1, 15_000), 'one Qubit, at home on the Claude window');
   const home = qubits()[0];

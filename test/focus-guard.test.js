@@ -88,8 +88,10 @@ test('never a tug of war: at most 6 restores a minute', async () => {
 
 const idle = process.env.ORBIT_TEST_FOCUS === '1' || (canRunApps() && userIdleMs() > 60_000);
 const skipReal = !canRunApps() ? 'needs Windows with .NET Framework 4 (csc.exe)' : !idle && 'someone is using this PC (set ORBIT_TEST_FOCUS=1 to run it anyway)';
+// The desktop lock is taken here, not inside the test: waiting for the other real-desktop files
+// (desktop-uia alone takes over a minute) must not count against the test's own timeout.
+if (!skipReal && process.platform === 'win32') await lockDesktop();
 test('for real: our "user" window is put back in front after our acted-on window steals it', { skip: skipReal, timeout: 120_000 }, async () => {
-  if (process.platform === 'win32') await lockDesktop();
   const user = await startFakeApp('winforms', `ORBIT-GUARD-USER-${process.pid}`);
   const thief = await startFakeApp('wpf', `ORBIT-GUARD-THIEF-${process.pid}`);
   const focus = createFocusStore({ settleMs: 50 });
