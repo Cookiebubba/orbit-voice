@@ -49,6 +49,12 @@ contextBridge.exposeInMainWorld('desktop', {
     ipcRenderer.on('buddy:command', fn);
     return () => ipcRenderer.removeListener('buddy:command', fn);
   },
+  // Orbit's mouse (its overlay page): where to draw the cursor, and Orbit's voice state.
+  onMouseState: (cb) => {
+    const fn = (_e, s) => cb(s);
+    ipcRenderer.on('mouse:state', fn);
+    return () => ipcRenderer.removeListener('mouse:state', fn);
+  },
   openLogs: () => ipcRenderer.invoke('app:open-logs'),
   startWithWindows: {
     get: () => ipcRenderer.invoke('app:get-login'),

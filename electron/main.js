@@ -19,6 +19,8 @@ import { authUrl, hotkeyLabel, startServer, stopBackgroundWork } from '../src/se
 import { createUpdater } from './updater.js';
 import { createAvatar } from './avatar.js';
 import { createAvatarHost } from './avatar-host.js';
+import { createOrbitMouse } from './orbit-mouse.js';
+import { hideMouse, setMouseSink } from '../src/anywhere/mouse.js';
 import { contexts as anywhereContexts } from '../src/anywhere/index.js';
 import { setMcpShell } from '../src/mcp/index.js';
 import { setKeeperCrypto, setKeeperLauncher } from '../src/anywhere/keeper.js';
@@ -452,6 +454,24 @@ onSettingsChange((changed) => {
   placeOrb();
 });
 
+// ---------- Orbit anywhere: Orbit's mouse ----------
+// A second, visual cursor of Orbit's own (electron/orbit-mouse.js: a click-through overlay per
+// display): it points at controls ("show me where") and glides to each one Orbit acts on, first.
+// Settings -> Orbit anywhere -> Show Orbit's mouse. The user's own mouse is never moved.
+const mouseWanted = () => getSetting('anywhere') !== false && getSetting('anywhereMouse') !== false;
+const orbitMouse = createOrbitMouse({
+  url: () => authUrl('mouse'),
+  webPreferences: secureWebPreferences,
+  lockDown,
+  enabled: mouseWanted,
+  log: (m) => logInfo('mouse', m),
+});
+setMouseSink(orbitMouse);
+let mouseWarm = false;
+onSettingsChange((changed) => {
+  if ((changed.includes('anywhereMouse') || changed.includes('anywhere')) && !mouseWanted()) hideMouse();
+});
+
 // ---------- Orbit anywhere: the window you're in ----------
 // Follows the window in front in any app (src/platform/win/focus.ps1: window events, no polling),
 // while Settings -> Orbit anywhere is on. Tools read "this window" from it.
@@ -606,6 +626,12 @@ on('orb:state', (s) => {
   orb?.webContents.send('orb:state', s);
   lastOrbState = s;
   avatarHost.onVoice(s); // the window the conversation is in gets it; the others rest
+  orbitMouse.onVoice(s); // its colour and its pulse while Orbit speaks
+  // Orbit woke: the mouse's windows get ready (hidden), so its first glide has its page loaded.
+  if (!mouseWarm && s?.phase && s.phase !== 'off' && mouseWanted() && process.platform === 'win32') {
+    mouseWarm = true;
+    orbitMouse.prewarm();
+  }
 });
 on('buddy:event', (name) => avatar?.event(name));
 on('buddy:emote', (name) => avatarHost.active()?.emote(name));
@@ -719,6 +745,7 @@ app.on('before-quit', () => {
   stopUia();
   avatar?.stop();
   avatarHost.stop();
+  orbitMouse.stop();
   updater?.stop();
 });
 app.on('window-all-closed', () => app.quit());

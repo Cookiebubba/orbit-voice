@@ -18,6 +18,8 @@ export default defineConfig({
         wake: path.resolve(__dirname, "wake.html"),
         buddy: path.resolve(__dirname, "buddy.html"),
         qubit: path.resolve(__dirname, "qubit.html"),
+        // Orbit's mouse: one click-through overlay per display (electron/orbit-mouse.js)
+        mouse: path.resolve(__dirname, "mouse.html"),
       },
     },
     chunkSizeWarningLimit: 6500,
