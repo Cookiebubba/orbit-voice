@@ -21,6 +21,7 @@ import { createAvatar } from './avatar.js';
 import { createAvatarHost } from './avatar-host.js';
 import { contexts as anywhereContexts } from '../src/anywhere/index.js';
 import { setMcpShell } from '../src/mcp/index.js';
+import { setKeeperCrypto, setKeeperLauncher } from '../src/anywhere/keeper.js';
 import { setAvatarSink } from '../src/avatar-commands.js';
 import { focus, startFocusTracking, startUia, stopUia } from '../src/platform/index.js';
 
@@ -663,6 +664,15 @@ app.whenReady().then(async () => {
     if (!app.isPackaged && process.env.ORBIT_FAKE_DESKTOP) logInfo('app', 'Developer mode: using a stand-in for the Claude window');
     // Connectors (Orbit anywhere): sign-in tokens sealed on disk, sign-in pages in the browser (https only).
     setMcpShell({ store: encryptedMapStore(dir, 'mcp-tokens.bin'), openExternal: (u) => (/^https:\/\//.test(u) ? shell.openExternal(u) : Promise.reject(new Error('Only https sign-in pages open.'))) });
+    // Apps under Orbit (src/anywhere/keeper.js): keepers are this program in its keeper mode
+    // (electron/boot.mjs), and their one-time tokens are sealed like Orbit's keys.
+    setKeeperLauncher({ execPath: process.execPath, preArgs: app.isPackaged ? [] : [app.getAppPath()] });
+    if (safeStorage.isEncryptionAvailable()) {
+      setKeeperCrypto({
+        protect: (s) => safeStorage.encryptString(String(s)).toString('base64'),
+        unprotect: (s) => safeStorage.decryptString(Buffer.from(String(s), 'base64')),
+      });
+    }
   } catch (e) {
     logError('app', 'Bridge failed to start', e?.message);
     dialog.showErrorBox(

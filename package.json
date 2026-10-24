@@ -5,7 +5,7 @@
   "description": "A hands-free voice companion for Claude Code Desktop, powered by Grok Voice. Hear what your sessions are doing and dictate prompts into them.",
   "type": "module",
   "private": true,
-  "main": "electron/main.js",
+  "main": "electron/boot.mjs",
   "author": "Cookiebubba",
   "license": "MIT",
   "homepage": "https://github.com/Cookiebubba/orbit-voice",
