@@ -14,6 +14,7 @@ Built from the research brief (`orbit-anywhere-brief/`, v4), phase by phase. Eac
 | 6 Switching | `switch_to_window`: the only act that moves your focus, only when you ask | `src/anywhere/switch-tool.js` |
 | 7 Focus guard | Puts your window back if an app Orbit just worked in steals the front | `src/anywhere/focus-guard.js` |
 | 8 Helpers | Background Claude Code helpers per window through orbit-hands (MCP over the bridge); approvals by voice | `src/anywhere/agents.js`, `hands-mcp.js`, `src/engines/` |
+| Orbit's mouse | A second, visual cursor: `point_at` shows where to click; acts glide to their control first | `src/anywhere/mouse.js`, `electron/orbit-mouse.js`, `ui/src/mouse/` |
 | 9 MCP manager | Find, connect (with your yes), pin and re-check connectors; sign-in with OAuth; local servers boxed | `src/mcp/` |
 
 ## Safety, in code (not left to the model)
@@ -55,17 +56,29 @@ Rich editors (Discord's Slate message box, ProseMirror, Lexical) ignore SetValue
 - **How:** Orbit closes the app (gently, then for sure) and starts a **keeper** (`src/anywhere/keeper-core.js`; the packaged app runs it as `Orbit.exe --orbit-keeper`, see `electron/boot.mjs`). The keeper starts the app's own program, with its usual arguments, plus `--remote-debugging-pipe`: the DevTools protocol then runs over two private pipes between the keeper and the app. **No network port** is ever opened.
 - **Orbit ↔ keeper:** a local named pipe with a random name; every connection must first send the per-launch token (only Orbit has it, sealed with Windows protection in `keeper-tokens.json`). Wrong or missing token: dropped without a word. Only well-formed protocol commands pass; nothing from the app is logged. The keeper's settings reach it in a file only the user can read, deleted the moment it's read.
 - **Lifetime:** the keeper is detached, so it outlives Orbit; Orbit reconnects after a restart. It exits when the app exits. If the keeper itself ever dies, the app closes with it (the pipe closes); that's the trade.
-- **What Orbit can do through it** (`src/anywhere/cdp.js`, never running code in the page): type (`Input.insertText`, real input events), press Enter (the new `enter` act: in a chat box it sends, so it's asked like Send), click by element (mouse events at the element's place in the page, never the user's cursor; a fallback when UI Automation's press doesn't take), take a picture of the page even behind other windows, and find an element's place on screen (for the coming Orbit mouse).
+- **What Orbit can do through it** (`src/anywhere/cdp.js`, never running code in the page): type (`Input.insertText`, real input events), press Enter (the new `enter` act: in a chat box it sends, so it's asked like Send), click by element (mouse events at the element's place in the page, never the user's cursor; a fallback when UI Automation's press doesn't take), take a picture of the page even behind other windows, and find an element's place on screen (for Orbit's mouse, below).
 
 Tested on our own Discord-like app (`test/e2e/slate-input/`, Slate like Discord's): `test/keeper.test.js` (token, protocol-only, reconnect, exit with the app), `test/keeper-win.test.js` (typed, sent, clicked, pictured, placed, through the pipe), `test/keeper-act-win.test.js` (Orbit's own tools: nothing written into the rich box, asked once, "no" does nothing, a yes restarts it under Orbit and types through the pipe, Enter held until a yes).
 
+## Orbit's mouse
+
+Windows has one mouse, and it's yours. Orbit's mouse is a second, visual cursor of Orbit's own: it never moves your mouse and never clicks.
+
+- **Look:** a plain arrow pointer, about the size of Windows' own at your scaling. Qubit's art rules: the arrow's vector fill is the only visual, one solid, fully opaque colour, with no outline, ring, shadow, glow or gradient. The colour is Qubit's for the same moment (his engine's palette through his modes, mapped from Orbit's voice state the way his director does it): listening cyan, thinking violet, speaking amber, watching Claude orange, and Qubit's indigo while Orbit is off. It glides there smoothly (eased, never a jump), pulses a little with the voice level while Orbit speaks (the level before the volume, as Qubit's mouth uses it), dips for a moment when Orbit presses, and fades out when there's nothing to show. With reduced motion it moves straight to its place and doesn't pulse.
+- **"Show me where":** `point_at` (window, control name). Orbit finds the control (its UI Automation rect; for an app under Orbit, the element's place in the page through the pipe, without scrolling the page), glides there and rests on it for a few seconds. Read-only, gated like reading (your own words since the latest notification). For "how do I…", Orbit reads the window, then points one step at a time.
+- **During acts:** every act (`hands.js` perform: type, press, Enter, tick, pick…) first glides the cursor to its control and presses there, then the act goes in as before, through UI Automation or the pipe. The act waits about 220 ms for it (the lead time, setting `anywhereMouseLeadMs`, 0–600) and never on anything slow: finding the place has its own 300 ms limit.
+- **Only where you'd see it:** not on a minimized window or one on another desktop, not outside the window or off the screen, and not where another window covers the control (`uia.ps1`'s read-only `hit` op asks Windows what's at that point). Then `point_at` says where it is in words instead ("top right").
+- **The overlay** (`electron/orbit-mouse.js`, page `ui/src/mouse/`): one window per display, inside its work area (never the taskbar), only as big as the glide needs; transparent, click-through (mouse events ignored), always on top, never focusable (WS_EX_NOACTIVATE), not in the taskbar, no shadow. It shows only while the cursor is on that display and draws only while something moves (at most 60 frames a second, 30 for the pulse alone). `uia.ps1` now runs per-monitor DPI aware, so its rects are real pixels on every display.
+
+Measured on this PC (`npm run e2e:mouse`, our own test windows): the tip lands within 0.5 px of the control's middle (WinForms 0.5 px, WPF 0 px, the Slate app under Orbit through the pipe 0.5 px); an act takes about 250 ms longer with it on; CPU is nothing while hidden or resting, about 7% of a core for its page and 8% for the GPU process while it glides, 6% and 6% while it pulses.
+
 ## Settings
 
-Settings → Orbit anywhere: **Let Grok work in the window you're in** (on by default), **Let Claude see windows** (off by default: looking stays on this PC) and **Type into web apps through their debugging port** (off by default).
+Settings → Orbit anywhere: **Let Grok work in the window you're in** (on by default), **Let Claude see windows** (off by default: looking stays on this PC), **Type into web apps through their debugging port** (off by default) and **Show Orbit's mouse** (on by default, with a still preview of its colours).
 
 ## Tests
 
-`npm test` (unit and sandboxed), `npm run fuzz`, `npm run e2e:avatar`, `npm run fuzz:e2e`, and the new `npm run e2e:anywhere`. Real-window tests use our own test windows only (`test/e2e/FakeApp.cs`, WinForms and WPF) and take turns on the desktop (`test/e2e/desktop-lock.mjs`). Tests that move the foreground run only while nobody has used the PC for a minute (or with `ORBIT_TEST_FOCUS=1`).
+`npm test` (unit and sandboxed), `npm run fuzz`, `npm run e2e:avatar`, `npm run fuzz:e2e`, `npm run e2e:anywhere` and `npm run e2e:mouse` (Orbit's mouse on our own test windows; a real click through it only while nobody uses the PC, or with `ORBIT_TEST_FOCUS=1`). Real-window tests use our own test windows only (`test/e2e/FakeApp.cs`, WinForms and WPF) and take turns on the desktop (`test/e2e/desktop-lock.mjs`). Tests that move the foreground run only while nobody has used the PC for a minute (or with `ORBIT_TEST_FOCUS=1`).
 
 ## Manual checks (need your own apps or accounts)
 
