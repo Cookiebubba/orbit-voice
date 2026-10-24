@@ -190,11 +190,13 @@ export async function cdpEnter(win, { name, ...opts } = {}) {
   });
 }
 
-/** Where an element is in the page (CSS pixels): { x, y, w, h } of its box, scrolled into view. */
-async function boxOf(call, target) {
-  try {
-    await call('DOM.scrollIntoViewIfNeeded', target);
-  } catch {}
+/** Where an element is in the page (CSS pixels): { x, y, w, h } of its box, scrolled into view (unless `scroll` is false). */
+async function boxOf(call, target, { scroll = true } = {}) {
+  if (scroll) {
+    try {
+      await call('DOM.scrollIntoViewIfNeeded', target);
+    } catch {}
+  }
   const { model } = await call('DOM.getBoxModel', target);
   const q = model?.border || model?.content;
   if (!Array.isArray(q) || q.length < 8) return null;
@@ -237,12 +239,14 @@ export async function cdpScreenshot(win, { maxWidth = 1600, ...opts } = {}) {
  * Where an element is on the screen ({ x, y, w, h } in screen pixels), for the Orbit mouse: the
  * element's place in the page plus where the page sits on screen. `contentRect` (the window's page
  * area on screen, from UI Automation) is the most exact; without it, the window's bounds.
+ * `scroll: false` leaves the page as it is (pointing is read-only): an element scrolled out of view
+ * then comes back with `inView: false`.
  */
-export async function cdpElementRect(win, { name, role, contentRect = null, ...opts } = {}) {
+export async function cdpElementRect(win, { name, role, contentRect = null, scroll = true, ...opts } = {}) {
   return onPage(win, opts, async (call, _via, browserCall) => {
     const target = await findNode(call, name, role ? [role, undefined] : [undefined]);
     if (!target) return { ok: false, error: 'no_box' };
-    const b = await boxOf(call, target);
+    const b = await boxOf(call, target, { scroll });
     if (!b) return { ok: false, error: 'failed' };
     const m = await call('Page.getLayoutMetrics').catch(() => ({}));
     const cssW = Number(m?.cssLayoutViewport?.clientWidth || m?.layoutViewport?.clientWidth) || 0;
@@ -257,7 +261,8 @@ export async function cdpElementRect(win, { name, role, contentRect = null, ...o
     const zoom = cssW && origin.w ? origin.w / cssW : 1; // CSS pixels to screen pixels (display scaling, page zoom)
     // From the window's outer bounds, the page sits at the bottom (any title bar is above it).
     const top = contentRect ? 0 : Math.max(0, origin.h - cssH * zoom);
-    return { ok: true, rect: { x: Math.round(origin.x + b.x * zoom), y: Math.round(origin.y + top + b.y * zoom), w: Math.round(b.w * zoom), h: Math.round(b.h * zoom) } };
+    const inView = !cssW || !cssH || (b.x + b.w / 2 >= 0 && b.y + b.h / 2 >= 0 && b.x + b.w / 2 <= cssW && b.y + b.h / 2 <= cssH);
+    return { ok: true, inView, rect: { x: Math.round(origin.x + b.x * zoom), y: Math.round(origin.y + top + b.y * zoom), w: Math.round(b.w * zoom), h: Math.round(b.h * zoom) } };
   });
 }
 

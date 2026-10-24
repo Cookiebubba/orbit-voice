@@ -31,6 +31,11 @@
 #   caller puts the user's window back). "fg" in the answer: the window that was in front before.
 #   One act on the node `i` of the last scan of that window (found again by its runtime id if the
 #   tree changed). Errors: stale, disabled, password, not_supported.
+# {"id":n,"op":"hit","hwnd":h,"points":[[x,y],...]}
+#   -> {"ok":true,"hits":[{"on":true,"pid":p},...]}: for each screen point, is the top-level window
+#   there this one (or one it owns)? Read-only (WindowFromPoint), for the Orbit mouse: it shows on a
+#   control only where the user could see it. pid: whose window is there.
+# Rects and points are physical pixels on every display (the worker thread is per-monitor aware).
 # Errors: {"id":n,"ok":false,"error":"code","message":"..."} (codes: no_window, access_denied,
 #   timeout, bad_request, failed).
 param([int]$ParentPid = 0, [string]$Cache = '')
@@ -70,6 +75,10 @@ public static class OrbitUia {
   static int parent;
   [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
   [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
+  [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr ctx);
+  [StructLayout(LayoutKind.Sequential)] struct HitPoint { public int X; public int Y; }
+  [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(HitPoint p);
+  [DllImport("user32.dll", EntryPoint = "GetWindowThreadProcessId")] static extern uint HitPid(IntPtr h, out uint pid);
 
   // Property ids (UIAutomationClient.h)
   const int P_RuntimeId = 30000, P_Rect = 30001, P_ControlType = 30003, P_Name = 30005, P_HasFocus = 30008,
@@ -97,6 +106,8 @@ public static class OrbitUia {
   }
 
   static void Loop() {
+    // Per-monitor aware v2: rects in real pixels on every display, as the window watcher reports them.
+    try { SetThreadDpiAwarenessContext(new IntPtr(-4)); } catch (Exception) { }
     uia = (IUIAutomation2)new CUIAutomation8();
     uia.AutoSetFocus = 0;              // never pull a window forward
     uia.ConnectionTimeout = 4000;      // a hung app can't hang us for long
@@ -142,10 +153,40 @@ public static class OrbitUia {
     if (op == "read") return Read(req);
     if (op == "selection") return Selection(req);
     if (op == "act") return Act(req);
+    if (op == "hit") return Hit(req);
     throw new ArgumentException("unknown op");
   }
 
   static Dictionary<string, object> Ok() { return new Dictionary<string, object> { { "ok", true } }; }
+
+  // ---------------- what's on screen at a point (read-only) ----------------
+  static object[] Items(object v) {
+    if (v is object[]) return (object[])v;
+    if (v is System.Collections.ArrayList) return ((System.Collections.ArrayList)v).ToArray();
+    return null;
+  }
+  static Dictionary<string, object> Hit(Dictionary<string, object> req) {
+    long h = Long(req, "hwnd");
+    if (h <= 0 || !IsWindow(new IntPtr(h))) return Fail("no_window", "That window is gone.");
+    IntPtr me = new IntPtr(h);
+    var hits = new List<object>();
+    object pv;
+    object[] pts = req.TryGetValue("points", out pv) ? Items(pv) : null;
+    if (pts != null) for (int k = 0; k < pts.Length && k < 16; k++) {
+      object[] xy = Items(pts[k]);
+      if (xy == null || xy.Length < 2) { hits.Add(null); continue; }
+      HitPoint p; p.X = Convert.ToInt32(xy[0]); p.Y = Convert.ToInt32(xy[1]);
+      IntPtr w = WindowFromPoint(p);
+      IntPtr root = w == IntPtr.Zero ? IntPtr.Zero : GetAncestor(w, 2); // GA_ROOT
+      IntPtr owner = w == IntPtr.Zero ? IntPtr.Zero : GetAncestor(w, 3); // GA_ROOTOWNER
+      uint pid = 0;
+      if (root != IntPtr.Zero) HitPid(root, out pid);
+      hits.Add(new Dictionary<string, object> { { "on", root == me || owner == me }, { "pid", (long)pid } });
+    }
+    var res = Ok();
+    res["hits"] = hits;
+    return res;
+  }
 
   // ---------------- reading the tree ----------------
   static IUIAutomationElement Root(Dictionary<string, object> req) {
