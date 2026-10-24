@@ -208,11 +208,34 @@ function AnywhereSection({ s, update, name }: { s: SettingsT; update: Update; na
           className="mt-4"
           checked={s.anywhereCdp}
           onChange={(anywhereCdp) => update({ anywhereCdp })}
-          label="Type into web apps through their debugging port"
-          hint={`Some web-based apps (Electron, Chromium) only notice real typing. If you start one with a debugging port (--remote-debugging-port), ${name} can type into it that way, still without your mouse or keyboard. Without it, ${name} asks once per app before borrowing focus for a second to type.`}
+          label="Also use apps' own debugging ports"
+          hint={`Only for an app you started yourself with --remote-debugging-port. Usually not needed: for apps that only notice real typing (Discord, OpenCode), ${name} asks once to restart them under its own control instead.`}
         />
+        <UnderOrbitList apps={s.anywhereUnderOrbit || []} name={name} onStop={(app) => update({ anywhereUnderOrbit: (s.anywhereUnderOrbit || []).filter((a) => a !== app) })} />
       </Reveal>
     </Section>
+  );
+}
+
+/** Apps the user okayed running under Orbit (a private pipe, no port), each with a way to stop it. */
+function UnderOrbitList({ apps, name, onStop }: { apps: string[]; name: string; onStop: (app: string) => void }) {
+  if (!apps.length) return null;
+  const label = (a: string) => a.replace(/.exe$/i, "").replace(/^./, (c) => c.toUpperCase());
+  return (
+    <div className="mt-4">
+      <div className="text-[13px]">Apps under {name}</div>
+      <div className="mt-1 text-[12px] text-white/50">{name} restarted these under its own control so it can type, click and look without your mouse. Only {name} can connect; no port is open. Stop restarts the app the normal way.</div>
+      <ul className="mt-2 space-y-1">
+        {apps.map((a) => (
+          <li key={a} className="flex items-center justify-between rounded-lg bg-white/[0.04] px-3 py-1.5 text-[13px]">
+            <span>{label(a)}</span>
+            <button type="button" className="rounded-md px-2 py-0.5 text-[12px] text-white/70 hover:bg-white/10" onClick={() => onStop(a)}>
+              Stop
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

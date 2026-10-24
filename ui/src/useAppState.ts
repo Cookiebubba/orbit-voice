@@ -38,6 +38,7 @@ export type Settings = {
   anywhere: boolean;
   anywhereVision: boolean;
   anywhereCdp: boolean;
+  anywhereUnderOrbit: string[];
 };
 
 export type AppConfig = { version: string; hasKey: boolean; keyStorage: string; settings: Settings };

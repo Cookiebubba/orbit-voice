@@ -29,10 +29,17 @@
 //      user's window comes straight back. Only after the user said yes to it for that app (asked
 //      once, remembered in the app's profile).
 // The way that worked is remembered in the app's profile (inputMethod) and tried first next time.
+//
+// Apps under Orbit (2026-10): an app the user approved once is restarted under Orbit's pipe keeper
+// (keeper.js), and then "pipe" comes first: real input events over a private pipe, no port, no
+// focus. A rich editor (Discord's Slate box) is never given SetValue at all (uia.ps1 refuses it,
+// "rich_box"); if the app isn't under Orbit yet, the act comes back needs_keeper, and Orbit asks the
+// user once whether to restart that app under Orbit (act-tools.js) instead of borrowing focus.
 
 import { appName, switchToWindow, uiaRequest } from '../platform/index.js';
 import { getSetting } from '../config.js';
-import { cdpType } from './cdp.js';
+import { cdpClick, cdpEnter, cdpType } from './cdp.js';
+import { keeperForWindow } from './keeper.js';
 import { markIntentional } from './switching.js';
 import { actable, windowText } from './policy.js';
 import { focusGuard, isHomeWindow, profileFor, profileStore } from './index.js';
@@ -40,7 +47,7 @@ import { heal, isOutwardLabel, locate } from './profiles.js';
 import { label } from './windows.js';
 
 export const HAND_LIMITS = Object.freeze({ actsPerRequest: 12, confirmMs: 60_000, textMax: 4000 });
-export const ACTIONS = Object.freeze(['type', 'set_text', 'press', 'toggle', 'select', 'expand', 'collapse']);
+export const ACTIONS = Object.freeze(['type', 'set_text', 'press', 'enter', 'toggle', 'select', 'expand', 'collapse']);
 
 const norm = (s) =>
   String(s || '')
@@ -89,7 +96,9 @@ export function canDo(node, action) {
   switch (action) {
     case 'type':
     case 'set_text':
-      return /V/.test(p) && !node.ro && !node.pw;
+      return (/V/.test(p) || !!node.rich) && !node.ro && !node.pw;
+    case 'enter':
+      return (/V/.test(p) || !!node.rich) && !node.pw;
     case 'press':
       return /[IAT]/.test(p);
     case 'toggle':
@@ -112,6 +121,7 @@ export function canDo(node, action) {
 export function isOutward({ node, action, text = '', control = null, profile = null }) {
   const name = String(node?.n || node?.a || '');
   if (action === 'type' || action === 'set_text') return /[\r\n]\s*$/.test(String(text)) && /message|chat|reply|comment|post/i.test(name);
+  if (action === 'enter') return true; // Enter in a box sends (a chat) or submits: always asked
   if (action === 'select' || action === 'expand' || action === 'collapse') return false;
   if (control?.outward || (profile?.outward || []).includes(control?.key)) return true;
   if (isOutwardLabel(name)) return true;
@@ -149,6 +159,8 @@ export function describeAct({ action, node, text, win }) {
       return `switch ${what} in ${where}`;
     case 'select':
       return `pick ${what} in ${where}`;
+    case 'enter':
+      return `press Enter in ${what} in ${where}`;
     default:
       return `${action} ${what} in ${where}`;
   }
@@ -178,17 +190,18 @@ function failure(r) {
   }
 }
 
-export const INPUT_METHODS = Object.freeze(['value', 'cdp', 'borrow']);
+export const INPUT_METHODS = Object.freeze(['pipe', 'value', 'cdp', 'borrow']);
 const METHOD_SAYS = { cdp: "through the app's debugging port", borrow: 'by borrowing focus for a moment' };
 
 /**
  * The order to try the ways of typing in this app: the one that worked last time first. 'borrow'
  * only with the user's OK for this app (`borrowOk`: given now, or remembered in the profile).
  */
-export function inputOrder(profile, { borrowOk = false, cdpOn = false } = {}) {
-  const ok = { value: true, cdp: cdpOn, borrow: borrowOk || profile?.borrowFocusOk === true };
-  const first = INPUT_METHODS.includes(profile?.inputMethod) ? [profile.inputMethod] : [];
-  return [...new Set([...first, ...INPUT_METHODS])].filter((m) => ok[m]);
+export function inputOrder(profile, { borrowOk = false, cdpOn = false, pipeOn = false } = {}) {
+  const ok = { pipe: pipeOn, value: true, cdp: cdpOn, borrow: borrowOk || profile?.borrowFocusOk === true };
+  // Under Orbit: the pipe first, always (it is how the app takes real typing).
+  const first = pipeOn ? ['pipe'] : INPUT_METHODS.includes(profile?.inputMethod) && profile.inputMethod !== 'pipe' ? [profile.inputMethod] : [];
+  return [...new Set([...first, ...INPUT_METHODS.filter((m) => m !== 'pipe')])].filter((m) => ok[m]);
 }
 
 /**
@@ -197,20 +210,21 @@ export function inputOrder(profile, { borrowOk = false, cdpOn = false } = {}) {
  * (the text may show in the box, but the app didn't take it).
  */
 async function typeText({ win, node, action, text, profile }, { borrowOk = false, only = '', before: known = null } = {}) {
-  const order = only ? [only] : inputOrder(profile, { borrowOk, cdpOn: getSetting('anywhereCdp') === true });
+  const pipeOn = !!keeperForWindow(win);
+  const order = only ? [only] : inputOrder(profile, { borrowOk, cdpOn: getSetting('anywhereCdp') === true, pipeOn });
   let before = typeof known === 'string' ? known : null; // the box's text before the first try (a retry replaces the whole box)
   let first = null;
   for (const method of order) {
     const act = before !== null && action === 'type' ? 'set_text' : action;
     const value = before !== null && action === 'type' ? before + text : text;
     let r;
-    if (method === 'cdp') {
+    if (method === 'cdp' || method === 'pipe') {
       r = await cdpType(win, { name: node.n || node.a || '', text: value, action: act });
       if (!r.ok) continue; // not available for this app: the next way
       const check = await uiaRequest('scan', { hwnd: win.hwnd, maxNodes: 4000, values: true }).catch(() => null);
       const box = check?.nodes?.find((n) => n.rid && n.rid === node.rid) || check?.nodes?.find((n) => n.n === node.n && n.t === node.t);
       const same = (a, b) => String(a || '').replace(/\r/g, '').trim() === String(b || '').replace(/\r/g, '').trim();
-      r = { ok: true, via: 'cdp', verified: !box || same(box.v, value), registered: true };
+      r = { ok: true, via: r.via, verified: !box || same(box.v, value) || !!node.rich, registered: true };
     } else if (method === 'borrow') {
       markIntentional(win.hwnd); // focus moves there on purpose, for a moment: not the guard's business
       r = await uiaRequest('act', { hwnd: win.hwnd, i: node.i, rid: node.rid || '', t: node.t, n: node.n || '', action: act, value: String(value).slice(0, HAND_LIMITS.textMax), method: 'borrow' });
@@ -230,6 +244,12 @@ async function typeText({ win, node, action, text, profile }, { borrowOk = false
     } else {
       const prefer = (profile?.quirks || []).includes(`activates:${action}:${node.t}`) ? 'legacy' : '';
       r = await uiaRequest('act', { hwnd: win.hwnd, i: node.i, rid: node.rid || '', t: node.t, n: node.n || '', action: act, value: String(value).slice(0, HAND_LIMITS.textMax), ...(prefer ? { prefer } : {}) });
+      // A rich editor (Discord's Slate box): nothing was written; the next way, if there is one.
+      if (r?.error === 'rich_box') {
+        if (before === null && typeof r.before === 'string') before = r.before;
+        first ??= { ...r, ok: true, registered: false };
+        continue;
+      }
       if (!r?.ok) return r;
     }
     if (before === null && typeof r.before === 'string') before = r.before;
@@ -244,7 +264,10 @@ async function typeText({ win, node, action, text, profile }, { borrowOk = false
       return { ...r, method, before };
     }
   }
-  return { ...first, ok: first?.ok !== false, registered: false, method: 'value', before, needs_borrow: !only && !inputOrder(profile, { borrowOk }).includes('borrow') };
+  // Not taken. Not under Orbit yet: the way is to restart the app under Orbit (asked once per app);
+  // borrowing focus can't work from Orbit's background helper (Windows won't let it).
+  const needsKeeper = !only && !pipeOn;
+  return { ...first, ok: first?.ok !== false, error: undefined, registered: false, method: 'value', before, needs_keeper: needsKeeper || undefined, needs_borrow: !needsKeeper && !only && !inputOrder(profile, { borrowOk }).includes('borrow') };
 }
 
 /**
@@ -270,14 +293,27 @@ export async function perform({ win, node, action, text = '', control = null, pr
       method: r.method,
       how: METHOD_SAYS[r.method],
       needs_borrow: r.needs_borrow || undefined,
+      needs_keeper: r.needs_keeper || undefined,
       before: r.before, // (internal: a retry the other way replaces the whole box; never passed on)
       stole_focus: !!r.stoleFocus,
     };
   }
+  // Enter in a box: only through the pipe (Windows can't press a key in a window without its focus).
+  if (action === 'enter') {
+    if (!keeperForWindow(win)) return { ok: false, error: 'Pressing Enter there needs the app under Orbit.', needs_keeper: true };
+    const r = await cdpEnter(win, { name: node.n || node.a || '' });
+    if (!r?.ok) return { ok: false, error: r?.message || failure(r) };
+    return { ok: true, did: describeAct({ action, node, text, win }), verified: true, via: r.via };
+  }
   // An app this kind of act pulled forward before (the focus guard noted it): the other way.
   const prefer = (profile?.quirks || []).includes(`activates:${action}:${node.t}`) ? 'legacy' : '';
   focusGuard.noteAct(win.hwnd, { action, role: node.t, app: appName(win) }); // if it comes forward now, that's theft
-  const r = await uiaRequest('act', { hwnd: win.hwnd, i: node.i, rid: node.rid || '', t: node.t, n: node.n || '', action, value: String(text ?? '').slice(0, HAND_LIMITS.textMax), ...(prefer ? { prefer } : {}) });
+  let r = await uiaRequest('act', { hwnd: win.hwnd, i: node.i, rid: node.rid || '', t: node.t, n: node.n || '', action, value: String(text ?? '').slice(0, HAND_LIMITS.textMax), ...(prefer ? { prefer } : {}) });
+  // Under Orbit, a press the app didn't take through UI Automation: a click in the page instead.
+  if (!r?.ok && action === 'press' && keeperForWindow(win) && r?.error !== 'disabled') {
+    const c = await cdpClick(win, { name: node.n || node.a || '' });
+    if (c?.ok) r = { ok: true, via: c.via, verified: true };
+  }
   if (!r?.ok) return { ok: false, error: failure(r) };
   if (control && profile && scan) {
     const found = locate(control, scan);

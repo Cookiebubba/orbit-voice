@@ -47,6 +47,18 @@ The way that worked is saved in the app's profile (`inputMethod`, `borrowFocusOk
 
 OpenCode wasn't tested directly: it's a single-instance desktop app, and a second copy could reach the user's running one.
 
+### Apps under Orbit (the pipe keeper)
+
+Rich editors (Discord's Slate message box, ProseMirror, Lexical) ignore SetValue entirely, and borrowing focus can't work from Orbit's background helper (Windows' foreground lock won't let it bring the app forward). So `uia.ps1` never writes into a rich box (`rich_box`, no stray text), and for those apps Orbit offers the one way that works without the mouse or focus: **restart the app under Orbit**.
+
+- **Asked once per app** ("Discord only takes real typing. Restart Discord under Orbit so it can type and look without your mouse? Only Orbit can connect; nothing stays open."), held like an outward act until a clear yes. The yes is remembered (`anywhereUnderOrbit`); later, Orbit restarts that app under itself when it needs to and says so. **Stop** in Settings (or "stop Discord being under Orbit": `release_app_from_orbit`) restarts it the normal way.
+- **How:** Orbit closes the app (gently, then for sure) and starts a **keeper** (`src/anywhere/keeper-core.js`; the packaged app runs it as `Orbit.exe --orbit-keeper`, see `electron/boot.mjs`). The keeper starts the app's own program, with its usual arguments, plus `--remote-debugging-pipe`: the DevTools protocol then runs over two private pipes between the keeper and the app. **No network port** is ever opened.
+- **Orbit ↔ keeper:** a local named pipe with a random name; every connection must first send the per-launch token (only Orbit has it, sealed with Windows protection in `keeper-tokens.json`). Wrong or missing token: dropped without a word. Only well-formed protocol commands pass; nothing from the app is logged. The keeper's settings reach it in a file only the user can read, deleted the moment it's read.
+- **Lifetime:** the keeper is detached, so it outlives Orbit; Orbit reconnects after a restart. It exits when the app exits. If the keeper itself ever dies, the app closes with it (the pipe closes); that's the trade.
+- **What Orbit can do through it** (`src/anywhere/cdp.js`, never running code in the page): type (`Input.insertText`, real input events), press Enter (the new `enter` act: in a chat box it sends, so it's asked like Send), click by element (mouse events at the element's place in the page, never the user's cursor; a fallback when UI Automation's press doesn't take), take a picture of the page even behind other windows, and find an element's place on screen (for the coming Orbit mouse).
+
+Tested on our own Discord-like app (`test/e2e/slate-input/`, Slate like Discord's): `test/keeper.test.js` (token, protocol-only, reconnect, exit with the app), `test/keeper-win.test.js` (typed, sent, clicked, pictured, placed, through the pipe), `test/keeper-act-win.test.js` (Orbit's own tools: nothing written into the rich box, asked once, "no" does nothing, a yes restarts it under Orbit and types through the pipe, Enter held until a yes).
+
 ## Settings
 
 Settings → Orbit anywhere: **Let Grok work in the window you're in** (on by default), **Let Claude see windows** (off by default: looking stays on this PC) and **Type into web apps through their debugging port** (off by default).
@@ -57,7 +69,12 @@ Settings → Orbit anywhere: **Let Grok work in the window you're in** (on by de
 
 ## Manual checks (need your own apps or accounts)
 
-1. **Discord:** "what's new in #general?" (reading), then "type 'testing' in the message box" in a throwaway channel. Its editor is a rich (contenteditable) box: check the text really registers before relying on sending there.
+1. **Discord under Orbit**, in a throwaway channel:
+   1. "Type testing in the message box": Orbit asks to restart Discord under Orbit. Say yes; Discord closes and reopens (a few seconds), and "testing" appears in the box.
+   2. "Send it": Orbit asks "press Enter in Message #… in Discord?". Say yes; the message posts.
+   3. "Click the random channel" (or any channel): it opens, and your mouse doesn't move.
+   4. With Settings → Let Claude see windows on, "look at Discord": Orbit describes it, even with Discord behind other windows.
+   5. Settings → Orbit anywhere → Apps under Orbit → **Stop**: Discord restarts the normal way.
 2. **A Qubit on other apps:** wake Orbit in Notepad, Discord and a browser; check where he stands on each, on both monitors and at your scaling.
 3. **Wake word in an app window:** "Hey Orbit" in Discord: the conversation (and Qubit) should go there; switching back to Claude's window should follow.
 4. **A real helper by voice:** "have a helper fill in this form" in a test app, approve its Send by voice.

@@ -68,15 +68,15 @@ test('web app: SetValue isn\x27t taken and Orbit notices; through the debugging 
   }
 });
 
-test('web app without a debugging port: Orbit sees it wasn\x27t taken and asks before borrowing focus', { skip, timeout: 180_000 }, async () => {
+test('web app without a debugging port: Orbit sees it wasn\x27t taken and asks to restart it under Orbit (not to borrow focus)', { skip, timeout: 180_000 }, async () => {
   const app = await startWebInputApp(`ORBIT-WEB-ASK-${process.pid}`);
   const s = await setUp(app);
   try {
     await s.say(`in ${app.title} type hello from orbit into the prompt box`);
     const res = await s.act({ control: 'Prompt', action: 'set_text', text: 'hello from orbit' });
     assert.equal(res.held, true, JSON.stringify(res));
-    assert.match(res.ask, /didn't take the typed text/);
-    assert.match(res.ask, /borrowing focus/);
+    assert.match(res.ask, /only takes real typing/);
+    assert.match(res.ask, /under Orbit/, 'offers to restart it under Orbit, not to borrow focus');
     await sleep(400);
     assert.equal(app.state().prompt, '', 'not taken (yet)');
     // "No" (or anything but a clear yes) never borrows anything.

@@ -74,6 +74,9 @@ export const DEFAULTS = Object.freeze({
   // ...and with this on, Orbit may type into an app through its own debugging port (only an app the
   // user started with --remote-debugging-port) when typing the usual way doesn't register there.
   anywhereCdp: false,
+  // Apps the user okayed running under Orbit (keeper.js: restarted under a private DevTools pipe so
+  // Orbit can type, click and look without the mouse; no network port). Program names: "discord.exe".
+  anywhereUnderOrbit: [],
   // Background helpers (Orbit anywhere): the engine they run on. 'claude-code' (the user's Claude
   // sign-in) for now; 'codex' is planned.
   helperEngine: 'claude-code',
@@ -205,6 +208,9 @@ function sanitize(input) {
         if (val === null || (val && ['tl', 'tr', 'bl', 'br'].includes(val.corner) && [val.dx, val.dy].every((n) => Number.isFinite(n) && n >= 0 && n <= 10000))) {
           out.orbStickAnchor = val && { corner: val.corner, dx: Math.round(val.dx), dy: Math.round(val.dy) };
         }
+        break;
+      case 'anywhereUnderOrbit':
+        if (Array.isArray(val)) out.anywhereUnderOrbit = [...new Set(val.filter((a) => typeof a === 'string' && /^[\w .()+-]{1,80}(\.exe)?$/i.test(a)).map((a) => a.toLowerCase()))].slice(0, 50);
         break;
       case 'orbPosition':
         if (val === null || (Array.isArray(val) && val.length === 2 && val.every(Number.isFinite))) out.orbPosition = val && val.map(Math.round);

@@ -106,7 +106,7 @@ test('the tools are offered only with the setting on and a native helper', () =>
   updateSettings({ anywhere: false });
   assert.equal(anywhereAvailable(), false);
   updateSettings({ anywhere: true });
-  assert.deepEqual(ANYWHERE_TOOL_DEFS.map((t) => t.name), ['read_window', 'read_selection', 'look_at_window', 'come_here', 'leave_window', 'list_windows', 'act_in_window', 'confirm_window_action', 'switch_to_window', 'start_task', 'list_tasks', 'task_status', 'redirect_task', 'cancel_task', 'approve_task_action', 'find_tool', 'connect_tool', 'connected_tools', 'disconnect_tool']);
+  assert.deepEqual(ANYWHERE_TOOL_DEFS.map((t) => t.name), ['read_window', 'read_selection', 'look_at_window', 'come_here', 'leave_window', 'list_windows', 'act_in_window', 'confirm_window_action', 'release_app_from_orbit', 'switch_to_window', 'start_task', 'list_tasks', 'task_status', 'redirect_task', 'cancel_task', 'approve_task_action', 'find_tool', 'connect_tool', 'connected_tools', 'disconnect_tool']);
 });
 
 test('read_window: only on the user\x27s own words since the latest notification; text is data', async () => {

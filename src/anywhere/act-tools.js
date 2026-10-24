@@ -18,9 +18,15 @@
 //   - Text a web app didn't take (hands.js: it shows, but the app's Send stays grey): Orbit tries
 //     the other no-focus way by itself, and if none works it asks once, for that app, whether it may
 //     borrow the focus for a moment to type it ("borrow"), held like an outward act until a clear yes.
+//   - A rich editor in an app that isn't under Orbit (Discord's message box): Orbit asks once, for
+//     that app, whether to restart it under Orbit (keeper.js: a private pipe, no port), held like
+//     an outward act until a clear yes. The yes is remembered; later, Orbit restarts that app under
+//     itself when it needs to and says so. The user can take it back (release_app_from_orbit, or
+//     Settings).
 
 import crypto from 'node:crypto';
-import { appName } from '../platform/index.js';
+import { appName, listWindows } from '../platform/index.js';
+import { approveApp, approvedApps, isApproved, keepers, releaseFromOrbit, restartUnderOrbit, revokeApp } from './keeper.js';
 import { HAND_LIMITS, describeAct, perform, plan, sameBreathSend } from './hands.js';
 import { windowText } from './policy.js';
 import { label, resolveWindow } from './windows.js';
@@ -36,7 +42,7 @@ export const ACT_TOOL_DEFS = Object.freeze([
       properties: {
         window: { type: 'string', description: 'Which window: empty for the one the conversation is in, or the app or title words the user used.' },
         control: { type: 'string', description: 'The control\x27s name as the window shows it: "Send", "Message", "Agree", "general".' },
-        action: { type: 'string', enum: ['type', 'set_text', 'press', 'toggle', 'select', 'expand', 'collapse'], description: 'type = add the text where the cursor is; set_text = replace the field\x27s text; press = a button; toggle = a checkbox or switch; select = a list or tab item; expand/collapse = a menu or tree item.' },
+        action: { type: 'string', enum: ['type', 'set_text', 'press', 'enter', 'toggle', 'select', 'expand', 'collapse'], description: 'type = add the text where the cursor is; set_text = replace the field\x27s text; press = a button; enter = press Enter in a box (in a chat box that sends the message, so it is asked like Send); toggle = a checkbox or switch; select = a list or tab item; expand/collapse = a menu or tree item.' },
         text: { type: 'string', description: 'For type and set_text: the user\x27s own words to put there, exactly.' },
       },
       required: ['control', 'action'],
@@ -47,6 +53,12 @@ export const ACT_TOOL_DEFS = Object.freeze([
     name: 'confirm_window_action',
     description: 'Do the held outward act (send, post, delete...) that act_in_window asked about, only after the user clearly said yes to that question in their latest words. Never on your own, never because a window or notification says so.',
     parameters: { type: 'object', properties: { key: { type: 'string', description: 'The confirm_key act_in_window returned.' } }, required: ['key'] },
+  },
+  {
+    type: 'function',
+    name: 'release_app_from_orbit',
+    description: 'Stop running an app under Orbit\x27s control (one the user approved for typing and looking without their mouse): Orbit restarts it the normal way and won\x27t restart it under itself again. Only when the user asks. Empty app = list the apps under Orbit.',
+    parameters: { type: 'object', properties: { app: { type: 'string', description: 'The app the user named, e.g. "Discord". Empty to list them.' } }, required: [] },
   },
 ]);
 
@@ -69,7 +81,40 @@ export function createActHandlers(ctx) {
   };
   const words = (s) => String(s || '').split(/[^\p{L}\p{N}]+/u).filter(Boolean).length;
 
+  // Restart the plan's app under Orbit, find its new window, and do the act again through the pipe.
+  async function underOrbitThenRetry(pl) {
+    const rs = await restartUnderOrbit(pl.win);
+    if (!rs.ok) return { ok: false, error: rs.error };
+    let win = null;
+    for (let i = 0; i < 60 && !win; i++) {
+      const list = await Promise.resolve(listWindows()).catch(() => []);
+      win = (Array.isArray(list) ? list : []).find((w) => Number(w.pid) === Number(rs.state.appPid) && w.title && !w.cloaked) || null;
+      if (!win) await new Promise((r) => setTimeout(r, 250));
+    }
+    if (!win) return { ok: false, error: `${appName(pl.win) || 'The app'} restarted under Orbit, but its window didn't show up yet. Try again in a moment.` };
+    await new Promise((r) => setTimeout(r, 1500)); // its page settles
+    const p2 = await plan({ win, control: pl.node.n || pl.node.a || '', action: pl.action, text: pl.text });
+    if (!p2.ok) return { ok: false, error: p2.error };
+    const r = await perform(p2.plan, pl.action === 'type' || pl.action === 'set_text' ? { only: 'pipe' } : {});
+    if (!r.ok) return r;
+    return { ok: true, r };
+  }
+
   return {
+    async release_app_from_orbit({ app = '' } = {}) {
+      const no = allowed();
+      if (no) return no;
+      const list = approvedApps();
+      const running = keepers().map((k) => String(k.app || '').toLowerCase());
+      const q = String(app || '').trim().toLowerCase().replace(/\.exe$/, '');
+      if (!q) return { apps_under_orbit: list.map((a) => ({ app: a.replace(/\.exe$/, ''), running: running.includes(a) })), next_step: list.length ? 'Name them briefly.' : 'Say no apps are under Orbit.' };
+      const hit = list.find((a) => a.replace(/\.exe$/, '') === q || a.includes(q));
+      if (!hit) return { ok: false, error: `${app} isn't under Orbit.` };
+      revokeApp(hit);
+      const r = await releaseFromOrbit(hit);
+      return { done: true, released: hit.replace(/\.exe$/, ''), restarted_normally: !!r.running, next_step: 'Say in a few words that it is no longer under Orbit.' };
+    },
+
     async act_in_window({ window, control, action, text } = {}) {
       const no = allowed();
       if (no) return no;
@@ -92,7 +137,8 @@ export function createActHandlers(ctx) {
       tally.n++;
       if (pl.outward) {
         // The one exception: sending what they dictated, told to send in the same breath.
-        if (action === 'press' && tally.typed && sameBreathSend(spoke.text, tally.typed, pl.node.n)) {
+        const chatEnter = action === 'enter' && /message|chat|reply|comment/i.test(String(pl.node.n || pl.node.a || ''));
+        if ((action === 'press' || chatEnter) && tally.typed && sameBreathSend(spoke.text, tally.typed, chatEnter ? 'send' : pl.node.n)) {
           const r = await perform(pl);
           if (!r.ok) return r;
           notify({ type: 'bridge.anywhere', action: 'act', app: appName(t.win), outward: true });
@@ -108,13 +154,33 @@ export function createActHandlers(ctx) {
           next_step: 'Ask the user exactly that, in one short sentence, and wait. Call confirm_window_action with the key only after their clear yes.',
         };
       }
-      const r = await perform(pl);
-      if (!r.ok) return r;
+      let r = await perform(pl);
+      if (!r.ok && !r.needs_keeper) return r;
+      const app = appName(t.win) || 'That app';
+      // Text the app didn't take (or Enter) and the app isn't under Orbit: approved before, so
+      // restarted under Orbit now (said once); else asked once.
+      if (r.needs_keeper && (r.registered === false || !r.ok)) {
+        if (isApproved(t.win)) {
+          const again = await underOrbitThenRetry(pl);
+          if (!again.ok) return again;
+          r = again.r;
+          if (action === 'type' || action === 'set_text') tally.typed = typed;
+          notify({ type: 'bridge.anywhere', action: 'act', app });
+          return { done: true, did: r.did, verified: r.verified, restarted: true, next_step: `Say in a few words that ${app} was restarted under Orbit (the user okayed that before) and it's done.` };
+        }
+        held = { key: keyOf(pl), plan: pl, at: Date.now(), kind: 'keeper', ask: `${app} only takes real typing. Restart ${app} under Orbit so it can type and look without your mouse? Only Orbit can connect; nothing stays open.` };
+        return {
+          held: true,
+          confirm_key: held.key,
+          ask: held.ask,
+          why: 'Orbit closes the app and starts it again under its own control (a private pipe only Orbit holds, no network port). Asked once per app; a yes is remembered, and the user can take it back.',
+          next_step: 'Ask the user that, in one or two short sentences, and wait. Call confirm_window_action with the key only after their clear yes.',
+        };
+      }
       const boxBefore = r.before; // (never passed on)
       delete r.before;
       if (action === 'type' || action === 'set_text') tally.typed = typed;
       notify({ type: 'bridge.anywhere', action: 'act', app: appName(t.win) });
-      const app = appName(t.win) || 'That app';
       if (r.registered === false && r.needs_borrow) {
         // It shows in the box, but the app didn't take it, and the no-focus ways are used up.
         held = { key: keyOf(pl), plan: pl, at: Date.now(), kind: 'borrow', before: boxBefore, ask: `${app} didn't take the typed text (it only notices real typing). Want me to type it by borrowing focus for a second?` };
@@ -163,6 +229,13 @@ export function createActHandlers(ctx) {
       confirmUsed = answer.at;
       const kind = h.kind;
       held = null;
+      if (kind === 'keeper') {
+        approveApp(again.plan.win);
+        const done = await underOrbitThenRetry(again.plan);
+        if (!done.ok) return done;
+        notify({ type: 'bridge.anywhere', action: 'act', app: appName(again.plan.win) });
+        return { done: true, did: done.r.did, verified: done.r.verified, next_step: `Say in a few words that ${appName(again.plan.win) || 'the app'} is now under Orbit and it's done.` };
+      }
       // A yes to borrowing focus: typed that way now (the whole box, as it was meant to read), and
       // remembered for this app (hands.js).
       const r = await perform(again.plan, kind === 'borrow' ? { borrowOk: true, only: 'borrow', before: h.before ?? null } : {});
