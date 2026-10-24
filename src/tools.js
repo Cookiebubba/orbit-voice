@@ -11,6 +11,7 @@ import { answerPrompt, claudeApp, clearDesktop, fillDesktop, getDesktopInfo, get
 import { asksToStop } from './stop-command.js';
 import { sendInstruction, withoutSendTail } from './send-intent.js';
 import { consentOf, isClearYes } from './consent.js';
+import { createOfferBook } from './offers.js';
 import { APP_TOOL_DEF, createAppControl } from './app-control.js';
 import { CHOICE_NAMES, decisionFrom, describePrompt } from './claude-prompt.js';
 import { logError, logInfo, logWarn, recentLog } from './log.js';
@@ -603,6 +604,9 @@ export function createToolRunner({
   // Prompts the user may have drafted though they didn't say them in this call: one the second
   // brain suggested, or one drafted in a recent call and never sent (once the user asks for it).
   const suggestions = [];
+  // What Orbit said aloud lately: a prompt it proposed itself may be drafted once the user accepts
+  // it (src/offers.js). Only its spoken words, never a window, a page, a notification or a tool result.
+  const offers = createOfferBook();
   let copyAskUsed = 0; // the `at` of the copy request already used: one request, one copy
   let settingAskUsed = 0; // the `at` of the words that already changed a setting
   let sameBreathUsed = 0; // the `at` of the request whose "and send it" already sent a prompt
@@ -750,20 +754,32 @@ export function createToolRunner({
       // otherwise one in ten may (a number written as digits, a name the transcript split).
       const said = userWords();
       verbatim = verbatim === true || asksVerbatim(said);
-      const notSaid = wordsNotSaid(raw, [said, ...suggestions].join(' '), { direct: !verbatim });
       const allowed = verbatim ? 0 : Math.max(1, Math.floor(wordsOf(raw).length / 10));
+      let notSaid = wordsNotSaid(raw, [said, ...suggestions].join(' '), { direct: !verbatim });
+      // Orbit's own idea: a prompt it proposed out loud, which the user just accepted ("good idea",
+      // "yeah, send that to Claude"). Its spoken words count, once accepted, for this call.
+      let offer = null;
+      if (notSaid.length > allowed) {
+        const o = offers.accepted(asked, repliesSince);
+        if (o && wordsNotSaid(raw, [said, ...suggestions, o.text].join(' '), { direct: true }).length <= Math.max(1, Math.floor(wordsOf(raw).length / 10))) {
+          offer = o;
+          verbatim = false;
+          suggestions.push(o.text);
+          notSaid = [];
+        }
+      }
       // Sent at once only on the user's own words in this very request: said after anything else came
       // in (a notification, a second-brain answer, the resume note), under a minute old, used once,
-      // and a prompt made of their words alone (not one the second brain suggested).
+      // and a prompt made of their words alone (not one the second brain suggested), or of Orbit's own
+      // spoken offer that they accepted saying to send it ("yeah, send that to Claude").
+      const fresh = asked.at > Math.max(lastNotificationAt, lastBrainAnswerAt, lastDataAt) && asked.at !== sameBreathUsed && Date.now() - asked.at <= CONSENT_MAX_AGE_MS;
       const sendNow =
-        intent.send &&
-        asked.at > Math.max(lastNotificationAt, lastBrainAnswerAt, lastDataAt) &&
-        asked.at !== sameBreathUsed &&
-        Date.now() - asked.at <= CONSENT_MAX_AGE_MS &&
-        wordsNotSaid(raw, said, { direct: !verbatim }).length <= allowed;
+        fresh &&
+        ((intent.send && wordsNotSaid(raw, said, { direct: !verbatim }).length <= allowed) ||
+          (!!offer?.send && wordsNotSaid(raw, `${said} ${offer.text}`, { direct: true }).length <= allowed));
       if (notSaid.length > allowed) {
         return {
-          error: `Not drafted: the draft has words the user didn't say (${[...new Set(notSaid)].slice(0, 8).map((w) => `"${w}"`).join(', ')}). Use their own words for everything Claude should do or know: only drop what they said to you (like "tell Claude to") and turn it to speak to Claude directly. Don't add, explain or improve anything. If they pointed at something ("the second one", "that"), keep their words: Claude knows what they mean.`,
+          error: `Not drafted: the draft has words the user didn't say (${[...new Set(notSaid)].slice(0, 8).map((w) => `"${w}"`).join(', ')}). Use their own words for everything Claude should do or know: only drop what they said to you (like "tell Claude to") and turn it to speak to Claude directly. Don't add, explain or improve anything. If they pointed at something ("the second one", "that"), keep their words: Claude knows what they mean. If it is your own idea, say its wording aloud as an offer ("I could ask Claude to …. Want me to?") and draft it once they say yes.`,
         };
       }
       const clean = verbatim ? raw : removeFillers(raw) || raw;
@@ -821,6 +837,7 @@ export function createToolRunner({
         drafted: true,
         text: clean,
         verbatim: verbatim || undefined,
+        from_your_offer: offer ? true : undefined,
         in_prompt_box: next.filled,
         replaced_earlier_draft: (next.filled && sameBox) || undefined,
         target_session: targetNew ? `a new session${typeof info.folder === 'string' && info.folder ? ` in ${info.folder}` : ''}` : info.sessionTitle,
@@ -1392,6 +1409,8 @@ export function createToolRunner({
       lastNotificationAt = Date.now();
       if (data) lastDataAt = lastNotificationAt;
     },
+    /** Orbit said this aloud (the voice's own audio transcript): its offers may be drafted on a yes. */
+    noteSpoken: (text) => offers.noteSpoken(text),
     /** A prompt that may be drafted without the user saying it: a held answer's suggestion, an unsent draft. */
     allowDraft: (text) => {
       if (typeof text === 'string' && text.trim()) suggestions.push(text.slice(0, 2000));

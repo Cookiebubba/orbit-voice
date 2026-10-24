@@ -1447,6 +1447,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         if (announce?.noticeAt) announce.audioSeen++;
       } else if (/^response\.(output_)?audio_transcript\.done$/.test(evt.type)) {
         said('grok', evt.transcript);
+        // Only what was spoken aloud (a text-only reply is never an offer the user heard).
+        tools.noteSpoken(evt.transcript);
       } else if (/^response\.(output_)?text\.done$/.test(evt.type)) {
         said('grok', evt.text);
       } else if (evt.type === 'response.function_call_arguments.done') {
