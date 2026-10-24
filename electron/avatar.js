@@ -20,6 +20,10 @@
 // every Space. There's no prompt box or Send button to stand on there, so the avatar has the
 // floor (the top of the Dock) to itself; it moves when the screen layout changes.
 //
+// Boxless (`boxless`, "Orbit anywhere": his strip on another app's window, see avatar-host.js): the
+// same strip and placement on that window, but there's no prompt box there, so he stands on the
+// window's bottom edge (the box is never looked for).
+//
 // Switching avatars is a handover: the new one's window comes up (its page plays an entrance) while
 // the old one's page fades out (leave()), and then the old window closes.
 
@@ -37,7 +41,7 @@ export const AVATAR_KINDS = Object.freeze({
 });
 const LEAVE_MS = 450; // the page's fade-out, and a little more
 
-export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, getDesktopInfo, log = () => {}, info: info_ = () => {}, free = false, onWindow = () => {} }) {
+export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, getDesktopInfo, log = () => {}, info: info_ = () => {}, free = false, boxless = false, onWindow = () => {} }) {
   const K = AVATAR_KINDS[kind];
   if (!K) throw new Error(`unknown avatar ${kind}`);
   let win = null;
@@ -197,6 +201,13 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       send();
     }
     setLayer(claude.front === 'other' ? `above:${claude.hwnd}` : 'top');
+    if (boxless) {
+      if (!boxKnown) {
+        boxKnown = true; // nothing to wait for: he has the window's bottom edge
+        send();
+      }
+      return;
+    }
     // Find the prompt box again once the window stops moving (at once the first time), and now and
     // then while it shows.
     refind(boxKnown ? 900 : 60);
@@ -209,7 +220,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   }
 
   async function findBox() {
-    if (free || boxBusy || !enabled || leaving || !visible() || !claudeDip) return;
+    if (free || boxless || boxBusy || !enabled || leaving || !visible() || !claudeDip) return;
     boxBusy = true;
     const askedAt = Date.now();
     try {
@@ -281,7 +292,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     },
     /** Where the window helper sees the prompt box now ({ hwnd, rect, win }; see claude-window.ps1). */
     onBoxRect(b) {
-      if (free || !b || leaving || !enabled || !claude?.found || Number(b.hwnd) !== Number(claude.hwnd)) return;
+      if (free || boxless || !b || leaving || !enabled || !claude?.found || Number(b.hwnd) !== Number(claude.hwnd)) return;
       const ok = (r) => r && [r.x, r.y, r.w, r.h].every(Number.isFinite);
       lastRaw = { rect: ok(b.rect) ? b.rect : null, win: ok(b.win) ? b.win : null };
       if (!lastRaw.win) return;
@@ -290,7 +301,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     },
     /** It's on screen and wants the box watched: the Claude window it's on (hwnd), or 0. */
     get boxWindow() {
-      return !free && !leaving && enabled && visible() && claude?.found && !claude.min ? claude.hwnd : 0;
+      return !free && !boxless && !leaving && enabled && visible() && claude?.found && !claude.min ? claude.hwnd : 0;
     },
     /** Orbit's voice state (as the orb gets it, plus a few things only the avatars use). */
     onVoice(state) {
@@ -313,7 +324,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       if (!K.events.includes(name)) return;
       sendEvent(name);
       // A draft fills Claude's box (it grows) and a send empties it: look again.
-      if (name === 'draft' || name === 'sent') refind(name === 'draft' ? 350 : 700);
+      if (!boxless && (name === 'draft' || name === 'sent')) refind(name === 'draft' ? 350 : 700);
     },
     /** A feeling as the voice's words play (an emote cue, timed by the main window's audio). Qubit only. */
     emote(name) {

@@ -90,7 +90,10 @@ export function createFakeGrok({ g, port = 0 }) {
         if (text.includes('woke only for this')) c.isWake = true;
         if (text.startsWith('[App notification]') || text.startsWith('[Orbit held answer]')) c.notifications.push(Date.now());
         else if (text.startsWith('[Orbit resume note')) (c.resumeNote = true), c.notifications.push(Date.now());
-        else if (text.startsWith('[Orbit note:')) c.orbitNotes = (c.orbitNotes || 0) + 1; // the avatar fast path's quiet note: not the user
+        else if (text.startsWith('[Orbit note:')) {
+          c.orbitNotes = (c.orbitNotes || 0) + 1; // the fast paths' quiet notes: not the user
+          (c.notes ??= []).push(text);
+        }
         else {
           // Typed in Orbit's text box: the user's words, like speech. Grok's planned answer belongs to them.
           const u = { text, kind: kindOf(text), speechAt: Date.now(), transcriptAt: Date.now(), heard: true, typed: true };

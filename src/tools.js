@@ -18,6 +18,7 @@ import { getBrainKey, getSetting, updateSettings } from './config.js';
 import { BRAIN_MODELS, askBrain, findClaude, openClaudeSignIn, searchWeb } from './brain.js';
 import { AVATAR_ACTIONS, AVATAR_NAMES, activeAvatar, actionsFor, avatarToolDef, isAvatarAction, runAvatarCommand } from './avatar-commands.js';
 import { withoutKnownCues } from './emote-cues.js';
+import { ANYWHERE_TOOL_DEFS, anywhereAvailable, createAnywhereHandlers } from './anywhere/tools.js';
 
 export const TOOL_DEFS = [
   {
@@ -259,7 +260,9 @@ export const SEARCH_STATE = { xaiNative: true };
 export function toolDefs(settings = { brainEnabled: getSetting('brainEnabled'), brainModel: getSetting('brainModel'), brainExplore: getSetting('brainExplore'), brainConnection: getSetting('brainConnection'), avatar: activeAvatar(), webSearch: getSetting('webSearch'), engine: getSetting('voiceEngine') }) {
   const base = !settings.brainEnabled ? TOOL_DEFS : [...TOOL_DEFS, brainToolDef(settings), ...(settings.brainConnection === 'api-key' ? [] : [SIGN_IN_TOOL_DEF])];
   const search = !settings.webSearch ? [] : settings.engine !== 'claude' && SEARCH_STATE.xaiNative ? XAI_SEARCH_TOOLS.map((t) => ({ ...t })) : [SEARCH_TOOL_DEF];
-  const all = [...base, ...search];
+  // Orbit anywhere: reading (and later acting in) other app windows, while it's on here.
+  const anywhere = (settings.anywhere ?? anywhereAvailable()) ? ANYWHERE_TOOL_DEFS.map((t) => ({ ...t })) : [];
+  const all = [...base, ...search, ...anywhere];
   return settings.avatar === 'qubit' || settings.avatar === 'buddy' ? [...all, avatarToolDef(settings.avatar)] : all;
 }
 
@@ -1349,6 +1352,9 @@ export function createToolRunner({
       };
     },
   };
+
+  // Orbit anywhere's tools (src/anywhere/tools.js), on the same consent rules: the user's own words.
+  Object.assign(handlers, createAnywhereHandlers({ recentUtterance, utteranceSince, lastNotificationAt: () => lastNotificationAt, notify, isClearYes, userWords, wordsNotSaid }));
 
   return {
     async run(name, argsJson) {
