@@ -130,11 +130,13 @@ function Get-ClaudeWindows {
   $ids = if ($OnlyPid) { @($OnlyPid) } else { @(Get-Process -Name 'claude' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }) }
   $out = New-Object System.Collections.ArrayList
   if (-not $ids.Count) { return , $out }
-  [OrbitAuto.Condition[]]$conds = @($ids | ForEach-Object { New-Object OrbitAuto.PropertyCondition($AE::ProcessIdProperty, [int]$_) })
-  $cond = if ($conds.Count -gt 1) { [OrbitAuto.OrCondition]::new($conds) } else { $conds[0] }
+  # Claude's own windows by Win32 first, then UI Automation on each: never the whole desktop (one
+  # hung window of another app used to hang this).
   $z = 0
-  foreach ($el in $AE::RootElement.FindAll($Scope::Children, $cond)) {
+  foreach ($h in [OrbitAuto.Native]::TopWindows([int[]]@($ids))) {
     try {
+      $el = $AE::FromHandle([IntPtr]$h)
+      if (-not $el) { continue }
       $c = $el.Current
       if ($c.ControlType -ne $CT::Window -or -not $c.Name -or $c.NativeWindowHandle -eq 0) { continue }
       $min = $false; $wp = $null

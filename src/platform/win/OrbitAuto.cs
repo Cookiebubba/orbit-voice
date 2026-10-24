@@ -16,6 +16,30 @@ using System.Reflection;
 using UIAutomationClient;
 
 namespace OrbitAuto {
+  /// <summary>
+  /// Top-level windows of some processes, found with Win32 (EnumWindows), topmost first. Asking UI
+  /// Automation for the desktop's children instead asks every app's windows, so one hung window
+  /// anywhere (another app's) hung every look at Claude's.
+  /// </summary>
+  public static class Native {
+    delegate bool EnumProc(IntPtr h, IntPtr l);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    public static long[] TopWindows(int[] pids) {
+      var want = new HashSet<uint>();
+      foreach (int p in pids) want.Add((uint)p);
+      var found = new List<long>();
+      EnumWindows((h, l) => {
+        uint pid;
+        GetWindowThreadProcessId(h, out pid);
+        if (want.Contains(pid) && IsWindowVisible(h)) found.Add(h.ToInt64());
+        return true;
+      }, IntPtr.Zero);
+      return found.ToArray();
+    }
+  }
+
   /// <summary>Loads the interop assembly; called before anything below touches its types.</summary>
   public static class Interop {
     static Assembly interop;
@@ -33,6 +57,8 @@ namespace OrbitAuto {
         if (uia == null) {
           uia = (IUIAutomation2)new CUIAutomation8();
           uia.AutoSetFocus = 0; // never pull a window forward
+          uia.ConnectionTimeout = 4000; // another app that hangs can't hang Orbit for long
+          uia.TransactionTimeout = 8000;
         }
         return uia;
       }
@@ -158,6 +184,7 @@ namespace OrbitAuto {
       IsTogglePatternAvailableProperty = new AutomationProperty(30041), IsValuePatternAvailableProperty = new AutomationProperty(30043);
 
     public static AutomationElement RootElement { get { return new AutomationElement(U.A.GetRootElement()); } }
+    public static AutomationElement FromHandle(IntPtr h) { return Wrap(U.A.ElementFromHandle(h)); }
 
     public AutomationElementInformation Current { get { return new AutomationElementInformation(E); } }
 
