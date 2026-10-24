@@ -44,6 +44,7 @@ export async function startFakeApp(kind = 'winforms', title = 'ORBIT-TEST', { on
   const acks = new Set();
   let ready = null;
   let lastState = null;
+  let lastRect;
   readline.createInterface({ input: child.stdout }).on('line', (l) => {
     let j;
     try {
@@ -54,6 +55,7 @@ export async function startFakeApp(kind = 'winforms', title = 'ORBIT-TEST', { on
     if (j.ready) ready = j;
     else if (j.event) events.push(j);
     else if (j.state) lastState = j.state;
+    else if ('rect' in j) lastRect = j.rect;
     else if (j.ok) acks.add(j.ok);
   });
   for (let i = 0; i < 300 && !ready; i++) await sleep(50);
@@ -76,6 +78,12 @@ export async function startFakeApp(kind = 'winforms', title = 'ORBIT-TEST', { on
       lastState = null;
       await api.send({ state: true });
       return lastState;
+    },
+    /** Where a control is on screen, as the app itself places it: { name, x, y, w, h } or null. */
+    async rectOf(name) {
+      lastRect = undefined;
+      await api.send({ rect: name });
+      return lastRect ?? null;
     },
     async waitFor(pred, ms = 3000) {
       const t0 = Date.now();

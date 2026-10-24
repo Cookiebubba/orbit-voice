@@ -19,6 +19,8 @@
 //   {"activate":true}  bring it to the front (SetForegroundWindow, else minimize and restore)
 //   {"minimize":true}  {"restore":true}  {"title":".."}  {"set":{"Message":".."}}  {"select":"Notes"}
 //   {"selectText":{"name":"Notes","start":0,"length":5}}
+//   {"topmost":true|false}  above (or back among) other windows, without activating it
+//   {"rect":"Save"}  -> {"rect":{"name":"Save","x":..,"y":..,"w":..,"h":..}} (screen pixels: the app's own idea of where it is)
 //   {"state":true}     -> {"state":{"Message":"..","Notes":"..","Agree":false,"Channel":"..","active":false,"min":false}}
 //   {"quit":true}
 using System;
@@ -39,6 +41,7 @@ static class FakeApp {
   [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
   [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+  [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
 
   public static void Emit(Dictionary<string, object> e) {
     lock (outLock) { Out.WriteLine(Json.Serialize(e)); Out.Flush(); }
@@ -57,6 +60,7 @@ static class FakeApp {
     void SelectText(string name, int start, int length);
     void Focus(string name);
     Dictionary<string, object> State();
+    Dictionary<string, object> RectOf(string name);
     void Quit();
   }
 
@@ -100,6 +104,8 @@ static class FakeApp {
           string nm = Convert.ToString(st["name"]); int a = Convert.ToInt32(st["start"]), l = Convert.ToInt32(st["length"]);
           app.Invoke(() => app.SelectText(nm, a, l));
         }
+        if (c.ContainsKey("topmost")) { bool on = Convert.ToBoolean(c["topmost"]); app.Invoke(() => SetWindowPos(app.Hwnd, new IntPtr(on ? -1 : -2), 0, 0, 0, 0, 0x0013)); } // SWP_NOSIZE|NOMOVE|NOACTIVATE
+        if (c.ContainsKey("rect")) { string nm = Convert.ToString(c["rect"]); Dictionary<string, object> r = null; app.Invoke(() => r = app.RectOf(nm)); Emit(D("rect", r)); }
         if (c.ContainsKey("state")) {
           Dictionary<string, object> s = null;
           app.Invoke(() => { s = app.State(); s["active"] = GetForegroundWindow() == app.Hwnd; s["min"] = IsIconic(app.Hwnd); });
@@ -161,6 +167,12 @@ static class FakeApp {
     public Dictionary<string, object> State() {
       return D("Message", message.Text, "Notes", notes.Text, "Agree", agree.Checked, "Channel", Convert.ToString(channels.SelectedItem ?? ""));
     }
+    public Dictionary<string, object> RectOf(string name) {
+      var c = form.Controls[name];
+      if (c == null) return null;
+      var r = c.Parent.RectangleToScreen(c.Bounds);
+      return D("name", name, "x", r.X, "y", r.Y, "w", r.Width, "h", r.Height);
+    }
     public void Quit() { try { form.Invoke((Action)(() => form.Close())); } catch { } }
   }
 
@@ -170,6 +182,7 @@ static class FakeApp {
     System.Windows.Controls.TextBox message, notes;
     System.Windows.Controls.CheckBox agree;
     System.Windows.Controls.ListBox channels;
+    readonly Dictionary<string, System.Windows.FrameworkElement> named = new Dictionary<string, System.Windows.FrameworkElement>();
     IntPtr hwnd;
     public IntPtr Hwnd { get { return hwnd; } }
 
@@ -203,6 +216,7 @@ static class FakeApp {
       win.Deactivated += (s, e) => Emit(D("event", "deactivated"));
       foreach (System.Windows.UIElement el in new System.Windows.UIElement[] { message, notes, send, save, agree, channels, secret, status }) panel.Children.Add(el);
       win.Content = panel;
+      named["Message"] = message; named["Notes"] = notes; named["Send"] = send; named["Save"] = save; named["Agree"] = agree; named["Channels"] = channels;
       win.Show();
       hwnd = new System.Windows.Interop.WindowInteropHelper(win).Handle;
       ready.Set();
@@ -219,6 +233,13 @@ static class FakeApp {
     public Dictionary<string, object> State() {
       var item = channels.SelectedItem as System.Windows.Controls.ListBoxItem;
       return D("Message", message.Text, "Notes", notes.Text, "Agree", agree.IsChecked == true, "Channel", item == null ? "" : Convert.ToString(item.Content));
+    }
+    public Dictionary<string, object> RectOf(string name) {
+      System.Windows.FrameworkElement el;
+      if (!named.TryGetValue(name, out el)) return null;
+      var a = el.PointToScreen(new System.Windows.Point(0, 0));
+      var b = el.PointToScreen(new System.Windows.Point(el.ActualWidth, el.ActualHeight));
+      return D("name", name, "x", (int)Math.Round(a.X), "y", (int)Math.Round(a.Y), "w", (int)Math.Round(b.X - a.X), "h", (int)Math.Round(b.Y - a.Y));
     }
     public void Quit() { try { win.Dispatcher.Invoke(() => System.Windows.Application.Current.Shutdown()); } catch { } }
   }

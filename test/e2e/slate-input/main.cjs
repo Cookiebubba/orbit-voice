@@ -36,6 +36,7 @@ if (!app.requestSingleInstanceLock()) {
     win.loadFile(path.join(__dirname, 'page.html'));
     win.once('ready-to-show', () => {
       win.showInactive();
+      if (process.env.SLATE_TOP === '1') win.setAlwaysOnTop(true); // (a test that needs it in front of everything)
       out({ ready: true, pid: process.pid, hwnd: win.getNativeWindowHandle().readBigUInt64LE(0).toString(), pipe: app.commandLine.hasSwitch('remote-debugging-pipe') });
     });
     process.stdin.on('data', (d) => {
