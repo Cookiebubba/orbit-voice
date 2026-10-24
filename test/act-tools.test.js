@@ -10,7 +10,7 @@ import path from 'node:path';
 import { initConfig } from '../src/config.js';
 import { focus, setFocusBackend, setUiaHost } from '../src/platform/index.js';
 import { createToolRunner } from '../src/tools.js';
-import { canDo, findControl, isOutward, sameBreathSend } from '../src/anywhere/hands.js';
+import { canDo, findControl, isOutward, plan, sameBreathSend } from '../src/anywhere/hands.js';
 
 initConfig({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-act-tools-')) });
 
@@ -185,4 +185,14 @@ test('the same-breath send: dictated text typed and sent, read back once; nothin
   await t.say('type hello there in the message box');
   await t.run('act_in_window', { control: 'Message', action: 'set_text', text: 'hello there' });
   assert.equal((await t.run('act_in_window', { control: 'Send', action: 'press' })).held, true);
+});
+
+test("Claude's own window is never acted on here: prompts are draft_prompt, its controls claude_app", async () => {
+  const claude = { ...DISCORD, hwnd: 13, exe: 'claude.exe', title: 'Claude', cls: 'Chrome_WidgetWin_1' };
+  acts.length = 0;
+  const r = await plan({ win: claude, control: 'Send', action: 'press' });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /draft_prompt/);
+  assert.match(r.error, /claude_app/);
+  assert.equal(acts.length, 0);
 });

@@ -19,7 +19,7 @@
 
 import { appName, uiaRequest } from '../platform/index.js';
 import { actable, windowText } from './policy.js';
-import { focusGuard, profileFor, profileStore } from './index.js';
+import { focusGuard, isHomeWindow, profileFor, profileStore } from './index.js';
 import { heal, isOutwardLabel, locate } from './profiles.js';
 import { label } from './windows.js';
 
@@ -183,6 +183,9 @@ export async function perform({ win, node, action, text = '', control = null, pr
 export async function plan({ win, control: query, role = '', action, text = '' }) {
   const ok = actable(win);
   if (!ok.ok) return { ok: false, error: ok.say };
+  // Claude's own window has its own tools, with their own consent rules and the no-focus path
+  // (desktop.ps1): prompts are drafted and sent, its controls are claude_app. Never acted on here.
+  if (isHomeWindow(win)) return { ok: false, error: "That's Claude's window: prompts for Claude go through draft_prompt (and send_draft), and Claude's own controls through claude_app." };
   if (!ACTIONS.includes(action)) return { ok: false, error: `Orbit can't "${String(action).slice(0, 30)}". It can ${ACTIONS.join(', ')}.` };
   if ((action === 'type' || action === 'set_text') && !String(text || '').length) return { ok: false, error: 'Say what to type.' };
   const profile = await profileFor(win).catch(() => null);
