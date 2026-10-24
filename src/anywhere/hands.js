@@ -35,11 +35,15 @@
 // focus. A rich editor (Discord's Slate box) is never given SetValue at all (uia.ps1 refuses it,
 // "rich_box"); if the app isn't under Orbit yet, the act comes back needs_keeper, and Orbit asks the
 // user once whether to restart that app under Orbit (act-tools.js) instead of borrowing focus.
+//
+// Orbit's mouse (2026-10): each act first glides Orbit's own cursor (an overlay, never the user's
+// mouse) to its control and presses there (mouse.js leadIn), so acts in the background are visible.
 
 import { appName, switchToWindow, uiaRequest } from '../platform/index.js';
 import { getSetting } from '../config.js';
 import { cdpClick, cdpEnter, cdpType } from './cdp.js';
 import { keeperForWindow } from './keeper.js';
+import { leadIn } from './mouse.js';
 import { markIntentional } from './switching.js';
 import { actable, windowText } from './policy.js';
 import { focusGuard, isHomeWindow, profileFor, profileStore } from './index.js';
@@ -275,7 +279,10 @@ async function typeText({ win, node, action, text, profile }, { borrowOk = false
  * verifies. Resolves { ok, did, verified, stole_focus } or { ok: false, error }. Text acts may try
  * more than one way (see the top): `borrowOk` is the user's yes to borrowing focus in this app.
  */
-export async function perform({ win, node, action, text = '', control = null, profile = null, scan = null }, { borrowOk = false, only = '', before = null } = {}) {
+export async function perform({ win, node, action, text = '', control = null, profile = null, scan = null }, { borrowOk = false, only = '', before = null, lead = true } = {}) {
+  // Orbit's mouse glides to the control and presses there first (mouse.js: about 220 ms, never more
+  // than a moment), so the act is visible; the input itself still goes in without the user's mouse.
+  if (lead) await leadIn({ win, node, scan });
   if (action === 'type' || action === 'set_text') {
     focusGuard.noteAct(win.hwnd, { action, role: node.t, app: appName(win) });
     const r = await typeText({ win, node, action, text, profile }, { borrowOk, only, before });

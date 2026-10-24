@@ -77,6 +77,11 @@ export const DEFAULTS = Object.freeze({
   // Apps the user okayed running under Orbit (keeper.js: restarted under a private DevTools pipe so
   // Orbit can type, click and look without the mouse; no network port). Program names: "discord.exe".
   anywhereUnderOrbit: [],
+  // Orbit's mouse: a second, coloured cursor of Orbit's own (never the user's) that points at
+  // controls ("show me where") and glides to each control Orbit acts on, first.
+  anywhereMouse: true,
+  // ...how long it leads an act (ms, 0 to 600): the act waits this long for the glide, no more.
+  anywhereMouseLeadMs: 220,
   // Background helpers (Orbit anywhere): the engine they run on. 'claude-code' (the user's Claude
   // sign-in) for now; 'codex' is planned.
   helperEngine: 'claude-code',
@@ -211,6 +216,9 @@ function sanitize(input) {
         break;
       case 'anywhereUnderOrbit':
         if (Array.isArray(val)) out.anywhereUnderOrbit = [...new Set(val.filter((a) => typeof a === 'string' && /^[\w .()+-]{1,80}(\.exe)?$/i.test(a)).map((a) => a.toLowerCase()))].slice(0, 50);
+        break;
+      case 'anywhereMouseLeadMs':
+        if (Number.isFinite(val)) out.anywhereMouseLeadMs = Math.min(600, Math.max(0, Math.round(val)));
         break;
       case 'orbPosition':
         if (val === null || (Array.isArray(val) && val.length === 2 && val.every(Number.isFinite))) out.orbPosition = val && val.map(Math.round);
