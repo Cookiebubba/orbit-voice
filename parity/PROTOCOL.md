@@ -25,7 +25,7 @@ baked in at build time by `mac-swift/scripts/build-app.sh --test`, never in a re
 | `PORT` | The bridge's port (never 4317 in tests). |
 | `XAI_REALTIME_URL` | The fake Grok (`test/e2e/fake-grok.mjs`) when a case uses the Grok engine. |
 | `ORBIT_FAKE_DESKTOP` | A JS stand-in for the Claude desktop driver (`parity/fixtures/fake-desktop.mjs`), or unset to drive the stand-in Claude *window* (`parity/fixtures/mac/StandInClaude`). |
-| `ORBIT_CLAUDE_PID` | The stand-in Claude window's pid: the only Claude window either app may read or act on. |
+| `ORBIT_TEST_CLAUDE_PID` | The stand-in Claude window's pid: the only Claude window either app may read or act on. |
 | `ORBIT_FAKE_MIC` | A WAV file (any rate, mono or stereo) used as the microphone instead of the real one. Electron maps it to Chromium's fake capture device; Swift's audio engine reads it in real time. Can be swapped at run time with `mic.play`. |
 | `ORBIT_MUTE_OUTPUT` | `1`: the voice is "played" (timed, counted, levels computed) but not sent to the speakers. |
 | `ORBIT_FAKE_PERMS` | JSON `{"mic":"granted|denied|not-determined|restricted","ax":bool,"screen":bool}`: what the permissions check reports, for the onboarding cases (never touches the real TCC state). |

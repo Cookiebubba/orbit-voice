@@ -103,6 +103,6 @@ and the UI built (`npm run build:ui`).
 ## Rules this build keeps
 
 - Test only on windows it launched (the stand-in Claude window). Never the user's real Claude window
-  in tests: with `ORBIT_CLAUDE_PID` set, both apps act on that pid only.
+  in tests: with `ORBIT_TEST_CLAUDE_PID` set, both apps act on that pid only.
 - No keys, prompts or transcripts in logs, ever.
 - Qubit's art and colours are the engine's, unchanged (`ui/src/vendor/avatars/qubit-engine.js`).

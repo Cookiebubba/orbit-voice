@@ -1,0 +1,6 @@
+{
+  "name": "orbit-parity-standin-claude",
+  "productName": "Claude (stand-in)",
+  "private": true,
+  "main": "main.cjs"
+}

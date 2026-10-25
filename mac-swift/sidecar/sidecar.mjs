@@ -168,6 +168,9 @@ async function main() {
     fake = m.default || m;
     desktop.setDesktopDriver(fake);
   }
+  // Developer testing only: the stand-in Claude window's process is the only "Claude" there is
+  // (the orbit-mac work's setDesktopTestPid; electron/main.js does the same from this variable).
+  if (TESTING && Number(process.env.ORBIT_TEST_CLAUDE_PID) > 0 && typeof desktop.setDesktopTestPid === 'function') desktop.setDesktopTestPid(Number(process.env.ORBIT_TEST_CLAUDE_PID));
 
   // ---- the avatar: the Swift shell owns it; it reports what's on screen, so the core gets its
   // answer at once (the core's sink is synchronous, like Electron's).

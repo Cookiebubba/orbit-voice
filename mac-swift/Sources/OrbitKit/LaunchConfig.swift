@@ -13,7 +13,7 @@ public struct LaunchConfig: Sendable, Equatable {
   /** Env passed through to the sidecar (test builds only). */
   public var sidecarEnv: [String: String]
 
-  public static let testEnvKeys = ["XAI_REALTIME_URL", "ORBIT_FAKE_DESKTOP", "ORBIT_CLAUDE_PID", "ORBIT_PERSONA", "ORBIT_DRY_RUN_SENDS", "ORBIT_MCP_HOME"]
+  public static let testEnvKeys = ["XAI_REALTIME_URL", "ORBIT_FAKE_DESKTOP", "ORBIT_TEST_CLAUDE_PID", "ORBIT_PERSONA", "ORBIT_DRY_RUN_SENDS", "ORBIT_MCP_HOME"]
 
   public static func resolve(bundle: URL, info: [String: Any]?, env: [String: String], home: URL) -> LaunchConfig {
     let testing = (info?["OrbitParityAllowed"] as? Bool) == true || (info?["OrbitParityAllowed"] as? String) == "1"
