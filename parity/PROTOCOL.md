@@ -105,8 +105,8 @@ the sounds the shell played (name and time only). Event types (both builds use e
 | `pointer` | `avatar` (id), `type` (`down`/`move`/`up`), `x`,`y` (screen points) | A synthetic mouse event delivered to that avatar's overlay window only (never posted to the system, never moves the real cursor). |
 | `avatar.eval` | `avatar`, `probe` (file name in `parity/probes/`) | Runs the probe script in the avatar's page and returns its result as `value`. `qubit-art.js` returns `{ drawn, paths, fills: [css colours], solidFill, eyeIsHole, strokes, gradients, filters, shadows, opacityLayers }`. |
 | `avatar.command` | `action`, `dir` | As if the voice asked the avatar to do something. |
-| `settings.ui` | `key`, `value` | Change a setting through the app's own Settings screen model (not the bridge). |
-| `settings.read` | `key` | What the app's Settings screen shows for a key. |
+| `settings.ui` | `key`, `value` | Change a setting through the app's own Settings screen model (not the bridge): `{ ok, value }` or `{ ok: false, error }`. |
+| `settings.read` | `key` | What the app's Settings screen shows for a key: `{ ok: true, value }`. |
 | `window.show` | `name` (`main`/`settings`) | Show a window/view. |
 | `window.minimize` | | Minimize the main window (turns into the orb). |
 | `perms.set` | as `ORBIT_FAKE_PERMS` | Change the fake permission state; the shell re-checks as it would after the user returns from System Settings. |

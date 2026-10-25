@@ -43,6 +43,12 @@ cp "$BIN" "$APP/Contents/MacOS/OrbitNative"
 cp "$ROOT/build/icon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp "$ROOT/assets/trayTemplate.png" "$ROOT/assets/trayTemplate@2x.png" "$ROOT/assets/icon.png" "$APP/Contents/Resources/"
 [ -d "$HERE/Resources/app" ] && cp -R "$HERE/Resources/app/." "$APP/Contents/Resources/"
+# Qubit for the launcher's hero: his engine and director, unchanged, in ui/src's layout.
+HERO="$APP/Contents/Resources/hero-src"
+mkdir -p "$HERO/vendor/avatars" "$HERO/hero" "$HERO/qubit"
+cp "$ROOT/ui/src/vendor/avatars/orbit-nav.js" "$ROOT/ui/src/vendor/avatars/qubit-engine.js" "$HERO/vendor/avatars/"
+cp "$ROOT/ui/src/hero/hero.js" "$HERO/hero/"
+cp "$ROOT/ui/src/qubit/director.js" "$HERO/qubit/"
 
 # The embedded Node (only the binary: the core needs no npm).
 mkdir -p "$APP/Contents/Resources/node/bin"

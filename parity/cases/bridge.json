@@ -14,9 +14,9 @@
       "steps": [{ "do": "http", "path": "/api/config", "headers": { "sec-fetch-site": "cross-site" }, "expect": { "status": 403 } }] },
     { "id": "bridge.auth.post-origin", "title": "A POST from another origin is refused",
       "steps": [{ "do": "http", "method": "POST", "path": "/api/settings", "origin": "http://evil.example", "body": { "speed": 1.2 }, "expect": { "status": 403 } }] },
-    { "id": "bridge.config.shape", "title": "GET /api/config: version, no key yet, the Keychain-backed store, settings, limits, defaults",
+    { "id": "bridge.config.shape", "title": "GET /api/config: version, no key yet, a key store (the Keychain; a test profile may use its own), settings, limits, defaults",
       "steps": [{ "do": "http", "path": "/api/config", "expect": { "status": 200, "body": {
-        "version": { "$match": "^[0-9]+[.][0-9]+[.][0-9]+" }, "hasKey": false, "keyStorage": "macos-keychain",
+        "version": { "$match": "^[0-9]+[.][0-9]+[.][0-9]+" }, "hasKey": false, "keyStorage": { "$in": ["macos-keychain", "env-file"] },
         "settings.voice": "eve", "settings.speed": 1, "settings.voiceVolume": 0.75, "settings.wakeHotkey": "Control+Alt+G",
         "settings.hotkeyLabel": { "$type": "string" }, "settings.avatar": { "$in": ["buddy", "qubit", "none"] },
         "limits": { "minSpeed": 0.7, "maxSpeed": 1.5 }, "defaults.listenMode": "always" } } }] },

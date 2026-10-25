@@ -4,6 +4,7 @@
 // build launched with ORBIT_PARITY_PORT it also serves the parity driver.
 import AppKit
 import OrbitKit
+import OrbitUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -16,7 +17,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   var endpoints: BridgeEndpoints?
   var driver: ParityDriver?
   var parity: ParityBridge?
-  var statusItem: NSStatusItem?
+  var ui: OrbitUI?
+  var voice: any VoiceUI = IdleVoice()
+  var hotkeys: any HotkeyControl = UnregisteredHotkey()
   var quitting = false
   let startedAt = Date()
 
@@ -33,7 +36,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       MainActor.assumeIsolated { self?.showMain() }
     }
     log.info("app", "Orbit Native \(OrbitKit.version) starting\(config.testing ? " (test build)" : "")")
-    createStatusItem()
     startSidecar()
   }
 
@@ -65,7 +67,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     endpoints = e
     log.info("app", "Core ready on \(e.base.absoluteString) in \(Int(Date().timeIntervalSince(startedAt) * 1000)) ms")
     events.add("core.ready")
+    startWindows(e)
     startDriverIfAsked()
+  }
+
+  /** The launcher, Settings, onboarding and menu bar (OrbitUI), once the bridge is up. */
+  func startWindows(_ e: BridgeEndpoints) {
+    let res = Bundle.main.resourceURL ?? Bundle.main.bundleURL
+    let inBundle = FileManager.default.fileExists(atPath: res.appendingPathComponent("hero-src").path)
+    let options = OrbitUIOptions(
+      profileDir: config.profileDir,
+      assetsDir: inBundle ? res : config.coreDir.appendingPathComponent("assets"),
+      heroRoot: inBundle ? res.appendingPathComponent("hero-src") : config.coreDir.appendingPathComponent("ui/src"),
+      version: OrbitKit.version,
+      isPackaged: !config.testing,
+      testBuild: config.testing,
+      startHidden: LoginLaunch.wasOpenedAtLogin
+    )
+    let u = OrbitUI(bridge: BridgeClient(endpoints: e), voice: voice, hotkey: hotkeys, options: options)
+    u.onQuit = { NSApp.terminate(nil) }
+    u.onMinimize = { [weak self] in self?.events.add("window.minimize") }
+    u.onHotkeyChanged = { [weak self] accel in self?.sidecar?.send(["t": "shellSettings", "patch": ["wakeHotkey": .string(accel)]]) }
+    ui = u
+    u.start()
   }
 
   func coreMessage(_ m: JSONValue) {
@@ -124,38 +148,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   // MARK: windows (filled in by the launcher and overlays)
 
   func showMain() {
-    NSApp.activate(ignoringOtherApps: true)
+    if let ui { ui.showMain() } else { NSApp.activate(ignoringOtherApps: true) }
   }
-
-  func createStatusItem() {
-    let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    if let img = NSImage(named: "trayTemplate") ?? Bundle.main.image(forResource: "trayTemplate") {
-      img.isTemplate = true
-      item.button?.image = img
-    } else {
-      item.button?.title = "◉"
-    }
-    item.button?.toolTip = "Orbit"
-    let menu = NSMenu()
-    menu.addItem(withTitle: "Open Orbit", action: #selector(openFromMenu), keyEquivalent: "").target = self
-    menu.addItem(.separator())
-    menu.addItem(withTitle: "Quit Orbit", action: #selector(quitFromMenu), keyEquivalent: "q").target = self
-    item.menu = menu
-    statusItem = item
-  }
-
-  @objc func openFromMenu() { showMain() }
-  @objc func quitFromMenu() { NSApp.terminate(nil) }
 
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-    showMain()
+    ui?.handleReopen()
     return true
   }
 
   func applicationWillTerminate(_ notification: Notification) {
     quitting = true
+    ui?.stop()
     driver?.stop()
     sidecar?.stop()
     log.info("app", "Quit")
+  }
+}
+
+/** Was this launch macOS opening Orbit at login? (Then it starts quietly, as the orb.) */
+enum LoginLaunch {
+  static var wasOpenedAtLogin: Bool {
+    guard let e = NSAppleEventManager.shared().currentAppleEvent else { return false }
+    return e.eventID == kAEOpenApplication && e.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
   }
 }
