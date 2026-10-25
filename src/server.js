@@ -846,13 +846,19 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
 
   wss.on('connection', (browser, req) => {
     let wantAnnounce = false;
+    let wantLocalSpeech = false;
     try {
-      wantAnnounce = new URL(req.url, 'http://x').searchParams.get('announce') === '1';
+      const q = new URL(req.url, 'http://x').searchParams;
+      wantAnnounce = q.get('announce') === '1';
+      // Orbit Native hears and speaks on its own (the same speech models, in the app): only words go
+      // back and forth on this socket (see src/claude-voice.js localSpeech). Claude voice only.
+      wantLocalSpeech = q.get('speech') === 'local';
     } catch {}
     const toBrowser = (obj) => browser.readyState === WebSocket.OPEN && browser.send(JSON.stringify(obj));
     const apiKey = getApiKey();
     // Claude voice (beta) stands in for Grok's socket; everything below works the same with it.
     const useClaude = claudeVoiceOn();
+    const localSpeech = useClaude && wantLocalSpeech;
     let connectedAt = Date.now();
     let pageClosed = false; // Orbit hung up (sleep, hotkey, quit), as opposed to Grok closing
     // For the log line when the session ends (no audio or words are kept, only counts).
@@ -1179,7 +1185,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     };
 
     const upstream = useClaude
-      ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), sid: getSetting('claudeVoice'), model: getSetting('claudeVoiceModel'), effort: getSetting('claudeVoiceEffort'), stt: getSetting('claudeVoiceStt'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d), localTurn: (text, itemId) => tryFastPath(text, itemId) })
+      ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), sid: getSetting('claudeVoice'), model: getSetting('claudeVoiceModel'), effort: getSetting('claudeVoiceEffort'), stt: getSetting('claudeVoiceStt'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d), localTurn: (text, itemId) => tryFastPath(text, itemId), localSpeech })
       : new WebSocket(process.env.XAI_REALTIME_URL || `wss://api.x.ai/v1/realtime?model=${encodeURIComponent(getSetting('model'))}`, { headers: { Authorization: `Bearer ${apiKey}` } });
     const toXai = (obj) => upstream.readyState === WebSocket.OPEN && upstream.send(JSON.stringify(obj));
     const stopMeter = useClaude ? () => {} : startMeter(); // Claude voice isn't billed by xAI
@@ -1561,6 +1567,12 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         for (let i = 0; i + 1 < pcm.length; i += 64) stats.micPeak = Math.max(stats.micPeak, Math.abs(pcm.readInt16LE(i)));
       }
       if (FORWARDABLE.has(msg.type)) return toXai(msg);
+      // Local speech: the app's own speech start and transcript, under the same rule as mic audio
+      // (nothing outside a spoken update's listening window).
+      if (localSpeech && (msg.type === 'orbit.speech_started' || msg.type === 'orbit.transcript')) {
+        if (!micAllowed()) return;
+        return toXai({ type: msg.type, transcript: typeof msg.transcript === 'string' ? msg.transcript.slice(0, 4000) : undefined, ended_ms_ago: Number.isFinite(msg.ended_ms_ago) ? Math.max(0, Math.min(10_000, msg.ended_ms_ago)) : 0, stt: typeof msg.stt === 'string' ? msg.stt.slice(0, 40) : undefined });
+      }
       switch (msg.type) {
         case 'ui.listen_window':
           // The page has played Grok's update and opened the mic: listen for a short window.

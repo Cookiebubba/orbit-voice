@@ -555,3 +555,64 @@ test('a speech-to-text download refuses a file that fails its checksum, and keep
   assert.deepEqual(fs.readdirSync(root), [], 'nothing kept');
   await assert.rejects(downloadStt(root, 'whisper-huge', { fetchImpl }), /Unknown/);
 });
+
+test('local speech (Orbit Native): words in, words out; no models load here and nothing is synthesized', async () => {
+  const fc = fakeClaude((text, nth) => (nth === 1 ? ['Sure, ', 'one moment. <tool>{"name":"get_current_session","arguments":{}}</tool>'] : ['Claude is idle.']));
+  const speech = fakeSpeech();
+  let vadMade = 0;
+  const watched = { ...speech, newVad: () => (vadMade++, speech.vad) };
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech: watched, spawnImpl: fc.spawnImpl, localSpeech: true, sid: 3, speed: 1.1 });
+  const ev = collect(sock);
+  await opened(sock);
+  assert.equal(vadMade, 0, 'no VAD (or other speech model) is loaded for a local-speech call');
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [{ name: 'get_current_session', description: 'd', parameters: {} }] } }));
+  // Mic audio is ignored: the app does its own listening.
+  speech.vad.detected = true;
+  sock.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: Buffer.alloc(2048 * 2).toString('base64') }));
+  assert.ok(!ev.some((e) => e.type === 'input_audio_buffer.speech_started'));
+  sock.send(JSON.stringify({ type: 'orbit.speech_started' }));
+  assert.equal(ev.filter((e) => e.type === 'input_audio_buffer.speech_started').length, 1);
+  sock.send(JSON.stringify({ type: 'orbit.transcript', transcript: "What's Claude doing?", ended_ms_ago: 450 }));
+  await until(() => ev.some((e) => e.type === 'response.done'));
+  const stopped = ev.find((e) => e.type === 'input_audio_buffer.speech_stopped');
+  assert.equal(stopped.ended_ms_ago, 450);
+  const heard = ev.find((e) => e.type === 'conversation.item.input_audio_transcription.completed');
+  assert.equal(heard.transcript, "What's Claude doing?");
+  assert.equal(heard.item_id, stopped.item_id, 'one item from start to transcript');
+  assert.equal(fc.calls[0].messages.filter((m) => m.type === 'user').at(-1).message.content, "What's Claude doing?");
+  const said = ev.filter((e) => e.type === 'response.output_audio.delta');
+  assert.ok(said.length >= 1);
+  assert.ok(said.every((e) => e.delta === '' && typeof e.text === 'string' && e.voice.sid === 3 && e.voice.speed === 1.1), 'words to say, no audio');
+  assert.ok(said.some((e) => e.text === 'Sure, one moment.'));
+  assert.deepEqual(speech.said, [], 'nothing synthesized here');
+  assert.equal(ev.find((e) => e.type === 'response.function_call_arguments.done').name, 'get_current_session');
+  sock.close();
+});
+
+test('local speech: starting to talk over a reply cancels it, as heard speech does', async () => {
+  const fc = fakeClaude(() => ['This is a long answer, ', 'with many words. ', 'And more. '.repeat(50)]);
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech: fakeSpeech(), spawnImpl: fc.spawnImpl, localSpeech: true });
+  const ev = collect(sock);
+  await opened(sock);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [] } }));
+  sock.send(JSON.stringify({ type: 'orbit.transcript', transcript: 'Tell me a story.' }));
+  await until(() => ev.some((e) => e.type === 'response.output_audio.delta'));
+  sock.send(JSON.stringify({ type: 'orbit.speech_started' }));
+  await until(() => ev.some((e) => e.type === 'response.done'));
+  assert.equal(ev.find((e) => e.type === 'response.done').response.status, 'cancelled');
+  assert.ok(fc.calls[0].messages.some((m) => m.type === 'control_request' && m.request.subtype === 'interrupt'));
+  sock.close();
+});
+
+test('local speech is off unless asked: orbit.* messages do nothing on an ordinary call', async () => {
+  const fc = fakeClaude(() => ['Hi.']);
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech: fakeSpeech(), spawnImpl: fc.spawnImpl });
+  const ev = collect(sock);
+  await opened(sock);
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [] } }));
+  sock.send(JSON.stringify({ type: 'orbit.transcript', transcript: 'Hello?' }));
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(!ev.some((e) => e.type === 'conversation.item.input_audio_transcription.completed'));
+  assert.equal(fc.calls[0].messages.filter((m) => m.type === 'user').length, 0);
+  sock.close();
+});

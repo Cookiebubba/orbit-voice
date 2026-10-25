@@ -568,7 +568,7 @@ const SLOW_FILLERS = ['One moment.', 'Let me think.'];
  * src/avatar-commands.js): Claude isn't asked at all (no tokens, no wait), and the note joins
  * Claude's next turn so it knows what happened.
  */
-export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = CLAUDE_VOICE.sid, model = CLAUDE_VOICE.model, effort = CLAUDE_VOICE.effort, stt = 'moonshine', onMetrics = () => {}, onWarn = () => {}, speech: injectedSpeech, spawnImpl, localTurn = null, now = () => Date.now() }) {
+export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = CLAUDE_VOICE.sid, model = CLAUDE_VOICE.model, effort = CLAUDE_VOICE.effort, stt = 'moonshine', onMetrics = () => {}, onWarn = () => {}, speech: injectedSpeech, spawnImpl, localTurn = null, localSpeech = false, now = () => Date.now() }) {
   const sock = new EventEmitter();
   sock.readyState = 0;
   if (!modelOk(model)) model = CLAUDE_VOICE.model;
@@ -680,13 +680,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
       while (history.length && history[0].at < fed - KEEP) history.shift();
       vad.acceptWaveform(win);
       const detected = vad.isDetected();
-      if (detected && !speaking) {
-        speaking = true;
-        speechItem = { id: id('item'), startedAt: now() };
-        emit({ type: 'input_audio_buffer.speech_started', item_id: speechItem.id, audio_start_ms: 0 });
-        if (hold) clearTimeout(hold.timer); // they went on: these words join the ones held
-        if (turn && !turn.finished) cancelTurn('interrupted'); // you talked over it
-      }
+      if (detected && !speaking) startSpeech();
       while (!vad.isEmpty()) {
         const seg = vad.front(false);
         vad.pop();
@@ -699,7 +693,17 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
     pendingSamples = all.slice(i);
   };
 
-  const onSegment = async (samples, endedMsAgo) => {
+  /** The user started talking (heard by the VAD here, or by the app with local speech). */
+  const startSpeech = () => {
+    speaking = true;
+    speechItem = { id: id('item'), startedAt: now() };
+    emit({ type: 'input_audio_buffer.speech_started', item_id: speechItem.id, audio_start_ms: 0 });
+    if (hold) clearTimeout(hold.timer); // they went on: these words join the ones held
+    if (turn && !turn.finished) cancelTurn('interrupted'); // you talked over it
+  };
+
+  /** The user stopped: the turn's item, and when they really stopped (endedMsAgo before now). */
+  const endSpeech = (endedMsAgo) => {
     const item = speechItem || { id: id('item'), startedAt: now() };
     speechItem = null;
     speaking = false;
@@ -707,6 +711,11 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
     const endedAt = heardAt - Math.max(0, endedMsAgo); // when you actually stopped talking
     emit({ type: 'input_audio_buffer.speech_stopped', item_id: item.id, ended_ms_ago: Math.round(heardAt - endedAt) });
     emit({ type: 'input_audio_buffer.committed', item_id: item.id });
+    return { item, heardAt, endedAt };
+  };
+
+  const onSegment = async (samples, endedMsAgo) => {
+    const { item, heardAt, endedAt } = endSpeech(endedMsAgo);
     let text = '';
     const sttUsed = sttNow;
     try {
@@ -715,6 +724,21 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
       warnOnce('Claude voice: speech to text failed', e);
       text = '';
     }
+    onTranscript(text, { item, heardAt, endedAt, stt: sttUsed?.id || 'moonshine' });
+  };
+
+  /**
+   * Local speech (Orbit Native): the app ran the VAD and speech to text itself (the same models and
+   * settings as here) and sends only the words; from here on it is the same turn as a heard one.
+   */
+  const onLocalTranscript = (msg) => {
+    if (!localSpeech) return;
+    if (!speaking) startSpeech();
+    const at = endSpeech(Number(msg.ended_ms_ago) || 0);
+    onTranscript(typeof msg.transcript === 'string' ? msg.transcript.slice(0, 4000) : '', { ...at, stt: typeof msg.stt === 'string' ? msg.stt.slice(0, 40) : 'moonshine' });
+  };
+
+  const onTranscript = (text, { item, heardAt, endedAt, stt: sttId }) => {
     if (sock.readyState !== OPEN) return;
     emit({ type: 'conversation.item.input_audio_transcription.completed', item_id: item.id, transcript: text });
     if (!/[\p{L}\p{N}]/u.test(text)) {
@@ -734,7 +758,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
     }
     input.push(text);
     if (hold) clearTimeout(hold.timer);
-    const timing = { endedAt: hold?.timing.endedAt ?? endedAt, heardAt, textAt: now(), stt: sttUsed?.id || 'moonshine' };
+    const timing = { endedAt: hold?.timing.endedAt ?? endedAt, heardAt, textAt: now(), stt: sttId };
     // Words that plainly go on: wait a moment for the rest before asking Claude (a long dictation
     // with breaths in it is one turn, not a turn started and cancelled at every pause).
     if (soundsUnfinished(text)) {
@@ -762,9 +786,11 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
     return proc;
   };
 
-  const sendAudio = (t, pcmB64, reflex = false, emote = null) => {
+  // Local speech: the words to say go out instead of their audio (an empty delta with `text` and the
+  // voice), and the app speaks them; everything else about the reply is unchanged.
+  const sendAudio = (t, pcmB64, reflex = false, emote = null, text = '') => {
     if (t.cancelled) return;
-    emit({ type: 'response.output_audio.delta', response_id: t.id, item_id: t.itemId, delta: pcmB64, ...(reflex ? { reflex: true } : {}), ...(emote ? { emote: { name: emote } } : {}) });
+    emit({ type: 'response.output_audio.delta', response_id: t.id, item_id: t.itemId, delta: pcmB64, ...(text ? { text, voice: { sid, speed } } : {}), ...(reflex ? { reflex: true } : {}), ...(emote ? { emote: { name: emote } } : {}) });
   };
 
   const fillerPcm = async (text) => {
@@ -780,6 +806,12 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
   const filler = (t, list) => {
     if (t.cancelled || t.audioSent || t.fillerP) return;
     const text = list[fillerN++ % list.length];
+    if (localSpeech) {
+      t.fillerAt ??= now();
+      t.audioSent = true;
+      t.fillerP = Promise.resolve();
+      return sendAudio(t, '', true, null, text);
+    }
     t.fillerP = fillerPcm(text)
       .then((pcm) => {
         if (t.cancelled || t.audioSent) return;
@@ -814,6 +846,11 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
         const emote = part.cue;
         t.tts = t.tts.then(async () => {
           if (t.cancelled) return;
+          if (localSpeech) {
+            t.firstAudioAt ??= now();
+            t.audioSent = true;
+            return sendAudio(t, '', false, emote, say);
+          }
           let samples;
           try {
             samples = await speech.speak(say, { speed, sid });
@@ -1055,6 +1092,11 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
       }
       case 'input_audio_buffer.append':
         return onMicAudio(msg.audio);
+      case 'orbit.speech_started':
+        if (localSpeech && !speaking) startSpeech();
+        return;
+      case 'orbit.transcript':
+        return onLocalTranscript(msg);
       case 'input_audio_buffer.clear':
         return resetVad();
       case 'conversation.item.create': {
@@ -1095,10 +1137,13 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
     await new Promise((r) => setImmediate(r)); // like a socket: 'open' comes after the caller's listeners are on
     try {
       if (!claudePath) throw new Error('Claude Code was not found. Install it, or set its path in Settings → Second brain.');
-      speech = injectedSpeech || (await loadSpeech(modelsRoot));
-      switchStt(stt);
-      vad = speech.newVad();
-      resampler = speech.newResampler();
+      // Local speech: the app has the models and does the listening and speaking; none load here.
+      if (!localSpeech) {
+        speech = injectedSpeech || (await loadSpeech(modelsRoot));
+        switchStt(stt);
+        vad = speech.newVad();
+        resampler = speech.newResampler();
+      }
     } catch (e) {
       sock.readyState = OPEN;
       return fail(`Claude voice isn't ready: ${String(e?.message || e).slice(0, 200)}`);
@@ -1107,7 +1152,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
     sock.readyState = OPEN;
     sock.emit('open');
     // Make the reflex phrases now (~0.2 s each), so one can play the moment it's needed.
-    for (const text of [...TOOL_FILLERS, ...SLOW_FILLERS]) await fillerPcm(text).catch(() => {});
+    if (!localSpeech) for (const text of [...TOOL_FILLERS, ...SLOW_FILLERS]) await fillerPcm(text).catch(() => {});
   })();
 
   return sock;
