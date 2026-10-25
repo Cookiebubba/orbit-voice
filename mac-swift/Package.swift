@@ -14,6 +14,7 @@ let package = Package(
     .executable(name: "OrbitNative", targets: ["OrbitNative"]),
     .executable(name: "StandInClaude", targets: ["StandInClaude"]),
     .executable(name: "UIDemo", targets: ["UIDemo"]),
+    .executable(name: "OverlayDemo", targets: ["OverlayDemo"]),
     .library(name: "OrbitKit", targets: ["OrbitKit"]),
     .library(name: "OrbitSpeech", targets: ["OrbitSpeech"]),
     .library(name: "OrbitUI", targets: ["OrbitUI"]),
@@ -69,6 +70,14 @@ let package = Package(
     .testTarget(name: "OrbitKitTests", dependencies: ["OrbitKit"], path: "Tests/OrbitKitTests", exclude: ["Fixtures"]),
     .testTarget(name: "OrbitSpeechTests", dependencies: ["OrbitSpeech", "OrbitKit"], path: "Tests/OrbitSpeechTests", linkerSettings: sherpaLink),
     // (Fixtures are read from the source tree by path, as the JS tests read test/fixtures.)
+    // Hosts the overlays against a bridge for manual and scripted checks, with its own stand-in host
+    // window and stand-in claude-window helper (see Sources/OverlayDemo/main.swift).
+    .executableTarget(
+      name: "OverlayDemo",
+      dependencies: ["OrbitKit", "OrbitOverlays"],
+      path: "Sources/OverlayDemo",
+      linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit")]
+    ),
     // Runs ../parity/cases against the Swift build (needs a built test app; see README).
     .testTarget(name: "OrbitParityTests", dependencies: ["OrbitKit"], path: "Tests/OrbitParityTests"),
   ]
