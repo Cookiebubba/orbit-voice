@@ -1,0 +1,899 @@
+{
+ "platform": "darwin",
+ "t0": 1800000000000,
+ "files": {
+  "Library/Application Support/Claude/claude-code-sessions/acct-1/org-1/local_a.json": "{\"sessionId\":\"local_a\",\"cliSessionId\":\"cli-a\",\"title\":\"Fix the login bug\",\"cwd\":\"/Users/me/code/app\",\"lastFocusedAt\":1799999999000,\"lastActivityAt\":1799999940000,\"createdAt\":1799991000000,\"model\":\"opus\",\"branch\":\"main\",\"permissionMode\":\"default\"}",
+  "Library/Application Support/Claude/claude-code-sessions/acct-1/org-1/local_b.json": "{\"sessionId\":\"local_b\",\"cliSessionId\":\"cli-b\",\"title\":\"Write the release notes\",\"cwd\":\"/Users/me/code/docs\",\"originCwd\":\"/Users/me/code/notes\",\"lastFocusedAt\":1799999995000,\"lastActivityAt\":1799999880000,\"createdAt\":1799992000000,\"permissionMode\":\"bypassPermissions\"}",
+  "Library/Application Support/Claude/claude-code-sessions/acct-1/org-1/local_c.json": "{\"cliSessionId\":\"cli-c\",\"title\":\"\",\"cwd\":\"\",\"lastFocusedAt\":1799999991000,\"createdAt\":1799993000000}",
+  "Library/Application Support/Claude/claude-code-sessions/acct-1/org-1/local_d.json": "{\"sessionId\":\"local_d\",\"cliSessionId\":\"cli-d\",\"title\":\"Archived thing\",\"isArchived\":true,\"lastFocusedAt\":1799999998000}",
+  "Library/Application Support/Claude/claude-code-sessions/acct-1/org-1/local_e.json": "{\"sessionId\":\"local_e\",\"cliSessionId\":\"../escape\",\"title\":\"Bad id\"}",
+  "Library/Application Support/Claude/claude-code-sessions/acct-1/org-1/local_f.json": "{ not json",
+  "Library/Application Support/Claude/claude-code-sessions/acct-1/org-1/notes.txt": "ignored",
+  "Library/Application Support/Claude/claude-code-sessions/acct-1/org-1/local_g.json": "{\"sessionId\":\"local_g\",\"cliSessionId\":\"cli-g\",\"title\":\"Plan viewer alpha\",\"cwd\":\"/Users/me/code/viewer\",\"lastFocusedAt\":1799999993000,\"lastActivityAt\":1799985600000,\"createdAt\":1799994000000}",
+  "Library/Application Support/Claude/claude-code-sessions/acct-2/org-9/local_a.json": "{\"sessionId\":\"local_a\",\"cliSessionId\":\"cli-a\",\"title\":\"Fix the login bug (older copy)\",\"cwd\":\"/Users/me/code/app\",\"lastFocusedAt\":1799999950000,\"lastActivityAt\":1799999910000}",
+  "Library/Application Support/Claude/claude-code-sessions/acct-2/org-9/local_h.json": "{\"sessionId\":\"local_h\",\"cliSessionId\":\"cli-h\",\"title\":\"Ask Claude a question\",\"cwd\":\"/Users/me/code/q\",\"lastFocusedAt\":1799999989000,\"lastActivityAt\":1799999970000,\"createdAt\":1799995000000}",
+  "Library/Application Support/Claude/claude-code-sessions/acct-2/org-9/local_i.json": "{\"sessionId\":\"local_i\",\"cliSessionId\":\"cli-i\",\"title\":\"Run the build\",\"cwd\":\"/Users/me/code/b\",\"lastFocusedAt\":1799999987000,\"lastActivityAt\":1799999980000,\"createdAt\":1799996000000}",
+  ".claude/projects/-Users-me-code-app/cli-a.jsonl": "{\"type\":\"user\",\"timestamp\":\"2027-01-15T07:58:50.000Z\",\"message\":{\"role\":\"user\",\"content\":\"Please fix the <system-reminder>secret</system-reminder> login bug\"}}\n{\"type\":\"assistant\",\"timestamp\":\"2027-01-15T07:58:55.000Z\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Looking at it.\"},{\"type\":\"tool_use\",\"id\":\"tu1\",\"name\":\"Read\",\"input\":{\"file_path\":\"/x/login.js\"}}]}}\n{\"type\":\"user\",\"timestamp\":\"2027-01-15T07:58:56.000Z\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"tu1\",\"content\":\"file\"}]}}\nnot json\n{\"type\":\"assistant\",\"timestamp\":\"2027-01-15T07:59:00.000Z\",\"isSidechain\":true,\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"side\"}]}}\n",
+  ".claude/projects/elsewhere/cli-b.jsonl": "{\"type\":\"user\",\"timestamp\":\"2027-01-15T07:57:50.000Z\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"<command-name>x</command-name>Write <pasted_content id=1>the notes</pasted_content> please\"}]}}\n{\"type\":\"assistant\",\"timestamp\":\"2027-01-15T07:57:55.000Z\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Done: notes written.\"}]}}\n",
+  ".claude/projects/-Users-me-code-q/cli-h.jsonl": "{\"type\":\"user\",\"timestamp\":\"2027-01-15T07:59:20.000Z\",\"message\":{\"content\":\"Which DB?\"}}\n{\"type\":\"assistant\",\"timestamp\":\"2027-01-15T07:59:30.000Z\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"q1\",\"name\":\"AskUserQuestion\",\"input\":{\"description\":\"Pick one\"}}]}}\n",
+  ".claude/projects/-Users-me-code-b/cli-i.jsonl": "{\"type\":\"user\",\"timestamp\":\"2027-01-15T07:59:35.000Z\",\"message\":{\"content\":\"build it\"}}\n{\"type\":\"assistant\",\"timestamp\":\"2027-01-15T07:59:40.000Z\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"npm run build && npm test -- --long-flag npm run build && npm test -- --long-flag npm run build && npm test -- --long-flag npm run build && npm test -- --long-flag npm run build && npm test -- --long-flag \"}}]}}\n",
+  ".claude/projects/-Users-me-code-viewer/cli-g.jsonl": "{\"type\":\"system\",\"subtype\":\"stop_hook_summary\",\"timestamp\":\"2027-01-15T04:00:00.000Z\"}\n"
+ },
+ "steps": [
+  {
+   "op": "list",
+   "args": {}
+  },
+  {
+   "op": "list",
+   "args": {
+    "includeArchived": true
+   }
+  },
+  {
+   "op": "resolve",
+   "args": {
+    "query": "",
+    "windowTitle": null
+   }
+  },
+  {
+   "op": "resolve",
+   "args": {
+    "query": "current",
+    "windowTitle": "Run the build"
+   }
+  },
+  {
+   "op": "resolve",
+   "args": {
+    "query": "login",
+    "windowTitle": null
+   }
+  },
+  {
+   "op": "resolve",
+   "args": {
+    "query": "notes",
+    "windowTitle": null
+   }
+  },
+  {
+   "op": "resolve",
+   "args": {
+    "query": "cli-h",
+    "windowTitle": null
+   }
+  },
+  {
+   "op": "resolve",
+   "args": {
+    "query": "local_i",
+    "windowTitle": null
+   }
+  },
+  {
+   "op": "resolve",
+   "args": {
+    "query": "release notes app",
+    "windowTitle": null
+   }
+  },
+  {
+   "op": "resolve",
+   "args": {
+    "query": "nothing here at all",
+    "windowTitle": null
+   }
+  },
+  {
+   "op": "resolve",
+   "args": {
+    "query": "x",
+    "windowTitle": null
+   }
+  },
+  {
+   "op": "byTitle",
+   "args": {
+    "title": "fix the LOGIN bug!"
+   }
+  },
+  {
+   "op": "byTitle",
+   "args": {
+    "title": "Plan viewer alpha"
+   }
+  },
+  {
+   "op": "byTitle",
+   "args": {
+    "title": ""
+   }
+  },
+  {
+   "op": "byTitle",
+   "args": {
+    "title": "missing"
+   }
+  },
+  {
+   "op": "find",
+   "args": {
+    "cli": "cli-a",
+    "cwd": "/Users/me/code/app"
+   }
+  },
+  {
+   "op": "find",
+   "args": {
+    "cli": "cli-b",
+    "cwd": "/somewhere/else"
+   }
+  },
+  {
+   "op": "find",
+   "args": {
+    "cli": "cli-z",
+    "cwd": ""
+   }
+  },
+  {
+   "op": "find",
+   "args": {
+    "cli": "cli-h",
+    "cwd": null
+   }
+  },
+  {
+   "op": "tail",
+   "args": {
+    "file": ".claude/projects/-Users-me-code-app/cli-a.jsonl"
+   }
+  },
+  {
+   "op": "tail",
+   "args": {
+    "file": ".claude/projects/-Users-me-code-app/cli-a.jsonl",
+    "lastN": 1,
+    "includeTools": true,
+    "maxCharsPerMessage": 10,
+    "maxBytes": 300
+   }
+  },
+  {
+   "op": "tail",
+   "args": {
+    "file": ".claude/projects/elsewhere/cli-b.jsonl"
+   }
+  },
+  {
+   "op": "tail",
+   "args": {
+    "file": ".claude/projects/elsewhere/cli-b.jsonl",
+    "lastN": 1,
+    "includeTools": true,
+    "maxCharsPerMessage": 10,
+    "maxBytes": 300
+   }
+  },
+  {
+   "op": "tail",
+   "args": {
+    "file": ".claude/projects/-Users-me-code-q/cli-h.jsonl"
+   }
+  },
+  {
+   "op": "tail",
+   "args": {
+    "file": ".claude/projects/-Users-me-code-q/cli-h.jsonl",
+    "lastN": 1,
+    "includeTools": true,
+    "maxCharsPerMessage": 10,
+    "maxBytes": 300
+   }
+  },
+  {
+   "op": "tail",
+   "args": {
+    "file": ".claude/projects/-Users-me-code-b/cli-i.jsonl"
+   }
+  },
+  {
+   "op": "tail",
+   "args": {
+    "file": ".claude/projects/-Users-me-code-b/cli-i.jsonl",
+    "lastN": 1,
+    "includeTools": true,
+    "maxCharsPerMessage": 10,
+    "maxBytes": 300
+   }
+  },
+  {
+   "op": "tail",
+   "args": {
+    "file": ".claude/projects/-Users-me-code-viewer/cli-g.jsonl"
+   }
+  },
+  {
+   "op": "tail",
+   "args": {
+    "file": ".claude/projects/-Users-me-code-viewer/cli-g.jsonl",
+    "lastN": 1,
+    "includeTools": true,
+    "maxCharsPerMessage": 10,
+    "maxBytes": 300
+   }
+  },
+  {
+   "op": "ago",
+   "args": {
+    "ms": 0
+   }
+  },
+  {
+   "op": "ago",
+   "args": {
+    "ms": 1799999995000
+   }
+  },
+  {
+   "op": "ago",
+   "args": {
+    "ms": 1799999400000
+   }
+  },
+  {
+   "op": "ago",
+   "args": {
+    "ms": 1799992800000
+   }
+  },
+  {
+   "op": "ago",
+   "args": {
+    "ms": 1799654400000
+   }
+  },
+  {
+   "op": "tick",
+   "now": 1800000000000
+  },
+  {
+   "op": "tick",
+   "now": 1800000003000
+  },
+  {
+   "op": "tick",
+   "now": 1800000013000
+  },
+  {
+   "op": "append",
+   "file": ".claude/projects/-Users-me-code-app/cli-a.jsonl",
+   "content": "{\"type\":\"assistant\",\"timestamp\":\"2027-01-15T08:00:13.000Z\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Fixed the bug.\"}]}}\n"
+  },
+  {
+   "op": "tick",
+   "now": 1800000015000
+  },
+  {
+   "op": "tick",
+   "now": 1800000022000
+  },
+  {
+   "op": "append",
+   "file": ".claude/projects/-Users-me-code-b/cli-i.jsonl",
+   "content": "{\"type\":\"system\",\"subtype\":\"stop_hook_summary\",\"timestamp\":\"2027-01-15T08:00:22.000Z\"}\n"
+  },
+  {
+   "op": "tick",
+   "now": 1800000024000
+  },
+  {
+   "op": "tick",
+   "now": 1800000040000
+  },
+  {
+   "op": "append",
+   "file": ".claude/projects/-Users-me-code-q/cli-h.jsonl",
+   "content": "{\"type\":\"user\",\"timestamp\":\"2027-01-15T08:00:40.000Z\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"q1\",\"content\":\"Postgres\"}]}}\n{\"type\":\"assistant\",\"timestamp\":\"2027-01-15T08:00:40.010Z\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"q2\",\"name\":\"ExitPlanMode\",\"input\":{}}]}}\n"
+  },
+  {
+   "op": "tick",
+   "now": 1800000042500
+  },
+  {
+   "op": "tick",
+   "now": 1800000045000
+  },
+  {
+   "op": "tick",
+   "now": 1800000047500
+  },
+  {
+   "op": "tick",
+   "now": 1800000050000
+  },
+  {
+   "op": "tick",
+   "now": 1800000052500
+  },
+  {
+   "op": "tick",
+   "now": 1800000055000
+  },
+  {
+   "op": "working"
+  }
+ ],
+ "results": [
+  [
+   {
+    "id": "local_a",
+    "cliSessionId": "cli-a",
+    "title": "Fix the login bug",
+    "cwd": "/Users/me/code/app",
+    "project": "app",
+    "branch": "main",
+    "model": "opus",
+    "permissionMode": "default",
+    "lastFocusedAt": 1799999999000,
+    "lastActivityAt": 1799999940000,
+    "createdAt": 1799991000000,
+    "isArchived": false
+   },
+   {
+    "id": "local_b",
+    "cliSessionId": "cli-b",
+    "title": "Write the release notes",
+    "cwd": "/Users/me/code/docs",
+    "project": "notes",
+    "branch": null,
+    "model": null,
+    "permissionMode": "bypassPermissions",
+    "lastFocusedAt": 1799999995000,
+    "lastActivityAt": 1799999880000,
+    "createdAt": 1799992000000,
+    "isArchived": false
+   },
+   {
+    "id": "local_g",
+    "cliSessionId": "cli-g",
+    "title": "Plan viewer alpha",
+    "cwd": "/Users/me/code/viewer",
+    "project": "viewer",
+    "branch": null,
+    "model": null,
+    "permissionMode": null,
+    "lastFocusedAt": 1799999993000,
+    "lastActivityAt": 1799985600000,
+    "createdAt": 1799994000000,
+    "isArchived": false
+   },
+   {
+    "id": "local_c",
+    "cliSessionId": "cli-c",
+    "title": "(untitled)",
+    "cwd": "",
+    "project": "(no folder)",
+    "branch": null,
+    "model": null,
+    "permissionMode": null,
+    "lastFocusedAt": 1799999991000,
+    "lastActivityAt": 1799993000000,
+    "createdAt": 1799993000000,
+    "isArchived": false
+   },
+   {
+    "id": "local_h",
+    "cliSessionId": "cli-h",
+    "title": "Ask Claude a question",
+    "cwd": "/Users/me/code/q",
+    "project": "q",
+    "branch": null,
+    "model": null,
+    "permissionMode": null,
+    "lastFocusedAt": 1799999989000,
+    "lastActivityAt": 1799999970000,
+    "createdAt": 1799995000000,
+    "isArchived": false
+   },
+   {
+    "id": "local_i",
+    "cliSessionId": "cli-i",
+    "title": "Run the build",
+    "cwd": "/Users/me/code/b",
+    "project": "b",
+    "branch": null,
+    "model": null,
+    "permissionMode": null,
+    "lastFocusedAt": 1799999987000,
+    "lastActivityAt": 1799999980000,
+    "createdAt": 1799996000000,
+    "isArchived": false
+   }
+  ],
+  [
+   {
+    "id": "local_a",
+    "cliSessionId": "cli-a",
+    "title": "Fix the login bug",
+    "cwd": "/Users/me/code/app",
+    "project": "app",
+    "branch": "main",
+    "model": "opus",
+    "permissionMode": "default",
+    "lastFocusedAt": 1799999999000,
+    "lastActivityAt": 1799999940000,
+    "createdAt": 1799991000000,
+    "isArchived": false
+   },
+   {
+    "id": "local_d",
+    "cliSessionId": "cli-d",
+    "title": "Archived thing",
+    "cwd": "",
+    "project": "(no folder)",
+    "branch": null,
+    "model": null,
+    "permissionMode": null,
+    "lastFocusedAt": 1799999998000,
+    "lastActivityAt": 0,
+    "createdAt": 0,
+    "isArchived": true
+   },
+   {
+    "id": "local_b",
+    "cliSessionId": "cli-b",
+    "title": "Write the release notes",
+    "cwd": "/Users/me/code/docs",
+    "project": "notes",
+    "branch": null,
+    "model": null,
+    "permissionMode": "bypassPermissions",
+    "lastFocusedAt": 1799999995000,
+    "lastActivityAt": 1799999880000,
+    "createdAt": 1799992000000,
+    "isArchived": false
+   },
+   {
+    "id": "local_g",
+    "cliSessionId": "cli-g",
+    "title": "Plan viewer alpha",
+    "cwd": "/Users/me/code/viewer",
+    "project": "viewer",
+    "branch": null,
+    "model": null,
+    "permissionMode": null,
+    "lastFocusedAt": 1799999993000,
+    "lastActivityAt": 1799985600000,
+    "createdAt": 1799994000000,
+    "isArchived": false
+   },
+   {
+    "id": "local_c",
+    "cliSessionId": "cli-c",
+    "title": "(untitled)",
+    "cwd": "",
+    "project": "(no folder)",
+    "branch": null,
+    "model": null,
+    "permissionMode": null,
+    "lastFocusedAt": 1799999991000,
+    "lastActivityAt": 1799993000000,
+    "createdAt": 1799993000000,
+    "isArchived": false
+   },
+   {
+    "id": "local_h",
+    "cliSessionId": "cli-h",
+    "title": "Ask Claude a question",
+    "cwd": "/Users/me/code/q",
+    "project": "q",
+    "branch": null,
+    "model": null,
+    "permissionMode": null,
+    "lastFocusedAt": 1799999989000,
+    "lastActivityAt": 1799999970000,
+    "createdAt": 1799995000000,
+    "isArchived": false
+   },
+   {
+    "id": "local_i",
+    "cliSessionId": "cli-i",
+    "title": "Run the build",
+    "cwd": "/Users/me/code/b",
+    "project": "b",
+    "branch": null,
+    "model": null,
+    "permissionMode": null,
+    "lastFocusedAt": 1799999987000,
+    "lastActivityAt": 1799999980000,
+    "createdAt": 1799996000000,
+    "isArchived": false
+   }
+  ],
+  {
+   "id": "local_a",
+   "cliSessionId": "cli-a",
+   "title": "Fix the login bug",
+   "cwd": "/Users/me/code/app",
+   "project": "app",
+   "branch": "main",
+   "model": "opus",
+   "permissionMode": "default",
+   "lastFocusedAt": 1799999999000,
+   "lastActivityAt": 1799999940000,
+   "createdAt": 1799991000000,
+   "isArchived": false
+  },
+  {
+   "id": "local_i",
+   "cliSessionId": "cli-i",
+   "title": "Run the build",
+   "cwd": "/Users/me/code/b",
+   "project": "b",
+   "branch": null,
+   "model": null,
+   "permissionMode": null,
+   "lastFocusedAt": 1799999987000,
+   "lastActivityAt": 1799999980000,
+   "createdAt": 1799996000000,
+   "isArchived": false
+  },
+  {
+   "id": "local_a",
+   "cliSessionId": "cli-a",
+   "title": "Fix the login bug",
+   "cwd": "/Users/me/code/app",
+   "project": "app",
+   "branch": "main",
+   "model": "opus",
+   "permissionMode": "default",
+   "lastFocusedAt": 1799999999000,
+   "lastActivityAt": 1799999940000,
+   "createdAt": 1799991000000,
+   "isArchived": false
+  },
+  {
+   "id": "local_b",
+   "cliSessionId": "cli-b",
+   "title": "Write the release notes",
+   "cwd": "/Users/me/code/docs",
+   "project": "notes",
+   "branch": null,
+   "model": null,
+   "permissionMode": "bypassPermissions",
+   "lastFocusedAt": 1799999995000,
+   "lastActivityAt": 1799999880000,
+   "createdAt": 1799992000000,
+   "isArchived": false
+  },
+  {
+   "id": "local_h",
+   "cliSessionId": "cli-h",
+   "title": "Ask Claude a question",
+   "cwd": "/Users/me/code/q",
+   "project": "q",
+   "branch": null,
+   "model": null,
+   "permissionMode": null,
+   "lastFocusedAt": 1799999989000,
+   "lastActivityAt": 1799999970000,
+   "createdAt": 1799995000000,
+   "isArchived": false
+  },
+  {
+   "id": "local_i",
+   "cliSessionId": "cli-i",
+   "title": "Run the build",
+   "cwd": "/Users/me/code/b",
+   "project": "b",
+   "branch": null,
+   "model": null,
+   "permissionMode": null,
+   "lastFocusedAt": 1799999987000,
+   "lastActivityAt": 1799999980000,
+   "createdAt": 1799996000000,
+   "isArchived": false
+  },
+  {
+   "id": "local_b",
+   "cliSessionId": "cli-b",
+   "title": "Write the release notes",
+   "cwd": "/Users/me/code/docs",
+   "project": "notes",
+   "branch": null,
+   "model": null,
+   "permissionMode": "bypassPermissions",
+   "lastFocusedAt": 1799999995000,
+   "lastActivityAt": 1799999880000,
+   "createdAt": 1799992000000,
+   "isArchived": false
+  },
+  null,
+  null,
+  {
+   "id": "local_a",
+   "cliSessionId": "cli-a",
+   "title": "Fix the login bug",
+   "cwd": "/Users/me/code/app",
+   "project": "app",
+   "branch": "main",
+   "model": "opus",
+   "permissionMode": "default",
+   "lastFocusedAt": 1799999999000,
+   "lastActivityAt": 1799999940000,
+   "createdAt": 1799991000000,
+   "isArchived": false
+  },
+  {
+   "id": "local_g",
+   "cliSessionId": "cli-g",
+   "title": "Plan viewer alpha",
+   "cwd": "/Users/me/code/viewer",
+   "project": "viewer",
+   "branch": null,
+   "model": null,
+   "permissionMode": null,
+   "lastFocusedAt": 1799999993000,
+   "lastActivityAt": 1799985600000,
+   "createdAt": 1799994000000,
+   "isArchived": false
+  },
+  null,
+  null,
+  ".claude/projects/-Users-me-code-app/cli-a.jsonl",
+  ".claude/projects/elsewhere/cli-b.jsonl",
+  null,
+  ".claude/projects/-Users-me-code-q/cli-h.jsonl",
+  {
+   "state": "working",
+   "turns": [
+    {
+     "role": "user",
+     "text": "Please fix the  login bug",
+     "at": "2027-01-15T07:58:50.000Z"
+    },
+    {
+     "role": "claude",
+     "text": "Looking at it.",
+     "at": "2027-01-15T07:58:55.000Z"
+    }
+   ],
+   "lastKind": "tool_result",
+   "ageMs": 64000,
+   "lastTool": null
+  },
+  {
+   "state": "working",
+   "turns": [],
+   "lastKind": "tool_result",
+   "ageMs": 64000,
+   "lastTool": null
+  },
+  {
+   "state": "idle (finished its last reply)",
+   "turns": [
+    {
+     "role": "user",
+     "text": "Write the notes please",
+     "at": "2027-01-15T07:57:50.000Z"
+    },
+    {
+     "role": "claude",
+     "text": "Done: notes written.",
+     "at": "2027-01-15T07:57:55.000Z"
+    }
+   ],
+   "lastKind": "assistant_text",
+   "ageMs": 125000,
+   "lastTool": null
+  },
+  {
+   "state": "idle (finished its last reply)",
+   "turns": [
+    {
+     "role": "claude",
+     "text": "Done: note… [10 more chars]",
+     "at": "2027-01-15T07:57:55.000Z"
+    }
+   ],
+   "lastKind": "assistant_text",
+   "ageMs": 125000,
+   "lastTool": null
+  },
+  {
+   "state": "working",
+   "turns": [
+    {
+     "role": "user",
+     "text": "Which DB?",
+     "at": "2027-01-15T07:59:20.000Z"
+    }
+   ],
+   "lastKind": "tool_use",
+   "ageMs": 30000,
+   "lastTool": {
+    "name": "AskUserQuestion",
+    "id": "q1",
+    "at": "2027-01-15T07:59:30.000Z"
+   }
+  },
+  {
+   "state": "working",
+   "turns": [
+    {
+     "role": "tool",
+     "text": "AskUserQuestion: Pick one",
+     "at": "2027-01-15T07:59:30.000Z"
+    }
+   ],
+   "lastKind": "tool_use",
+   "ageMs": 30000,
+   "lastTool": {
+    "name": "AskUserQuestion",
+    "id": "q1",
+    "at": "2027-01-15T07:59:30.000Z"
+   }
+  },
+  {
+   "state": "working",
+   "turns": [
+    {
+     "role": "user",
+     "text": "build it",
+     "at": "2027-01-15T07:59:35.000Z"
+    }
+   ],
+   "lastKind": "tool_use",
+   "ageMs": 20000,
+   "lastTool": {
+    "name": "Bash",
+    "id": "b1",
+    "at": "2027-01-15T07:59:40.000Z"
+   }
+  },
+  {
+   "state": "idle (finished its last reply)",
+   "turns": [],
+   "lastKind": null,
+   "ageMs": null,
+   "lastTool": null
+  },
+  {
+   "state": "idle (finished its last reply)",
+   "turns": [],
+   "lastKind": "stopped",
+   "ageMs": 14400000,
+   "lastTool": null
+  },
+  {
+   "state": "idle (finished its last reply)",
+   "turns": [],
+   "lastKind": "stopped",
+   "ageMs": 14400000,
+   "lastTool": null
+  },
+  "unknown",
+  "5s ago",
+  "10m ago",
+  "2h ago",
+  "4d ago",
+  [
+   {
+    "type": "claude.status",
+    "working": [
+     {
+      "id": "local_a",
+      "title": "Fix the login bug"
+     },
+     {
+      "id": "local_h",
+      "title": "Ask Claude a question"
+     },
+     {
+      "id": "local_i",
+      "title": "Run the build"
+     }
+    ]
+   }
+  ],
+  [
+   {
+    "type": "claude.waiting",
+    "id": "local_h",
+    "title": "Ask Claude a question",
+    "kind": "question",
+    "tool": "AskUserQuestion",
+    "toolId": "q1",
+    "check": 1
+   },
+   {
+    "type": "claude.waiting",
+    "id": "local_i",
+    "title": "Run the build",
+    "kind": "tool",
+    "tool": "Bash",
+    "toolId": "b1",
+    "check": 1
+   }
+  ],
+  [
+   {
+    "type": "claude.waiting",
+    "id": "local_i",
+    "title": "Run the build",
+    "kind": "tool",
+    "tool": "Bash",
+    "toolId": "b1",
+    "check": 2
+   }
+  ],
+  null,
+  [],
+  [
+   {
+    "type": "claude.finished",
+    "id": "local_a",
+    "title": "Fix the login bug",
+    "summary": "Fixed the bug."
+   },
+   {
+    "type": "claude.status",
+    "working": [
+     {
+      "id": "local_h",
+      "title": "Ask Claude a question"
+     },
+     {
+      "id": "local_i",
+      "title": "Run the build"
+     }
+    ]
+   }
+  ],
+  null,
+  [
+   {
+    "type": "claude.finished",
+    "id": "local_i",
+    "title": "Run the build",
+    "summary": ""
+   },
+   {
+    "type": "claude.status",
+    "working": [
+     {
+      "id": "local_h",
+      "title": "Ask Claude a question"
+     }
+    ]
+   }
+  ],
+  [],
+  null,
+  [],
+  [
+   {
+    "type": "claude.waiting",
+    "id": "local_h",
+    "title": "Ask Claude a question",
+    "kind": "plan",
+    "tool": "ExitPlanMode",
+    "toolId": "q2",
+    "check": 1
+   }
+  ],
+  [],
+  [],
+  [],
+  [],
+  [
+   {
+    "id": "local_h",
+    "title": "Ask Claude a question"
+   }
+  ]
+ ]
+}
