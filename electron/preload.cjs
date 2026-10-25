@@ -26,6 +26,16 @@ contextBridge.exposeInMainWorld('desktop', {
   // gets Orbit's state and says when the cursor is over it (so it can take clicks).
   buddyEvent: (name) => ipcRenderer.send('buddy:event', name),
   buddyHover: (on) => ipcRenderer.send('buddy:hover', !!on),
+  // A quick click on the avatar: start talking (as "Hey Orbit" with its window in front).
+  buddyTalk: () => ipcRenderer.send('buddy:talk'),
+  // Picked up (true) or put back (false): the avatar's window covers the work area meanwhile.
+  buddyLift: (on) => ipcRenderer.send('buddy:lift', !!on),
+  // The main window: the avatar was clicked to talk.
+  onAvatarTalk: (cb) => {
+    const fn = () => cb();
+    ipcRenderer.on('avatar:talk', fn);
+    return () => ipcRenderer.removeListener('avatar:talk', fn);
+  },
   // A feeling as the voice's words play (an emote cue: 'happy', 'surprised'...), for Qubit.
   buddyEmote: (name) => ipcRenderer.send('buddy:emote', String(name)),
   onBuddyEmote: (cb) => {

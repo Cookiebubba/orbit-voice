@@ -131,6 +131,10 @@ export function createAvatarHost({ makeAvatar, home = () => null, watch = () => 
       for (const g of guests.values()) if (g.avatar.window && g.avatar.window.webContents === webContents) return g.avatar;
       return null;
     },
+    /** The avatar settings changed (click to talk, throwing): every guest's page hears. */
+    refresh() {
+      for (const g of guests.values()) g.avatar.refresh?.();
+    },
     setEnabled(on) {
       const was = enabled;
       enabled = !!on;

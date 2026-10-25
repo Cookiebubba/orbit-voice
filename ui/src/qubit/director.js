@@ -561,10 +561,14 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
     setVoice(next) {
       if (next && typeof next === 'object') v = next;
     },
-    /** The strip's size and what's in it (strip px), and his size (side, px). */
-    setGeometry({ W, H, box = null, send = null, side: S }) {
+    /**
+     * The strip's size and what's in it (strip px), and his size (side, px). `keepBody`: he was just
+     * carried over from another stage (back from being thrown) and is already where he should be, so
+     * nothing moves him or sends him back to his place.
+     */
+    setGeometry({ W, H, box = null, send = null, side: S }, { keepBody = false } = {}) {
       const next = layout({ W, H, box, send, side: S });
-      const prev = geo;
+      const prev = keepBody ? null : geo;
       // Standing on the box when it moves (it grows with a long draft, shrinks after a send): he rides it.
       const onBox = prev?.box && !q.air && !q.pivot && Math.abs(q.sy - (prev.ground - prev.box.y)) < 1.5;
       if (q.W !== W || q.H !== H || q.floor !== FLOOR) {
@@ -595,7 +599,7 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
           q.sy = top;
           q.cy = top + q.side / 2;
         }
-      } else if (next.box && !q.air && q.sy < 1 && q.cx + q.side / 2 > next.box.x && q.cx - q.side / 2 < next.box.x + next.box.w) {
+      } else if (!keepBody && next.box && !q.air && q.sy < 1 && q.cx + q.side / 2 > next.box.x && q.cx - q.side / 2 < next.box.x + next.box.w) {
         // The box turned up where he stood on the floor: it scoops him up onto its top.
         q.sy = next.ground - next.box.y;
         q.cy = q.sy + q.side / 2;
@@ -690,6 +694,68 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
           enter(s, 'relocate');
         }
       } else if (lifeState(s) && lifeOn()) liveTick();
+    },
+    /**
+     * Picked up (throw.js holds him): everything else waits. A start (surprised: his own flash and
+     * square eye), and his eye on where he's going.
+     */
+    grabbed() {
+      note('react held');
+      seen();
+      lastActive = t;
+      sleeping = false;
+      setWander(null);
+      react = { kind: 'held', mode: 'surprised', until: Infinity };
+      q.setMode('surprised');
+      q.look = { x: 0, y: 0.6 };
+    },
+    /** Let go: in the air now (still surprised) until he lands. */
+    thrown() {
+      if (!react || (react.kind !== 'held' && react.kind !== 'thrown')) react = { kind: 'thrown', mode: 'surprised', until: Infinity };
+      react.kind = 'thrown';
+      note('react thrown');
+      q.look = { x: 0, y: 0.8 };
+    },
+    /**
+     * He came down ({ impact } px/s, { bounces }). A hard landing: a start, a dizzy shake of his eye and
+     * a blink to clear it; a soft one: a blink and a nod. Then (when it ends) Orbit's state takes over
+     * again from right where he is. `away`: he landed off his strip and heads back first (homeAgain()
+     * ends it). Returns how long the reaction takes (s).
+     */
+    landed({ impact = 0, bounces = 0, away = false } = {}) {
+      const hard = bounces >= 2 || impact > q.S * 16;
+      note(`react landed ${hard ? 'hard' : 'soft'}${away ? ' away' : ''}`);
+      seen();
+      lastActive = t;
+      q.look = { x: 0, y: 0 };
+      let secs;
+      if (hard) {
+        q.setMode('surprised');
+        q.do('pause', { secs: 0.3 });
+        q.do('shake');
+        q.do('doubleBlink', { axis: 'v' });
+        react = { kind: 'landed', mode: 'surprised', until: away ? Infinity : t + 1.7 };
+        secs = 1.7;
+      } else {
+        q.setMode('idle');
+        q.do('doubleBlink', { axis: 'h' });
+        q.do('nod');
+        react = { kind: 'landed', mode: 'idle', until: away ? Infinity : t + 1 };
+        secs = 1;
+      }
+      return secs;
+    },
+    /** Back on his strip after landing away from it: Orbit's state takes over again (from where he is). */
+    homeAgain() {
+      if (react && (react.kind === 'landed' || react.kind === 'thrown' || react.kind === 'held')) react.until = t;
+    },
+    /** A click that starts talking to Orbit: a tiny "yes?" (asleep, a stir: Orbit waking wakes him properly). */
+    ack() {
+      if (!geo) return;
+      seen();
+      if (react && (react.kind === 'held' || react.kind === 'thrown')) return;
+      if (asleepLike()) q.do('doubleBlink', { axis: 'h' }, { interrupt: !q.air && !q.pivot });
+      else if (!q.busy) q.do('nod');
     },
     /** A click on him: a little reaction (asleep, he stirs and dozes off again). */
     poke() {

@@ -21,7 +21,7 @@ import { createAvatar } from './avatar.js';
 import { createAvatarHost } from './avatar-host.js';
 import { createOrbitMouse } from './orbit-mouse.js';
 import { hideMouse, setMouseSink } from '../src/anywhere/mouse.js';
-import { contexts as anywhereContexts } from '../src/anywhere/index.js';
+import { contexts as anywhereContexts, wakeWith } from '../src/anywhere/index.js';
 import { setMcpShell } from '../src/mcp/index.js';
 import { setKeeperCrypto, setKeeperLauncher } from '../src/anywhere/keeper.js';
 import { setAvatarSink } from '../src/avatar-commands.js';
@@ -366,6 +366,8 @@ const avatarKind = () => (['buddy', 'qubit'].includes(getSetting('avatar')) ? ge
 // Settings -> Avatar -> Show the orb: with an avatar on, the orb can be turned off (the avatar stands
 // in for it). Without an avatar the orb always shows, so there is always something on screen.
 const orbAllowed = () => getSetting('showOrb') !== false || !avatarKind();
+// Settings -> Avatar: click it to talk, and pick it up to throw it (its page reads these).
+const avatarPrefs = () => ({ clickTalk: getSetting('avatarClickTalk') !== false, throw: getSetting('avatarThrow') !== false });
 function setAvatar({ live = false } = {}) {
   const kind = avatarKind();
   const size = getSetting('buddySize');
@@ -387,6 +389,7 @@ function setAvatar({ live = false } = {}) {
       // No Claude window to live on (macOS for now): along the bottom of the screen instead.
       free: freeAvatar(),
       onWindow: followSpaces,
+      prefs: avatarPrefs,
     });
     if (lastOrbState) avatarHost.onVoice(lastOrbState); // (home gets it, or rests while the talk is elsewhere)
     if (claude) avatar.onClaude(claude);
@@ -427,6 +430,7 @@ const avatarHost = createAvatarHost({
       info: (m) => logInfo('avatar', m),
       boxless: true,
       onWindow: followSpaces,
+      prefs: avatarPrefs,
     }),
   home: () => avatar,
   watch: (hwnds) => focusTracker?.watch(hwnds),
@@ -440,6 +444,10 @@ focus.on('change', () => avatarHost.onFocus());
 // (A free-floating avatar doesn't need it.)
 const needTracker = () => !!getSetting('orbStick') || (!!avatarKind() && !freeAvatar());
 onSettingsChange((changed) => {
+  if (changed.includes('avatarClickTalk') || changed.includes('avatarThrow')) {
+    avatar?.refresh();
+    avatarHost.refresh();
+  }
   if (changed.includes('avatar') || changed.includes('buddySize')) setAvatar({ live: true });
   if (changed.includes('showOrb') && !changed.includes('orbStick') && !changed.includes('avatar')) return placeOrb();
   if (!changed.includes('orbStick') && !changed.includes('avatar')) return;
@@ -636,10 +644,31 @@ on('orb:state', (s) => {
 on('buddy:event', (name) => avatar?.event(name));
 on('buddy:emote', (name) => avatarHost.active()?.emote(name));
 // From the avatar's own page (not one that is fading out after a switch).
+const avatarFor = (sender) => (avatar?.window && sender === avatar.window.webContents ? avatar : avatarHost.guestFor(sender));
 ipcMain.on('buddy:hover', (e, over) => {
   if (!fromUs(e)) return;
-  const a = avatar?.window && e.sender === avatar.window.webContents ? avatar : avatarHost.guestFor(e.sender);
-  a?.hover(!!over);
+  avatarFor(e.sender)?.hover(!!over);
+});
+// A quick click on the avatar: start talking, the same as "Hey Orbit" with its window in front (the
+// main window runs the wake word's own path; the call takes that window as the one you're in).
+ipcMain.on('buddy:talk', (e) => {
+  if (!fromUs(e) || getSetting('avatarClickTalk') === false) return;
+  const a = avatarFor(e.sender);
+  if (!a) return;
+  const hwnd = a.hostHwnd;
+  if (hwnd) {
+    const known = focus.recent?.find?.((r) => Number(r.hwnd) === hwnd);
+    wakeWith(known || (a === avatar ? { hwnd, kind: 'app', exe: 'claude.exe', cls: 'Chrome_WidgetWin_1', title: 'Claude' } : { hwnd, kind: 'app' }));
+  }
+  main?.webContents.send('avatar:talk');
+});
+// Picked up to be thrown (true) or put back (false): its window covers the work area meanwhile.
+ipcMain.on('buddy:lift', (e, on) => {
+  if (!fromUs(e)) return;
+  const a = avatarFor(e.sender);
+  if (!a) return;
+  if (on && getSetting('avatarThrow') === false) return a.lift(false);
+  a.lift(!!on);
 });
 on('orb:action', (a) => main?.webContents.send('orb:action', a));
 on('orb:drag-start', () => {

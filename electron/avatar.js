@@ -26,6 +26,14 @@
 //
 // Switching avatars is a handover: the new one's window comes up (its page plays an entrance) while
 // the old one's page fades out (leave()), and then the old window closes.
+//
+// Lifted (lift(true), from the page: the user picked the avatar up to throw it): the window grows to
+// cover the work area of the display it's on (never the taskbar), always on top, so the avatar can be
+// dragged and fly anywhere on that screen. It stays click-through except over the avatar (the page
+// says where it is, as always). The strip's place keeps being worked out meanwhile (the Claude window
+// may move) and is sent to the page, so the avatar can land back on it; lift(false) gives the strip
+// back. If the page goes quiet while lifted (no lift(true) for LIFT_MAX_QUIET_MS), the strip comes back
+// by itself, so the window can never be left covering the screen.
 
 import { BrowserWindow, screen } from 'electron';
 
@@ -40,8 +48,9 @@ export const AVATAR_KINDS = Object.freeze({
   qubit: { title: 'Orbit Qubit', events: ['finished', 'draft', 'sent', 'error'], sendButton: true, emotes: true },
 });
 const LEAVE_MS = 450; // the page's fade-out, and a little more
+export const LIFT_MAX_QUIET_MS = 12_000; // lifted with no word from the page for this long: back to the strip
 
-export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, getDesktopInfo, log = () => {}, info: info_ = () => {}, free = false, boxless = false, onWindow = () => {} }) {
+export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, getDesktopInfo, log = () => {}, info: info_ = () => {}, free = false, boxless = false, onWindow = () => {}, prefs = () => ({}) }) {
   const K = AVATAR_KINDS[kind];
   if (!K) throw new Error(`unknown avatar ${kind}`);
   let win = null;
@@ -62,6 +71,8 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   let sendOffset = null; // the Send button from the box's right end and bottom: { r, b }
   let voice = { phase: 'off' };
   let pendingEntrance = false;
+  let lifted = null; // { area, strip } (DIPs) while the window covers the work area
+  let liftTimer = null;
 
   function ensure() {
     if (win && !win.isDestroyed()) return win;
@@ -96,9 +107,22 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   }
 
   const visible = () => !!win && !win.isDestroyed() && win.isVisible();
+  /** The strip's bounds: the window's own, or (lifted) where the strip would be. */
+  const stripBounds = () => (lifted ? lifted.strip : win.getBounds());
   const send = () => {
     if (!win || win.isDestroyed()) return;
-    win.webContents.send('buddy:state', { voice, box: lastBox, send: lastSend, boxKnown, scale, visible: visible() });
+    const p = prefs() || {};
+    win.webContents.send('buddy:state', {
+      voice,
+      box: lastBox,
+      send: lastSend,
+      boxKnown,
+      scale,
+      visible: visible(),
+      bounds: stripBounds(),
+      lift: lifted ? { area: lifted.area, strip: lifted.strip } : null,
+      prefs: { clickTalk: p.clickTalk !== false, throw: p.throw !== false },
+    });
   };
   const sendEvent = (name) => {
     if (win && !win.isDestroyed()) win.webContents.send('buddy:event', name);
@@ -119,6 +143,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   function hide() {
     clearInterval(boxTimer);
     boxTimer = null;
+    drop({ quiet: true });
     if (visible()) {
       win.hide();
       send(); // the page stops drawing while hidden
@@ -128,7 +153,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   /** The box (and Send button) in the strip from the helper's latest report. True if it changed. */
   function applyRaw() {
     if (!lastRaw || !visible() || !claudeDip) return false;
-    const strip = win.getBounds();
+    const strip = stripBounds();
     const usable = usableBox(lastRaw.rect ? boxInStrip(lastRaw.rect, lastRaw.win, claudeDip, strip) : null, strip.height);
     const nextSend = usable && lastSend ? sendAtOffset(usable, sendOffset, lastSend) || lastSend : null;
     const changed = JSON.stringify(usable) !== JSON.stringify(lastBox) || JSON.stringify(nextSend) !== JSON.stringify(lastSend) || !boxKnown;
@@ -152,8 +177,9 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       area = screen.getPrimaryDisplay().workArea;
     }
     const b = freeStripFor(area);
+    if (lifted) lifted.strip = b;
     const cur = win.getBounds();
-    if (cur.x !== b.x || cur.y !== b.y || cur.width !== b.width || cur.height !== b.height) win.setBounds(b);
+    if (!lifted && (cur.x !== b.x || cur.y !== b.y || cur.width !== b.width || cur.height !== b.height)) win.setBounds(b);
     if (!boxKnown || lastBox || lastSend) {
       lastBox = null;
       lastSend = null;
@@ -167,6 +193,52 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       layer = 'top';
       win.setAlwaysOnTop(true, 'screen-saver');
     }
+    send();
+  }
+
+  /** The work area of the display the strip is on (DIPs): never the taskbar or the Dock. */
+  function areaFor(b) {
+    try {
+      return { ...screen.getDisplayMatching(b).workArea };
+    } catch {
+      return { ...screen.getPrimaryDisplay().workArea };
+    }
+  }
+
+  /** Picked up: the window covers the work area (always on top) until drop(). Again: still lifted. */
+  function lift() {
+    if (!win || win.isDestroyed() || !visible() || leaving) return false;
+    if (!lifted) {
+      const strip = win.getBounds();
+      lifted = { strip, area: areaFor(strip) };
+      win.setBounds(lifted.area);
+      win.setAlwaysOnTop(true, 'screen-saver');
+      layer = 'top';
+      info_(`${kind}: picked up (the window covers the work area while it's held or flying)`);
+    }
+    clearTimeout(liftTimer);
+    liftTimer = setTimeout(() => {
+      log(`${kind}: no word from the page while lifted: the strip comes back`);
+      drop();
+    }, LIFT_MAX_QUIET_MS);
+    send();
+    return true;
+  }
+
+  /** Back to the strip (where it is now), click-through again. */
+  function drop({ quiet = false } = {}) {
+    clearTimeout(liftTimer);
+    liftTimer = null;
+    if (!lifted) return;
+    const strip = lifted.strip;
+    lifted = null;
+    if (!win || win.isDestroyed()) return;
+    win.setIgnoreMouseEvents(true, { forward: true });
+    win.setBounds(strip);
+    layer = null;
+    if (quiet) return;
+    if (free) placeFree();
+    else if (claude?.found && !claude.min && enabled) setLayer(claude.front === 'other' ? `above:${claude.hwnd}` : 'top');
     send();
   }
   // The screen layout changed (a display added or removed, the Dock moved): re-place the strip.
@@ -190,10 +262,18 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     ensure();
     claudeDip = screen.screenToDipRect(null, { x: claude.x, y: claude.y, width: claude.w, height: claude.h });
     const b = buddyBoundsFor(claudeDip);
+    if (lifted) {
+      // Held or flying: the window stays on the work area; the page learns where the strip is now.
+      if (JSON.stringify(b) !== JSON.stringify(lifted.strip)) {
+        lifted.strip = b;
+        if (!applyRaw()) send();
+      }
+      return;
+    }
     const cur = win.getBounds();
     if (cur.x !== b.x || cur.y !== b.y || cur.width !== b.width || cur.height !== b.height) {
       win.setBounds(b);
-      applyRaw(); // the box where the helper last saw it, for the new strip (its next report follows)
+      if (!applyRaw()) send(); // the box where the helper last saw it, for the new strip (its next report follows)
     }
     if (!win.isVisible()) {
       win.showInactive();
@@ -226,7 +306,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     try {
       const info = await getDesktopInfo({ rects: K.sendButton });
       if (!visible()) return;
-      const strip = win.getBounds();
+      const strip = stripBounds();
       // The script reads the Claude window Orbit works with, which is the one the strip is on.
       // Only the part of the box inside the strip counts (a box taller than the strip has no top here).
       let usable = usableBox(info?.ok ? boxInStrip(info.promptBoxRect, info.windowRect, claudeDip, strip) : null, strip.height);
@@ -272,6 +352,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     /** Hand over: the page fades out, then the window closes. Resolves when it's gone. */
     leave() {
       if (leaving) return Promise.resolve();
+      drop({ quiet: true });
       leaving = true;
       enabled = false;
       clearInterval(boxTimer);
@@ -343,6 +424,23 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       win.webContents.send('buddy:command', { action: cmd.action, ...(cmd.dir === 'left' || cmd.dir === 'right' ? { dir: cmd.dir } : {}) });
       return { ok: true };
     },
+    /** Picked up (true: the window covers the work area while it's held or flying) or put back (false). */
+    lift(on) {
+      if (on) return lift();
+      drop();
+      return true;
+    },
+    get lifted() {
+      return !!lifted;
+    },
+    /** The window this avatar lives on (its HWND), or 0 (free-floating, or not on one now). */
+    get hostHwnd() {
+      return !free && claude?.found ? Number(claude.hwnd) || 0 : 0;
+    },
+    /** The settings it reads changed (click to talk, throwing): tell the page. */
+    refresh() {
+      send();
+    },
     /** The cursor is over the avatar (take clicks) or not (let them through to Claude). */
     hover(on) {
       if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(!on, { forward: true });
@@ -360,6 +458,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     stop() {
       clearInterval(boxTimer);
       clearTimeout(settleTimer);
+      clearTimeout(liftTimer);
     },
   };
 }

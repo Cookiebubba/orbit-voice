@@ -10,6 +10,7 @@
 
 import { createBuddy } from './engine.js';
 import { drawBuddy, glyph } from './sprite.js';
+import { pressKind } from './throw.js';
 
 const desktop = window.desktop;
 const params = new URLSearchParams(location.search);
@@ -31,6 +32,7 @@ const events = [];
 const bd = createBuddy({ x: 30 });
 let cursor = null; // in art px
 let lastFrame = null;
+let prefs = { clickTalk: true, throw: true }; // Settings -> Avatar: click to talk, pick up
 
 const toArt = (cx, cy) => ({ x: cx / scale, y: (innerHeight - cy) / scale - GROUND });
 const world = () => {
@@ -124,7 +126,7 @@ addEventListener('mousemove', (e) => {
   const a = toArt(e.clientX, e.clientY);
   cursor = a;
   if (press) {
-    if (!press.dragging && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4) press.dragging = true;
+    if (!press.dragging && prefs.throw && pressKind({ dx: e.clientX - press.x, dy: e.clientY - press.y }) === 'drag') press.dragging = true;
     if (press.dragging) {
       canvas.style.cursor = 'grabbing';
       bd.grab(a.x, a.y);
@@ -141,12 +143,16 @@ addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
   const a = toArt(e.clientX, e.clientY);
   if (!bd.hit(a.x, a.y)) return;
-  press = { x: e.clientX, y: e.clientY, dragging: false };
+  press = { x: e.clientX, y: e.clientY, t: e.timeStamp, dragging: false };
 });
-addEventListener('mouseup', () => {
+addEventListener('mouseup', (e) => {
   if (!press) return;
   if (press.dragging) bd.release();
-  else bd.poke();
+  else {
+    // A quick click starts talking to Orbit (the same path as Qubit's; see electron/main.js buddy:talk).
+    if (prefs.clickTalk && pressKind({ dx: e.clientX - press.x, dy: e.clientY - press.y, ms: e.timeStamp - press.t, released: true }) === 'click') desktop?.buddyTalk?.();
+    bd.poke();
+  }
   press = null;
   canvas.style.cursor = hovering ? 'grab' : 'default';
 });
@@ -163,6 +169,7 @@ desktop?.onBuddyState?.((s) => {
   if (s.voice) voice = s.voice;
   if ('box' in s) box = s.box && Number.isFinite(s.box.x) ? s.box : null;
   if (Number.isFinite(s.scale)) scale = Math.max(1, Math.min(4, s.scale));
+  if (s.prefs && typeof s.prefs === 'object') prefs = { clickTalk: s.prefs.clickTalk !== false, throw: s.prefs.throw !== false };
 });
 desktop?.onBuddyEvent?.((name) => {
   if (name === 'leave') {

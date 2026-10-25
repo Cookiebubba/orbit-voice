@@ -20,6 +20,10 @@
 // on any page; smooth motion (no single-frame jumps of his outline, no sinking into or floating
 // above what he stands on); his CPU use asleep, active and hidden. It saves a picture of the strip at
 // each step and contact sheets of them (composited on a mock of the Claude window) in --out.
+// Then his click and his throw (17, 17c): a click starts talking (Settings: Click your avatar to talk;
+// off, it's a poke); press, drag and let go throws him: his window covers a pretend work area (also
+// far off screen: the display lookup is stubbed, so nothing ever shows on a real screen), he flies,
+// bounces and lands, carries on from there, and his window is the click-through strip again.
 
 import child_process from 'node:child_process';
 import dns from 'node:dns';
@@ -29,7 +33,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, safeStorage, session, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, safeStorage, screen, session, shell } from 'electron';
 import { createFakeGrok } from '../test/e2e/fake-grok.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -118,6 +122,15 @@ BrowserWindow.prototype.hide = function (...a) {
   if (isOrb(this)) orbShown = false;
   return origHide.apply(this, a);
 };
+
+// The display his window is on, for a throw (avatar.js lift): a pretend work area around the fake
+// Claude window, far off screen, so a lifted window never covers a real screen.
+// (Electron's screen exists only once the app is ready: stubbed then.)
+const FAKE_AREA = { x: -5600, y: 0, width: 2600, height: 1040 };
+app.whenReady().then(() => {
+  const realMatching = screen.getDisplayMatching.bind(screen);
+  screen.getDisplayMatching = (r) => (r && r.x < -2000 ? { id: 999, bounds: { ...FAKE_AREA, height: FAKE_AREA.height + 40 }, workArea: { ...FAKE_AREA }, scaleFactor: 1 } : realMatching(r));
+});
 
 // Whether the avatar's window takes the mouse (only while the cursor is on him).
 const ignoreCalls = [];
@@ -833,12 +846,142 @@ async function run() {
   check(ignoreCalls.length === n0, 'the cursor away from him: clicks still go through');
   qwin.webContents.sendInputEvent({ type: 'mouseMove', x: pos.x, y: pos.y });
   check(await waitFor(() => ignoreCalls.at(-1) === false, 2000), 'the cursor on him: his window takes the mouse');
+  // Click your avatar to talk (on by default): a quick click starts Orbit, as "Hey Orbit" would.
+  const conns17 = fake.conns.length;
   qwin.webContents.sendInputEvent({ type: 'mouseDown', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
   qwin.webContents.sendInputEvent({ type: 'mouseUp', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
-  await expectState('a click while asleep: he stirs', { action: 'wake' }, 2000);
+  check(await waitFor(() => fake.conns.length > conns17 && fake.conns.at(-1).configured > 0, 10_000), 'a click on him starts talking to Orbit (a call to the fake Grok)');
+  await expectState('he wakes into listening', { state: (v) => v === 'listening' || v === 'waking', mode: 'listening' }, 6000);
+  [...hotkeys.values()][0](); // (Settings is open: the hotkey puts him to sleep)
+  await expectState('asleep again after that call', { state: 'asleep', mode: 'asleep', air: false }, 25_000);
+  // With the setting off, a click is the little poke it used to be.
+  const talkSwitch = (click) => pjs(`(() => { const b = document.querySelector('button[role=switch][aria-label="Click your avatar to talk"]'); if (b && ${!!click}) b.click(); return b ? b.getAttribute('aria-checked') : null; })()`);
+  check((await talkSwitch(false)) === 'true', 'Settings: "Click your avatar to talk" is there, on by default');
+  await talkSwitch(true);
+  check(await waitFor(async () => (await qjs('window.__qubit.state.prefs.clickTalk')) === false, 3000), 'off: his page hears it');
+  const conns17b = fake.conns.length;
+  const pos2 = await qjs('(() => { const q = window.__qubit.q; return { x: Math.round(q._rx), y: Math.round(q._ry) }; })()');
+  qwin.webContents.sendInputEvent({ type: 'mouseMove', x: pos2.x, y: pos2.y });
+  qwin.webContents.sendInputEvent({ type: 'mouseDown', x: pos2.x, y: pos2.y, button: 'left', clickCount: 1 });
+  qwin.webContents.sendInputEvent({ type: 'mouseUp', x: pos2.x, y: pos2.y, button: 'left', clickCount: 1 });
+  await expectState('off: a click while asleep only makes him stir', { action: 'wake' }, 2000);
+  await wait(1500);
+  check(fake.conns.length === conns17b, 'and Orbit stays asleep');
   await expectState('and dozes off again', { mode: 'asleep', action: null }, 10_000);
+  await talkSwitch(true);
+  check(await waitFor(async () => (await qjs('window.__qubit.state.prefs.clickTalk')) === true, 3000), 'on again');
   qwin.webContents.sendInputEvent({ type: 'mouseMove', x: pos.x - 300, y: pos.y });
   check(await waitFor(() => ignoreCalls.at(-1) === true, 2000), 'the cursor off him: clicks go through to Claude again');
+
+  out('17c. Pick him up and throw him');
+  await label('throw');
+  await qjs(MOTION);
+  // A frame change (his window growing to the work area and back) moves his stage coordinates, not
+  // him: tell the motion check, so it isn't taken for a jump.
+  await qjs(`(() => { const Q = window.__qubit, th = Q.throw; if (th.__wrapped) return; const r = th.reframe; th.reframe = (o) => { window.__phys.geoAt = performance.now(); return r(o); }; th.__wrapped = true; })()`);
+  await qjs('window.__acts3 = []; window.__qubit.q.on("action", (a) => window.__acts3.push(a.name)); window.__lands = []; window.__qubit.throw.on("land", (d) => window.__lands.push(d)); window.__bounces = 0; window.__qubit.throw.on("bounce", () => window.__bounces++); true;');
+  const strip0 = qwin.getBounds();
+  const screenPos = async () => {
+    const b = qwin.getBounds();
+    const p = await qjs('(() => { const q = window.__qubit.q; return { x: q._rx, y: q._ry, frame: window.__qubit.frame }; })()');
+    return { x: b.x + p.x, y: b.y + p.y, frame: p.frame };
+  };
+  // Mouse events in screen px: client px are worked out from wherever his window is at that moment.
+  const mouse = (type, gx, gy) => {
+    const b = qwin.getBounds();
+    qwin.webContents.sendInputEvent({ type, x: Math.round(gx - b.x), y: Math.round(gy - b.y), globalX: Math.round(gx), globalY: Math.round(gy), button: 'left', clickCount: 1, ...(type === 'mouseMove' ? { modifiers: ['leftButtonDown'] } : {}) });
+  };
+  const p0 = await screenPos();
+  mouse('mouseMove', p0.x, p0.y);
+  await wait(60);
+  mouse('mouseDown', p0.x, p0.y);
+  // Drag him up and to the left, slowly (he follows).
+  let gx = p0.x;
+  let gy = p0.y;
+  for (let i = 0; i < 24; i++) {
+    gx -= 9;
+    gy -= 11;
+    mouse('mouseMove', gx, gy);
+    await wait(16);
+  }
+  check(await waitFor(() => { const b = qwin.getBounds(); return b.x === FAKE_AREA.x && b.width === FAKE_AREA.width && b.height === FAKE_AREA.height; }, 2000), 'picked up: his window covers the work area of his display (here a pretend one, off screen)', JSON.stringify(qwin.getBounds()));
+  check(await waitFor(async () => (await qjs('window.__qubit.frame')) === 'area' && (await qjs('window.__qubit.throw.held')), 2000), 'held, on the work-area stage');
+  check(qwin.isAlwaysOnTop(), 'on top while held (over any window he is dragged across)');
+  check(ignoreCalls.at(-1) === false, 'the window takes the mouse while he is held');
+  await wait(250);
+  const held = await screenPos();
+  check(Math.hypot(held.x - gx, held.y - gy) < 40, 'he follows the pointer, the whole cube as one body', `pointer ${Math.round(gx)},${Math.round(gy)} him ${Math.round(held.x)},${Math.round(held.y)}`);
+  check(await qjs('window.__qubit.q.mode') === 'surprised', 'a start when he is picked up (his own surprised mode)');
+  // ...then a fling up and to the left: fast moves over the last ~80 ms, and let go.
+  // Frames of the flight (his whole window, the pretend work area), for the preview strip.
+  const flightDir = path.join(OUT, 'throw-frames');
+  fs.mkdirSync(flightDir, { recursive: true });
+  const flight = (async () => {
+    const t0 = Date.now();
+    for (let n = 0; Date.now() - t0 < 3800; n++) {
+      const due = t0 + (n * 1000) / 15;
+      if (due > Date.now()) await wait(due - Date.now());
+      const img = await qwin.webContents.capturePage().catch(() => null);
+      if (img && !img.isEmpty()) fs.writeFileSync(path.join(flightDir, `f${String(n).padStart(3, '0')}.png`), img.toPNG());
+    }
+  })();
+  for (let i = 0; i < 6; i++) {
+    gx -= 34;
+    gy -= 22;
+    mouse('mouseMove', gx, gy);
+    await wait(14);
+  }
+  mouse('mouseUp', gx, gy);
+  check(await waitFor(() => qjs('window.__qubit.throw.flying'), 1000), 'let go: thrown');
+  const v0 = await qjs('({ vx: window.__qubit.q.vx, vy: window.__qubit.q.vy, av: window.__qubit.q.av })');
+  check(v0.vx < -400 && v0.vy > 100, 'with the pointer speed (up and to the left)', `vx ${Math.round(v0.vx)}, vy ${Math.round(v0.vy)} px/s, spin ${Math.round(v0.av)} deg/s`);
+  // Move the pointer off where he was let go: the window must let clicks through as he flies off.
+  mouse('mouseMove', gx + 400, gy + 200);
+  check(await waitFor(() => ignoreCalls.at(-1) === true, 1500), 'the moment he is out from under the pointer, clicks go through again');
+  check(await waitFor(async () => (await qjs('window.__lands.length')) > 0, 8000), 'he lands');
+  await flight;
+  const land = (await qjs('window.__lands'))[0];
+  const bounces = await qjs('window.__bounces');
+  out(`  landed after ${land.secs.toFixed(2)} s, ${bounces} bounce(s), impact ${Math.round(land.impact)} px/s`);
+  check(await qjs('window.__qubit.dir.log.some((l) => l.what.startsWith("react landed"))'), 'he reacts to the landing (his own emotes)', JSON.stringify(await qjs('window.__qubit.dir.log.filter((l) => l.what.startsWith("react")).map((l) => l.what)')));
+  // On the screen's bottom edge beside his strip, or on the strip: either way he ends up back on it.
+  check(await waitFor(async () => (await qjs('window.__qubit.frame')) === 'strip', 20_000), 'back on his strip: his window is the strip again');
+  const strip1 = qwin.getBounds();
+  check(strip1.x === strip0.x && strip1.y === strip0.y && strip1.width === strip0.width && strip1.height === strip0.height, 'the same strip as before', JSON.stringify(strip1));
+  check(ignoreCalls.at(-1) === true, 'click-through again');
+  const after = await screenPos();
+  const landScreenX = FAKE_AREA.x + land.x;
+  out(`  he landed at screen x ${Math.round(landScreenX)}; back on his strip at ${Math.round(after.x)} (picked up at ${Math.round(p0.x)})`);
+  const acts3 = await qjs('window.__acts3');
+  out(`  then: ${acts3.slice(0, 12).join(', ')}`);
+  check(Math.abs(after.x - p0.x) > 30, 'he carries on from where he landed, not from where he was picked up', `${Math.round(after.x)} vs ${Math.round(p0.x)}`);
+  const throwPhys = await qjs('({ pops: window.__phys.pops, popAt: window.__phys.popAt.filter((p) => p[0] === "throw"), bad: window.__phys.bad.filter((b) => b[0] === "throw") })');
+  check(throwPhys.popAt.length === 0, 'smooth all the way: no jumps of his outline (held, flying, bouncing, landing)', JSON.stringify(throwPhys.popAt));
+  check(throwPhys.bad.length === 0, 'always resting on a surface afterwards (never sunk in or floating)', JSON.stringify(throwPhys.bad));
+  const level = await qjs('Math.abs(((((window.__qubit.q.angle + 180) % 360) + 360) % 360) - 180)');
+  check(level < 1, 'level on a face afterwards (no held lean)', `${level.toFixed(2)} deg`);
+  await expectState('and his life carries on (dozing where he is, Orbit asleep)', { state: 'asleep', air: false }, 15_000);
+  await snap('after-throw');
+  // Throw your avatar, off: a press and drag never picks him up.
+  const throwSwitch = (click) => pjs(`(() => { const b = document.querySelector('button[role=switch][aria-label="Throw your avatar"]'); if (b && ${!!click}) b.click(); return b ? b.getAttribute('aria-checked') : null; })()`);
+  check((await throwSwitch(false)) === 'true', 'Settings: "Throw your avatar" is there, on by default');
+  await throwSwitch(true);
+  check(await waitFor(async () => (await qjs('window.__qubit.state.prefs.throw')) === false, 3000), 'off: his page hears it');
+  const p1 = await screenPos();
+  mouse('mouseMove', p1.x, p1.y);
+  await wait(60);
+  mouse('mouseDown', p1.x, p1.y);
+  for (let i = 0; i < 12; i++) {
+    mouse('mouseMove', p1.x - i * 10, p1.y - i * 8);
+    await wait(16);
+  }
+  await wait(400);
+  check(qwin.getBounds().width === strip0.width && !(await qjs('window.__qubit.throw.active')), 'off: he is not picked up');
+  mouse('mouseUp', p1.x - 110, p1.y - 88);
+  await throwSwitch(true);
+  check(await waitFor(async () => (await qjs('window.__qubit.state.prefs.throw')) === true, 3000), 'on again');
+  mouse('mouseMove', p1.x - 600, p1.y);
+  await waitFor(() => ignoreCalls.at(-1) === true, 2000);
 
   out('17b. Show the orb (Settings -> Avatar)');
   const savedOrb = () => JSON.parse(fs.readFileSync(path.join(USER_DATA, 'settings.json'), 'utf8')).showOrb;

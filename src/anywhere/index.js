@@ -58,6 +58,13 @@ setActiveWindowSource(() => {
 setInterval(() => contexts.sweep(), 60_000).unref?.();
 
 let liveCalls = 0;
+// A click on an avatar starts talking "with that window in front", whichever window really is: the
+// call that follows (within a few seconds) takes this window as the one the user is in.
+let wakeWindow = null;
+/** The next call the user starts is in this window (the avatar they clicked lives on it). */
+export function wakeWith(win, ms = 4000) {
+  wakeWindow = win?.hwnd ? { win, until: Date.now() + ms } : null;
+}
 /**
  * A call started. `user`: the user started it (wake word, hotkey, a click), as opposed to a spoken
  * update: then the window they're in becomes the active context (made, and Qubit pops in, if new).
@@ -65,8 +72,10 @@ let liveCalls = 0;
 export function callStarted({ user = true } = {}) {
   liveCalls++;
   contexts.setLive(true);
+  const clicked = wakeWindow && Date.now() < wakeWindow.until ? wakeWindow.win : null;
+  wakeWindow = null;
   if (!user || !anywhereAvailable()) return null;
-  const win = focus.lastApp;
+  const win = clicked || focus.lastApp;
   return win ? contexts.wake(win) : null;
 }
 export function callEnded() {
