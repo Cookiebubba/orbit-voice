@@ -2,3 +2,5 @@
 dist/
 *.xcodeproj/
 .swiftpm/
+# (the repo ignores resources/ for the wake-word model; this folder is source)
+!Resources/
