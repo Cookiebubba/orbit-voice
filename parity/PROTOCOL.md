@@ -28,6 +28,7 @@ baked in at build time by `mac-swift/scripts/build-app.sh --test`, never in a re
 | `ORBIT_TEST_CLAUDE_PID` | The stand-in Claude window's pid: the only Claude window either app may read or act on. |
 | `ORBIT_FAKE_MIC` | A WAV file (any rate, mono or stereo) used as the microphone instead of the real one. Electron maps it to Chromium's fake capture device; Swift's audio engine reads it in real time. Can be swapped at run time with `mic.play`. |
 | `ORBIT_MUTE_OUTPUT` | `1`: the voice is "played" (timed, counted, levels computed) but not sent to the speakers. |
+| `ORBIT_FAKE_LOGIN` | `1`: "Open at login" is kept in memory only (reported in `login.enabled`), never registered with macOS. |
 | `ORBIT_FAKE_PERMS` | JSON `{"mic":"granted|denied|not-determined|restricted","ax":bool,"screen":bool}`: what the permissions check reports, for the onboarding cases (never touches the real TCC state). |
 
 ## The driver
@@ -67,7 +68,7 @@ A snapshot of everything the cases look at. Frames are screen points, top-left o
              "muted": false, "playedMs": 0, "scheduledMs": 0, "chunks": 0, "lastError": null,
              "draft": null | { "id": 1, "text": "...", "targetTitle": null }, "sentCount": 0 },
   "onboarding": { "mic": "granted|denied|not-determined|restricted", "ax": true, "screen": true,
-                  "step": "done" | "mic" | "ax" | "screen", "shown": false },
+                  "step": "done" | "mic" | "ax", "shown": false },  // required: mic, then ax; screen is optional
   "hotkey": { "accelerator": "Control+Alt+G", "label": "⌃⌥G", "registered": true },
   "login": { "enabled": false },
   "sounds": [ { "name": "throw", "at": 1700000000000 } ],
@@ -75,7 +76,20 @@ A snapshot of everything the cases look at. Frames are screen points, top-left o
 }
 ```
 `events` is a ring buffer (last 200) of shell-level happenings a case may wait for; `sounds` lists
-the sounds the shell played (name and time only).
+the sounds the shell played (name and time only). Event types (both builds use exactly these):
+
+| type | data | when |
+| --- | --- | --- |
+| `avatar.created` | `{id, kind, role}` | an avatar's window was made |
+| `avatar.closed` | `{id}` | an avatar's window closed (after its fade-out) |
+| `avatar.talk` | `{id}` | a quick click on the avatar started talking |
+| `avatar.lift` | `{id, on}` | picked up (`on: true`) or put back |
+| `avatar.sound` | `{id, name}` | the avatar asked for a sound (`throw`: "Wheee!") |
+| `avatar.command` | `{id, action, dir}` | a command reached the avatar's page |
+| `voice.phase` | `{phase, asleep}` | the voice phase changed |
+| `hotkey` | `{}` | the global hotkey fired (or `voice.hotkey`) |
+| `core.ready` | `{}` | the bridge is up |
+| `perms.request` | `{kind}` | the app asked for a permission (`microphone`, `accessibility`, `screen`): macOS's prompt, or its pane opened |
 
 ### `POST /parity/act`
 `{ "action": "...", "args": { ... } }` → `{ "ok": true, ... }` or `{ "ok": false, "error": "..." }`.
@@ -89,14 +103,14 @@ the sounds the shell played (name and time only).
 | `mic.play` | `wav` (path), `gapMs` | Play this WAV into the fake microphone now (after the current one). Silence otherwise. |
 | `cursor.set` | `x`,`y` or `null` | Test cursor: overrides where the shell thinks the real cursor is (the avatar's hover poll). `null`: back to the real one. |
 | `pointer` | `avatar` (id), `type` (`down`/`move`/`up`), `x`,`y` (screen points) | A synthetic mouse event delivered to that avatar's overlay window only (never posted to the system, never moves the real cursor). |
-| `avatar.eval` | `avatar`, `probe` (file name in `parity/probes/`) | Runs the probe script in the avatar's page and returns its result as `value`. |
+| `avatar.eval` | `avatar`, `probe` (file name in `parity/probes/`) | Runs the probe script in the avatar's page and returns its result as `value`. `qubit-art.js` returns `{ drawn, paths, fills: [css colours], solidFill, eyeIsHole, strokes, gradients, filters, shadows, opacityLayers }`. |
 | `avatar.command` | `action`, `dir` | As if the voice asked the avatar to do something. |
 | `settings.ui` | `key`, `value` | Change a setting through the app's own Settings screen model (not the bridge). |
 | `settings.read` | `key` | What the app's Settings screen shows for a key. |
 | `window.show` | `name` (`main`/`settings`) | Show a window/view. |
 | `window.minimize` | | Minimize the main window (turns into the orb). |
 | `perms.set` | as `ORBIT_FAKE_PERMS` | Change the fake permission state; the shell re-checks as it would after the user returns from System Settings. |
-| `onboarding.next` | | Press the onboarding's primary button. |
+| `onboarding.next` | | Press the onboarding's (or the permissions banner's) primary button for the current step. |
 | `quit` | | Quit cleanly. |
 
 ## Cases
@@ -128,9 +142,11 @@ Step kinds:
 - `ws`: open `/voice` and exchange messages: `{ "do": "ws", "send": [...], "expect": [...], "timeoutMs": n }`.
 - `act`: a driver action (above). `expect` matches its reply.
 - `state`: `GET /parity/state` once, matched against `expect`.
-- `until`: repeat a probe (`state`, `http` with `path`, or `fake`) until `expect` matches or the timeout.
+- `until`: repeat a probe (`state`, `http` with `path`, `fake` with `name`, `standin`, or `act` with `action`/`args`) until `expect` matches or the timeout.
 - `fake`: read a test double's record (`fake-claude`, `fake-desktop`, `stand-in`), e.g. the tool calls seen.
 - `save`: keep a value for later steps as `${name}`.
+- `check`: a saved or computed value against `expect`: `{ "do": "check", "value": "${gap}", "expect": { "$lte": 4 } }`.
+- `calc`: arithmetic on saved numbers, kept as a new value: `{ "do": "calc", "as": "cx", "expr": "${fig.x} + ${fig.w} / 2" }` (numbers and `+ - * / ( )` only).
 - `sleep`: wait.
 
 ### Matchers (`expect`)
@@ -148,6 +164,7 @@ either a literal (deep-equal) or an operator object:
 | `{"$contains": x}` | array contains (deep) / string contains |
 | `{"$len": n}` or `{"$len": {"$gte": 1}}` | length |
 | `{"$every": {...}}` / `{"$some": {...}}` | every / some array element matches |
+| `{"$count": {"where": {...}, "is": n or matcher}}` | how many elements match `where` |
 | `{"$inside": "${frame}"}` / `{"$inside": {"x":..}}` | a rect inside another (1 pt slack) |
 | `{"$not": ...}` | negation |
 | `{"$absent": true}` | path missing or undefined |

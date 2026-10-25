@@ -1,0 +1,65 @@
+{
+  "about": "The voice scenarios' spoken lines, synthesised with Claude voice's own Kitten TTS (parity/gen-audio.mjs) and checked by speech to text before use. sid: which Kitten voice (a different one from Orbit's own, 0).",
+  "clips": [
+    {
+      "id": "draft",
+      "text": "Tell Claude to add a dark mode toggle to the settings page.",
+      "sid": 3,
+      "expect": "dark mode"
+    },
+    {
+      "id": "yes",
+      "text": "Yeah, go ahead.",
+      "sid": 3,
+      "expect": "go ahead"
+    },
+    {
+      "id": "same-breath",
+      "text": "Tell Claude to fix the typo in the readme, and send it.",
+      "sid": 3,
+      "expect": "send it"
+    },
+    {
+      "id": "sleep",
+      "text": "Go to sleep.",
+      "sid": 3,
+      "expect": "sleep"
+    },
+    {
+      "id": "stop",
+      "text": "Stop.",
+      "sid": 3,
+      "expect": "stop"
+    },
+    {
+      "id": "allow",
+      "text": "Allow it.",
+      "sid": 3,
+      "expect": "allow"
+    },
+    {
+      "id": "model",
+      "text": "Switch to Opus, please.",
+      "sid": 3,
+      "expect": "opus"
+    },
+    {
+      "id": "backflip",
+      "text": "Do a backflip.",
+      "sid": 3,
+      "expect": "backflip"
+    },
+    {
+      "id": "no",
+      "text": "No, don't send it.",
+      "sid": 3,
+      "expect": "send"
+    },
+    {
+      "id": "asking",
+      "text": "What is Claude asking for?",
+      "sid": 3,
+      "expect": "asking"
+    }
+  ]
+}

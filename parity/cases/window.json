@@ -1,0 +1,437 @@
+{
+ "area": "window",
+ "about": "Driving the Claude window: a stand-in Claude window this runner launches (parity/fixtures/standin: the macOS port's fake Claude page, in Chromium like the real app), found and driven through the accessibility API by each app's own Claude desktop driver. Requests are typed into Orbit (its typing box), so speech plays no part here; a scripted Claude Code turns them into tool calls. Needs Accessibility for the app under test.",
+ "cases": [
+  {
+   "id": "window.found",
+   "title": "The app finds the (stand-in) Claude window, its frame and its prompt box",
+   "needs": [
+    "window"
+   ],
+   "fixtures": {
+    "standin": {
+     "frame": {
+      "x": 200,
+      "y": 120,
+      "w": 980,
+      "h": 680
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 15000,
+     "expect": {
+      "claude.found": true,
+      "claude.pid": "${standinPid}"
+     }
+    },
+    {
+     "do": "save",
+     "from": "standin",
+     "path": "",
+     "as": "si"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 8000,
+     "expect": {
+      "claude.frame.x": {
+       "$near": "${si.frame.x}",
+       "$tol": 2
+      },
+      "claude.frame.w": {
+       "$near": "${si.frame.w}",
+       "$tol": 2
+      },
+      "claude.box": {
+       "$inside": "${si.frame}"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "window.sessions",
+   "title": "GET /api/sessions lists the stand-in's sidebar and which one is open",
+   "needs": [
+    "window"
+   ],
+   "fixtures": {
+    "standin": {}
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "http",
+     "path": "/api/sessions",
+     "timeoutMs": 15000,
+     "expect": {
+      "body.canSwitch": true,
+      "body.openInApp": "Fix the login bug",
+      "body.sessions": {
+       "$some": {
+        "title": "Write the release notes"
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "window.switch",
+   "title": "POST /api/switch opens another session in the stand-in",
+   "needs": [
+    "window"
+   ],
+   "fixtures": {
+    "standin": {}
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "http",
+     "path": "/api/sessions",
+     "timeoutMs": 15000,
+     "expect": {
+      "body.canSwitch": true
+     }
+    },
+    {
+     "do": "http",
+     "method": "POST",
+     "path": "/api/switch",
+     "body": {
+      "title": "Write the release notes"
+     },
+     "timeoutMs": 15000,
+     "expect": {
+      "status": 200,
+      "body.ok": true
+     }
+    },
+    {
+     "do": "until",
+     "probe": "standin",
+     "timeoutMs": 5000,
+     "expect": {
+      "state.open": "Write the release notes"
+     }
+    }
+   ]
+  },
+  {
+   "id": "window.draft-typed",
+   "title": "A request typed into Orbit is drafted into the stand-in's prompt box, not sent",
+   "needs": [
+    "window",
+    "voice"
+   ],
+   "fixtures": {
+    "standin": {},
+    "claudeVoice": {
+     "rules": {
+      "rules": [
+       {
+        "when": "\\[Tool result: draft_prompt\\]",
+        "reply": "Drafted. Want me to send it?"
+       },
+       {
+        "when": "unit tests",
+        "reply": "<tool>{\"name\": \"draft_prompt\", \"arguments\": {\"text\": \"Add unit tests for the parser.\"}}</tool>"
+       }
+      ],
+      "fallback": "Okay."
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "act",
+     "action": "voice.hotkey"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 25000,
+     "expect": {
+      "voice.phase": "listening"
+     }
+    },
+    {
+     "do": "act",
+     "action": "voice.type",
+     "args": {
+      "text": "Tell Claude to add unit tests for the parser."
+     }
+    },
+    {
+     "do": "until",
+     "probe": "standin",
+     "timeoutMs": 20000,
+     "expect": {
+      "state.model": {
+       "$match": "unit tests for the parser"
+      }
+     }
+    },
+    {
+     "do": "standin",
+     "expect": {
+      "state.sent": {
+       "$len": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "window.send-on-yes",
+   "title": "A typed yes sends the draft: the stand-in receives it",
+   "needs": [
+    "window",
+    "voice"
+   ],
+   "fixtures": {
+    "standin": {},
+    "claudeVoice": {
+     "rules": {
+      "rules": [
+       {
+        "when": "\\[Tool result: draft_prompt\\]",
+        "reply": "Drafted. Want me to send it?"
+       },
+       {
+        "when": "\\[Tool result: send_draft\\]",
+        "reply": "Sent."
+       },
+       {
+        "when": "unit tests",
+        "reply": "<tool>{\"name\": \"draft_prompt\", \"arguments\": {\"text\": \"Add unit tests for the parser.\"}}</tool>"
+       },
+       {
+        "when": "yes",
+        "reply": "<tool>{\"name\": \"send_draft\", \"arguments\": {}}</tool>"
+       }
+      ],
+      "fallback": "Okay."
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "act",
+     "action": "voice.hotkey"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 25000,
+     "expect": {
+      "voice.phase": "listening"
+     }
+    },
+    {
+     "do": "act",
+     "action": "voice.type",
+     "args": {
+      "text": "Tell Claude to add unit tests for the parser."
+     }
+    },
+    {
+     "do": "until",
+     "probe": "standin",
+     "timeoutMs": 20000,
+     "expect": {
+      "state.model": {
+       "$match": "unit tests"
+      }
+     }
+    },
+    {
+     "do": "act",
+     "action": "voice.type",
+     "args": {
+      "text": "Yes, send it."
+     }
+    },
+    {
+     "do": "until",
+     "probe": "standin",
+     "timeoutMs": 20000,
+     "expect": {
+      "state.sent": {
+       "$len": 1
+      }
+     }
+    },
+    {
+     "do": "standin",
+     "expect": {
+      "state.sent.0": {
+       "$match": "unit tests for the parser"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "window.stop",
+   "title": "Stop presses the stand-in's Stop while it works",
+   "needs": [
+    "window",
+    "voice"
+   ],
+   "fixtures": {
+    "standin": {},
+    "claudeVoice": {
+     "rules": {
+      "rules": [
+       {
+        "when": "\\[Tool result: stop_claude\\]",
+        "reply": "Stopped."
+       },
+       {
+        "when": "stop",
+        "reply": "<tool>{\"name\": \"stop_claude\", \"arguments\": {}}</tool>"
+       }
+      ],
+      "fallback": "Okay."
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "standin",
+     "op": "set",
+     "patch": {
+      "working": true
+     }
+    },
+    {
+     "do": "act",
+     "action": "voice.hotkey"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 25000,
+     "expect": {
+      "voice.phase": "listening"
+     }
+    },
+    {
+     "do": "act",
+     "action": "voice.type",
+     "args": {
+      "text": "Stop it."
+     }
+    },
+    {
+     "do": "until",
+     "probe": "standin",
+     "timeoutMs": 20000,
+     "expect": {
+      "state.working": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window.answer-card",
+   "title": "A permission card on the stand-in is read, then allowed on a typed \"allow it\"",
+   "needs": [
+    "window",
+    "voice"
+   ],
+   "fixtures": {
+    "standin": {},
+    "claudeVoice": {
+     "rules": {
+      "rules": [
+       {
+        "when": "\\[Tool result: read_claude_prompt\\]",
+        "reply": "It wants to run a command. Allow it?"
+       },
+       {
+        "when": "\\[Tool result: answer_claude_prompt\\]",
+        "reply": "Done."
+       },
+       {
+        "when": "asking",
+        "reply": "<tool>{\"name\": \"read_claude_prompt\", \"arguments\": {}}</tool>"
+       },
+       {
+        "when": "allow",
+        "reply": "<tool>{\"name\": \"answer_claude_prompt\", \"arguments\": {\"answer\": \"allow\"}}</tool>"
+       }
+      ],
+      "fallback": "Okay."
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "standin",
+     "op": "set",
+     "patch": {
+      "card": {
+       "kind": "permission",
+       "title": "Allow Claude to run a command?",
+       "command": "npm test"
+      }
+     }
+    },
+    {
+     "do": "act",
+     "action": "voice.hotkey"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 25000,
+     "expect": {
+      "voice.phase": "listening"
+     }
+    },
+    {
+     "do": "act",
+     "action": "voice.type",
+     "args": {
+      "text": "What is Claude asking for?"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "fake",
+     "name": "fake-claude",
+     "timeoutMs": 20000,
+     "expect": {
+      "toolResults": {
+       "$contains": "read_claude_prompt"
+      }
+     }
+    },
+    {
+     "do": "act",
+     "action": "voice.type",
+     "args": {
+      "text": "Allow it."
+     }
+    },
+    {
+     "do": "until",
+     "probe": "standin",
+     "timeoutMs": 20000,
+     "expect": {
+      "state.answer": "Allow once",
+      "state.card": null
+     }
+    }
+   ]
+  }
+ ]
+}

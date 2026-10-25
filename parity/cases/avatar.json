@@ -1,0 +1,1558 @@
+{
+ "area": "avatar",
+ "about": "Qubit (and the pixel buddy) on the stand-in Claude window: where he lives and stands, click-through, click to talk, pick up and throw inside his window, the Wheee, sleep then click, one avatar per place, free-floating without a Claude window, and his art rules. Pointer events go only to the avatar's own window (never the system's cursor).",
+ "cases": [
+  {
+   "id": "avatar.qubit.on-claude-window",
+   "title": "Qubit comes up on the Claude window, in a strip along its bottom",
+   "needs": [
+    "avatar",
+    "window"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "qubit"
+    }
+   },
+   "fixtures": {
+    "standin": {
+     "frame": {
+      "x": 200,
+      "y": 120,
+      "w": 980,
+      "h": 680
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "avatars": {
+       "$some": {
+        "id": "home",
+        "kind": "qubit",
+        "visible": true,
+        "host.pid": "${standinPid}"
+       }
+      }
+     }
+    },
+    {
+     "do": "save",
+     "from": "state",
+     "path": "avatars.0",
+     "as": "q"
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars.0.frame": {
+       "$inside": "${q.host.frame}"
+      },
+      "avatars.0.frame.w": {
+       "$near": "${q.host.frame.w}",
+       "$tol": 2
+      }
+     }
+    },
+    {
+     "do": "calc",
+     "as": "hostBottom",
+     "expr": "${q.host.frame.y} + ${q.host.frame.h}"
+    },
+    {
+     "do": "calc",
+     "as": "stripBottom",
+     "expr": "${q.frame.y} + ${q.frame.h}"
+    },
+    {
+     "do": "calc",
+     "as": "gap",
+     "expr": "${hostBottom} - ${stripBottom}"
+    },
+    {
+     "do": "check",
+     "value": "${gap}",
+     "expect": {
+      "$gte": -2,
+      "$lte": 40
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar.qubit.stands-on-box",
+   "title": "He stands on the prompt box: his feet on its top edge",
+   "needs": [
+    "avatar",
+    "window"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "qubit"
+    }
+   },
+   "fixtures": {
+    "standin": {
+     "frame": {
+      "x": 200,
+      "y": 120,
+      "w": 980,
+      "h": 680
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "claude.box": {
+       "$type": "object"
+      },
+      "avatars.0.figure": {
+       "$type": "object"
+      }
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 15000,
+     "expect": {
+      "avatars.0.standingOn": "box"
+     }
+    },
+    {
+     "do": "save",
+     "from": "state",
+     "path": "",
+     "as": "s"
+    },
+    {
+     "do": "calc",
+     "as": "feet",
+     "expr": "${s.avatars.0.figure.y} + ${s.avatars.0.figure.h}"
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars.0.figure.x": {
+       "$gte": "${s.claude.box.x}"
+      }
+     }
+    },
+    {
+     "do": "check",
+     "value": "${feet}",
+     "expect": {
+      "$near": "${s.claude.box.y}",
+      "$tol": 6
+     }
+    },
+    {
+     "do": "state",
+     "expect": {
+      "claude.box": {
+       "$inside": "${s.claude.frame}"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar.qubit.follows-window",
+   "title": "When the Claude window moves, his strip moves with it",
+   "needs": [
+    "avatar",
+    "window"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "qubit"
+    }
+   },
+   "fixtures": {
+    "standin": {
+     "frame": {
+      "x": 200,
+      "y": 120,
+      "w": 980,
+      "h": 680
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "avatars": {
+       "$some": {
+        "id": "home",
+        "visible": true
+       }
+      }
+     }
+    },
+    {
+     "do": "standin",
+     "op": "move",
+     "frame": {
+      "x": 320,
+      "y": 160,
+      "w": 900,
+      "h": 640
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 8000,
+     "expect": {
+      "avatars.0.host.frame.x": {
+       "$near": 320,
+       "$tol": 2
+      },
+      "avatars.0.frame.x": {
+       "$near": 320,
+       "$tol": 2
+      },
+      "avatars.0.frame.w": {
+       "$near": 900,
+       "$tol": 2
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar.click-through",
+   "title": "Clicks go through his window except over him",
+   "needs": [
+    "avatar",
+    "window"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "qubit"
+    }
+   },
+   "fixtures": {
+    "standin": {
+     "frame": {
+      "x": 200,
+      "y": 120,
+      "w": 980,
+      "h": 680
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "avatars.0.figure": {
+       "$type": "object"
+      }
+     }
+    },
+    {
+     "do": "save",
+     "from": "state",
+     "path": "avatars.0",
+     "as": "q"
+    },
+    {
+     "do": "act",
+     "action": "cursor.set",
+     "args": {
+      "x": "${q.frame.x}",
+      "y": "${q.frame.y}"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 3000,
+     "expect": {
+      "avatars.0.takesMouse": false
+     }
+    },
+    {
+     "do": "calc",
+     "as": "cx",
+     "expr": "${q.figure.x} + ${q.figure.w} / 2"
+    },
+    {
+     "do": "calc",
+     "as": "cy",
+     "expr": "${q.figure.y} + ${q.figure.h} / 2"
+    },
+    {
+     "do": "act",
+     "action": "cursor.set",
+     "args": {
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 3000,
+     "expect": {
+      "avatars.0.takesMouse": true
+     }
+    },
+    {
+     "do": "act",
+     "action": "cursor.set",
+     "args": {
+      "x": null,
+      "y": null
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar.click-to-talk",
+   "title": "A quick click on Qubit starts talking",
+   "needs": [
+    "avatar",
+    "window",
+    "voice"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "qubit"
+    }
+   },
+   "fixtures": {
+    "standin": {
+     "frame": {
+      "x": 200,
+      "y": 120,
+      "w": 980,
+      "h": 680
+     }
+    },
+    "fakeDesktop": false,
+    "claudeVoice": {
+     "rules": {
+      "rules": []
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "avatars.0.figure": {
+       "$type": "object"
+      }
+     }
+    },
+    {
+     "do": "save",
+     "from": "state",
+     "path": "avatars.0.figure",
+     "as": "f"
+    },
+    {
+     "do": "calc",
+     "as": "cx",
+     "expr": "${f.x} + ${f.w} / 2"
+    },
+    {
+     "do": "calc",
+     "as": "cy",
+     "expr": "${f.y} + ${f.h} / 2"
+    },
+    {
+     "do": "act",
+     "action": "cursor.set",
+     "args": {
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 3000,
+     "expect": {
+      "avatars.0.takesMouse": true
+     }
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "down",
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 60
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "up",
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 5000,
+     "expect": {
+      "events": {
+       "$some": {
+        "type": "avatar.talk"
+       }
+      }
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "voice.phase": {
+       "$in": [
+        "connecting",
+        "listening"
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar.click-talk-off",
+   "title": "With click-to-talk off, a click is only a poke",
+   "needs": [
+    "avatar",
+    "window"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "qubit",
+     "avatarClickTalk": false
+    }
+   },
+   "fixtures": {
+    "standin": {
+     "frame": {
+      "x": 200,
+      "y": 120,
+      "w": 980,
+      "h": 680
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "avatars.0.figure": {
+       "$type": "object"
+      }
+     }
+    },
+    {
+     "do": "save",
+     "from": "state",
+     "path": "avatars.0.figure",
+     "as": "f"
+    },
+    {
+     "do": "calc",
+     "as": "cx",
+     "expr": "${f.x} + ${f.w} / 2"
+    },
+    {
+     "do": "calc",
+     "as": "cy",
+     "expr": "${f.y} + ${f.h} / 2"
+    },
+    {
+     "do": "act",
+     "action": "cursor.set",
+     "args": {
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "down",
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 60
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "up",
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 1500
+    },
+    {
+     "do": "state",
+     "expect": {
+      "voice.phase": "off",
+      "events": {
+       "$every": {
+        "type": {
+         "$not": "avatar.talk"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar.throw.inside-window",
+   "title": "Picked up and thrown, he flies and lands inside the Claude window, and says Wheee",
+   "needs": [
+    "avatar",
+    "window"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "qubit"
+    }
+   },
+   "fixtures": {
+    "standin": {
+     "frame": {
+      "x": 200,
+      "y": 120,
+      "w": 980,
+      "h": 680
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "avatars.0.figure": {
+       "$type": "object"
+      },
+      "avatars.0.standingOn": {
+       "$in": [
+        "box",
+        "floor"
+       ]
+      }
+     }
+    },
+    {
+     "do": "save",
+     "from": "state",
+     "path": "avatars.0",
+     "as": "q"
+    },
+    {
+     "do": "calc",
+     "as": "cx",
+     "expr": "${q.figure.x} + ${q.figure.w} / 2"
+    },
+    {
+     "do": "calc",
+     "as": "cy",
+     "expr": "${q.figure.y} + ${q.figure.h} / 2"
+    },
+    {
+     "do": "act",
+     "action": "cursor.set",
+     "args": {
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 3000,
+     "expect": {
+      "avatars.0.takesMouse": true
+     }
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "down",
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 250
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 3000,
+     "expect": {
+      "avatars.0.lifted": true
+     }
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars.0.frame": {
+       "$inside": "${q.host.frame}"
+      }
+     }
+    },
+    {
+     "do": "calc",
+     "as": "x1",
+     "expr": "${cx} + 30"
+    },
+    {
+     "do": "calc",
+     "as": "y1",
+     "expr": "${cy} - 40"
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "move",
+      "x": "${x1}",
+      "y": "${y1}"
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 16
+    },
+    {
+     "do": "calc",
+     "as": "x2",
+     "expr": "${cx} + 90"
+    },
+    {
+     "do": "calc",
+     "as": "y2",
+     "expr": "${cy} - 120"
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "move",
+      "x": "${x2}",
+      "y": "${y2}"
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 16
+    },
+    {
+     "do": "calc",
+     "as": "x3",
+     "expr": "${cx} + 160"
+    },
+    {
+     "do": "calc",
+     "as": "y3",
+     "expr": "${cy} - 210"
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "move",
+      "x": "${x3}",
+      "y": "${y3}"
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 16
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "up",
+      "x": "${x3}",
+      "y": "${y3}"
+     }
+    },
+    {
+     "do": "act",
+     "action": "cursor.set",
+     "args": {
+      "x": null,
+      "y": null
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 3000,
+     "expect": {
+      "sounds": {
+       "$some": {
+        "name": "throw"
+       }
+      }
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 12000,
+     "expect": {
+      "avatars.0.lifted": false,
+      "avatars.0.standingOn": {
+       "$in": [
+        "box",
+        "floor"
+       ]
+      }
+     }
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars.0.figure": {
+       "$inside": "${q.host.frame}"
+      },
+      "avatars": {
+       "$len": 1
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar.throw.gentle-no-wheee",
+   "title": "Picked up and put down gently: no Wheee",
+   "needs": [
+    "avatar",
+    "window"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "qubit"
+    }
+   },
+   "fixtures": {
+    "standin": {
+     "frame": {
+      "x": 200,
+      "y": 120,
+      "w": 980,
+      "h": 680
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "avatars.0.figure": {
+       "$type": "object"
+      }
+     }
+    },
+    {
+     "do": "save",
+     "from": "state",
+     "path": "avatars.0.figure",
+     "as": "f"
+    },
+    {
+     "do": "calc",
+     "as": "cx",
+     "expr": "${f.x} + ${f.w} / 2"
+    },
+    {
+     "do": "calc",
+     "as": "cy",
+     "expr": "${f.y} + ${f.h} / 2"
+    },
+    {
+     "do": "act",
+     "action": "cursor.set",
+     "args": {
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "down",
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 400
+    },
+    {
+     "do": "calc",
+     "as": "x1",
+     "expr": "${cx} + 4"
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "move",
+      "x": "${x1}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 300
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "up",
+      "x": "${x1}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "act",
+     "action": "cursor.set",
+     "args": {
+      "x": null,
+      "y": null
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 8000,
+     "expect": {
+      "avatars.0.lifted": false
+     }
+    },
+    {
+     "do": "state",
+     "expect": {
+      "sounds": {
+       "$every": {
+        "name": {
+         "$not": "throw"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar.throw-off",
+   "title": "With throwing off, holding him doesn't pick him up",
+   "needs": [
+    "avatar",
+    "window"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "qubit",
+     "avatarThrow": false
+    }
+   },
+   "fixtures": {
+    "standin": {
+     "frame": {
+      "x": 200,
+      "y": 120,
+      "w": 980,
+      "h": 680
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "avatars.0.figure": {
+       "$type": "object"
+      }
+     }
+    },
+    {
+     "do": "save",
+     "from": "state",
+     "path": "avatars.0.figure",
+     "as": "f"
+    },
+    {
+     "do": "calc",
+     "as": "cx",
+     "expr": "${f.x} + ${f.w} / 2"
+    },
+    {
+     "do": "calc",
+     "as": "cy",
+     "expr": "${f.y} + ${f.h} / 2"
+    },
+    {
+     "do": "act",
+     "action": "cursor.set",
+     "args": {
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "down",
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 600
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars.0.lifted": false
+     }
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "up",
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar.sleep-then-click",
+   "title": "After Orbit goes to sleep, Qubit can still be clicked to talk",
+   "needs": [
+    "avatar",
+    "window",
+    "voice"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "qubit"
+    }
+   },
+   "fixtures": {
+    "standin": {
+     "frame": {
+      "x": 200,
+      "y": 120,
+      "w": 980,
+      "h": 680
+     }
+    },
+    "claudeVoice": {
+     "rules": {
+      "rules": []
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "act",
+     "action": "voice.hotkey"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 25000,
+     "expect": {
+      "voice.phase": "listening"
+     }
+    },
+    {
+     "do": "act",
+     "action": "voice.sleep"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 10000,
+     "expect": {
+      "voice.phase": "off"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 10000,
+     "expect": {
+      "avatars.0.figure": {
+       "$type": "object"
+      }
+     }
+    },
+    {
+     "do": "save",
+     "from": "state",
+     "path": "avatars.0.figure",
+     "as": "f"
+    },
+    {
+     "do": "calc",
+     "as": "cx",
+     "expr": "${f.x} + ${f.w} / 2"
+    },
+    {
+     "do": "calc",
+     "as": "cy",
+     "expr": "${f.y} + ${f.h} / 2"
+    },
+    {
+     "do": "act",
+     "action": "cursor.set",
+     "args": {
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 3000,
+     "expect": {
+      "avatars.0.takesMouse": true
+     }
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "down",
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 60
+    },
+    {
+     "do": "act",
+     "action": "pointer",
+     "args": {
+      "avatar": "home",
+      "type": "up",
+      "x": "${cx}",
+      "y": "${cy}"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 5000,
+     "expect": {
+      "events": {
+       "$some": {
+        "type": "avatar.talk"
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar.one-per-place",
+   "title": "Switching avatars fast never leaves two on the Claude window",
+   "needs": [
+    "avatar",
+    "window",
+    "settings"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "qubit"
+    }
+   },
+   "fixtures": {
+    "standin": {
+     "frame": {
+      "x": 200,
+      "y": 120,
+      "w": 980,
+      "h": 680
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "avatars": {
+       "$some": {
+        "kind": "qubit",
+        "visible": true
+       }
+      }
+     }
+    },
+    {
+     "do": "act",
+     "action": "settings.ui",
+     "args": {
+      "key": "avatar",
+      "value": "buddy"
+     }
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars": {
+       "$count": {
+        "where": {
+         "visible": true,
+         "leaving": false,
+         "role": "home"
+        },
+        "is": {
+         "$lte": 1
+        }
+       }
+      }
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 120
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars": {
+       "$count": {
+        "where": {
+         "visible": true,
+         "leaving": false,
+         "role": "home"
+        },
+        "is": {
+         "$lte": 1
+        }
+       }
+      }
+     }
+    },
+    {
+     "do": "act",
+     "action": "settings.ui",
+     "args": {
+      "key": "avatar",
+      "value": "qubit"
+     }
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars": {
+       "$count": {
+        "where": {
+         "visible": true,
+         "leaving": false,
+         "role": "home"
+        },
+        "is": {
+         "$lte": 1
+        }
+       }
+      }
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 120
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars": {
+       "$count": {
+        "where": {
+         "visible": true,
+         "leaving": false,
+         "role": "home"
+        },
+        "is": {
+         "$lte": 1
+        }
+       }
+      }
+     }
+    },
+    {
+     "do": "act",
+     "action": "settings.ui",
+     "args": {
+      "key": "avatar",
+      "value": "buddy"
+     }
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars": {
+       "$count": {
+        "where": {
+         "visible": true,
+         "leaving": false,
+         "role": "home"
+        },
+        "is": {
+         "$lte": 1
+        }
+       }
+      }
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 120
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars": {
+       "$count": {
+        "where": {
+         "visible": true,
+         "leaving": false,
+         "role": "home"
+        },
+        "is": {
+         "$lte": 1
+        }
+       }
+      }
+     }
+    },
+    {
+     "do": "act",
+     "action": "settings.ui",
+     "args": {
+      "key": "avatar",
+      "value": "qubit"
+     }
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars": {
+       "$count": {
+        "where": {
+         "visible": true,
+         "leaving": false,
+         "role": "home"
+        },
+        "is": {
+         "$lte": 1
+        }
+       }
+      }
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 120
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars": {
+       "$count": {
+        "where": {
+         "visible": true,
+         "leaving": false,
+         "role": "home"
+        },
+        "is": {
+         "$lte": 1
+        }
+       }
+      }
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 8000,
+     "expect": {
+      "avatars": {
+       "$len": 1
+      },
+      "avatars.0.kind": "qubit",
+      "avatars.0.visible": true
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 1500
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars": {
+       "$len": 1
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar.none",
+   "title": "Avatar None: no avatar window at all",
+   "needs": [
+    "avatar"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "none"
+    }
+   },
+   "steps": [
+    {
+     "do": "sleep",
+     "ms": 2500
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars": {
+       "$len": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar.free-without-claude",
+   "title": "With no Claude window, Qubit floats free along the bottom of the screen",
+   "needs": [
+    "avatar"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "qubit"
+    }
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "avatars": {
+       "$some": {
+        "kind": "qubit",
+        "visible": true
+       }
+      }
+     }
+    },
+    {
+     "do": "state",
+     "expect": {
+      "avatars.0.host": {
+       "$absent": true
+      },
+      "avatars.0.frame.w": {
+       "$gt": 200
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar.art-rules",
+   "title": "Qubit's art: one solid fill, the eye a hole, no stroke, shadow or gradient",
+   "needs": [
+    "avatar"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "qubit"
+    }
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "avatars": {
+       "$some": {
+        "kind": "qubit",
+        "visible": true
+       }
+      }
+     }
+    },
+    {
+     "do": "until",
+     "probe": "act",
+     "action": "avatar.eval",
+     "args": {
+      "avatar": "home",
+      "probe": "qubit-art.js"
+     },
+     "timeoutMs": 8000,
+     "expect": {
+      "ok": true,
+      "value.drawn": true
+     }
+    },
+    {
+     "do": "act",
+     "action": "avatar.eval",
+     "args": {
+      "avatar": "home",
+      "probe": "qubit-art.js"
+     },
+     "expect": {
+      "ok": true,
+      "value": {
+       "paths": 1,
+       "fills": {
+        "$len": 1
+       },
+       "solidFill": true,
+       "eyeIsHole": true,
+       "strokes": 0,
+       "gradients": 0,
+       "filters": 0,
+       "shadows": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "avatar.command-reaches-page",
+   "title": "A command for the avatar reaches his page",
+   "needs": [
+    "avatar"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "qubit"
+    }
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "avatars": {
+       "$some": {
+        "kind": "qubit",
+        "visible": true
+       }
+      }
+     }
+    },
+    {
+     "do": "act",
+     "action": "avatar.command",
+     "args": {
+      "action": "jump"
+     },
+     "expect": {
+      "ok": true
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 5000,
+     "expect": {
+      "events": {
+       "$some": {
+        "type": "avatar.command",
+        "data.action": "jump"
+       }
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

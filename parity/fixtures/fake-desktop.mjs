@@ -16,9 +16,9 @@ try {
 
 function save() {
   if (!recordFile) return;
-  const { calls, sends, windows, sidebar, pending } = st;
+  const { calls, sends, windows, sidebar, answers } = st;
   try {
-    fs.writeFileSync(recordFile + '.tmp', JSON.stringify({ calls: calls.map((c) => ({ mode: c.mode, at: c.at })), sends, windows, sidebar, pending: pending ?? null }));
+    fs.writeFileSync(recordFile + '.tmp', JSON.stringify({ calls: calls.map((c) => ({ mode: c.mode, at: c.at })), sends, windows, sidebar, answers: answers || [] }));
     fs.renameSync(recordFile + '.tmp', recordFile);
   } catch {}
 }

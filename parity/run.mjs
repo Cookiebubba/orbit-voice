@@ -42,6 +42,7 @@ const paths = {
   swiftApp: path.resolve(opt('swift-app', path.join(REPO, 'mac-swift', 'dist', 'Orbit Native.app'))),
   electronRoot: path.resolve(opt('electron-root', REPO)),
   voiceModels: path.resolve(opt('voice-models', path.join(os.homedir(), 'orbit-swift-dev', 'voice-models'))),
+  audio: path.resolve(opt('audio', path.join(HERE, 'out', 'audio'))),
 };
 // Ports: each build its own, so a leftover from one never answers for the other.
 const PORTS = { swift: { bridge: 4521, driver: 4522 }, electron: { bridge: 4541, driver: 4542 }, standin: 4525, grok: 4526 };
@@ -83,7 +84,7 @@ async function prepare(c, which) {
   const run = fs.mkdtempSync(path.join(os.tmpdir(), `orbit-parity-${which}-`));
   const dirs = { run, profile: path.join(run, 'profile'), records: path.join(run, 'records'), logs: path.join(run, 'logs'), bin: path.join(run, 'bin') };
   for (const d of Object.values(dirs)) fs.mkdirSync(d, { recursive: true });
-  const vars = { repo: REPO, records: dirs.records, profile: dirs.profile, run, app: which };
+  const vars = { repo: REPO, records: dirs.records, profile: dirs.profile, run, app: which, audio: paths.audio };
   const env = { PARITY_RECORD_DIR: dirs.records, ...interpolate(c.env || {}, vars) };
   const settings = { ...(c.profile?.settings || {}) };
   const fx = c.fixtures || {};
@@ -142,6 +143,8 @@ async function step(s, ctx) {
       case 'standin':
         if (!ctx.standin) throw new Error('no stand-in Claude window in this case (fixtures.standin)');
         return ctx.standin.state();
+      case 'act':
+        return (await ctx.app.driver.act(p.action, p.args || {})).body;
       default:
         throw new Error(`unknown probe ${p.probe}`);
     }
@@ -184,6 +187,18 @@ async function step(s, ctx) {
       const from = x.from === 'last' ? ctx.last : await probe({ probe: x.from, path: x.path_http, name: x.name, method: 'GET' });
       const v = at(from, x.path || '');
       if (v === undefined && !x.optional) throw new Error(`save ${x.as}: nothing at ${x.path} (${show(from).slice(0, 120)})`);
+      ctx.vars[x.as] = v;
+      return v;
+    }
+    case 'check':
+      // A saved or computed value against a matcher: { "do": "check", "value": "${gap}", "expect": {...} }.
+      return check(x.value, `check ${s.value}`);
+    case 'calc': {
+      // Arithmetic on saved numbers: "${fig.x} + ${fig.w} / 2" (numbers and + - * / ( ) only).
+      const expr = String(x.expr);
+      if (!/^[-+*/(). 0-9eE]+$/.test(expr)) throw new Error(`calc ${x.as}: not plain arithmetic: ${expr}`);
+      const v = Function(`"use strict"; return (${expr});`)();
+      if (!Number.isFinite(v)) throw new Error(`calc ${x.as}: ${expr} is not a number`);
       ctx.vars[x.as] = v;
       return v;
     }

@@ -1,0 +1,54 @@
+{
+  "area": "onboarding",
+  "about": "The macOS permissions onboarding (Microphone and Accessibility required, Screen Recording optional) over faked permission states (ORBIT_FAKE_PERMS), never the real ones.",
+  "cases": [
+    { "id": "onboarding.all-granted", "title": "Everything allowed: no onboarding",
+      "needs": ["onboarding"],
+      "env": { "ORBIT_FAKE_PERMS": "{\"mic\":\"granted\",\"ax\":true,\"screen\":true}" },
+      "steps": [{ "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "onboarding": { "mic": "granted", "ax": true, "screen": true, "step": "done", "shown": false } } }] },
+    { "id": "onboarding.mic-first", "title": "Microphone not asked yet: the onboarding starts with it",
+      "needs": ["onboarding"],
+      "env": { "ORBIT_FAKE_PERMS": "{\"mic\":\"not-determined\",\"ax\":false,\"screen\":false}" },
+      "steps": [{ "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "onboarding": { "step": "mic", "shown": true } } }] },
+    { "id": "onboarding.mic-denied", "title": "Microphone turned off: the onboarding says where to turn it on",
+      "needs": ["onboarding"],
+      "env": { "ORBIT_FAKE_PERMS": "{\"mic\":\"denied\",\"ax\":true,\"screen\":true}" },
+      "steps": [
+        { "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "onboarding": { "mic": "denied", "step": "mic", "shown": true } } },
+        { "do": "act", "action": "onboarding.next" },
+        { "do": "until", "probe": "state", "timeoutMs": 3000, "expect": { "events": { "$some": { "type": "perms.request", "data.kind": "microphone" } } } }
+      ] },
+    { "id": "onboarding.ax-next", "title": "Microphone allowed, Accessibility not: the onboarding asks for Accessibility",
+      "needs": ["onboarding"],
+      "env": { "ORBIT_FAKE_PERMS": "{\"mic\":\"granted\",\"ax\":false,\"screen\":false}" },
+      "steps": [
+        { "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "onboarding": { "step": "ax", "shown": true } } },
+        { "do": "act", "action": "onboarding.next" },
+        { "do": "until", "probe": "state", "timeoutMs": 3000, "expect": { "events": { "$some": { "type": "perms.request", "data.kind": "accessibility" } } } }
+      ] },
+    { "id": "onboarding.screen-optional", "title": "Screen Recording off doesn't block anything (it's only for looking at a window)",
+      "needs": ["onboarding"],
+      "env": { "ORBIT_FAKE_PERMS": "{\"mic\":\"granted\",\"ax\":true,\"screen\":false}" },
+      "steps": [{ "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "onboarding": { "screen": false, "step": "done", "shown": false } } }] },
+    { "id": "onboarding.restricted", "title": "A restricted microphone (device policy) is reported as such",
+      "needs": ["onboarding"],
+      "env": { "ORBIT_FAKE_PERMS": "{\"mic\":\"restricted\",\"ax\":true,\"screen\":true}" },
+      "steps": [{ "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "onboarding": { "mic": "restricted", "step": "mic", "shown": true } } }] },
+    { "id": "onboarding.rechecks", "title": "Turned on in System Settings meanwhile: the onboarding moves on without a restart",
+      "needs": ["onboarding"],
+      "env": { "ORBIT_FAKE_PERMS": "{\"mic\":\"granted\",\"ax\":false,\"screen\":false}" },
+      "steps": [
+        { "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "onboarding.step": "ax" } },
+        { "do": "act", "action": "perms.set", "args": { "mic": "granted", "ax": true, "screen": false } },
+        { "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "onboarding": { "ax": true, "step": "done", "shown": false } } }
+      ] },
+    { "id": "onboarding.revoked", "title": "Accessibility turned off while running: the onboarding comes back",
+      "needs": ["onboarding"],
+      "env": { "ORBIT_FAKE_PERMS": "{\"mic\":\"granted\",\"ax\":true,\"screen\":true}" },
+      "steps": [
+        { "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "onboarding.step": "done" } },
+        { "do": "act", "action": "perms.set", "args": { "mic": "granted", "ax": false, "screen": true } },
+        { "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "onboarding": { "step": "ax", "shown": true } } }
+      ] }
+  ]
+}

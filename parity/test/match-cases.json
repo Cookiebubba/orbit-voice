@@ -1,57 +1,659 @@
 {
-  "about": "Matcher cases both runners must agree on: parity/lib/match.mjs (Node) and OrbitKit/ParityMatch.swift (Swift). pass: whether actual matches expect with vars.",
-  "cases": [
-    { "name": "literal equal", "actual": 3, "expect": 3, "pass": true },
-    { "name": "literal differs", "actual": 3, "expect": 4, "pass": false },
-    { "name": "string literal", "actual": "qubit", "expect": "qubit", "pass": true },
-    { "name": "deep object literal via path", "actual": { "a": { "b": [1, 2] } }, "expect": { "a.b": [1, 2] }, "pass": true },
-    { "name": "path into array", "actual": { "avatars": [{ "kind": "qubit" }] }, "expect": { "avatars.0.kind": "qubit" }, "pass": true },
-    { "name": "missing path", "actual": { "a": 1 }, "expect": { "b": 1 }, "pass": false },
-    { "name": "nested plain keys", "actual": { "body": { "settings": { "avatar": "qubit", "speed": 1 } } }, "expect": { "body": { "settings.avatar": "qubit" } }, "pass": true },
-    { "name": "$type string", "actual": "x", "expect": { "$type": "string" }, "pass": true },
-    { "name": "$type integer", "actual": 4, "expect": { "$type": "integer" }, "pass": true },
-    { "name": "$type integer vs fraction", "actual": 4.5, "expect": { "$type": "integer" }, "pass": false },
-    { "name": "$type number accepts integer", "actual": 4, "expect": { "$type": "number" }, "pass": true },
-    { "name": "$type array", "actual": [], "expect": { "$type": "array" }, "pass": true },
-    { "name": "$type null", "actual": null, "expect": { "$type": "null" }, "pass": true },
-    { "name": "$type object", "actual": { "a": 1 }, "expect": { "$type": "object" }, "pass": true },
-    { "name": "$gt and $lt", "actual": 5, "expect": { "$gt": 4, "$lt": 6 }, "pass": true },
-    { "name": "$gte edge", "actual": 4, "expect": { "$gte": 4 }, "pass": true },
-    { "name": "$lte fails", "actual": 5, "expect": { "$lte": 4 }, "pass": false },
-    { "name": "$gt on a string fails", "actual": "5", "expect": { "$gt": 4 }, "pass": false },
-    { "name": "$near within", "actual": 10.4, "expect": { "$near": 10, "$tol": 0.5 }, "pass": true },
-    { "name": "$near outside", "actual": 10.6, "expect": { "$near": 10, "$tol": 0.5 }, "pass": false },
-    { "name": "$in", "actual": "speaking", "expect": { "$in": ["listening", "speaking"] }, "pass": true },
-    { "name": "$in fails", "actual": "off", "expect": { "$in": ["listening", "speaking"] }, "pass": false },
-    { "name": "$match", "actual": "1.3.0-beta.1", "expect": { "$match": "^[0-9]+[.][0-9]+[.][0-9]+" }, "pass": true },
-    { "name": "$contains string", "actual": "hello there", "expect": { "$contains": "there" }, "pass": true },
-    { "name": "$contains array literal", "actual": [1, 2, 3], "expect": { "$contains": 2 }, "pass": true },
-    { "name": "$contains array partial object", "actual": [{ "name": "draft_prompt", "args": { "text": "x" } }], "expect": { "$contains": { "name": "draft_prompt" } }, "pass": true },
-    { "name": "$contains fails", "actual": [1, 2, 3], "expect": { "$contains": 9 }, "pass": false },
-    { "name": "$len exact", "actual": [1, 2], "expect": { "$len": 2 }, "pass": true },
-    { "name": "$len matcher", "actual": [1, 2, 3], "expect": { "$len": { "$gte": 1 } }, "pass": true },
-    { "name": "$len string", "actual": "abc", "expect": { "$len": 3 }, "pass": true },
-    { "name": "$len on number fails", "actual": 3, "expect": { "$len": 3 }, "pass": false },
-    { "name": "$every", "actual": [{ "kind": "qubit" }, { "kind": "qubit" }], "expect": { "$every": { "kind": "qubit" } }, "pass": true },
-    { "name": "$every fails", "actual": [{ "kind": "qubit" }, { "kind": "buddy" }], "expect": { "$every": { "kind": "qubit" } }, "pass": false },
-    { "name": "$every on empty", "actual": [], "expect": { "$every": { "kind": "qubit" } }, "pass": true },
-    { "name": "$some", "actual": [{ "t": 1 }, { "t": 2 }], "expect": { "$some": { "t": 2 } }, "pass": true },
-    { "name": "$some fails", "actual": [{ "t": 1 }], "expect": { "$some": { "t": 2 } }, "pass": false },
-    { "name": "$inside", "actual": { "x": 10, "y": 10, "w": 5, "h": 5 }, "expect": { "$inside": { "x": 0, "y": 0, "w": 100, "h": 100 } }, "pass": true },
-    { "name": "$inside with slack 1", "actual": { "x": -1, "y": 0, "w": 101, "h": 100 }, "expect": { "$inside": { "x": 0, "y": 0, "w": 100, "h": 100 } }, "pass": true },
-    { "name": "$inside outside", "actual": { "x": 90, "y": 0, "w": 20, "h": 10 }, "expect": { "$inside": { "x": 0, "y": 0, "w": 100, "h": 100 } }, "pass": false },
-    { "name": "$inside saved", "actual": { "x": 10, "y": 10, "w": 5, "h": 5 }, "expect": { "$inside": "${host}" }, "vars": { "host": { "x": 0, "y": 0, "w": 50, "h": 50 } }, "pass": true },
-    { "name": "$not", "actual": "off", "expect": { "$not": "listening" }, "pass": true },
-    { "name": "$not fails", "actual": "listening", "expect": { "$not": "listening" }, "pass": false },
-    { "name": "$absent on missing", "actual": { "a": 1 }, "expect": { "b": { "$absent": true } }, "pass": true },
-    { "name": "$absent on null", "actual": { "b": null }, "expect": { "b": { "$absent": true } }, "pass": true },
-    { "name": "$absent fails", "actual": { "b": 0 }, "expect": { "b": { "$absent": true } }, "pass": false },
-    { "name": "$absent false means present", "actual": { "b": 0 }, "expect": { "b": { "$absent": false } }, "pass": true },
-    { "name": "$eq saved", "actual": 42, "expect": { "$eq": "${n}" }, "vars": { "n": 42 }, "pass": true },
-    { "name": "whole-string var keeps type", "actual": { "w": 300 }, "expect": { "w": "${f.w}" }, "vars": { "f": { "w": 300 } }, "pass": true },
-    { "name": "var inside a string", "actual": "frame 300", "expect": "frame ${f.w}", "vars": { "f": { "w": 300 } }, "pass": true },
-    { "name": "object order does not matter", "actual": { "a": 1, "b": 2 }, "expect": { "$eq": { "b": 2, "a": 1 } }, "pass": true },
-    { "name": "array order matters", "actual": [1, 2], "expect": [2, 1], "pass": false },
-    { "name": "unknown matcher fails", "actual": 1, "expect": { "$wat": 1 }, "pass": false }
-  ]
+ "about": "Matcher cases both runners must agree on: parity/lib/match.mjs (Node) and OrbitKit/ParityMatch.swift (Swift). pass: whether actual matches expect with vars.",
+ "cases": [
+  {
+   "name": "literal equal",
+   "actual": 3,
+   "expect": 3,
+   "pass": true
+  },
+  {
+   "name": "literal differs",
+   "actual": 3,
+   "expect": 4,
+   "pass": false
+  },
+  {
+   "name": "string literal",
+   "actual": "qubit",
+   "expect": "qubit",
+   "pass": true
+  },
+  {
+   "name": "deep object literal via path",
+   "actual": {
+    "a": {
+     "b": [
+      1,
+      2
+     ]
+    }
+   },
+   "expect": {
+    "a.b": [
+     1,
+     2
+    ]
+   },
+   "pass": true
+  },
+  {
+   "name": "path into array",
+   "actual": {
+    "avatars": [
+     {
+      "kind": "qubit"
+     }
+    ]
+   },
+   "expect": {
+    "avatars.0.kind": "qubit"
+   },
+   "pass": true
+  },
+  {
+   "name": "missing path",
+   "actual": {
+    "a": 1
+   },
+   "expect": {
+    "b": 1
+   },
+   "pass": false
+  },
+  {
+   "name": "nested plain keys",
+   "actual": {
+    "body": {
+     "settings": {
+      "avatar": "qubit",
+      "speed": 1
+     }
+    }
+   },
+   "expect": {
+    "body": {
+     "settings.avatar": "qubit"
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "$type string",
+   "actual": "x",
+   "expect": {
+    "$type": "string"
+   },
+   "pass": true
+  },
+  {
+   "name": "$type integer",
+   "actual": 4,
+   "expect": {
+    "$type": "integer"
+   },
+   "pass": true
+  },
+  {
+   "name": "$type integer vs fraction",
+   "actual": 4.5,
+   "expect": {
+    "$type": "integer"
+   },
+   "pass": false
+  },
+  {
+   "name": "$type number accepts integer",
+   "actual": 4,
+   "expect": {
+    "$type": "number"
+   },
+   "pass": true
+  },
+  {
+   "name": "$type array",
+   "actual": [],
+   "expect": {
+    "$type": "array"
+   },
+   "pass": true
+  },
+  {
+   "name": "$type null",
+   "actual": null,
+   "expect": {
+    "$type": "null"
+   },
+   "pass": true
+  },
+  {
+   "name": "$type object",
+   "actual": {
+    "a": 1
+   },
+   "expect": {
+    "$type": "object"
+   },
+   "pass": true
+  },
+  {
+   "name": "$gt and $lt",
+   "actual": 5,
+   "expect": {
+    "$gt": 4,
+    "$lt": 6
+   },
+   "pass": true
+  },
+  {
+   "name": "$gte edge",
+   "actual": 4,
+   "expect": {
+    "$gte": 4
+   },
+   "pass": true
+  },
+  {
+   "name": "$lte fails",
+   "actual": 5,
+   "expect": {
+    "$lte": 4
+   },
+   "pass": false
+  },
+  {
+   "name": "$gt on a string fails",
+   "actual": "5",
+   "expect": {
+    "$gt": 4
+   },
+   "pass": false
+  },
+  {
+   "name": "$near within",
+   "actual": 10.4,
+   "expect": {
+    "$near": 10,
+    "$tol": 0.5
+   },
+   "pass": true
+  },
+  {
+   "name": "$near outside",
+   "actual": 10.6,
+   "expect": {
+    "$near": 10,
+    "$tol": 0.5
+   },
+   "pass": false
+  },
+  {
+   "name": "$in",
+   "actual": "speaking",
+   "expect": {
+    "$in": [
+     "listening",
+     "speaking"
+    ]
+   },
+   "pass": true
+  },
+  {
+   "name": "$in fails",
+   "actual": "off",
+   "expect": {
+    "$in": [
+     "listening",
+     "speaking"
+    ]
+   },
+   "pass": false
+  },
+  {
+   "name": "$match",
+   "actual": "1.3.0-beta.1",
+   "expect": {
+    "$match": "^[0-9]+[.][0-9]+[.][0-9]+"
+   },
+   "pass": true
+  },
+  {
+   "name": "$contains string",
+   "actual": "hello there",
+   "expect": {
+    "$contains": "there"
+   },
+   "pass": true
+  },
+  {
+   "name": "$contains array literal",
+   "actual": [
+    1,
+    2,
+    3
+   ],
+   "expect": {
+    "$contains": 2
+   },
+   "pass": true
+  },
+  {
+   "name": "$contains array partial object",
+   "actual": [
+    {
+     "name": "draft_prompt",
+     "args": {
+      "text": "x"
+     }
+    }
+   ],
+   "expect": {
+    "$contains": {
+     "name": "draft_prompt"
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "$contains fails",
+   "actual": [
+    1,
+    2,
+    3
+   ],
+   "expect": {
+    "$contains": 9
+   },
+   "pass": false
+  },
+  {
+   "name": "$len exact",
+   "actual": [
+    1,
+    2
+   ],
+   "expect": {
+    "$len": 2
+   },
+   "pass": true
+  },
+  {
+   "name": "$len matcher",
+   "actual": [
+    1,
+    2,
+    3
+   ],
+   "expect": {
+    "$len": {
+     "$gte": 1
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "$len string",
+   "actual": "abc",
+   "expect": {
+    "$len": 3
+   },
+   "pass": true
+  },
+  {
+   "name": "$len on number fails",
+   "actual": 3,
+   "expect": {
+    "$len": 3
+   },
+   "pass": false
+  },
+  {
+   "name": "$every",
+   "actual": [
+    {
+     "kind": "qubit"
+    },
+    {
+     "kind": "qubit"
+    }
+   ],
+   "expect": {
+    "$every": {
+     "kind": "qubit"
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "$every fails",
+   "actual": [
+    {
+     "kind": "qubit"
+    },
+    {
+     "kind": "buddy"
+    }
+   ],
+   "expect": {
+    "$every": {
+     "kind": "qubit"
+    }
+   },
+   "pass": false
+  },
+  {
+   "name": "$every on empty",
+   "actual": [],
+   "expect": {
+    "$every": {
+     "kind": "qubit"
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "$some",
+   "actual": [
+    {
+     "t": 1
+    },
+    {
+     "t": 2
+    }
+   ],
+   "expect": {
+    "$some": {
+     "t": 2
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "$some fails",
+   "actual": [
+    {
+     "t": 1
+    }
+   ],
+   "expect": {
+    "$some": {
+     "t": 2
+    }
+   },
+   "pass": false
+  },
+  {
+   "name": "$inside",
+   "actual": {
+    "x": 10,
+    "y": 10,
+    "w": 5,
+    "h": 5
+   },
+   "expect": {
+    "$inside": {
+     "x": 0,
+     "y": 0,
+     "w": 100,
+     "h": 100
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "$inside with slack 1",
+   "actual": {
+    "x": -1,
+    "y": 0,
+    "w": 101,
+    "h": 100
+   },
+   "expect": {
+    "$inside": {
+     "x": 0,
+     "y": 0,
+     "w": 100,
+     "h": 100
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "$inside outside",
+   "actual": {
+    "x": 90,
+    "y": 0,
+    "w": 20,
+    "h": 10
+   },
+   "expect": {
+    "$inside": {
+     "x": 0,
+     "y": 0,
+     "w": 100,
+     "h": 100
+    }
+   },
+   "pass": false
+  },
+  {
+   "name": "$inside saved",
+   "actual": {
+    "x": 10,
+    "y": 10,
+    "w": 5,
+    "h": 5
+   },
+   "expect": {
+    "$inside": "${host}"
+   },
+   "vars": {
+    "host": {
+     "x": 0,
+     "y": 0,
+     "w": 50,
+     "h": 50
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "$not",
+   "actual": "off",
+   "expect": {
+    "$not": "listening"
+   },
+   "pass": true
+  },
+  {
+   "name": "$not fails",
+   "actual": "listening",
+   "expect": {
+    "$not": "listening"
+   },
+   "pass": false
+  },
+  {
+   "name": "$absent on missing",
+   "actual": {
+    "a": 1
+   },
+   "expect": {
+    "b": {
+     "$absent": true
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "$absent on null",
+   "actual": {
+    "b": null
+   },
+   "expect": {
+    "b": {
+     "$absent": true
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "$absent fails",
+   "actual": {
+    "b": 0
+   },
+   "expect": {
+    "b": {
+     "$absent": true
+    }
+   },
+   "pass": false
+  },
+  {
+   "name": "$absent false means present",
+   "actual": {
+    "b": 0
+   },
+   "expect": {
+    "b": {
+     "$absent": false
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "$eq saved",
+   "actual": 42,
+   "expect": {
+    "$eq": "${n}"
+   },
+   "vars": {
+    "n": 42
+   },
+   "pass": true
+  },
+  {
+   "name": "whole-string var keeps type",
+   "actual": {
+    "w": 300
+   },
+   "expect": {
+    "w": "${f.w}"
+   },
+   "vars": {
+    "f": {
+     "w": 300
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "var inside a string",
+   "actual": "frame 300",
+   "expect": "frame ${f.w}",
+   "vars": {
+    "f": {
+     "w": 300
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "object order does not matter",
+   "actual": {
+    "a": 1,
+    "b": 2
+   },
+   "expect": {
+    "$eq": {
+     "b": 2,
+     "a": 1
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "array order matters",
+   "actual": [
+    1,
+    2
+   ],
+   "expect": [
+    2,
+    1
+   ],
+   "pass": false
+  },
+  {
+   "name": "unknown matcher fails",
+   "actual": 1,
+   "expect": {
+    "$wat": 1
+   },
+   "pass": false
+  },
+  {
+   "name": "$count exact",
+   "actual": [
+    {
+     "v": true,
+     "l": false
+    },
+    {
+     "v": true,
+     "l": true
+    },
+    {
+     "v": false,
+     "l": false
+    }
+   ],
+   "expect": {
+    "$count": {
+     "where": {
+      "v": true,
+      "l": false
+     },
+     "is": 1
+    }
+   },
+   "pass": true
+  },
+  {
+   "name": "$count matcher",
+   "actual": [
+    {
+     "v": true
+    },
+    {
+     "v": true
+    }
+   ],
+   "expect": {
+    "$count": {
+     "where": {
+      "v": true
+     },
+     "is": {
+      "$lte": 1
+     }
+    }
+   },
+   "pass": false
+  },
+  {
+   "name": "$count empty where counts all",
+   "actual": [
+    1,
+    2,
+    3
+   ],
+   "expect": {
+    "$count": {
+     "is": 3
+    }
+   },
+   "pass": true
+  }
+ ]
 }

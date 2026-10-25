@@ -125,6 +125,13 @@ function matchOps(a, ops, vars, where) {
           if (r) return r;
         }
         break;
+      case '$count': {
+        if (!Array.isArray(a)) return `${w}: expected an array, got ${show(a)}`;
+        const n = a.filter((x) => matchValue(x, arg.where ?? {}, vars, '') === null).length;
+        const r = typeof arg.is === 'number' ? (n === arg.is ? null : `${w}: expected ${arg.is} matching, got ${n}`) : matchValue(n, arg.is, vars, `${w}.count`);
+        if (r) return r;
+        break;
+      }
       case '$some':
         if (!Array.isArray(a) || !a.some((x) => matchValue(x, arg, vars, '') === null)) return `${w}: expected some element to match ${show(arg)}, got ${show(a)}`;
         break;
