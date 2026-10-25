@@ -12,13 +12,13 @@ final class AvatarHostTests: XCTestCase {
   @MainActor final class FakeAvatar: AvatarHandle {
     let kind: AvatarKind
     let home: Bool
-    let clock: ManualClock
+    let clock: OverlayTestClock
     var enabled = false
     var claude: ClaudeState?
     var fading = false
     var gone = false
     var voices: [JSONValue] = []
-    init(kind: AvatarKind, home: Bool, clock: ManualClock) { (self.kind, self.home, self.clock) = (kind, home, clock) }
+    init(kind: AvatarKind, home: Bool, clock: OverlayTestClock) { (self.kind, self.home, self.clock) = (kind, home, clock) }
     var showing: Bool { !gone && (fading || (enabled && (claude?.found ?? false) && !(claude?.min ?? false))) }
     func onClaude(_ s: ClaudeState) { claude = s }
     func onVoice(_ v: JSONValue) { voices.append(v) }
@@ -45,7 +45,7 @@ final class AvatarHostTests: XCTestCase {
   }
 
   @MainActor final class World {
-    let clock = ManualClock()
+    let clock = OverlayTestClock()
     var all: [FakeAvatar] = []
     var worst = 0
     func mk(_ kind: AvatarKind, home: Bool = false) -> FakeAvatar {

@@ -16,13 +16,7 @@ public struct VoiceCaption: Equatable, Sendable, Identifiable {
   public init(id: String, who: Who, text: String, at: Date = Date()) { self.id = id; self.who = who; self.text = text; self.at = at }
 }
 
-/** A prompt waiting for your yes (useVoice's draft). */
-public struct VoiceDraft: Equatable, Sendable {
-  public var id: Int
-  public var text: String
-  public var targetTitle: String?
-  public init(id: Int, text: String, targetTitle: String? = nil) { self.id = id; self.text = text; self.targetTitle = targetTitle }
-}
+// (VoiceDraft, a prompt waiting for your yes, is in Voice/RealtimeEvent.swift.)
 
 /** The voice, as the launcher shows and drives it (the page's useVoice()). */
 @MainActor

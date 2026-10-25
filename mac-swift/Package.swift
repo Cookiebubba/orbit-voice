@@ -12,15 +12,14 @@ let package = Package(
   platforms: [.macOS(.v14)],
   products: [
     .executable(name: "OrbitNative", targets: ["OrbitNative"]),
-    .executable(name: "StandInClaude", targets: ["StandInClaude"]),
     .executable(name: "UIDemo", targets: ["UIDemo"]),
+    .executable(name: "VoiceDemo", targets: ["VoiceDemo"]),
     .executable(name: "OverlayDemo", targets: ["OverlayDemo"]),
     .library(name: "OrbitKit", targets: ["OrbitKit"]),
-    .library(name: "OrbitSpeech", targets: ["OrbitSpeech"]),
     .library(name: "OrbitUI", targets: ["OrbitUI"]),
-    .executable(name: "VoiceDemo", targets: ["VoiceDemo"]),
     .library(name: "OrbitVoice", targets: ["OrbitVoice"]),
     .library(name: "OrbitOverlays", targets: ["OrbitOverlays"]),
+    .library(name: "OrbitSpeech", targets: ["OrbitSpeech"]),
   ],
   targets: [
     // Logic with no UI: everything here is unit tested (Tests/OrbitKitTests).
@@ -35,49 +34,46 @@ let package = Package(
         .linkedFramework("AppKit"), .linkedFramework("SwiftUI"), .linkedFramework("WebKit"), .linkedFramework("AVFoundation"),
         .linkedFramework("ServiceManagement"), .linkedFramework("ApplicationServices"),
       ]
+    ),
     // The voice client's device side (AVAudioEngine, the /voice socket, the Carbon hotkey, the wake
     // word page): a library so the app and VoiceDemo share it. Its logic lives in OrbitKit.
+    .target(
       name: "OrbitVoice",
+      dependencies: ["OrbitKit"],
       path: "Sources/OrbitVoice",
       linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit"), .linkedFramework("AVFoundation"), .linkedFramework("Carbon")]
+    ),
     // The overlays (avatars, the orb, Orbit's mouse, the Claude window tracker) in AppKit + WebKit,
     // behind one facade (Overlays). A library so both the app and OverlayDemo use it.
+    .target(
       name: "OrbitOverlays",
+      dependencies: ["OrbitKit"],
       path: "Sources/OrbitOverlays",
       linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit")]
     ),
-    // The app: AppKit/SwiftUI windows, overlays, audio, hotkeys.
+    // Phase 2: Orbit's on-device speech in Swift (sherpa-onnx's C API).
+    .target(name: "SherpaOnnxC", path: "Sources/SherpaOnnxC"),
+    .target(name: "OrbitSpeech", dependencies: ["SherpaOnnxC"], path: "Sources/OrbitSpeech", swiftSettings: [.swiftLanguageMode(.v5)], linkerSettings: sherpaLink),
+    // The app: the shell that puts it all together.
     .executableTarget(
       name: "OrbitNative",
-      dependencies: ["OrbitKit", "OrbitUI"],
-      dependencies: ["OrbitKit", "OrbitVoice"],
-      dependencies: ["OrbitKit", "OrbitOverlays"],
+      dependencies: ["OrbitKit", "OrbitUI", "OrbitVoice", "OrbitOverlays", "OrbitSpeech"],
       path: "Sources/OrbitNative",
       linkerSettings: [
         .linkedFramework("AppKit"), .linkedFramework("WebKit"), .linkedFramework("AVFoundation"),
         .linkedFramework("Carbon"), .linkedFramework("ServiceManagement"), .linkedFramework("ApplicationServices"),
-      ]
+      ] + sherpaLink
     ),
     // OrbitUI's windows against a running bridge, with a fake voice and hotkey (checks, snapshots).
     .executableTarget(name: "UIDemo", dependencies: ["OrbitKit", "OrbitUI"], path: "Sources/UIDemo", linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit")]),
     // Runs the voice client headless against a bridge, for checks (see its header).
     .executableTarget(name: "VoiceDemo", dependencies: ["OrbitKit", "OrbitVoice"], path: "Sources/VoiceDemo"),
-    // A stand-in "Claude" window for tests (never the real Claude app).
-    .executableTarget(name: "StandInClaude", path: "Sources/StandInClaude", linkerSettings: [.linkedFramework("AppKit")]),
-    // Phase 2: Orbit's on-device speech in Swift (sherpa-onnx's C API).
-    .target(name: "SherpaOnnxC", path: "Sources/SherpaOnnxC"),
-    .target(name: "OrbitSpeech", dependencies: ["SherpaOnnxC"], path: "Sources/OrbitSpeech", swiftSettings: [.swiftLanguageMode(.v5)], linkerSettings: sherpaLink),
-    .testTarget(name: "OrbitKitTests", dependencies: ["OrbitKit"], path: "Tests/OrbitKitTests", exclude: ["Fixtures"]),
-    .testTarget(name: "OrbitSpeechTests", dependencies: ["OrbitSpeech", "OrbitKit"], path: "Tests/OrbitSpeechTests", linkerSettings: sherpaLink),
-    // (Fixtures are read from the source tree by path, as the JS tests read test/fixtures.)
     // Hosts the overlays against a bridge for manual and scripted checks, with its own stand-in host
     // window and stand-in claude-window helper (see Sources/OverlayDemo/main.swift).
-    .executableTarget(
-      name: "OverlayDemo",
-      dependencies: ["OrbitKit", "OrbitOverlays"],
-      path: "Sources/OverlayDemo",
-      linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit")]
-    ),
+    .executableTarget(name: "OverlayDemo", dependencies: ["OrbitKit", "OrbitOverlays"], path: "Sources/OverlayDemo", linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit")]),
+    // (Fixtures are read from the source tree by path, as the JS tests read test/fixtures.)
+    .testTarget(name: "OrbitKitTests", dependencies: ["OrbitKit"], path: "Tests/OrbitKitTests", exclude: ["Fixtures"]),
+    .testTarget(name: "OrbitSpeechTests", dependencies: ["OrbitSpeech", "OrbitKit"], path: "Tests/OrbitSpeechTests", exclude: ["reference.mjs", "engine-reference.mjs"], linkerSettings: sherpaLink),
     // Runs ../parity/cases against the Swift build (needs a built test app; see README).
     .testTarget(name: "OrbitParityTests", dependencies: ["OrbitKit"], path: "Tests/OrbitParityTests"),
   ]

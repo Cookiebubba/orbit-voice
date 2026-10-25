@@ -6,7 +6,7 @@ import XCTest
 @MainActor
 final class HoverTests: XCTestCase {
   @MainActor final class Rig {
-    let clock = ManualClock()
+    let clock = OverlayTestClock()
     var calls: [Bool] = []
     var cursors: [ScreenPoint?] = []
     var modes: [Bool] = []

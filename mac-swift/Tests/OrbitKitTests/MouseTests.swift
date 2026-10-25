@@ -48,7 +48,7 @@ final class MouseTests: XCTestCase {
 
   // mouse.test.js "the overlay: per display, click-through, never focused; glides, presses, fades and hides"
   func testTheOverlayGlidesPressesFadesAndHides() {
-    let clock = ManualClock(now: 10_000)
+    let clock = OverlayTestClock(now: 10_000)
     let displays = [
       MouseDisplay(id: 1, area: Rect(x: 0, y: 0, w: 1920, h: 1040), workArea: Rect(x: 0, y: 0, w: 1920, h: 1040)),
       MouseDisplay(id: 2, area: Rect(x: 1920, y: 0, w: 1920, h: 1020), workArea: Rect(x: 1920, y: 0, w: 1280, h: 680)), // 150%
@@ -115,7 +115,7 @@ final class MouseTests: XCTestCase {
 
   func testOffInSettingsMeansNoGlide() {
     var made = 0
-    let m = OrbitMouseModel(clock: ManualClock(), displays: { [MouseDisplay(id: 1, area: Rect(x: 0, y: 0, w: 100, h: 100), workArea: Rect(x: 0, y: 0, w: 100, h: 100))] }, enabled: { false }) { _, _ in
+    let m = OrbitMouseModel(clock: OverlayTestClock(), displays: { [MouseDisplay(id: 1, area: Rect(x: 0, y: 0, w: 100, h: 100), workArea: Rect(x: 0, y: 0, w: 100, h: 100))] }, enabled: { false }) { _, _ in
       made += 1
       return FakePage()
     }
@@ -125,7 +125,7 @@ final class MouseTests: XCTestCase {
   }
 
   func testPrewarmAndDisplaysChanging() {
-    let clock = ManualClock()
+    let clock = OverlayTestClock()
     var displays = [MouseDisplay(id: 1, area: Rect(x: 0, y: 0, w: 800, h: 600), workArea: Rect(x: 0, y: 0, w: 800, h: 600)),
                     MouseDisplay(id: 2, area: Rect(x: 800, y: 0, w: 800, h: 600), workArea: Rect(x: 800, y: 0, w: 800, h: 600))]
     var made: [FakePage] = []

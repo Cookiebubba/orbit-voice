@@ -4,11 +4,11 @@ import Foundation
 @testable import OrbitKit
 
 @MainActor
-final class ManualClock: OverlayClock {
+final class OverlayTestClock: OverlayClock {
   final class Timer: OverlayTimer {
-    weak var clock: ManualClock?
+    weak var clock: OverlayTestClock?
     let id: Int
-    init(clock: ManualClock, id: Int) { (self.clock, self.id) = (clock, id) }
+    init(clock: OverlayTestClock, id: Int) { (self.clock, self.id) = (clock, id) }
     func cancel() { clock?.tasks.removeAll { $0.id == id } }
   }
 

@@ -9,7 +9,7 @@ public struct VoiceDraft: Codable, Equatable, Sendable {
   public var id: Int
   public var text: String
   public var targetTitle: String?
-  public init(id: Int, text: String, targetTitle: String?) { self.id = id; self.text = text; self.targetTitle = targetTitle }
+  public init(id: Int, text: String, targetTitle: String? = nil) { self.id = id; self.text = text; self.targetTitle = targetTitle }
 }
 
 /** Bridge (and Grok) → client. */

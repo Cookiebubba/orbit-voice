@@ -27,7 +27,7 @@ final class AvatarModelTests: XCTestCase {
   }
 
   @MainActor final class FakeEnv: AvatarEnvironment {
-    let manual = ManualClock()
+    let manual = OverlayTestClock()
     var clock: OverlayClock { manual }
     var windows: [FakeWindow] = []
     var loaded: [() -> Void] = []

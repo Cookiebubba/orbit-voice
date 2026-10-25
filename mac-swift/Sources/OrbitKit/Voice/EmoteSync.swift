@@ -267,7 +267,7 @@ public final class EmoteSync {
 }
 
 /** Math.round: halves go up. */
-func jsRound(_ x: Double) -> Double { (x + 0.5).rounded(.down) }
+// (jsRound, JS's Math.round, is in AvatarGeometry.swift.)
 
 /** JS's \s for one UTF-16 unit. */
 func isJSSpace(_ c: UInt16) -> Bool {
