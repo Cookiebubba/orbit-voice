@@ -32,7 +32,8 @@ test('key store: missing or unreadable reads as empty, empty set removes it', ()
   assert.equal(store.get(), '');
   store.set('abc');
   assert.equal(store.get(), 'abc');
-  assert.equal(fs.statSync(path.join(dir, 'k.sealed')).mode & 0o077, 0, 'owner-only file');
+  // (POSIX modes: Windows has none, and the sidecar only runs on macOS.)
+  if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(dir, 'k.sealed')).mode & 0o077, 0, 'owner-only file');
   store.set('');
   assert.equal(fs.existsSync(path.join(dir, 'k.sealed')), false);
   fs.writeFileSync(path.join(dir, 'k.sealed'), 'garbage');
