@@ -137,8 +137,9 @@ Open the log folder (Settings → About) when something looks wrong.
 3. **Microphone denied path**: in System Settings → Privacy & Security → Microphone turn Terminal
    off, relaunch. Expect: a dialog "Orbit can't use the microphone" with "Open System Settings",
    and pressing Start talking shows a caption telling you where to allow it. Turn it back on.
-4. **Key**: paste your xAI key. Expect: a Keychain prompt for "Orbit Safe Storage"; Always Allow.
-   Settings → About says "xAI key: saved, encrypted with a key in your macOS Keychain".
+4. **Key** (Grok voice only; Orbit opens without one): Settings → Voice engine → Grok, paste your
+   xAI key. Expect: a Keychain prompt for "Orbit Safe Storage"; Always Allow. Settings → Voice
+   engine says "xAI key saved, encrypted with a key in your macOS Keychain".
 5. **Hotkey**: the main window and Settings show **⌃⌥G**. Press Control-Option-G in another app.
    Expect: Grok starts; press again: it sleeps. Record a new shortcut in Settings with ⌘ in it,
    then set it back.

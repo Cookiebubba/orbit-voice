@@ -53,7 +53,8 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 
 - Windows 10 or 11 (x64)
 - [Claude desktop app](https://claude.ai/download) with Claude Code sessions
-- An [xAI API key](https://console.x.ai). Voice is billed by xAI per minute connected (about $0.08/min at the time of writing). Orbit shows an estimate in Settings → Usage. Saying "go to sleep" hangs up, so sleeping costs nothing (unless you turn on "Wake Grok to say it": each spoken update bills a few seconds).
+- No key to start. Orbit starts on Claude voice, which runs through your own Claude Code sign-in (your Claude plan), with speech heard and spoken on your PC. Its speech models (about 175 MB) download the first time you talk.
+- Only for Grok voice: an [xAI API key](https://console.x.ai), added in Settings → Voice engine → Grok. Grok voice is billed by xAI per minute connected (about $0.08/min at the time of writing). Orbit shows an estimate in Settings → Usage. Saying "go to sleep" hangs up, so sleeping costs nothing (unless you turn on "Wake Grok to say it": each spoken update bills a few seconds).
 - For the second brain: Claude Code, signed in. The Claude desktop app already includes it, and Orbit finds it automatically. Questions count toward your Claude plan, or toward an Anthropic API key if you set one in Settings.
   - Claude Code keeps its own sign-in, separate from the Claude desktop app's, and it can expire even while the desktop app still works. Orbit checks it (Settings → Second brain shows "Signed in ✓" or a **Sign in** button). If a question fails because the sign-in expired, Grok tells you and offers to open the sign-in: say yes, and Claude Code's own sign-in opens in a small window and your browser.
 
@@ -61,8 +62,8 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 
 1. Download `Orbit-Setup-x.y.z.exe` from the [latest release](../../releases/latest).
 2. Run it. The installer isn't code-signed yet, so Windows SmartScreen may warn you. Click **More info → Run anyway**. You can check the download against the `.sha256` file on the release page.
-3. Paste your xAI key when Orbit asks. It's encrypted with your Windows account (DPAPI) and never leaves your PC except to talk to xAI.
-4. Click the orb or press **Ctrl+Alt+G** and start talking.
+3. Open Orbit. There's no key to enter: click Qubit or press **Ctrl+Alt+G** and start talking (on Claude voice).
+4. Want Grok's voice? Settings → Voice engine → Grok, and paste your xAI key there. It's encrypted with your Windows account (DPAPI) and never leaves your PC except to talk to xAI.
 
 ## Using it
 

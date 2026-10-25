@@ -16,7 +16,7 @@ type Update = (patch: Partial<SettingsT>) => Promise<void>;
 
 const GAP = 12; // between sections (part of each section's open/close, so nothing jumps)
 
-export default function Settings({ config, update, onClose }: { config: AppConfig; update: Update; onClose: () => void }) {
+export default function Settings({ config, update, onClose, onKeySaved, focusKey = false }: { config: AppConfig; update: Update; onClose: () => void; onKeySaved: () => void; focusKey?: boolean }) {
   const s = config.settings;
   // The assistant's name in the text: Grok, or Orbit when Claude is the voice ("Claude" is the coder).
   const claude = s.voiceEngine === "claude";
@@ -35,7 +35,7 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
       <p className="mt-2 mb-3 text-[12.5px] text-muted">Everything saves as soon as you change it.</p>
 
       <div className="flex flex-col">
-        <VoiceEngineSection s={s} update={update} />
+        <VoiceEngineSection s={s} update={update} config={config} onKeySaved={onKeySaved} focusKey={focusKey} />
         {/* Each engine's own voice card: one closes as the other opens. */}
         <Reveal show={!claude} gap={GAP}>
           <VoiceSettings engine="grok" volume={s.voiceVolume} onVolume={(voiceVolume) => update({ voiceVolume })} />
@@ -462,8 +462,8 @@ type SttState = { state: "idle" | "downloading" | "ready" | "error"; percent: nu
 // ---------- second brain ----------
 type ClaudeVoiceStatus = { models: { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string }; mb: number; claudeFound: boolean; stt?: Record<SttId, SttState> };
 
-/** Grok, or (beta) Claude through your own Claude Code with speech models on this PC. */
-function VoiceEngineSection({ s, update }: { s: SettingsT; update: Update }) {
+/** Claude through your own Claude Code with speech models on this PC, or Grok (with an xAI key). */
+function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: SettingsT; update: Update; config: AppConfig; onKeySaved: () => void; focusKey: boolean }) {
   const [status, setStatus] = useState<ClaudeVoiceStatus | null>(null);
   const refresh = () =>
     fetch("/api/claude-voice")
@@ -515,6 +515,7 @@ function VoiceEngineSection({ s, update }: { s: SettingsT; update: Update }) {
       />
       <Reveal show={s.voiceEngine === "grok"}>
         <p className="mt-2 text-[12px] leading-snug text-muted">Grok's realtime voice, billed by xAI per minute.</p>
+        <XaiKey config={config} onSaved={onKeySaved} focus={focusKey} />
       </Reveal>
       <Reveal show={s.voiceEngine === "claude"}>
         <p className="mt-2 text-[12px] leading-snug text-muted">
@@ -921,22 +922,81 @@ function UpdatesSection({ version, auto, update }: { version: string; auto: bool
   );
 }
 
-function AboutSection({ config }: { config: AppConfig }) {
-  const [replacing, setReplacing] = useState(false);
+const keyStorageLabel = (kind: string) =>
+  kind === "windows-dpapi"
+    ? "encrypted with your Windows account"
+    : kind === "macos-keychain"
+      ? "encrypted with a key in your macOS Keychain"
+      : kind === "env-file" ? "in the .env file (developer mode)" : "not available";
+
+/** Grok voice's xAI key: add one (or replace it). Only Grok needs it; Claude voice never does. */
+function XaiKey({ config, onSaved, focus }: { config: AppConfig; onSaved: () => void; focus: boolean }) {
+  const [open, setOpen] = useState(!config.hasKey);
   const [key, setKey] = useState("");
   const [msg, setMsg] = useState("");
-  const storage =
-    config.keyStorage === "windows-dpapi"
-      ? "encrypted with your Windows account"
-      : config.keyStorage === "macos-keychain"
-        ? "encrypted with a key in your macOS Keychain"
-        : config.keyStorage === "env-file" ? "in the .env file (developer mode)" : "not available";
+  useEffect(() => {
+    if (!config.hasKey) setOpen(true);
+  }, [config.hasKey]);
+  return (
+    <div className="mt-3 text-[12px] leading-snug">
+      {config.hasKey ? (
+        <div className="flex items-center gap-3">
+          <p className="flex-1 text-muted">xAI key saved, {keyStorageLabel(config.keyStorage)}.</p>
+          <button onClick={() => setOpen((o) => !o)} className="shrink-0 rounded-lg bg-soft px-2.5 py-1 text-[12px] font-medium text-ink transition-colors hover:bg-black/[0.08] hover:text-fg">
+            Replace
+          </button>
+        </div>
+      ) : (
+        <p className="text-ink">
+          Grok voice needs an xAI API key. Get one at{" "}
+          <a href="https://console.x.ai" target="_blank" rel="noreferrer" className="text-fg underline decoration-black/25 underline-offset-2 hover:decoration-fg">
+            console.x.ai
+          </a>{" "}
+          → API Keys. It's stored encrypted, only on {thisComputer}.
+        </p>
+      )}
+      {open && (
+        <form
+          className="mt-2 flex gap-2"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const r = await postJson("/api/key", { key });
+            setMsg(r.ok ? "Saved. New conversations use this key." : (await r.json().catch(() => ({}))).error || "Couldn't save it.");
+            if (r.ok) {
+              setKey("");
+              setOpen(false);
+              onSaved();
+            }
+          }}
+        >
+          <input
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            type="password"
+            autoComplete="off"
+            autoFocus={focus}
+            aria-label="xAI API key"
+            placeholder="xai-…"
+            className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-soft px-2.5 text-[13px] text-fg outline-none select-text placeholder:text-faint focus:border-black/40 focus:bg-white"
+          />
+          <button disabled={!key.trim()} className="rounded-lg bg-fg text-white transition-colors hover:bg-[#2b2b2b] px-3 text-[13px] font-medium disabled:opacity-30">
+            Save
+          </button>
+        </form>
+      )}
+      {msg && <p className="mt-2 text-muted">{msg}</p>}
+    </div>
+  );
+}
+
+function AboutSection({ config }: { config: AppConfig }) {
+  const storage = keyStorageLabel(config.keyStorage);
 
   return (
     <Section title="About">
       <div className="space-y-1 text-[12.5px] text-muted">
         <div>Orbit {config.version} · open source (MIT)</div>
-        <div>xAI key: {config.hasKey ? `saved, ${storage}` : "not set"}</div>
+        <div>xAI key (Grok voice only): {config.hasKey ? `saved, ${storage}` : "not set"}</div>
         <div className="pt-1 text-[11.5px] leading-snug text-faint">
           Not affiliated with xAI or Anthropic. Grok is a trademark of xAI; Claude is a trademark of Anthropic.
         </div>
@@ -945,9 +1005,6 @@ function AboutSection({ config }: { config: AppConfig }) {
         <a href={REPO_URL} target="_blank" rel="noreferrer" className="rounded-full px-3 py-1.5 text-[12.5px] bg-soft text-ink transition-colors hover:bg-black/[0.08] hover:text-fg">
           Source &amp; help
         </a>
-        <button onClick={() => setReplacing((r) => !r)} className="rounded-full px-3 py-1.5 text-[12.5px] bg-soft text-ink transition-colors hover:bg-black/[0.08] hover:text-fg">
-          Replace xAI key
-        </button>
         {desktop && (
           <button onClick={() => desktop?.openLogs()} className="rounded-full px-3 py-1.5 text-[12.5px] bg-soft text-ink transition-colors hover:bg-black/[0.08] hover:text-fg">
             Open log folder
@@ -957,33 +1014,6 @@ function AboutSection({ config }: { config: AppConfig }) {
       <p className="mt-2 text-[11.5px] leading-snug text-faint">
         Errors are logged (without keys or prompt text) so you can attach them to a bug report. Grok can read recent ones too. Just ask "what went wrong?"
       </p>
-      {replacing && (
-        <form
-          className="mt-3 flex gap-2"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const r = await postJson("/api/key", { key });
-            setMsg(r.ok ? "Saved. New conversations use the new key." : (await r.json().catch(() => ({}))).error || "Couldn't save it.");
-            if (r.ok) {
-              setKey("");
-              setReplacing(false);
-            }
-          }}
-        >
-          <input
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            type="password"
-            autoComplete="off"
-            placeholder="xai-…"
-            className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-soft px-2.5 text-[13px] text-fg outline-none select-text placeholder:text-faint focus:border-black/40 focus:bg-white"
-          />
-          <button disabled={!key.trim()} className="rounded-lg bg-fg text-white transition-colors hover:bg-[#2b2b2b] px-3 text-[13px] font-medium disabled:opacity-30">
-            Save
-          </button>
-        </form>
-      )}
-      {msg && <p className="mt-2 text-[12px] text-muted">{msg}</p>}
     </Section>
   );
 }
