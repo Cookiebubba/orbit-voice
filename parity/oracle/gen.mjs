@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { intentFixtures } from './intent.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const FIXTURES = path.join(HERE, 'fixtures');
@@ -101,6 +102,12 @@ export async function build() {
     settings: { platform: 'darwin', defaults: plain(config.DEFAULTS), cases: settingsCases(config.sanitizeSettings, config.DEFAULTS) },
     scrub: { platform: 'any', cases: scrubCases(log.scrub) },
     hotkey: { platform: 'any', cases: hotkeyCases(system.hotkeyLabel) },
+    // The pure text modules (consent, send intent, offers, commands, cues, the avatar, prompts, continuity)...
+    ...(await (async () => {
+      const f = await intentFixtures(root, rng);
+      // ...and which windows Orbit may read (the macOS port's policy.js: made on a Mac, from a tree with it).
+      return { intent: { platform: 'any', ...f.intent }, policy: { platform: 'darwin', ...f.policy } };
+    })()),
   };
 }
 
