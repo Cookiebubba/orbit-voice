@@ -198,7 +198,7 @@ public enum SettingsSchema {
   // MARK: - Hotkey label (src/platform/system.js hotkeyLabel, on a Mac)
 
   private static let macMods: [String: String] = [
-    "Control": "⌃", "Ctrl": "⌃", "Alt": "⌥", "Option": "⌥", "Shift": "⇧", "Command": "⌘", "Cmd": "⌘",
+    "Control": "⌃", "Ctrl": "⌃", "Alt": "⌥", "Option": "⌥", "AltGr": "⌥", "Shift": "⇧", "Command": "⌘", "Cmd": "⌘",
     "CommandOrControl": "⌘", "CmdOrCtrl": "⌘", "Super": "⌘", "Meta": "⌘",
   ]
 
