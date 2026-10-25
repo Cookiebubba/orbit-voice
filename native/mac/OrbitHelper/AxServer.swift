@@ -119,9 +119,12 @@ final class AxServer {
     if chromium && AX.enableWebTree(w.pid) { Thread.sleep(forTimeInterval: 0.7) }
     var nodes: [[String: Any]] = [], els: [AXUIElement] = [], raws: [AX.Raw] = []
     var truncated = walk(w.el, max: max, values: values, frame: w.frame, skip: skip, nodes: &nodes, els: &els, raws: &raws)
-    // Chromium builds its tree on the first question: ask again once it has had a moment.
-    if chromium && !raws.contains(where: { $0.role == "AXWebArea" && !$0.children.isEmpty }) && nodes.count < 60 {
-      Thread.sleep(forTimeInterval: 0.7)
+    // Chromium builds its page's tree only once asked (and a new window's page a moment after it
+    // loads): until a web area with content shows, look again, for up to about 3 seconds.
+    var tries = 0
+    while chromium && tries < 10 && !raws.contains(where: { $0.role == "AXWebArea" && !$0.children.isEmpty }) {
+      tries += 1
+      Thread.sleep(forTimeInterval: 0.3)
       nodes = []; els = []; raws = []
       truncated = walk(w.el, max: max, values: values, frame: w.frame, skip: skip, nodes: &nodes, els: &els, raws: &raws)
     }
@@ -348,6 +351,7 @@ final class AxServer {
     var via = "", verified = true
     var watch: [(AXUIElement, Bool)]? = nil
     var textBefore: String? = nil
+    var insertErr = 0
 
     switch action {
     case "set_text", "type":
@@ -359,13 +363,21 @@ final class AxServer {
       let rich = web && type == "Edit" && !r.children.isEmpty
       if req.str("method") == "borrow" { return borrow(e, pid: AX.pid(e), action: action, value: value, before: before, watch: watch ?? [], fgBefore: fgBefore) }
       let want = action == "type" ? before + value : value
-      if rich || action == "type" {
+      if req.str("method") == "value" {
+        // The element's value set as a whole (what UI Automation's SetValue does on Windows; Claude's
+        // own ProseMirror box reads the change from its page). The caller checks what landed.
+        let err = AX.set(e, kAXValueAttribute, want as CFString)
+        via = "ax-value"
+        verified = err == .success && Self.norm(AX.str(e, kAXValueAttribute)).trimmingCharacters(in: .whitespacesAndNewlines) == Self.norm(want).trimmingCharacters(in: .whitespacesAndNewlines)
+        if err != .success { var no = Self.fail("not_supported", "That box didn't take the text."); no["axError"] = Int(err.rawValue); return no }
+      } else if rich || action == "type" {
         // Text through the editor's own input path (Chromium inserts it as typing would, with input
         // events: rich web editors take it), at the end (type) or over everything (set_text).
         let len = (before as NSString).length
         var range = action == "type" ? CFRange(location: len, length: 0) : CFRange(location: 0, length: len)
         if let rv = AXValueCreate(.cfRange, &range) { AX.set(e, kAXSelectedTextRangeAttribute, rv) }
         let err = AX.set(e, kAXSelectedTextAttribute, value as CFString)
+        insertErr = Int(err.rawValue)
         via = "ax-insert"
         let now = Self.norm(AX.str(e, kAXValueAttribute))
         verified = err == .success && now.contains(Self.norm(value))
@@ -373,6 +385,7 @@ final class AxServer {
           var no = Self.fail("rich_box", "That box only takes real typing.")
           no["registered"] = false
           no["before"] = cut(before, 4000)
+          no["axError"] = insertErr
           return no
         }
         if !verified && !rich {

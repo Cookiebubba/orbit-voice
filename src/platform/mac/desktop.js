@@ -286,13 +286,18 @@ export function createMacDesktop({ request, onlyPid = 0, sleep = (ms) => new Pro
   }
 
   const inSidebarTree = (w, n) => w.tree.ancestors(n).some((a) => a.t === 'Group' && nameOf(a) === 'Sidebar');
-  /** A session row's own buttons (the row holds a "More options for ..." button close by). */
+  /**
+   * A session row's own button: named after a session the sidebar has a "More options for <title>"
+   * button for (by name, not by where it sits: Chromium on a Mac may leave the row's divs out).
+   */
   function inSessionRow(w, n) {
-    for (const up of w.tree.ancestors(n, 2)) {
-      for (const c of w.tree.children(up)) {
-        if (c !== n && isButton(c) && nameOf(c).startsWith('More options for ')) return true;
-        for (const g of w.tree.children(c)) if (g !== n && isButton(g) && nameOf(g).startsWith('More options for ')) return true;
-      }
+    const name = nameOf(n);
+    if (!name) return false;
+    for (const b of appNodes(w)) {
+      const m = nameOf(b);
+      if (!isButton(b) || !m.startsWith('More options for ')) continue;
+      const t = m.slice('More options for '.length);
+      if (t && (name === t || name.startsWith(`${t} `))) return true;
     }
     return false;
   }
@@ -385,7 +390,8 @@ export function createMacDesktop({ request, onlyPid = 0, sleep = (ms) => new Pro
   const buttonsIn = (w, el) => w.tree.descendants(el).filter(isButton);
   const answerButtons = (w, el) => buttonsIn(w, el).filter((b) => answerKind(nameOf(b)));
   /** The nearest named or classed container above `n` (Chromium's many plain divs skipped). */
-  const containers = (w, n, max) => w.tree.ancestors(n, 60).filter((a) => a.t !== 'Document' && (nameOf(a) || a.c || a.t !== 'Group')).slice(0, max);
+  // (Chromium on a Mac may leave plain divs out of the tree, or show many: every level counts.)
+  const containers = (w, n, max) => beforeDoc(w, n).slice(0, max);
   const beforeDoc = (w, n) => {
     const out = [];
     for (const a of w.tree.ancestors(n, 60)) {
@@ -508,8 +514,8 @@ export function createMacDesktop({ request, onlyPid = 0, sleep = (ms) => new Pro
   async function setBox(w, box, text) {
     // Claude's editor is ProseMirror: the value goes in as Chromium sets a rich box's text (as UI
     // Automation's SetValue does on Windows), and ProseMirror reads the change from the page.
-    const r = await act(w, box, 'set_text', text);
-    return r;
+    const r = await request('act', { hwnd: w.hwnd, i: box.i, rid: box.rid, t: box.t, action: 'set_text', value: text, method: 'value' });
+    return r?.ok ? r : null;
   }
   /** Look at the window again (its page and title re-found). */
   async function refresh(w, opts = {}) {

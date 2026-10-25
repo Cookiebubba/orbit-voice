@@ -162,7 +162,7 @@ app.whenReady().then(async () => {
     expect(r.error === 'prompt_box_not_empty', JSON.stringify(r));
     expect((await state()).model === 'my own words', 'kept');
     await page("document.getElementById('prompt').innerHTML = '<p><br></p>'");
-    await sleep(100);
+    await sleep(600); // (Chromium's accessibility tree follows the page a moment later)
   });
 
   await step('desktop send in one go (one long multi-line prompt)', async () => {
