@@ -121,6 +121,8 @@ public struct JSRegExp: @unchecked Sendable {
           }
           out += "x"
         case "/": out += "/"
+        case "0" where !(i + 2 < s.count && ("0"..."9").contains(s[i + 2])):
+          out += "\\x{0}" // \0 is NUL (ICU has no \0)
         case "p", "P":
           // \p{L}, \P{Lu}: the whole property as it is (its braces aren't literals).
           if i + 2 < s.count, s[i + 2] == "{", let close = s[(i + 3)...].firstIndex(of: "}") {
@@ -215,7 +217,8 @@ public struct JSRegExp: @unchecked Sendable {
   /** The first match (String.prototype.match without g), or nil. */
   public func firstMatch(_ s: String, from: Int = 0) -> JSMatch? {
     let ns = s as NSString
-    guard from <= ns.length, let m = regex.firstMatch(in: s, range: NSRange(location: from, length: ns.length - from)) else { return nil }
+    // (Lookbehind and ^ see the whole string, as lastIndex-based matching does in JavaScript.)
+    guard from <= ns.length, let m = regex.firstMatch(in: s, options: [.withTransparentBounds, .withoutAnchoringBounds], range: NSRange(location: from, length: ns.length - from)) else { return nil }
     return match(m, in: ns)
   }
 
@@ -308,7 +311,7 @@ public struct JSRegExp: @unchecked Sendable {
     var p = 0
     var q = 0
     while q < size {
-      guard let m = regex.firstMatch(in: s, options: [.anchored], range: NSRange(location: q, length: size - q)) else {
+      guard let m = regex.firstMatch(in: s, options: [.anchored, .withTransparentBounds, .withoutAnchoringBounds], range: NSRange(location: q, length: size - q)) else {
         q += 1
         continue
       }

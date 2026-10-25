@@ -56,3 +56,41 @@ final class NativeLocalSpeech: LocalSpeechEngine, @unchecked Sendable {
 
   func cancelSpeaking() { speaker.cancel() }
 }
+
+/**
+ * Claude voice's preview in Settings (the engine's POST /api/claude-voice/preview): the profile's
+ * models, loaded on the first preview and let go after two quiet minutes.
+ */
+final class PreviewSpeech: @unchecked Sendable {
+  private let root: URL
+  private let lock = NSLock()
+  private var speech: OrbitSpeech?
+  private var generation = 0
+
+  init(profile: URL) { root = profile.appendingPathComponent("claude-voice-models") }
+
+  func speak(_ text: String, sid: Int, speed: Double) async throws -> [Float] {
+    try await Task.detached(priority: .userInitiated) { [self] in
+      let s: OrbitSpeech = try lock.withLock {
+        if let speech { return speech }
+        let s = try OrbitSpeech(root: root)
+        speech = s
+        return s
+      }
+      let samples = s.speak(text, sid: sid, speed: Float(speed))
+      let gen = lock.withLock { generation += 1; return generation }
+      DispatchQueue.global().asyncAfter(deadline: .now() + 120) { [weak self] in
+        guard let self else { return }
+        self.lock.withLock { if self.generation == gen { self.speech = nil } }
+      }
+      return samples
+    }.value
+  }
+}
+
+extension AppDelegate {
+  func previewSpeaker(profile: URL) -> @Sendable (String, Int, Double) async throws -> [Float] {
+    let p = PreviewSpeech(profile: profile)
+    return { text, sid, speed in try await p.speak(text, sid: sid, speed: speed) }
+  }
+}

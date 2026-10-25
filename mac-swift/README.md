@@ -65,10 +65,25 @@ exactly; whatever it doesn't answer yet it passes on, as bytes, to the Node core
 signed in as the core. When nothing is passed on any more, Node leaves the bundle.
 
 In Swift now: the bridge itself (sign-in, Host/Origin/cross-site guards, CSPs, static pages, the
-wake-word model), `GET /api/config`, `POST /api/settings`, `POST /api/key`, `POST /api/brain/key`,
-`GET /api/logs`, `GET /api/usage`, `GET /api/events` (the core's events merged in). The settings,
-the sealed keys and the log file are the engine's alone; the core keeps a copy of the settings in
-memory (`settings` below) and hands its log entries over (`logEntry`).
+wake-word model), `GET /api/config`, `POST /api/settings`, `POST /api/key`, `GET /api/logs`,
+`GET /api/usage`, `GET /api/events` (the core's events merged in); Claude voice's speech models
+(`GET /api/claude-voice`, both downloads with their pinned checksums, `/usr/bin/tar`) and the voices
+(`GET /api/voice`, both previews: Kitten through OrbitSpeech, xAI's text to speech); the second brain's
+status, sign-in, key and connection test (`/api/brain*`: finding Claude Code on PATH, the login shell's
+PATH, the usual folders or the Claude app; `claude auth status`; the sign-in in Terminal; a test that
+stops when the page goes away). Claude Code runs in a process group of its own, ended as a tree.
+The settings, the sealed keys and the log file are the engine's alone; the core keeps a copy of the
+settings in memory (`settings` below) and hands its log entries over (`logEntry`).
+
+Ported and held to the core's answers, not yet switched on: the Claude window driver (the macOS
+port's `desktop.js`, replayed against its stand-in Claude), Claude Code's sessions on disk and the
+watcher. They switch over with the voice session (step 4), so the Claude window has one driver and
+the voice's announcements one watcher. Until then `/api/sessions` and `/api/switch` go to the core.
+
+The oracle (`parity/oracle`, `node parity/oracle/gen.mjs` on a Mac): settings 5133 cases, log scrub
+321, hotkeys 15, the text checks 2562 (22 functions), window policy 81, the Claude driver 53
+scenarios, sessions and watcher 51 steps, the second brain, web search, finding Claude Code and the
+speech models 1010 cases, 44 whole runs and 27 download steps. Swift matches every one.
 
 ### Sidecar channel (stdin/stdout, one JSON object per line)
 
@@ -106,7 +121,8 @@ Swift → Sidecar:
 | `frontHint` | `id` | The Claude window the tools should act on. |
 | `settings` | `all` | Every setting, after any change in the engine: applied in the core's memory (it doesn't save them). |
 | `keyChanged` | | A new xAI key was saved: the core drops what it made for the old one. |
-| `prewarm` | | `POST /api/settings` came in: the core warms Claude voice up, as that route did there. |
+| `prewarm` | | `POST /api/settings` came in, or Claude voice's models finished downloading: the core warms Claude voice up, as those routes did there. |
+| `sttReady` | | A speech-to-text choice finished downloading: a live Claude voice call switches to it now. |
 | `quit` | | Stop background work and exit. |
 
 ### The page shim (WKWebView)
@@ -215,12 +231,15 @@ Native (Swift):
 - Phase 2, step 2: "Hey Orbit" with Vosk's C library (the same model, grammar, pattern and debounce
   as the web wake page).
 
-Still the shared Node core (as a sidecar, unchanged): the bridge, the agent and its tools, consent,
-send-intent, offers, sleep and stop, the Claude desktop driver and Orbit anywhere (through the macOS
-port's helper), the MCP manager, Grok. Phase 2 steps 3 to 5 (consent and friends, tools and the agent
-prompt, Orbit anywhere) are not started: those checks run inside the core's tool handlers and its
-fast paths on each transcript, so moving them means moving the agent itself (most of the core), while
-the Windows build keeps the Node core. The shell plus the shared core is the shippable shape.
+- The engine, moving over (see "Engine"): the bridge, settings, keys, log, usage, events, Claude
+  voice's models and the voices, the second brain's routes; ported and checked, switching on with the
+  voice session: the text checks (consent, send intent, offers, the commands, cues, prompts,
+  continuity, window policy), the Claude window driver, sessions and the watcher.
+
+Still the Node core behind the Swift bridge (a sidecar on an internal port): the voice session (Grok
+and Claude voice's Claude Code driver), the agent and its tools, the Claude window driver in use, the
+watcher's announcements, Orbit anywhere and the MCP manager. They move next (the voice session, then
+Orbit anywhere and MCP), then Node leaves the bundle. The Windows build keeps the Node core.
 
 Measured on the MacBook Air M4 (parity/tools/measure.mjs, median of 3, display asleep):
 

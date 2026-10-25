@@ -4,9 +4,11 @@
 // bytes, to the Node core running on an internal port, which the Swift side signs in to itself.
 //
 // Here now: sign-in, the static pages and the wake-word model, GET /api/config, POST /api/settings,
-// POST /api/key, POST /api/brain/key, GET /api/logs, GET /api/usage, GET /api/events (the core's
-// events merged in). The settings, the keys and the log are kept here only; the core gets the
-// settings and key changes over the sidecar channel (see AppDelegate), and its log entries come here.
+// POST /api/key, GET /api/logs, GET /api/usage, GET /api/events (the core's events merged in); Claude
+// voice's speech models and voices (GET /api/claude-voice, its downloads and preview, GET /api/voice,
+// POST /api/voice/preview); the second brain's status, sign-in, key and connection test (/api/brain*).
+// The settings, the keys and the log are kept here only; the core gets the settings and key changes
+// over the sidecar channel (see AppDelegate), and its log entries come here.
 import Foundation
 import OrbitBridge
 import OrbitKit
@@ -34,6 +36,14 @@ public final class Engine: @unchecked Sendable {
   public let xaiKey: SealedKeyStore
   public let brainKey: SealedKeyStore
   public let events = EventHub()
+  /** Claude voice's speech models, in the profile's claude-voice-models. */
+  public let voiceModels: VoiceModels
+  /** Running Claude Code (second brain, sign-in). Tests swap its process for a stand-in. */
+  public var brain = BrainRunner()
+  /** xAI's REST API (voices, previews). */
+  public var xaiAPI = URL(string: "https://api.x.ai/v1")!
+  /** Speaks a Claude voice sample on this Mac (the app's OrbitSpeech): 24 kHz samples. */
+  public var claudePreview: (@Sendable (_ text: String, _ sid: Int, _ speed: Double) async throws -> [Float])?
 
   /** The Node core while parts of the engine still run there: its port and sign-in token. */
   private let core = Locked<(port: UInt16, token: String)?>(nil)
@@ -44,8 +54,15 @@ public final class Engine: @unchecked Sendable {
   public var onSettingsChanged: (@Sendable ([String], EngineConfig.Settings) -> Void)?
   /** A new xAI key was saved (the core drops what it cached for the old one). */
   public var onKeyChanged: (@Sendable () -> Void)?
-  /** POST /api/settings came in: the core warms Claude voice up (as server.js does there). */
+  /** POST /api/settings came in, or the speech models are in: the core warms Claude voice up (as server.js does there). */
   public var onPrewarm: (@Sendable () -> Void)?
+  /** A speech-to-text choice finished downloading: a live Claude voice call switches to it now. */
+  public var onSttReady: (@Sendable () -> Void)?
+
+  let voicesCache = Locked<(at: Date, voices: [JSONValue])?>(nil)
+  let authCache = Locked<(at: Date, path: String, signedIn: JSONValue)?>(nil)
+  let signInOpenedAt = Locked<Date?>(nil)
+  let brainTestRunning = Locked(false)
 
   public init(paths: Paths, port: Int, sealKey: Data, version: String) throws {
     self.paths = paths
@@ -57,6 +74,8 @@ public final class Engine: @unchecked Sendable {
     let sealer = try Sealer(key: sealKey)
     xaiKey = SealedKeyStore(sealer: sealer, file: paths.profile.appendingPathComponent("xai-key.sealed"))
     brainKey = SealedKeyStore(sealer: sealer, file: paths.profile.appendingPathComponent("anthropic-key.sealed"))
+    let log = self.log
+    voiceModels = VoiceModels(root: paths.profile.appendingPathComponent("claude-voice-models").path, log: { log.info("voice", $0) })
   }
 
   /** Loads the settings (before the core starts, so both read the same file the same way). */
@@ -90,12 +109,16 @@ public final class Engine: @unchecked Sendable {
     try await s.start()
     server = s
     events.startPings()
+    // Ask the login shell for its PATH now, so finding Claude Code doesn't wait for it later.
+    let log = self.log
+    Task.detached { _ = await MacSystem.loginShellPath(log: { log.info("app", $0) }) }
   }
 
   public func stop() {
     upstreamEvents?.cancel()
     server?.stop()
     events.closeAll()
+    ChildProcess.killAll() // a second-brain run still going ends with Orbit
   }
 
   public var endpoints: BridgeEndpoints {
@@ -132,13 +155,13 @@ public final class Engine: @unchecked Sendable {
     if isApi && !policy.notCrossSite(r) { return .response(BridgePolicy.json(403, ["error": "forbidden"])) }
     if isApi && r.method == "POST" && !policy.sameOrigin(r) { return .response(BridgePolicy.json(403, ["error": "forbidden"])) }
     if isApi {
-      if let reply = api(r) { return reply }
+      if let reply = await api(r) { return reply }
       return passToCore(r, session: true)
     }
     return staticFile(r)
   }
 
-  func api(_ r: BridgeRequest) -> BridgeReply? {
+  func api(_ r: BridgeRequest) async -> BridgeReply? {
     switch "\(r.method) \(r.path)" {
     case "GET /api/config":
       let defaults = EngineConfig.defaults.mapValues(\.any)
@@ -154,6 +177,7 @@ public final class Engine: @unchecked Sendable {
       let key = (BridgePolicy.readJSON(r.body)["key"]).map(Self.jsString)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       guard EngineConfig.matches(key, #"^[A-Za-z0-9_.-]{20,200}$"#) else { return .response(BridgePolicy.json(400, ["error": "That does not look like an xAI API key."])) }
       do { try xaiKey.set(key) } catch { return .response(BridgePolicy.json(500, ["error": "Orbit could not save the key."])) }
+      voicesCache.set(nil) // (the voices are the account's)
       onKeyChanged?()
       return .response(BridgePolicy.json(200, ["hasKey": true]))
     case "POST /api/settings":
@@ -171,6 +195,11 @@ public final class Engine: @unchecked Sendable {
       }
       do { try brainKey.set(key) } catch { return .response(BridgePolicy.json(500, ["error": "Orbit could not save the key."])) }
       return .response(BridgePolicy.json(200, ["hasKey": !key.isEmpty]))
+    case "GET /api/claude-voice", "POST /api/claude-voice/stt-download", "POST /api/claude-voice/download", "GET /api/voice",
+         "POST /api/claude-voice/preview", "POST /api/voice/preview":
+      return await voiceRoute(r)
+    case "GET /api/brain", "POST /api/brain/login", "POST /api/brain/test":
+      return await brainRoute(r)
     case "GET /api/logs":
       return .response(BridgePolicy.json(200, ["dir": log.dir?.path ?? NSNull(), "entries": log.recent(limit: 50, minLevel: .info).map(\.any)]))
     case "GET /api/usage":

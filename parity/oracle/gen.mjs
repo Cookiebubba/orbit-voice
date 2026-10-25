@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { intentFixtures } from './intent.mjs';
 import { desktopFixtures } from './desktop.mjs';
 import { sessionsFixtures } from './sessions.mjs';
+import { brainFixtures } from './brain.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const FIXTURES = path.join(HERE, 'fixtures');
@@ -114,6 +115,8 @@ export async function build() {
     ...(fs.existsSync(path.join(root, 'src', 'platform', 'mac', 'desktop.js')) ? { desktop: { platform: 'darwin', ...(await desktopFixtures(root)) } } : {}),
     // Claude Code's sessions on disk and the watcher (a Mac's folders: made on a Mac).
     ...(process.platform === 'darwin' ? { sessions: { platform: 'darwin', ...sessionsFixtures() } } : {}),
+    // The second brain, web search, finding Claude Code (a Mac's places) and the speech models.
+    ...(process.platform === 'darwin' ? { brain: { platform: 'darwin', ...(await brainFixtures(root, rng)) } } : {}),
   };
 }
 

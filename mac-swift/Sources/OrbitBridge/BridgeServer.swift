@@ -58,6 +58,11 @@ public enum BridgeReply: Sendable {
   case stream(head: BridgeResponse, start: @Sendable (BridgeStream) -> Void)
   /** Pass the request on as these bytes to a local port, and its answer back, verbatim. */
   case passThrough(port: UInt16, head: Data, body: Data)
+  /**
+   * A response that takes a while (a connection test): `work` runs in a task of its own, which is
+   * cancelled if the client goes away first (Node's res 'close'); its answer is sent if it's still there.
+   */
+  case deferred(@Sendable () async -> BridgeResponse)
 }
 
 public final class BridgeServer: @unchecked Sendable {
@@ -126,6 +131,10 @@ public final class BridgeServer: @unchecked Sendable {
     var busy = false
     var finished = false
     var passThrough: PassThrough?
+    /** A deferred answer being worked on, and whether a read is waiting on the client meanwhile. */
+    var work: Task<Void, Never>?
+    var watching = false
+    var clientGone = false
 
     init(conn: NWConnection, server: BridgeServer, maxBody: Int) {
       self.conn = conn
@@ -149,16 +158,30 @@ public final class BridgeServer: @unchecked Sendable {
     func finish() {
       guard !finished else { return }
       finished = true
+      work?.cancel()
       conn.cancel()
       server.done(self)
     }
 
     func receive() {
+      guard !watching else { return }
+      watching = true
       conn.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, complete, err in
         guard let self else { return }
+        self.watching = false
         if let data, !data.isEmpty { self.parser.feed(data) }
         if err != nil { return self.finish() }
-        self.pump(eof: complete)
+        if self.busy {
+          // Read while a deferred answer is worked on: the client closing ends it; anything else waits.
+          if complete {
+            self.clientGone = true
+            self.finish()
+          } else {
+            self.receive()
+          }
+          return
+        }
+        self.pump(eof: complete || self.clientGone)
       }
     }
 
@@ -229,6 +252,17 @@ public final class BridgeServer: @unchecked Sendable {
         // Reading on: the client going away ends the stream.
         watchForClose(stream)
         send(Data(text.utf8)) { start(stream) }
+      case .deferred(let work):
+        // Watch the client while it works (no pass-through can follow on this connection's reads now).
+        receive()
+        self.work = Task {
+          let r = await work()
+          if Task.isCancelled { return }
+          self.queue.async {
+            self.work = nil
+            self.answer(req, .response(r), eof: eof)
+          }
+        }
       case .passThrough(let port, let head, let body):
         let rest = parser.takeRest()
         // Held here until it ends (its own callbacks only hold it weakly).

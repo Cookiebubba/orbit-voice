@@ -286,6 +286,7 @@ async function main() {
   on('settings', (m) => m.all && typeof m.all === 'object' && config.applyShellSettings(m.all));
   on('keyChanged', () => server.keyChanged());
   on('prewarm', () => server.prewarm());
+  on('sttReady', () => server.sttDownloaded());
   on('quit', () => shutdown(0));
   const auth = Object.fromEntries(['main', 'orb', 'qubit', 'buddy', 'mouse'].map((v) => [v, server.authUrl(v)]));
   send({ t: 'ready', base, auth, version: config.DEFAULTS ? JSON.parse(fs.readFileSync(path.join(CORE, 'package.json'), 'utf8')).version : '' });

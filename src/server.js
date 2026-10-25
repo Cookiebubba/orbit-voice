@@ -122,6 +122,9 @@ let voiceCache = null; // { at, voices }
 let prewarmHook = () => {};
 /** The shell answered POST /api/settings: warm Claude voice up, as that route does here. */
 export const prewarm = () => prewarmHook();
+let sttReadyHook = () => {};
+/** The shell downloaded a speech-to-text model: a live Claude voice call switches to it now, as here. */
+export const sttDownloaded = () => sttReadyHook();
 /** The shell saved a new xAI key: drop what was made for the old one, as POST /api/key does here. */
 export function keyChanged() {
   voiceCache = null;
@@ -343,6 +346,9 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
   let lastSignInOpenedAt = 0;
   const eventClients = new Set(); // SSE responses
   const liveSessions = new Set(); // per-connection hooks
+  sttReadyHook = () => {
+    for (const s of liveSessions) s.pushConfig();
+  };
 
   const broadcast = (evt) => {
     const line = `data: ${JSON.stringify(evt)}\n\n`;

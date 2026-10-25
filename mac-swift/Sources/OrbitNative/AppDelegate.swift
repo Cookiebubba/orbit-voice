@@ -76,6 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     eng.onSettingsChanged = { [weak sc] _, all in sc?.send(["t": "settings", "all": .object(all)]) }
     eng.onKeyChanged = { [weak sc] in sc?.send(["t": "keyChanged"]) }
     eng.onPrewarm = { [weak sc] in sc?.send(["t": "prewarm"]) }
+    eng.onSttReady = { [weak sc] in sc?.send(["t": "sttReady"]) }
+    eng.claudePreview = previewSpeaker(profile: config.profileDir)
     sc.onReady = { [weak self] e in DispatchQueue.main.async { self?.coreStarted(e, port: corePort) } }
     sc.onMessage = { [weak self] m in DispatchQueue.main.async { self?.coreMessage(m) } }
     sc.onLog = { [weak self] line in self?.log.raw("core", line) }
