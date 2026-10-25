@@ -796,6 +796,7 @@ async function run() {
   await expectState('asleep after the call', { state: 'asleep', mode: 'asleep', air: false }, 20_000);
 
   out('16. Switch avatars live (Settings -> Avatar)');
+  const hotkey16 = [...hotkeys.values()][0];
   await pjs(`document.querySelector('button[aria-label="Settings"]').click()`);
   await waitFor(() => pjs(`[...document.querySelectorAll('[role=radio]')].some((b) => b.textContent === 'Pixel buddy')`), 5000);
   const pickAvatar = (name) => pjs(`(() => { const b = [...document.querySelectorAll('[role=radio]')].find((x) => x.textContent === ${JSON.stringify(name)}); b && b.click(); return !!b; })()`);
@@ -808,14 +809,58 @@ async function run() {
   const settingsImg = await page.webContents.capturePage().catch(() => null);
   if (settingsImg && !settingsImg.isEmpty()) fs.writeFileSync(path.join(OUT, 'settings-avatar.png'), settingsImg.toPNG());
   page.hide();
+
+  out('16a. Switch the voice engine quickly, again and again: one avatar, never two');
+  // The owner's report: Grok, then Claude again (Settings -> Voice engine), and two avatars showed for
+  // a while. Every avatar window is sampled every 10 ms (a fading one counts while it shows).
+  const avWins = () => BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && /\/(qubit|buddy)\.html/.test(w.webContents.getURL()));
+  const sampler = () => {
+    const st = { max: 0, ids: new Set() };
+    st.timer = setInterval(() => {
+      const ws = avWins();
+      ws.forEach((w) => st.ids.add(w.id));
+      st.max = Math.max(st.max, ws.filter((w) => w.isVisible()).length);
+    }, 10);
+    return st;
+  };
+  const pickEngine = (name) => pjs(`(() => { const b = [...document.querySelectorAll('[role=radio]')].find((x) => x.textContent === ${JSON.stringify(name)}); b && b.click(); return !!b; })()`);
+  let smp = sampler();
+  for (let i = 0; i < 6; i++) {
+    await pickEngine('Grok');
+    await wait(i % 2 ? 60 : 250);
+    await pickEngine('Claude (beta)');
+    await wait(i % 2 ? 60 : 250);
+  }
+  await pickEngine('Grok');
+  await wait(1500);
+  clearInterval(smp.timer);
+  check(smp.max === 1 && smp.ids.size === 1, 'Orbit off: one avatar window the whole time, never two showing', `max ${smp.max} showing, ${smp.ids.size} window(s)`);
+  smp = sampler();
+  hotkey16();
+  await waitFor(() => fake.current() && fake.current().configured > 0, 10_000);
+  for (let i = 0; i < 6; i++) {
+    await pickEngine('Claude (beta)');
+    await wait(150);
+    await pickEngine('Grok');
+    await wait(150);
+  }
+  hotkey16(); // (Grok on: to sleep)
+  await wait(1500);
+  clearInterval(smp.timer);
+  check(smp.max === 1 && smp.ids.size === 1, 'mid-call too: one avatar window, never two showing', `max ${smp.max} showing, ${smp.ids.size} window(s)`);
+  await expectState('asleep after that call', { state: 'asleep' }, 25_000);
+
+  out('16b. Avatars switched: the old one goes before the new one comes (never two at once)');
+  smp = sampler();
   const oldQ = qwin;
   await pickAvatar('Pixel buddy');
-  let bwin = null;
-  check(await waitFor(() => (bwin = avatarWin('buddy')), 4000), 'the pixel buddy window comes up');
-  check(!oldQ.isDestroyed(), 'Qubit is still there while he fades out (a handover, not a cut)');
-  const fadeOut = await oldQ.webContents.executeJavaScript('document.body.firstElementChild.style.opacity').catch(() => '?');
-  check(fadeOut === '0', 'Qubit fades out', `opacity ${fadeOut}`);
+  await wait(80);
+  const fadeOut = oldQ.isDestroyed() ? '0' : await oldQ.webContents.executeJavaScript('document.body.firstElementChild.style.opacity').catch(() => '?');
+  check(fadeOut === '0', 'Qubit fades out first', `opacity ${fadeOut}`);
+  check(oldQ.isDestroyed() || !avatarWin('buddy'), 'no pixel buddy window while he is still there');
   check(await waitFor(() => oldQ.isDestroyed(), 2000), 'then his window closes');
+  let bwin = null;
+  check(await waitFor(() => (bwin = avatarWin('buddy')), 4000), 'and then the pixel buddy window comes up');
   check(await waitFor(() => bwin.webContents.executeJavaScript('!!document.querySelector("canvas") && document.querySelector("canvas").style.opacity === "1"').catch(() => false), 5000), 'the pixel buddy page loaded and faded in');
   check(await waitFor(() => bwin.isVisible(), 3000) && bwin.getBounds().x === -4600, 'the buddy\x27s strip is on the Claude window', JSON.stringify(bwin.getBounds()));
   await wait(2500);
@@ -837,6 +882,10 @@ async function run() {
   await snap('entrance-asleep');
   const phys2 = await qjs('({ pops: window.__phys.pops, bad: window.__phys.bad, popAt: window.__phys.popAt })');
   check(phys2.pops === 0 && phys2.bad.length === 0, 'the entrance is smooth too', JSON.stringify(phys2));
+  clearInterval(smp.timer);
+  check(smp.max === 1, 'through every switch (Qubit, the pixel buddy, none, Qubit): never two avatars showing at once', `max ${smp.max}`);
+  const logText = (() => { try { return fs.readFileSync(path.join(getConfigDir(), 'logs', 'orbit.log'), 'utf8'); } catch { return ''; } })();
+  check(/avatar window opened/.test(logText) && /avatar window closed/.test(logText), 'the log says when avatar windows open and close');
   // Size: Big, live (he grows into it).
   await pjs(`(() => { const b = [...document.querySelectorAll('[role=radio]')].find((x) => x.textContent === 'Big'); b && b.click(); })()`);
   await expectState('Big: he grows to 50 px', { side: (v) => Math.abs(v - 50) < 0.5 }, 4000);

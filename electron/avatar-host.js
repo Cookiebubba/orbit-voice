@@ -29,8 +29,12 @@ export function createAvatarHost({ makeAvatar, home = () => null, watch = () => 
     if (c?.kind === 'orbit') return 'orbit';
     return 'other';
   };
+  // One avatar per place: a window's Qubit never shows on the window home's avatar is on, and a
+  // window's new Qubit comes up only once one fading out of that window has gone.
+  const homeHwnd = () => Number(home()?.hostHwnd) || 0;
+  const leaving = new Map(); // context id -> promise: its old avatar is fading out
   const place = (g) => {
-    if (!g.bounds) return g.avatar.onClaude({ found: false });
+    if (!g.bounds || (g.hwnd && g.hwnd === homeHwnd())) return g.avatar.onClaude({ found: false });
     const b = g.bounds;
     g.avatar.onClaude({ found: !b.cloaked, hwnd: g.hwnd, min: !!b.min, front: frontFor(g.hwnd), x: b.x, y: b.y, w: b.w, h: b.h });
   };
@@ -47,15 +51,23 @@ export function createAvatarHost({ makeAvatar, home = () => null, watch = () => 
     const g = { id: ctx.id, hwnd: ctx.hwnd, avatar, bounds: null, lastActiveAt: Number.isFinite(ctx.lastActiveAt) ? ctx.lastActiveAt : Date.now() };
     guests.set(ctx.id, g);
     avatar.onVoice(voiceFor(ctx.id));
-    avatar.setEnabled(true, size, { entrance });
-    place(g);
+    const up = () => {
+      if (guests.get(ctx.id) !== g) return;
+      avatar.setEnabled(true, size, { entrance });
+      place(g);
+    };
+    const fading = leaving.get(ctx.id);
+    if (fading) fading.then(up);
+    else up();
     log(`avatar: ${kind} joined a window (${guests.size} beside home)`);
   }
   function remove(id) {
     const g = guests.get(id);
     if (!g) return;
     guests.delete(id);
-    g.avatar.leave();
+    // (Wait for every avatar still fading out of that window, not just this one.)
+    const p = Promise.all([leaving.get(id), g.avatar.leave()]).finally(() => leaving.get(id) === p && leaving.delete(id));
+    leaving.set(id, p);
   }
   const rewatch = () => watch([...guests.values()].map((g) => g.hwnd));
 

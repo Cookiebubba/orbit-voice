@@ -282,6 +282,7 @@ const claudeTracker = createClaudeWindowTracker({
     anywhereContexts.setHomeWindow(s?.found ? s.hwnd : 0); // the Claude window is Orbit's home context
     placeOrb();
     avatar?.onClaude(s);
+    avatarHost.onFocus(); // (a window's Qubit never stands on the window home is on)
     watchBox();
   },
   // Where Claude's prompt box is, the moment it moves (the avatar stands on it).
@@ -377,8 +378,11 @@ function setAvatar({ live = false } = {}) {
   }
   const old = avatar;
   avatar = null;
+  // One avatar per place, at every moment: the old one fades out and its window closes first, and
+  // only then does the new one come up (with its entrance). Never two on the Claude window at once.
+  const gone = old ? old.leave() : Promise.resolve();
   if (kind) {
-    avatar = createAvatar({
+    const next = createAvatar({
       kind,
       url: () => authUrl(kind),
       webPreferences: secureWebPreferences,
@@ -391,11 +395,13 @@ function setAvatar({ live = false } = {}) {
       onWindow: followSpaces,
       prefs: avatarPrefs,
     });
+    avatar = next;
     if (lastOrbState) avatarHost.onVoice(lastOrbState); // (home gets it, or rests while the talk is elsewhere)
-    if (claude) avatar.onClaude(claude);
-    avatar.setEnabled(true, size, { entrance: live });
+    if (claude) next.onClaude(claude);
+    const up = () => avatar === next && next.setEnabled(true, getSetting('buddySize'), { entrance: live });
+    if (old) gone.then(up);
+    else up();
   }
-  old?.leave();
   // The Qubits in other windows (Orbit anywhere) become the same avatar, or go.
   avatarHost.setKind(kind && !freeAvatar() ? kind : null, size);
   avatarHost.setEnabled(!!kind && !freeAvatar());

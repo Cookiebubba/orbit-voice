@@ -49,6 +49,7 @@ export const AVATAR_KINDS = Object.freeze({
   qubit: { title: 'Orbit Qubit', events: ['finished', 'draft', 'sent', 'error'], sendButton: true, emotes: true },
 });
 const LEAVE_MS = 450; // the page's fade-out, and a little more
+let openWindows = 0; // avatar windows open right now (all avatars), for the log
 export const LIFT_MAX_QUIET_MS = 12_000; // lifted with no word from the page for this long: back to the strip
 
 export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, getDesktopInfo, log = () => {}, info: info_ = () => {}, free = false, boxless = false, onWindow = () => {}, prefs = () => ({}) }) {
@@ -112,6 +113,9 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       webPreferences,
     });
     lockDown(win);
+    openWindows++;
+    const where = free ? 'along the screen' : boxless ? 'on another window' : 'on the Claude window';
+    info_(`${kind}: avatar window opened ${where} (${openWindows} open)`);
     win.setIgnoreMouseEvents(true, { forward: true }); // clicks go through to Claude
     onWindow(win); // (macOS: on every Space)
     win.loadURL(url());
@@ -123,6 +127,8 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       }
     });
     win.on('closed', () => {
+      openWindows = Math.max(0, openWindows - 1);
+      info_(`${kind}: avatar window closed ${where} (${openWindows} open)`);
       hover.stop();
       win = null;
     });

@@ -122,7 +122,7 @@ test('the note for the voice says where the conversation is, quoted as data', ()
   assert.equal(contextNote(null), '');
 });
 
-test('the avatar host: one avatar per context window, only the active one live, a cap, kinds', () => {
+test('the avatar host: one avatar per context window, only the active one live, a cap, kinds', async () => {
   const made = [];
   const mk = (kind) => {
     const a = { kind, voice: null, claude: null, enabled: false, entrance: false, left: false, stopped: false, window: { webContents: {} } };
@@ -178,11 +178,13 @@ test('the avatar host: one avatar per context window, only the active one live, 
   // A kind change remakes the guests as the new avatar; off removes them; on brings them back.
   const before = made.length;
   host.setKind('buddy', 3);
+  await sleep(0); // (each new one comes up once the old one in that window has gone)
   assert.equal(made.length - before, 5);
   assert.ok(made.slice(before).every((a) => a.kind === 'buddy' && a.size === 3));
   host.setEnabled(false);
   assert.equal(host.guests.length, 0);
   host.setEnabled(true);
+  await sleep(0);
   assert.equal(host.guests.length, 5);
   assert.equal(host.guestFor(made.at(-1).window.webContents), made.at(-1));
   host.stop();
