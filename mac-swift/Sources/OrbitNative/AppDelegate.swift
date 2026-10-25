@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   var voiceController: VoiceController?
   var shellHotkey: ShellHotkey?
   var overlays: Overlays?
-  var wakeWord: WakeWord?
+  var wakeWord: (any WakeListening)?
   var quitting = false
   let startedAt = Date()
 

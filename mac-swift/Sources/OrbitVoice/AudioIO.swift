@@ -53,6 +53,11 @@ public final class AudioIO {
   public var onFrame: ([Int16]) -> Void = { _ in }
   /** The output was reset (device change): scheduled audio is gone. */
   public var onOutputLost: () -> Void = {}
+  /**
+   * A second listener on the same microphone ("Hey Orbit", while the call is off or asleep): gets the
+   * same 24 kHz frames, on the main thread, whether or not a call has the mic open.
+   */
+  private var wakeListener: (([Int16]) -> Void)?
 
   // Counts (also kept when muted): chunks and seconds handed to playback.
   public private(set) var chunksScheduled = 0
@@ -81,7 +86,7 @@ public final class AudioIO {
     if config.fakeMic {
       let fm = FakeMic(initial: config.fakeMicClip)
       fm.deliver = { [weak self] pcm in
-        DispatchQueue.main.async { MainActor.assumeIsolated { if self?.capturing == true { self?.onFrame(pcm) } } }
+        DispatchQueue.main.async { MainActor.assumeIsolated { self?.frame(pcm) } }
       }
       fakeMic = fm
     }
@@ -127,11 +132,11 @@ public final class AudioIO {
 
   /** The call ended: let the device go after a moment (a chime may still be playing). */
   public func callEnded() {
-    guard !capturing else { return }
+    guard !capturing, wakeListener == nil else { return }
     idleStop?.cancel()
     let w = DispatchWorkItem { [weak self] in
       MainActor.assumeIsolated {
-        guard let self, !self.capturing else { return }
+        guard let self, !self.capturing, self.wakeListener == nil else { return }
         self.player.stop()
         self.chimePlayer.stop()
         self.engine.stop()
@@ -187,6 +192,33 @@ public final class AudioIO {
 
   // MARK: - the microphone
 
+  /** A frame from the mic (or the fake one): to the call while it has the mic open, and to the wake word. */
+  private func frame(_ pcm: [Int16]) {
+    if capturing { onFrame(pcm) }
+    wakeListener?(pcm)
+  }
+
+  /**
+   * Listen for the wake word: the mic's frames go to `listener` too, opening the device if no call has
+   * it. Never asks for permission (the wake word is off until the mic is allowed); false if it can't.
+   */
+  @discardableResult public func startWakeListening(_ listener: @escaping ([Int16]) -> Void) -> Bool {
+    wakeListener = listener
+    if let fakeMic { fakeMic.micOpened(); return true }
+    if tapInstalled { return true }
+    guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { wakeListener = nil; return false }
+    if case .failure = openRealDevice() { wakeListener = nil; return false }
+    return true
+  }
+
+  public func stopWakeListening() {
+    wakeListener = nil
+    if !capturing {
+      fakeMic?.micClosed()
+      closeRealDevice()
+    }
+  }
+
   /** Open the mic (or the fake one). The real one needs the user's permission. */
   public func startCapture(_ done: @escaping @MainActor (Result<Void, MicError>) -> Void) {
     if capturing { return done(.success(())) }
@@ -210,6 +242,14 @@ public final class AudioIO {
   }
 
   private func startRealCapture() -> Result<Void, MicError> {
+    if tapInstalled { capturing = true; return .success(()) } // (the wake word has it open already)
+    let r = openRealDevice()
+    if case .success = r { capturing = true }
+    return r
+  }
+
+  /** The real mic device with its tap (for the call, the wake word, or both). */
+  private func openRealDevice() -> Result<Void, MicError> {
     guard AVCaptureDevice.default(for: .audio) != nil else { return .failure(MicError(.notFound, "Requested device not found")) }
     idleStop?.cancel()
     ensureGraph()
@@ -229,29 +269,33 @@ public final class AudioIO {
     }
     let conv = CaptureConverter(rate: format.sampleRate)
     conv.deliver = { [weak self] pcm in
-      DispatchQueue.main.async { MainActor.assumeIsolated { if self?.capturing == true { self?.onFrame(pcm) } } }
+      DispatchQueue.main.async { MainActor.assumeIsolated { self?.frame(pcm) } }
     }
     capture = conv
     input.installTap(onBus: 0, bufferSize: 4096, format: format) { buf, _ in conv.process(buf) }
     tapInstalled = true
-    capturing = true
     if !ensureRunning() {
-      stopCapture()
+      closeRealDevice()
       return .failure(MicError(.other, "Could not start audio input"))
     }
     return .success(())
   }
 
-  /** Close the mic device itself. */
-  public func stopCapture() {
-    guard capturing else { return }
-    capturing = false
-    fakeMic?.micClosed()
+  private func closeRealDevice() {
     if tapInstalled {
       engine.inputNode.removeTap(onBus: 0)
       tapInstalled = false
       capture = nil
     }
+  }
+
+  /** The call lets go of the mic (the wake word may keep the device open). */
+  public func stopCapture() {
+    guard capturing else { return }
+    capturing = false
+    guard wakeListener == nil else { return }
+    fakeMic?.micClosed()
+    closeRealDevice()
   }
 
   public var isCapturing: Bool { capturing }
@@ -271,9 +315,10 @@ public final class AudioIO {
       engine.inputNode.removeTap(onBus: 0)
       tapInstalled = false
     }
-    if hadTap && capturing {
+    if hadTap && (capturing || wakeListener != nil) {
+      let call = capturing
       capturing = false
-      _ = startRealCapture()
+      if case .success = openRealDevice() { capturing = call }
     } else if engine.attachedNodes.contains(player) && (capturing || player.isPlaying) {
       ensureRunning()
     }

@@ -32,6 +32,9 @@ NODE_BIN="$(command -v node)"
 [ -d "$ROOT/public" ] || { echo "build the UI first: npm run build:ui" >&2; exit 1; }
 [ -d "$ROOT/node_modules/ws" ] || { echo "run npm ci at the repo root first" >&2; exit 1; }
 
+echo "== vosk"
+"$HERE/scripts/fetch-vosk.sh"
+
 echo "== swift build ($CONFIG)"
 (cd "$HERE" && swift build -c "$CONFIG" --product OrbitNative)
 BIN="$(cd "$HERE" && swift build -c "$CONFIG" --show-bin-path)/OrbitNative"
@@ -40,6 +43,9 @@ echo "== bundle"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/OrbitNative"
+# Vosk for "Hey Orbit" (OrbitWake). sherpa-onnx's library is the core's copy (rpath into core/node_modules).
+mkdir -p "$APP/Contents/Frameworks"
+cp "$HERE/.vendor/vosk/libvosk.dylib" "$APP/Contents/Frameworks/"
 cp "$ROOT/build/icon.icns" "$APP/Contents/Resources/AppIcon.icns"
 cp "$ROOT/assets/trayTemplate.png" "$ROOT/assets/trayTemplate@2x.png" "$ROOT/assets/icon.png" "$APP/Contents/Resources/"
 [ -d "$HERE/Resources/app" ] && cp -R "$HERE/Resources/app/." "$APP/Contents/Resources/"

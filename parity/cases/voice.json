@@ -1,148 +1,971 @@
 {
-  "area": "voice",
-  "about": "Spoken scenarios end to end: a clip (parity/voice-clips.json, made by parity/gen-audio.mjs) goes into each app's own microphone path (the fake microphone), through the bridge's on-device speech to text, to a scripted Claude Code (parity/fixtures/fake-claude.mjs), whose tool calls Orbit runs and gates as always against the stand-in desktop driver; Orbit's spoken reply is made on this Mac and played by each app (muted). Checked: the tool calls, their effect on the stand-in, consent, and that a reply was spoken.",
-  "cases": [
-    { "id": "voice.call.connects", "title": "The hotkey starts a call: connecting, then listening, with Claude voice ready",
-      "needs": ["voice"],
-      "fixtures": { "claudeVoice": { "rules": { "rules": [] } }, "fakeDesktop": true },
-      "steps": [
-        { "do": "act", "action": "voice.hotkey" },
-        { "do": "until", "probe": "state", "timeoutMs": 25000, "expect": { "voice.phase": "listening", "voice.connected": true } },
-        { "do": "state", "expect": { "events": { "$some": { "type": "voice.phase", "data.phase": "listening" } } } }
-      ] },
-    { "id": "voice.draft", "title": "Asking for work drafts a prompt into Claude's box (not sent) and Orbit asks to send it",
-      "needs": ["voice"],
-      "fixtures": { "fakeDesktop": { "windows": [{ "hwnd": 101, "kind": "main", "title": "Fix the login bug", "newPage": null, "promptText": "", "min": false }], "sidebar": ["Fix the login bug"] },
-        "claudeVoice": { "rules": { "rules": [
-          { "when": "\\[Tool result: draft_prompt\\]", "reply": "Drafted. Want me to send it?" },
-          { "when": "dark mode", "reply": "<tool>{\"name\": \"draft_prompt\", \"arguments\": {\"text\": \"Add a dark mode toggle to the settings page.\"}}</tool>" }
-        ], "fallback": "Okay." } } },
-      "steps": [
-        { "do": "act", "action": "voice.hotkey" },
-        { "do": "until", "probe": "state", "timeoutMs": 25000, "expect": { "voice.phase": "listening" } },
-        { "do": "act", "action": "mic.play", "args": { "wav": "${audio}/draft.wav" } },
-        { "do": "until", "probe": "fake", "name": "fake-desktop", "timeoutMs": 20000, "expect": { "windows.0.promptText": { "$match": "dark mode toggle" } } },
-        { "do": "fake", "name": "fake-desktop", "expect": { "sends": { "$len": 0 } } },
-        { "do": "until", "probe": "fake", "name": "fake-claude", "timeoutMs": 10000, "expect": { "toolResults": { "$contains": "draft_prompt" } } },
-        { "do": "until", "probe": "state", "timeoutMs": 15000, "expect": { "voice.playedMs": { "$gt": 300 }, "voice.draft.text": { "$match": "dark mode" } } }
-      ] },
-    { "id": "voice.natural-yes", "title": "A natural yes (\"Yeah, go ahead\") sends the draft",
-      "needs": ["voice"],
-      "fixtures": { "fakeDesktop": { "windows": [{ "hwnd": 101, "kind": "main", "title": "Fix the login bug", "newPage": null, "promptText": "", "min": false }], "sidebar": ["Fix the login bug"] },
-        "claudeVoice": { "rules": { "rules": [
-          { "when": "\\[Tool result: draft_prompt\\]", "reply": "Drafted. Want me to send it?" },
-          { "when": "\\[Tool result: send_draft\\]", "reply": "Sent." },
-          { "when": "dark mode", "reply": "<tool>{\"name\": \"draft_prompt\", \"arguments\": {\"text\": \"Add a dark mode toggle to the settings page.\"}}</tool>" },
-          { "when": "go ahead|yeah|yes", "reply": "<tool>{\"name\": \"send_draft\", \"arguments\": {}}</tool>" }
-        ], "fallback": "Okay." } } },
-      "steps": [
-        { "do": "act", "action": "voice.hotkey" },
-        { "do": "until", "probe": "state", "timeoutMs": 25000, "expect": { "voice.phase": "listening" } },
-        { "do": "act", "action": "mic.play", "args": { "wav": "${audio}/draft.wav" } },
-        { "do": "until", "probe": "fake", "name": "fake-desktop", "timeoutMs": 20000, "expect": { "windows.0.promptText": { "$match": "dark mode" } } },
-        { "do": "until", "probe": "state", "timeoutMs": 15000, "expect": { "voice.phase": "listening", "voice.playedMs": { "$gt": 300 } } },
-        { "do": "act", "action": "mic.play", "args": { "wav": "${audio}/yes.wav" } },
-        { "do": "until", "probe": "fake", "name": "fake-desktop", "timeoutMs": 20000, "expect": { "sends": { "$len": 1 }, "sends.0.text": { "$match": "dark mode toggle" } } },
-        { "do": "until", "probe": "state", "timeoutMs": 10000, "expect": { "voice.sentCount": 1 } }
-      ] },
-    { "id": "voice.no-keeps-draft", "title": "\"No, don't send it\" never sends, even if the model tries",
-      "needs": ["voice"],
-      "fixtures": { "fakeDesktop": { "windows": [{ "hwnd": 101, "kind": "main", "title": "Fix the login bug", "newPage": null, "promptText": "", "min": false }], "sidebar": ["Fix the login bug"] },
-        "claudeVoice": { "rules": { "rules": [
-          { "when": "\\[Tool result: draft_prompt\\]", "reply": "Drafted. Want me to send it?" },
-          { "when": "\\[Tool result: send_draft\\]", "reply": "Okay." },
-          { "when": "dark mode", "reply": "<tool>{\"name\": \"draft_prompt\", \"arguments\": {\"text\": \"Add a dark mode toggle to the settings page.\"}}</tool>" },
-          { "when": "send", "reply": "<tool>{\"name\": \"send_draft\", \"arguments\": {}}</tool>" }
-        ], "fallback": "Okay." } } },
-      "steps": [
-        { "do": "act", "action": "voice.hotkey" },
-        { "do": "until", "probe": "state", "timeoutMs": 25000, "expect": { "voice.phase": "listening" } },
-        { "do": "act", "action": "mic.play", "args": { "wav": "${audio}/draft.wav" } },
-        { "do": "until", "probe": "fake", "name": "fake-desktop", "timeoutMs": 20000, "expect": { "windows.0.promptText": { "$match": "dark mode" } } },
-        { "do": "until", "probe": "state", "timeoutMs": 15000, "expect": { "voice.phase": "listening", "voice.playedMs": { "$gt": 300 } } },
-        { "do": "act", "action": "mic.play", "args": { "wav": "${audio}/no.wav" } },
-        { "do": "until", "probe": "fake", "name": "fake-claude", "timeoutMs": 15000, "expect": { "toolResults": { "$contains": "send_draft" } } },
-        { "do": "fake", "name": "fake-desktop", "expect": { "sends": { "$len": 0 } } }
-      ] },
-    { "id": "voice.same-breath-send", "title": "\"…and send it\" in the same breath drafts and sends at once",
-      "needs": ["voice"],
-      "fixtures": { "fakeDesktop": { "windows": [{ "hwnd": 101, "kind": "main", "title": "Fix the login bug", "newPage": null, "promptText": "", "min": false }], "sidebar": ["Fix the login bug"] },
-        "claudeVoice": { "rules": { "rules": [
-          { "when": "\\[Tool result: draft_prompt\\]", "reply": "Sent it." },
-          { "when": "typo", "reply": "<tool>{\"name\": \"draft_prompt\", \"arguments\": {\"text\": \"Fix the typo in the readme.\"}}</tool>" }
-        ], "fallback": "Okay." } } },
-      "steps": [
-        { "do": "act", "action": "voice.hotkey" },
-        { "do": "until", "probe": "state", "timeoutMs": 25000, "expect": { "voice.phase": "listening" } },
-        { "do": "act", "action": "mic.play", "args": { "wav": "${audio}/same-breath.wav" } },
-        { "do": "until", "probe": "fake", "name": "fake-desktop", "timeoutMs": 25000, "expect": { "sends": { "$len": 1 }, "sends.0.text": { "$match": "typo in the readme" } } }
-      ] },
-    { "id": "voice.go-to-sleep", "title": "\"Go to sleep\" puts Orbit to sleep on this Mac, without asking the model",
-      "needs": ["voice"],
-      "fixtures": { "fakeDesktop": true, "claudeVoice": { "rules": { "rules": [], "fallback": "Okay." } } },
-      "steps": [
-        { "do": "act", "action": "voice.hotkey" },
-        { "do": "until", "probe": "state", "timeoutMs": 25000, "expect": { "voice.phase": "listening" } },
-        { "do": "act", "action": "mic.play", "args": { "wav": "${audio}/sleep.wav" } },
-        { "do": "until", "probe": "state", "timeoutMs": 20000, "expect": { "voice.phase": "off" } },
-        { "do": "fake", "name": "fake-claude", "expect": { "turns": { "$every": { "text": { "$not": { "$match": "[Ss]leep" } } } } } }
-      ] },
-    { "id": "voice.stop", "title": "\"Stop\" presses Claude's Stop",
-      "needs": ["voice"],
-      "fixtures": { "fakeDesktop": { "windows": [{ "hwnd": 101, "kind": "main", "title": "Fix the login bug", "newPage": null, "promptText": "", "min": false, "working": true }], "sidebar": ["Fix the login bug"] },
-        "claudeVoice": { "rules": { "rules": [
-          { "when": "\\[Tool result: stop_claude\\]", "reply": "Stopped." },
-          { "when": "stop", "reply": "<tool>{\"name\": \"stop_claude\", \"arguments\": {}}</tool>" }
-        ], "fallback": "Okay." } } },
-      "steps": [
-        { "do": "act", "action": "voice.hotkey" },
-        { "do": "until", "probe": "state", "timeoutMs": 25000, "expect": { "voice.phase": "listening" } },
-        { "do": "act", "action": "mic.play", "args": { "wav": "${audio}/stop.wav" } },
-        { "do": "until", "probe": "fake", "name": "fake-desktop", "timeoutMs": 20000, "expect": { "calls": { "$some": { "mode": "stop" } } } }
-      ] },
-    { "id": "voice.answer-card", "title": "Asked what Claude wants, then \"Allow it\": Orbit presses Allow on the card",
-      "needs": ["voice"],
-      "fixtures": { "fakeDesktop": { "windows": [{ "hwnd": 101, "kind": "main", "title": "Fix the login bug", "newPage": null, "promptText": "", "min": false,
-          "pending": { "kind": "permission", "title": "Allow Claude to run a command?", "detail": "npm test", "options": [{ "id": "allow_once", "label": "Allow once" }, { "id": "allow_always", "label": "Always allow" }, { "id": "deny", "label": "Deny" }], "key": "parity-card-1" } }], "sidebar": ["Fix the login bug"] },
-        "claudeVoice": { "rules": { "rules": [
-          { "when": "\\[Tool result: read_claude_prompt\\]", "reply": "It wants to run npm test. Allow it?" },
-          { "when": "\\[Tool result: answer_claude_prompt\\]", "reply": "Done." },
-          { "when": "asking", "reply": "<tool>{\"name\": \"read_claude_prompt\", \"arguments\": {}}</tool>" },
-          { "when": "allow", "reply": "<tool>{\"name\": \"answer_claude_prompt\", \"arguments\": {\"answer\": \"allow\"}}</tool>" }
-        ], "fallback": "Okay." } } },
-      "steps": [
-        { "do": "act", "action": "voice.hotkey" },
-        { "do": "until", "probe": "state", "timeoutMs": 25000, "expect": { "voice.phase": "listening" } },
-        { "do": "act", "action": "mic.play", "args": { "wav": "${audio}/asking.wav" } },
-        { "do": "until", "probe": "fake", "name": "fake-claude", "timeoutMs": 20000, "expect": { "toolResults": { "$contains": "read_claude_prompt" } } },
-        { "do": "until", "probe": "state", "timeoutMs": 15000, "expect": { "voice.phase": "listening", "voice.playedMs": { "$gt": 300 } } },
-        { "do": "act", "action": "mic.play", "args": { "wav": "${audio}/allow.wav" } },
-        { "do": "until", "probe": "fake", "name": "fake-desktop", "timeoutMs": 20000, "expect": { "answers": { "$some": { "kind": "permission", "choice": "allow_once" } } } }
-      ] },
-    { "id": "voice.model-switch", "title": "\"Switch to Opus\" changes Claude voice's brain, and the next turn runs on it",
-      "needs": ["voice"],
-      "fixtures": { "fakeDesktop": true, "claudeVoice": { "rules": { "rules": [
-          { "when": "\\[Tool result: change_orbit_setting\\]", "reply": "Switched to Opus." },
-          { "when": "opus", "reply": "<tool>{\"name\": \"change_orbit_setting\", \"arguments\": {\"setting\": \"voice_model\", \"value\": \"opus\"}}</tool>" }
-        ], "fallback": "Okay." } } },
-      "steps": [
-        { "do": "act", "action": "voice.hotkey" },
-        { "do": "until", "probe": "state", "timeoutMs": 25000, "expect": { "voice.phase": "listening" } },
-        { "do": "act", "action": "mic.play", "args": { "wav": "${audio}/model.wav" } },
-        { "do": "until", "probe": "http", "path": "/api/config", "timeoutMs": 20000, "expect": { "body.settings.claudeVoiceModel": "opus" } },
-        { "do": "until", "probe": "fake", "name": "fake-claude", "timeoutMs": 15000, "expect": { "starts": { "$some": { "model": "opus" } } } }
-      ] },
-    { "id": "voice.avatar-command", "title": "\"Do a backflip\" goes straight to Qubit (no model turn)",
-      "needs": ["voice", "avatar"],
-      "profile": { "settings": { "avatar": "qubit" } },
-      "fixtures": { "fakeDesktop": true, "claudeVoice": { "rules": { "rules": [], "fallback": "Okay." } } },
-      "steps": [
-        { "do": "until", "probe": "state", "timeoutMs": 15000, "expect": { "avatars": { "$some": { "kind": "qubit", "visible": true } } } },
-        { "do": "act", "action": "voice.hotkey" },
-        { "do": "until", "probe": "state", "timeoutMs": 25000, "expect": { "voice.phase": "listening" } },
-        { "do": "act", "action": "mic.play", "args": { "wav": "${audio}/backflip.wav" } },
-        { "do": "until", "probe": "state", "timeoutMs": 20000, "expect": { "events": { "$some": { "type": "avatar.command", "data.action": "backflip" } } } },
-        { "do": "fake", "name": "fake-claude", "expect": { "turns": { "$every": { "text": { "$not": { "$match": "backflip" } } } } } }
-      ] }
-  ]
+ "area": "voice",
+ "about": "Spoken scenarios end to end: a clip (parity/voice-clips.json, made by parity/gen-audio.mjs) goes into each app's own microphone path (the fake microphone), through the bridge's on-device speech to text, to a scripted Claude Code (parity/fixtures/fake-claude.mjs), whose tool calls Orbit runs and gates as always against the stand-in desktop driver; Orbit's spoken reply is made on this Mac and played by each app (muted). Checked: the tool calls, their effect on the stand-in, consent, and that a reply was spoken.",
+ "cases": [
+  {
+   "id": "voice.call.connects",
+   "title": "The hotkey starts a call: connecting, then listening, with Claude voice ready",
+   "needs": [
+    "voice"
+   ],
+   "fixtures": {
+    "claudeVoice": {
+     "rules": {
+      "rules": []
+     }
+    },
+    "fakeDesktop": true
+   },
+   "steps": [
+    {
+     "do": "act",
+     "action": "voice.hotkey"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 25000,
+     "expect": {
+      "voice.phase": "listening",
+      "voice.connected": true
+     }
+    },
+    {
+     "do": "state",
+     "expect": {
+      "events": {
+       "$some": {
+        "type": "voice.phase",
+        "data.phase": "listening"
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "voice.draft",
+   "title": "Asking for work drafts a prompt into Claude's box (not sent) and Orbit asks to send it",
+   "needs": [
+    "voice"
+   ],
+   "fixtures": {
+    "fakeDesktop": {
+     "windows": [
+      {
+       "hwnd": 101,
+       "kind": "main",
+       "title": "Fix the login bug",
+       "newPage": null,
+       "promptText": "",
+       "min": false
+      }
+     ],
+     "sidebar": [
+      "Fix the login bug"
+     ]
+    },
+    "claudeVoice": {
+     "rules": {
+      "rules": [
+       {
+        "when": "\\[Tool result: draft_prompt\\]",
+        "reply": "Drafted. Want me to send it?"
+       },
+       {
+        "when": "dark mode",
+        "reply": "<tool>{\"name\": \"draft_prompt\", \"arguments\": {\"text\": \"Add a dark mode toggle to the settings page.\"}}</tool>"
+       }
+      ],
+      "fallback": "Okay."
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "act",
+     "action": "voice.hotkey"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 25000,
+     "expect": {
+      "voice.phase": "listening"
+     }
+    },
+    {
+     "do": "act",
+     "action": "mic.play",
+     "args": {
+      "wav": "${audio}/draft.wav"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "fake",
+     "name": "fake-desktop",
+     "timeoutMs": 20000,
+     "expect": {
+      "windows.0.promptText": {
+       "$match": "dark mode toggle"
+      }
+     }
+    },
+    {
+     "do": "fake",
+     "name": "fake-desktop",
+     "expect": {
+      "sends": {
+       "$len": 0
+      }
+     }
+    },
+    {
+     "do": "until",
+     "probe": "fake",
+     "name": "fake-claude",
+     "timeoutMs": 10000,
+     "expect": {
+      "toolResults": {
+       "$contains": "draft_prompt"
+      }
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 15000,
+     "expect": {
+      "voice.playedMs": {
+       "$gt": 300
+      },
+      "voice.draft.text": {
+       "$match": "dark mode"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "voice.natural-yes",
+   "title": "A natural yes (\"Yeah, go ahead\") sends the draft",
+   "needs": [
+    "voice"
+   ],
+   "fixtures": {
+    "fakeDesktop": {
+     "windows": [
+      {
+       "hwnd": 101,
+       "kind": "main",
+       "title": "Fix the login bug",
+       "newPage": null,
+       "promptText": "",
+       "min": false
+      }
+     ],
+     "sidebar": [
+      "Fix the login bug"
+     ]
+    },
+    "claudeVoice": {
+     "rules": {
+      "rules": [
+       {
+        "when": "\\[Tool result: draft_prompt\\]",
+        "reply": "Drafted. Want me to send it?"
+       },
+       {
+        "when": "\\[Tool result: send_draft\\]",
+        "reply": "Sent."
+       },
+       {
+        "when": "dark mode",
+        "reply": "<tool>{\"name\": \"draft_prompt\", \"arguments\": {\"text\": \"Add a dark mode toggle to the settings page.\"}}</tool>"
+       },
+       {
+        "when": "go ahead|yeah|yes",
+        "reply": "<tool>{\"name\": \"send_draft\", \"arguments\": {}}</tool>"
+       }
+      ],
+      "fallback": "Okay."
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "act",
+     "action": "voice.hotkey"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 25000,
+     "expect": {
+      "voice.phase": "listening"
+     }
+    },
+    {
+     "do": "act",
+     "action": "mic.play",
+     "args": {
+      "wav": "${audio}/draft.wav"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "fake",
+     "name": "fake-desktop",
+     "timeoutMs": 20000,
+     "expect": {
+      "windows.0.promptText": {
+       "$match": "dark mode"
+      }
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 15000,
+     "expect": {
+      "voice.phase": "listening",
+      "voice.playedMs": {
+       "$gt": 300
+      }
+     }
+    },
+    {
+     "do": "act",
+     "action": "mic.play",
+     "args": {
+      "wav": "${audio}/yes.wav"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "fake",
+     "name": "fake-desktop",
+     "timeoutMs": 20000,
+     "expect": {
+      "sends": {
+       "$len": 1
+      },
+      "sends.0.text": {
+       "$match": "dark mode toggle"
+      }
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 10000,
+     "expect": {
+      "voice.sentCount": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "voice.no-keeps-draft",
+   "title": "\"No, don't send it\" never sends, even if the model tries",
+   "needs": [
+    "voice"
+   ],
+   "fixtures": {
+    "fakeDesktop": {
+     "windows": [
+      {
+       "hwnd": 101,
+       "kind": "main",
+       "title": "Fix the login bug",
+       "newPage": null,
+       "promptText": "",
+       "min": false
+      }
+     ],
+     "sidebar": [
+      "Fix the login bug"
+     ]
+    },
+    "claudeVoice": {
+     "rules": {
+      "rules": [
+       {
+        "when": "\\[Tool result: draft_prompt\\]",
+        "reply": "Drafted. Want me to send it?"
+       },
+       {
+        "when": "\\[Tool result: send_draft\\]",
+        "reply": "Okay."
+       },
+       {
+        "when": "dark mode",
+        "reply": "<tool>{\"name\": \"draft_prompt\", \"arguments\": {\"text\": \"Add a dark mode toggle to the settings page.\"}}</tool>"
+       },
+       {
+        "when": "send",
+        "reply": "<tool>{\"name\": \"send_draft\", \"arguments\": {}}</tool>"
+       }
+      ],
+      "fallback": "Okay."
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "act",
+     "action": "voice.hotkey"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 25000,
+     "expect": {
+      "voice.phase": "listening"
+     }
+    },
+    {
+     "do": "act",
+     "action": "mic.play",
+     "args": {
+      "wav": "${audio}/draft.wav"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "fake",
+     "name": "fake-desktop",
+     "timeoutMs": 20000,
+     "expect": {
+      "windows.0.promptText": {
+       "$match": "dark mode"
+      }
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 15000,
+     "expect": {
+      "voice.phase": "listening",
+      "voice.playedMs": {
+       "$gt": 300
+      }
+     }
+    },
+    {
+     "do": "act",
+     "action": "mic.play",
+     "args": {
+      "wav": "${audio}/no.wav"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "fake",
+     "name": "fake-claude",
+     "timeoutMs": 15000,
+     "expect": {
+      "toolResults": {
+       "$contains": "send_draft"
+      }
+     }
+    },
+    {
+     "do": "fake",
+     "name": "fake-desktop",
+     "expect": {
+      "sends": {
+       "$len": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "voice.same-breath-send",
+   "title": "\"…and send it\" in the same breath drafts and sends at once",
+   "needs": [
+    "voice"
+   ],
+   "fixtures": {
+    "fakeDesktop": {
+     "windows": [
+      {
+       "hwnd": 101,
+       "kind": "main",
+       "title": "Fix the login bug",
+       "newPage": null,
+       "promptText": "",
+       "min": false
+      }
+     ],
+     "sidebar": [
+      "Fix the login bug"
+     ]
+    },
+    "claudeVoice": {
+     "rules": {
+      "rules": [
+       {
+        "when": "\\[Tool result: draft_prompt\\]",
+        "reply": "Sent it."
+       },
+       {
+        "when": "typo",
+        "reply": "<tool>{\"name\": \"draft_prompt\", \"arguments\": {\"text\": \"Fix the typo in the readme.\"}}</tool>"
+       }
+      ],
+      "fallback": "Okay."
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "act",
+     "action": "voice.hotkey"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 25000,
+     "expect": {
+      "voice.phase": "listening"
+     }
+    },
+    {
+     "do": "act",
+     "action": "mic.play",
+     "args": {
+      "wav": "${audio}/same-breath.wav"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "fake",
+     "name": "fake-desktop",
+     "timeoutMs": 25000,
+     "expect": {
+      "sends": {
+       "$len": 1
+      },
+      "sends.0.text": {
+       "$match": "typo in the readme"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "voice.go-to-sleep",
+   "title": "\"Go to sleep\" puts Orbit to sleep on this Mac, without asking the model",
+   "needs": [
+    "voice"
+   ],
+   "fixtures": {
+    "fakeDesktop": true,
+    "claudeVoice": {
+     "rules": {
+      "rules": [],
+      "fallback": "Okay."
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "act",
+     "action": "voice.hotkey"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 25000,
+     "expect": {
+      "voice.phase": "listening"
+     }
+    },
+    {
+     "do": "act",
+     "action": "mic.play",
+     "args": {
+      "wav": "${audio}/sleep.wav"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "voice.phase": "off"
+     }
+    },
+    {
+     "do": "fake",
+     "name": "fake-claude",
+     "expect": {
+      "turns": {
+       "$every": {
+        "text": {
+         "$not": {
+          "$match": "[Ss]leep"
+         }
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "voice.stop",
+   "title": "\"Stop\" presses Claude's Stop",
+   "needs": [
+    "voice"
+   ],
+   "fixtures": {
+    "fakeDesktop": {
+     "windows": [
+      {
+       "hwnd": 101,
+       "kind": "main",
+       "title": "Fix the login bug",
+       "newPage": null,
+       "promptText": "",
+       "min": false,
+       "working": true
+      }
+     ],
+     "sidebar": [
+      "Fix the login bug"
+     ]
+    },
+    "claudeVoice": {
+     "rules": {
+      "rules": [
+       {
+        "when": "\\[Tool result: stop_claude\\]",
+        "reply": "Stopped."
+       },
+       {
+        "when": "stop",
+        "reply": "<tool>{\"name\": \"stop_claude\", \"arguments\": {}}</tool>"
+       }
+      ],
+      "fallback": "Okay."
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "act",
+     "action": "voice.hotkey"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 25000,
+     "expect": {
+      "voice.phase": "listening"
+     }
+    },
+    {
+     "do": "act",
+     "action": "mic.play",
+     "args": {
+      "wav": "${audio}/stop.wav"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "fake",
+     "name": "fake-desktop",
+     "timeoutMs": 20000,
+     "expect": {
+      "calls": {
+       "$some": {
+        "mode": "stop"
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "voice.answer-card",
+   "title": "Asked what Claude wants, then \"Allow it\": Orbit presses Allow on the card",
+   "needs": [
+    "voice"
+   ],
+   "fixtures": {
+    "fakeDesktop": {
+     "windows": [
+      {
+       "hwnd": 101,
+       "kind": "main",
+       "title": "Fix the login bug",
+       "newPage": null,
+       "promptText": "",
+       "min": false,
+       "pending": {
+        "kind": "permission",
+        "title": "Allow Claude to run a command?",
+        "detail": "npm test",
+        "options": [
+         {
+          "id": "allow_once",
+          "label": "Allow once"
+         },
+         {
+          "id": "allow_always",
+          "label": "Always allow"
+         },
+         {
+          "id": "deny",
+          "label": "Deny"
+         }
+        ],
+        "key": "parity-card-1"
+       }
+      }
+     ],
+     "sidebar": [
+      "Fix the login bug"
+     ]
+    },
+    "claudeVoice": {
+     "rules": {
+      "rules": [
+       {
+        "when": "\\[Tool result: read_claude_prompt\\]",
+        "reply": "It wants to run npm test. Allow it?"
+       },
+       {
+        "when": "\\[Tool result: answer_claude_prompt\\]",
+        "reply": "Done."
+       },
+       {
+        "when": "asking",
+        "reply": "<tool>{\"name\": \"read_claude_prompt\", \"arguments\": {}}</tool>"
+       },
+       {
+        "when": "allow",
+        "reply": "<tool>{\"name\": \"answer_claude_prompt\", \"arguments\": {\"answer\": \"allow\"}}</tool>"
+       }
+      ],
+      "fallback": "Okay."
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "act",
+     "action": "voice.hotkey"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 25000,
+     "expect": {
+      "voice.phase": "listening"
+     }
+    },
+    {
+     "do": "act",
+     "action": "mic.play",
+     "args": {
+      "wav": "${audio}/asking.wav"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "fake",
+     "name": "fake-claude",
+     "timeoutMs": 20000,
+     "expect": {
+      "toolResults": {
+       "$contains": "read_claude_prompt"
+      }
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 15000,
+     "expect": {
+      "voice.phase": "listening",
+      "voice.playedMs": {
+       "$gt": 300
+      }
+     }
+    },
+    {
+     "do": "act",
+     "action": "mic.play",
+     "args": {
+      "wav": "${audio}/allow.wav"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "fake",
+     "name": "fake-desktop",
+     "timeoutMs": 20000,
+     "expect": {
+      "answers": {
+       "$some": {
+        "kind": "permission",
+        "choice": "allow_once"
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "voice.model-switch",
+   "title": "\"Switch to Opus\" changes Claude voice's brain, and the next turn runs on it",
+   "needs": [
+    "voice"
+   ],
+   "fixtures": {
+    "fakeDesktop": true,
+    "claudeVoice": {
+     "rules": {
+      "rules": [
+       {
+        "when": "\\[Tool result: change_orbit_setting\\]",
+        "reply": "Switched to Opus."
+       },
+       {
+        "when": "opus",
+        "reply": "<tool>{\"name\": \"change_orbit_setting\", \"arguments\": {\"setting\": \"voice_model\", \"value\": \"opus\"}}</tool>"
+       }
+      ],
+      "fallback": "Okay."
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "act",
+     "action": "voice.hotkey"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 25000,
+     "expect": {
+      "voice.phase": "listening"
+     }
+    },
+    {
+     "do": "act",
+     "action": "mic.play",
+     "args": {
+      "wav": "${audio}/model.wav"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "http",
+     "path": "/api/config",
+     "timeoutMs": 20000,
+     "expect": {
+      "body.settings.claudeVoiceModel": "opus"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "fake",
+     "name": "fake-claude",
+     "timeoutMs": 15000,
+     "expect": {
+      "starts": {
+       "$some": {
+        "model": "opus"
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "voice.avatar-command",
+   "title": "\"Do a backflip\" goes straight to Qubit (no model turn)",
+   "needs": [
+    "voice",
+    "avatar"
+   ],
+   "profile": {
+    "settings": {
+     "avatar": "qubit"
+    }
+   },
+   "fixtures": {
+    "fakeDesktop": true,
+    "claudeVoice": {
+     "rules": {
+      "rules": [],
+      "fallback": "Okay."
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 15000,
+     "expect": {
+      "avatars": {
+       "$some": {
+        "kind": "qubit",
+        "visible": true
+       }
+      }
+     }
+    },
+    {
+     "do": "act",
+     "action": "voice.hotkey"
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 25000,
+     "expect": {
+      "voice.phase": "listening"
+     }
+    },
+    {
+     "do": "act",
+     "action": "mic.play",
+     "args": {
+      "wav": "${audio}/backflip.wav"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 20000,
+     "expect": {
+      "events": {
+       "$some": {
+        "type": "avatar.command",
+        "data.action": "backflip"
+       }
+      }
+     }
+    },
+    {
+     "do": "fake",
+     "name": "fake-claude",
+     "expect": {
+      "turns": {
+       "$every": {
+        "text": {
+         "$not": {
+          "$match": "backflip"
+         }
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "voice.wake-word",
+   "title": "\"Hey Orbit\" while Orbit is off starts a call (the wake word setting on)",
+   "needs": [
+    "voice"
+   ],
+   "fixtures": {
+    "fakeDesktop": true,
+    "claudeVoice": {
+     "rules": {
+      "rules": [],
+      "fallback": "Okay."
+     },
+     "settings": {
+      "wakeWord": true
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "sleep",
+     "ms": 4000
+    },
+    {
+     "do": "state",
+     "expect": {
+      "voice.phase": "off"
+     }
+    },
+    {
+     "do": "act",
+     "action": "mic.play",
+     "args": {
+      "wav": "${audio}/wake.wav"
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 15000,
+     "expect": {
+      "voice.phase": {
+       "$in": [
+        "connecting",
+        "listening"
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "voice.wake-word-decoy",
+   "title": "\"Hey rabbit\" (a decoy) doesn't wake Orbit",
+   "needs": [
+    "voice"
+   ],
+   "fixtures": {
+    "fakeDesktop": true,
+    "claudeVoice": {
+     "rules": {
+      "rules": [],
+      "fallback": "Okay."
+     },
+     "settings": {
+      "wakeWord": true
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "sleep",
+     "ms": 4000
+    },
+    {
+     "do": "act",
+     "action": "mic.play",
+     "args": {
+      "wav": "${audio}/decoy.wav"
+     }
+    },
+    {
+     "do": "sleep",
+     "ms": 5000
+    },
+    {
+     "do": "state",
+     "expect": {
+      "voice.phase": "off"
+     }
+    }
+   ]
+  }
+ ]
 }

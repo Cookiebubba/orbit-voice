@@ -36,7 +36,8 @@ fi
 
 sign() { codesign --force --timestamp=none --options runtime --sign "$ID" "$@"; }
 
-# Native code inside the core first.
+# Native code inside the core and the app's Frameworks first.
+while IFS= read -r -d '' f; do sign "$f" >/dev/null; done < <(find "$APP/Contents/Frameworks" -name '*.dylib' -type f -print0 2>/dev/null)
 while IFS= read -r -d '' f; do sign "$f" >/dev/null; done < <(find "$APP/Contents/Resources/core" \( -name '*.node' -o -name '*.dylib' \) -type f -print0)
 [ -f "$APP/Contents/Resources/core/resources/mac/orbit-helper" ] && sign --identifier dev.orbit.voice.native.helper "$APP/Contents/Resources/core/resources/mac/orbit-helper"
 sign --identifier dev.orbit.voice.native.node --entitlements "$ENT_NODE" "$APP/Contents/Resources/node/bin/node"

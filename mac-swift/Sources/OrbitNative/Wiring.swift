@@ -9,6 +9,7 @@ import OrbitKit
 import OrbitOverlays
 import OrbitUI
 import OrbitVoice
+import OrbitWake
 
 /** The global hotkey for the launcher's Settings: the real Carbon one, or in a test build driven by
  *  the parity suite an in-memory one (never registered with macOS, as the Electron driver does). */
@@ -171,7 +172,9 @@ extension AppDelegate {
       if !accel.isEmpty { _ = hk.set(accel) } else { hk.start() }
       if !hk.registered { hk.start() }
       if !hk.registered { self.log.warn("hotkey", "Could not register \(accel); another app may be using it") }
-      let w = WakeWord(link: v.link)
+      // "Hey Orbit" on this Mac in Swift (phase 2): Vosk natively, on the app's own mic stream.
+      let w = NativeWake(audio: io, archive: self.config.coreDir.appendingPathComponent("resources/models/\(WakeModel.file)"),
+                         cache: self.config.profileDir.appendingPathComponent("cache"), log: { [weak self] m in self?.log.info("wake", m) })
       v.attach(wakeWord: w)
       self.wakeWord = w
     }

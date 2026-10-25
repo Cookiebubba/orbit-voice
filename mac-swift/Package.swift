@@ -5,7 +5,10 @@ import PackageDescription
 
 // sherpa-onnx's C library: the copy Orbit's core already has (npm ci at the repo root).
 let sherpaLib = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../node_modules/sherpa-onnx-darwin-arm64").standardizedFileURL.path
-let sherpaLink: [LinkerSetting] = [.unsafeFlags(["-L\(sherpaLib)", "-Xlinker", "-rpath", "-Xlinker", sherpaLib, "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
+// Vosk's C library for "Hey Orbit" (scripts/fetch-vosk.sh puts it in .vendor/vosk).
+let voskLib = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent(".vendor/vosk").standardizedFileURL.path
+let voskLink: [LinkerSetting] = [.unsafeFlags(["-L\(voskLib)", "-Xlinker", "-rpath", "-Xlinker", voskLib])]
+let sherpaLink: [LinkerSetting] = [.unsafeFlags(["-L\(sherpaLib)", "-Xlinker", "-rpath", "-Xlinker", sherpaLib, "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Resources/core/node_modules/sherpa-onnx-darwin-arm64", "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
 
 let package = Package(
   name: "OrbitNative",
@@ -20,6 +23,7 @@ let package = Package(
     .library(name: "OrbitVoice", targets: ["OrbitVoice"]),
     .library(name: "OrbitOverlays", targets: ["OrbitOverlays"]),
     .library(name: "OrbitSpeech", targets: ["OrbitSpeech"]),
+    .library(name: "OrbitWake", targets: ["OrbitWake"]),
   ],
   targets: [
     // Logic with no UI: everything here is unit tested (Tests/OrbitKitTests).
@@ -54,15 +58,18 @@ let package = Package(
     // Phase 2: Orbit's on-device speech in Swift (sherpa-onnx's C API).
     .target(name: "SherpaOnnxC", path: "Sources/SherpaOnnxC"),
     .target(name: "OrbitSpeech", dependencies: ["SherpaOnnxC"], path: "Sources/OrbitSpeech", swiftSettings: [.swiftLanguageMode(.v5)], linkerSettings: sherpaLink),
+    // Phase 2: "Hey Orbit" in Swift (Vosk's C library, the same model and grammar as the wake page).
+    .target(name: "VoskC", path: "Sources/VoskC"),
+    .target(name: "OrbitWake", dependencies: ["VoskC"], path: "Sources/OrbitWake", linkerSettings: voskLink),
     // The app: the shell that puts it all together.
     .executableTarget(
       name: "OrbitNative",
-      dependencies: ["OrbitKit", "OrbitUI", "OrbitVoice", "OrbitOverlays", "OrbitSpeech"],
+      dependencies: ["OrbitKit", "OrbitUI", "OrbitVoice", "OrbitOverlays", "OrbitSpeech", "OrbitWake"],
       path: "Sources/OrbitNative",
       linkerSettings: [
         .linkedFramework("AppKit"), .linkedFramework("WebKit"), .linkedFramework("AVFoundation"),
         .linkedFramework("Carbon"), .linkedFramework("ServiceManagement"), .linkedFramework("ApplicationServices"),
-      ] + sherpaLink
+      ] + sherpaLink + voskLink
     ),
     // OrbitUI's windows against a running bridge, with a fake voice and hotkey (checks, snapshots).
     .executableTarget(name: "UIDemo", dependencies: ["OrbitKit", "OrbitUI"], path: "Sources/UIDemo", linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit")]),
@@ -73,6 +80,7 @@ let package = Package(
     .executableTarget(name: "OverlayDemo", dependencies: ["OrbitKit", "OrbitOverlays"], path: "Sources/OverlayDemo", linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit")]),
     // (Fixtures are read from the source tree by path, as the JS tests read test/fixtures.)
     .testTarget(name: "OrbitKitTests", dependencies: ["OrbitKit"], path: "Tests/OrbitKitTests", exclude: ["Fixtures"]),
+    .testTarget(name: "OrbitWakeTests", dependencies: ["OrbitWake"], path: "Tests/OrbitWakeTests", linkerSettings: voskLink),
     .testTarget(name: "OrbitSpeechTests", dependencies: ["OrbitSpeech", "OrbitKit"], path: "Tests/OrbitSpeechTests", exclude: ["reference.mjs", "engine-reference.mjs"], linkerSettings: sherpaLink),
     // Runs ../parity/cases against the Swift build (needs a built test app; see README).
     .testTarget(name: "OrbitParityTests", dependencies: ["OrbitKit"], path: "Tests/OrbitParityTests"),

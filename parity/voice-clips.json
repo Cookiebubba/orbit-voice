@@ -60,6 +60,18 @@
       "text": "What is Claude asking for?",
       "sid": 3,
       "expect": "asking"
+    },
+    {
+      "id": "wake",
+      "text": "Hey Orbit.",
+      "sid": 3,
+      "expect": "orbit"
+    },
+    {
+      "id": "decoy",
+      "text": "Hey rabbit.",
+      "sid": 3,
+      "expect": "rabbit"
     }
   ]
 }

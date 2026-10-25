@@ -7,6 +7,15 @@ import Combine
 import Foundation
 import OrbitKit
 
+/** "Hey Orbit": the web page (WakeWord) or the native recognizer (the app's NativeWake). */
+@MainActor
+public protocol WakeListening: AnyObject {
+  var onWake: () -> Void { get set }
+  func setActive(_ on: Bool)
+}
+
+extension WakeWord: WakeListening {}
+
 @MainActor
 public final class VoiceController: ObservableObject {
   // MARK: what the UI reads
@@ -46,7 +55,7 @@ public final class VoiceController: ObservableObject {
   private var throwData: Data?
   private var throwPlayer: AVAudioPlayer?
   private var events: Task<Void, Never>?
-  private weak var wakeWord: WakeWord?
+  private weak var wakeWord: (any WakeListening)?
   /**
    * On-device speech (phase 2): with Claude voice, the app hears and speaks itself and only words
    * cross the socket (`/voice?speech=local`). nil: the core does it, as for the Electron page.
@@ -187,7 +196,7 @@ public final class VoiceController: ObservableObject {
   // MARK: - "Hey Orbit"
 
   /** The wake word listens only while the call is off or asleep, the setting is on and there's a key (App.tsx). */
-  public func attach(wakeWord w: WakeWord) {
+  public func attach(wakeWord w: any WakeListening) {
     wakeWord = w
     w.onWake = { [weak self] in self?.hotkey() }
     updateWakeWord()
