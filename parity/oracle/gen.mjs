@@ -16,6 +16,7 @@ import { intentFixtures } from './intent.mjs';
 import { desktopFixtures } from './desktop.mjs';
 import { sessionsFixtures } from './sessions.mjs';
 import { brainFixtures } from './brain.mjs';
+import { voiceFixtures } from './voice.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const FIXTURES = path.join(HERE, 'fixtures');
@@ -117,6 +118,8 @@ export async function build() {
     ...(process.platform === 'darwin' ? { sessions: { platform: 'darwin', ...sessionsFixtures() } } : {}),
     // The second brain, web search, finding Claude Code (a Mac's places) and the speech models.
     ...(process.platform === 'darwin' ? { brain: { platform: 'darwin', ...(await brainFixtures(root, rng)) } } : {}),
+    // What the voice is told and given, its tools' text checks, Claude voice's text handling.
+    ...(process.platform === 'darwin' ? { voice: { platform: 'darwin', ...(await voiceFixtures(root, rng)) } } : {}),
   };
 }
 
