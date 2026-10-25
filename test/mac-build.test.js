@@ -64,7 +64,10 @@ test('mac build: hardened runtime, entitlements file exists and parses, with wha
   assert.equal(mac.gatekeeperAssess, false);
   assert.equal(mac.entitlements, 'build/entitlements.mac.plist');
   assert.equal(mac.entitlementsInherit, 'build/entitlements.mac.plist');
-  const ent = readEntitlements(fs.readFileSync(path.join(ROOT, mac.entitlements), 'utf8'));
+  const xml = fs.readFileSync(path.join(ROOT, mac.entitlements), 'utf8');
+  // codesign's entitlements parser (AMFIUnserializeXML) refuses XML comments: none in the file.
+  assert.ok(!xml.includes('<!--'), 'no XML comments (codesign: "Failed to parse entitlements")');
+  const ent = readEntitlements(xml);
   assert.deepEqual(ent, {
     'com.apple.security.cs.allow-jit': true,
     'com.apple.security.cs.allow-unsigned-executable-memory': true,

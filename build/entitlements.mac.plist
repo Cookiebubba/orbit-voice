@@ -1,19 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!--
-  Orbit's macOS entitlements (hardened runtime), for the app and every helper inside it.
-  - allow-jit, allow-unsigned-executable-memory: V8's JIT in Electron's main and renderer processes.
-  - disable-library-validation: lets the process load sherpa-onnx's native addon and dylibs
-    (node_modules/sherpa-onnx-darwin-*, the on-device speech engine for Claude voice). In a Developer
-    ID build electron-builder re-signs them with Orbit's identity, so library validation would pass
-    anyway; this keeps unsigned and ad-hoc signed test builds (which have no Team ID to match) from
-    refusing to load them. DYLD_* variables stay stripped: they aren't needed, the libraries find
-    each other through @rpath = @loader_path.
-  - device.audio-input: the microphone (macOS still asks the user; see NSMicrophoneUsageDescription).
-  - automation.apple-events: kept for a future hand-off to the Claude app; Orbit drives Claude through
-    the accessibility API today (its helper, Contents/Resources/mac/orbit-helper, signed with these
-    same entitlements), which needs no entitlement, only the user's Accessibility switch.
--->
 <plist version="1.0">
 <dict>
   <key>com.apple.security.cs.allow-jit</key>
