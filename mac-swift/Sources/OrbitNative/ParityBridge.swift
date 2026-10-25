@@ -1,6 +1,7 @@
 // The parity driver's view of the shell (../../parity/PROTOCOL.md): state snapshots and actions, run
 // on the main actor where the windows live.
 import AppKit
+import ApplicationServices
 import OrbitKit
 import OrbitOverlays
 import OrbitVoice
@@ -19,6 +20,8 @@ final class ParityBridge: ParityDriverDelegate, @unchecked Sendable {
         "ready": .bool(s.endpoints != nil && s.ui != nil),
         // Who hears and speaks for Claude voice: this app (phase 2) or the core.
         "speech": .string(s.voiceController?.localSpeech != nil ? "local" : "core"),
+        // The real Accessibility switch (not the faked one): the window and avatar cases need it.
+        "axTrusted": .bool(AXIsProcessTrusted()),
         "bridge": ["base": .string(s.endpoints?.base.absoluteString ?? ""), "authUrl": .string(s.endpoints?.auth["main"]?.absoluteString ?? "")],
         "features": .array(s.features.map { .string($0) }),
       ]

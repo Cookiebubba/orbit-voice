@@ -792,10 +792,11 @@
   },
   {
    "id": "voice.avatar-command",
-   "title": "\"Do a backflip\" goes straight to Qubit (no model turn)",
+   "title": "\"Do a backflip\" goes straight to Qubit on the Claude window (no model turn)",
    "needs": [
     "voice",
-    "avatar"
+    "avatar",
+    "window"
    ],
    "profile": {
     "settings": {
@@ -803,7 +804,14 @@
     }
    },
    "fixtures": {
-    "fakeDesktop": true,
+    "standin": {
+     "frame": {
+      "x": 200,
+      "y": 120,
+      "w": 980,
+      "h": 680
+     }
+    },
     "claudeVoice": {
      "rules": {
       "rules": [],
