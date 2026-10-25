@@ -7,9 +7,11 @@
 // Each cycle, with Claude voice (on-device speech, the scripted Claude Code), the fake microphone and
 // muted output, exactly as the voice parity cases: the hotkey starts a call, a spoken question goes in
 // ("What is Claude asking for?"), Orbit answers out loud, then the call is hung up. The app's process
-// tree memory (parity/lib/procs.mjs) is sampled after every cycle. The verdict is the slope of a
-// straight line through the samples after the first five (warm-up: caches, models, pages); a slope
-// above --max-growth-mb per cycle fails. Results: parity/out/soak.json.
+// tree memory (parity/lib/procs.mjs) is sampled after every cycle. Reported: the slope of a straight
+// line through the samples after the first five (warm-up: caches, models, pages), overall and per kind
+// of process. The verdict is the slope over the second half of the run: heaps that collect lazily
+// (JavaScript's, WebKit's) grow early and level off, a leak keeps climbing. Above --max-growth-mb per
+// call fails. Results: parity/out/soak.json.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,6 +89,8 @@ async function soak(which) {
     }
     const warm = samples.filter((s) => s.cycle > WARMUP);
     const perCycle = warm.length > 2 ? slope(warm.map((s) => s.cycle), warm.map((s) => s.rssMb)) : 0;
+    const late = samples.slice(Math.floor(samples.length / 2));
+    const latePerCycle = late.length > 2 ? slope(late.map((s) => s.cycle), late.map((s) => s.rssMb)) : 0;
     const byKind = kinds(tree(app.pid, webkitBefore));
     // Which process grows: the same slope per kind of process.
     const names = [...new Set(warm.flatMap((s) => Object.keys(s.byKind)))];
@@ -98,8 +102,9 @@ async function soak(which) {
       startMb: samples[WARMUP - 1]?.rssMb ?? null,
       endMb: samples.at(-1)?.rssMb ?? null,
       growthMbPerCycle: Math.round(perCycle * 100) / 100,
+      lateGrowthMbPerCycle: Math.round(latePerCycle * 100) / 100,
       growthByKind,
-      pass: failures.length === 0 && perCycle <= MAX_SLOPE,
+      pass: failures.length === 0 && latePerCycle <= MAX_SLOPE,
       byKind,
       samples,
     };
@@ -116,6 +121,6 @@ fs.mkdirSync(path.join(REPO, 'parity', 'out'), { recursive: true });
 fs.writeFileSync(path.join(REPO, 'parity', 'out', 'soak.json'), JSON.stringify(result, null, 2));
 for (const which of APPS) {
   const r = result[which];
-  console.log(`${which}: ${r.pass ? 'PASS' : 'FAIL'}: ${r.cycles} calls, ${r.failed} failed, memory ${r.startMb} -> ${r.endMb} MB after warm-up (${r.growthMbPerCycle} MB per call: ${JSON.stringify(r.growthByKind)}) ${JSON.stringify(r.byKind)}`);
+  console.log(`${which}: ${r.pass ? 'PASS' : 'FAIL'}: ${r.cycles} calls, ${r.failed} failed, memory ${r.startMb} -> ${r.endMb} MB after warm-up (${r.growthMbPerCycle} MB per call: ${JSON.stringify(r.growthByKind)}; second half ${r.lateGrowthMbPerCycle} MB per call) ${JSON.stringify(r.byKind)}`);
 }
 process.exit(APPS.every((w) => result[w].pass) ? 0 : 1);
