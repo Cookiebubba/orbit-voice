@@ -19,6 +19,7 @@ let package = Package(
     .library(name: "OrbitUI", targets: ["OrbitUI"]),
     .executable(name: "VoiceDemo", targets: ["VoiceDemo"]),
     .library(name: "OrbitVoice", targets: ["OrbitVoice"]),
+    .library(name: "OrbitOverlays", targets: ["OrbitOverlays"]),
   ],
   targets: [
     // Logic with no UI: everything here is unit tested (Tests/OrbitKitTests).
@@ -38,12 +39,18 @@ let package = Package(
       name: "OrbitVoice",
       path: "Sources/OrbitVoice",
       linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit"), .linkedFramework("AVFoundation"), .linkedFramework("Carbon")]
+    // The overlays (avatars, the orb, Orbit's mouse, the Claude window tracker) in AppKit + WebKit,
+    // behind one facade (Overlays). A library so both the app and OverlayDemo use it.
+      name: "OrbitOverlays",
+      path: "Sources/OrbitOverlays",
+      linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit")]
     ),
     // The app: AppKit/SwiftUI windows, overlays, audio, hotkeys.
     .executableTarget(
       name: "OrbitNative",
       dependencies: ["OrbitKit", "OrbitUI"],
       dependencies: ["OrbitKit", "OrbitVoice"],
+      dependencies: ["OrbitKit", "OrbitOverlays"],
       path: "Sources/OrbitNative",
       linkerSettings: [
         .linkedFramework("AppKit"), .linkedFramework("WebKit"), .linkedFramework("AVFoundation"),
