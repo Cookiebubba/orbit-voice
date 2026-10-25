@@ -21,7 +21,7 @@ export const HIT_STALE_MS = 3000; // a rect not heard again for this long is for
 export const HELD_STALE_MS = 5000; // ...and a press the page stopped mentioning
 const PAD = 2; // px of slack around the avatar's rect
 
-export function createHoverPoller({ getCursor, getBounds, setIgnore, isLive = () => true, onCursor = () => {}, onMode = () => {}, onRunning = () => {}, intervalMs = HOVER_POLL_MS, now = () => Date.now(), setTimer = setInterval, clearTimer = clearInterval } = {}) {
+export function createHoverPoller({ getCursor, getBounds, setIgnore, isLive = () => true, onCursor = () => {}, onMode = () => {}, onRunning = () => {}, onStale = () => {}, intervalMs = HOVER_POLL_MS, now = () => Date.now(), setTimer = setInterval, clearTimer = clearInterval } = {}) {
   let hit = null; // the avatar's rect in the window's px: { x, y, w, h }
   let hitAt = 0;
   let held = false; // a press or drag is under way (the page keeps the mouse for it)
@@ -33,7 +33,10 @@ export function createHoverPoller({ getCursor, getBounds, setIgnore, isLive = ()
   function decide() {
     if (!isLive()) return apply(false);
     const t = now();
-    if (hit && t - hitAt > HIT_STALE_MS) hit = null;
+    if (hit && t - hitAt > HIT_STALE_MS) {
+      hit = null;
+      onStale();
+    }
     if (held && t - heldAt > HELD_STALE_MS) held = false;
     let over = false;
     const c = getCursor?.();

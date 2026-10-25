@@ -81,8 +81,14 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   // avatar-hover.js), or a press under way. Never only forwarded mouse moves. Logged when the polling
   // starts or stops and when the mouse mode changes (rate-limited; no text).
   const hoverLog = rateLimitedLog((m) => info_(m), { everyMs: 10_000 });
+  // What a press on it came to, one line per outcome kind (rate-limited; only words from these lists).
+  const PRESS_OUTCOMES = new Set(['click', 'pickup', 'ignored']);
+  const PRESS_WHY = new Set(['talk', 'poke', 'throw-off', 'too-long-for-a-click', 'drag', 'hold', 'leaving', 'press-already', 'not-on-him']);
+  const pressLog = rateLimitedLog((m) => info_(m), { everyMs: 5_000 });
+  const pageErrLog = rateLimitedLog((m) => log(m), { everyMs: 30_000 });
   const hover = createHoverPoller({
     onRunning: (on) => hoverLog(on ? 'poll-on' : 'poll-off', `${kind}: hover polling ${on ? 'started' : 'stopped'}`),
+    onStale: () => hoverLog('stale', `${kind}: no word of where it is from its page for a while: clicks go through over it`),
     onMode: (take) => hoverLog('mode', `${kind}: its window ${take ? 'takes the mouse (the cursor is on it, or it is held)' : 'lets clicks through'}`),
     getCursor: () => {
       try {
@@ -119,6 +125,11 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       webPreferences,
     });
     lockDown(win);
+    // Errors on its page (code only, never anything anyone said), so a stuck avatar explains itself.
+    win.webContents.on('console-message', (ev) => {
+      if (ev?.level === 'error') pageErrLog('err', `${kind}: its page had an error: ${String(ev.message || '').replace(/\s+/g, ' ').slice(0, 160)}`);
+    });
+    win.webContents.on('render-process-gone', (_ev, d) => info_(`${kind}: its page stopped (${String(d?.reason || 'unknown').slice(0, 40)})`));
     openWindows++;
     const where = free ? 'along the screen' : boxless ? 'on another window' : 'on the Claude window';
     info_(`${kind}: avatar window opened ${where} (${openWindows} open)`);
@@ -498,6 +509,14 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     /** The page: the cursor is over the avatar, and whether it's held (a press or drag under way). */
     hover(on, held = false) {
       hover.setPageHover(on, { held });
+    },
+    /** The page: what a press on it came to (logged, rate-limited, fixed words only). */
+    pressed(outcome, why) {
+      const o = String(outcome);
+      const w = String(why || '');
+      if (!PRESS_OUTCOMES.has(o)) return;
+      const reason = PRESS_WHY.has(w) ? w : '';
+      pressLog(`press-${o}-${reason}`, `${kind}: a press on it: ${o}${reason ? ` (${reason})` : ''}`);
     },
     /** The page: where the avatar is drawn (window px), so the window takes the mouse over it. */
     hit(rect) {

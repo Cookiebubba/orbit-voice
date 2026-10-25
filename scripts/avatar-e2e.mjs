@@ -797,6 +797,7 @@ async function run() {
 
   out('16. Switch avatars live (Settings -> Avatar)');
   const hotkey16 = [...hotkeys.values()][0];
+  const PRESS_HOLD = 420; // (ui/src/buddy/throw.js PRESS.holdMs)
   await pjs(`document.querySelector('button[aria-label="Settings"]').click()`);
   await waitFor(() => pjs(`[...document.querySelectorAll('[role=radio]')].some((b) => b.textContent === 'Pixel buddy')`), 5000);
   const pickAvatar = (name) => pjs(`(() => { const b = [...document.querySelectorAll('[role=radio]')].find((x) => x.textContent === ${JSON.stringify(name)}); b && b.click(); return !!b; })()`);
@@ -1296,6 +1297,82 @@ async function run() {
   check(await waitFor(() => ignoreCalls.at(-1) === true, 4000), 'and let go, clicks go through again');
   const hoverLines = (() => { try { return fs.readFileSync(path.join(getConfigDir(), 'logs', 'orbit.log'), 'utf8'); } catch { return ''; } })();
   check(/hover polling started/.test(hoverLines) && /its window (takes the mouse|lets clicks through)/.test(hoverLines), 'the log says when hover polling starts and the mouse mode changes');
+  fakeCursor = null;
+
+  out('17f. Real-world presses on a Tiny Qubit: a fast press-and-drag, and press-hold-drag, after the box re-measures');
+  // The owner's report (after d48762f): he couldn't be picked up at will. Input here follows what
+  // Windows and Electron deliver: a press reaches his page only if his window took the mouse (else it
+  // goes to the app underneath), a press it took keeps the mouse until the button is up, and while the
+  // window lets clicks through, moves arrive only as Electron forwards them, with no button.
+  await label('tiny');
+  (await import('../src/config.js')).updateSettings({ buddySize: 1 }); // Tiny (as Settings -> Avatar -> Size does)
+  await expectState('Tiny: 26 px', { side: (v) => Math.abs(v - 26) < 1 }, 6000);
+  let capture17 = false;
+  let down17 = false;
+  const ign17 = () => (ignoreCalls.length ? ignoreCalls.at(-1) : true);
+  const deliver17 = (type, gx, gy, buttons) => {
+    const b = qwin.getBounds();
+    qwin.webContents.sendInputEvent({ type, x: Math.round(gx - b.x), y: Math.round(gy - b.y), globalX: Math.round(gx), globalY: Math.round(gy), button: 'left', clickCount: 1, ...(buttons ? { modifiers: ['leftButtonDown'] } : {}) });
+  };
+  const os17 = (type, gx, gy) => {
+    fakeCursor = { x: Math.round(gx), y: Math.round(gy) };
+    if (type === 'mouseDown') {
+      down17 = true;
+      if (!ign17()) {
+        capture17 = true;
+        deliver17(type, gx, gy);
+        return true;
+      }
+      return false; // (to the app underneath)
+    }
+    if (type === 'mouseUp') {
+      down17 = false;
+      if (capture17) deliver17(type, gx, gy);
+      capture17 = false;
+      return true;
+    }
+    deliver17('mouseMove', gx, gy, (capture17 || !ign17()) && down17);
+    return true;
+  };
+  const tinyAt = async () => {
+    const b = qwin.getBounds();
+    const p = await qjs('(() => { const q = window.__qubit.q; return { x: q._rx, y: q._ry }; })()');
+    return { x: b.x + p.x, y: b.y + p.y };
+  };
+  const tinySettle = async () => {
+    await waitFor(async () => !(await qjs('window.__qubit.throw.active || window.__qubit.returning')) && (await qjs('window.__qubit.frame')) === 'strip', 20_000);
+    await wait(400);
+  };
+  const tries = [];
+  for (let round = 0; round < 3; round++) {
+    desk.windows[0].promptText = round % 2 ? '' : 'one\ntwo';
+    desk.caret?.();
+    await wait(1200);
+    for (const how of ['fast press-and-drag', 'press, hold, drag', 'drag with a stray buttonless move']) {
+      const p = await tinyAt();
+      for (let k = 6; k >= 0; k--) {
+        os17('mouseMove', p.x - k * 12, p.y + 2); // the cursor comes onto him
+        await wait(16);
+      }
+      await wait(90); // (Orbit's poll sees it)
+      const took = os17('mouseDown', p.x, p.y);
+      if (how === 'press, hold, drag') await wait(PRESS_HOLD + 60);
+      for (let k = 1; k <= 8; k++) {
+        if (how === 'drag with a stray buttonless move' && k === 2) deliver17('mouseMove', p.x - 20, p.y - 12, false); // as a late forwarded move would
+        os17('mouseMove', p.x - k * 14, p.y - k * 9);
+        await wait(12);
+      }
+      const picked = await waitFor(() => qjs('window.__qubit.throw.held'), 1500);
+      tries.push([round, how, took, picked]);
+      os17('mouseUp', p.x - 112, p.y - 72);
+      os17('mouseMove', p.x - 500, p.y);
+      await tinySettle();
+    }
+  }
+  const misses = tries.filter((t) => !t[2] || !t[3]);
+  check(misses.length === 0, `every press on a Tiny Qubit picked him up (${tries.length} tries: fast drags, hold-then-drag, a stray buttonless move mid-press)`, JSON.stringify(misses));
+  const log17 = (() => { try { return fs.readFileSync(path.join(getConfigDir(), 'logs', 'orbit.log'), 'utf8'); } catch { return ''; } })();
+  check(/a press on it: pickup/.test(log17), 'the log says what each press came to');
   fakeCursor = null;
 
   out('17b. Show the orb (Settings -> Avatar)');

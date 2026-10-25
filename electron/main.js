@@ -655,6 +655,11 @@ ipcMain.on('buddy:hover', (e, over, held) => {
   if (!fromUs(e)) return;
   avatarFor(e.sender)?.hover(!!over, !!held);
 });
+// What became of a press on the avatar (fixed words only), for the log.
+ipcMain.on('buddy:press', (e, outcome, why) => {
+  if (!fromUs(e)) return;
+  avatarFor(e.sender)?.pressed(outcome, why);
+});
 ipcMain.on('buddy:hit', (e, r) => {
   if (!fromUs(e)) return;
   const ok = r && typeof r === 'object' && [r.x, r.y, r.w, r.h].every((n) => Number.isFinite(n) && Math.abs(n) < 100_000);
