@@ -163,6 +163,11 @@ export function createAvatarHost({ makeAvatar, home = () => null, watch = () => 
     get activeId() {
       return activeId;
     },
+    /** For the parity driver: each guest with its window's bounds (as the focus helper reports them) and its avatar. */
+    debug() {
+      const vis = new Set(shown());
+      return [...guests.values()].map((g) => ({ id: g.id, hwnd: g.hwnd, shown: vis.has(g.id), active: g.id === activeId, bounds: g.bounds ? { ...g.bounds } : null, avatar: g.avatar }));
+    },
   };
   return host;
 }

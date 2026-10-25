@@ -517,6 +517,34 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     get free() {
       return free;
     },
+    /**
+     * For the parity driver (electron/parity-driver.js): what this avatar's window is doing, read-only.
+     * Rects in DIPs (the window's bounds, the strip's, the lifted area, the host window), the box and
+     * Send button in the strip's px, the page's last hit rect in the window's px.
+     */
+    debug() {
+      const shows = visible();
+      return {
+        kind,
+        free,
+        boxless,
+        enabled,
+        leaving,
+        visible: shows,
+        bounds: win && !win.isDestroyed() ? win.getBounds() : null,
+        strip: win && !win.isDestroyed() ? { ...stripBounds() } : null,
+        lifted: !!lifted,
+        liftArea: lifted ? { ...lifted.area } : null,
+        host: claudeDip && claude?.found && !free ? { ...claudeDip } : null,
+        hostHwnd: !free && claude?.found ? Number(claude.hwnd) || 0 : 0,
+        box: lastBox ? { ...lastBox } : null,
+        send: lastSend ? { ...lastSend } : null,
+        boxKnown,
+        voice: { ...voice },
+        takesMouse: hover.taking,
+        hit: hover.hitRect,
+      };
+    },
     stop() {
       clearInterval(boxTimer);
       clearTimeout(settleTimer);
