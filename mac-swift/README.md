@@ -10,18 +10,25 @@ Status and what is native vs. still shared: see "Status" at the end.
 
 ```
 mac-swift/
-  Package.swift              SwiftPM: OrbitKit (logic, no UI), OrbitNative (the app), tests
-  Sources/OrbitKit/          testable logic: bridge client, settings, voice protocol + state,
-                             audio math, avatar geometry, hotkey parsing, onboarding, sidecar,
-                             the parity driver server, the parity case runner
-  Sources/OrbitNative/       the app: AppKit/SwiftUI windows, overlays, audio engine, hotkeys
-  Sources/StandInClaude/     a stand-in "Claude" window for tests (never the real Claude app)
-  Tests/OrbitKitTests/       XCTest unit tests for OrbitKit
-  Tests/OrbitParityTests/    XCTest runner of ../parity/cases against the Swift build
+  Package.swift              SwiftPM: the targets below
+  Sources/OrbitKit/          logic with no UI, unit tested: bridge client, settings schema and model,
+                             onboarding, updater, the voice call (VoiceSession, a port of useVoice.ts),
+                             audio math, hotkey parsing, avatar/mouse/orb geometry and models, the
+                             sidecar channel, the parity driver server, the parity runner and matchers
+  Sources/OrbitUI/           launcher (Qubit's engine as the hero), Settings, History, onboarding, menu bar
+  Sources/OrbitVoice/        AVAudioEngine mic and playback, the /voice socket, VoiceController, the hotkey
+  Sources/OrbitOverlays/     the avatars, the orb and Orbit's mouse (pages in WKWebViews), the Claude
+                             window tracker (the macOS helper's claude-window mode)
+  Sources/OrbitSpeech/       phase 2: Claude voice's speech in Swift (sherpa-onnx's C API)
+  Sources/OrbitWake/         phase 2: "Hey Orbit" in Swift (Vosk's C library)
+  Sources/OrbitNative/       the app: the shell that wires it all to the core (AppDelegate, Wiring)
+  Sources/{UI,Voice,Overlay}Demo/  each part on its own against a bridge, for checks
+  Tests/                     XCTest: OrbitKitTests, OrbitSpeechTests, OrbitWakeTests, OrbitParityTests
   sidecar/sidecar.mjs        starts Orbit's bridge (src/server.js) for the Swift shell
   scripts/build-app.sh       builds "Orbit Native.app" (embedded Node, the core, the UI pages, models)
   scripts/sign.sh            signs it with the dev identity (stable designated requirement)
-  Resources/                 Info.plist, entitlements, the hero page
+  scripts/fetch-vosk.sh      Vosk's macOS library, pinned checksum, into .vendor/
+  Resources/                 entitlements
 ```
 
 ## How it fits together
@@ -55,7 +62,7 @@ Sidecar → Swift:
 | `ready` | `base`, `auth` (`{main,orb,qubit,buddy,mouse}` sign-in URLs) | The bridge is listening. |
 | `error` | `message`, `code` | Startup failed (e.g. `EADDRINUSE`). |
 | `avatar.cmd` | `cmd` (`{action,dir}`) | The voice asked the avatar to do something. (The sidecar answers the core at once from the avatar state Swift last reported.) |
-| `mouse.glide` | `x`,`y` (physical px), `ms`, `holdMs` | Orbit's mouse glides. |
+| `mouse.glide` | `x`,`y` (screen points on macOS), `ms`, `holdMs` | Orbit's mouse glides. |
 | `mouse.press` / `mouse.hide` | | |
 | `contexts` | `snap` | Orbit anywhere's contexts changed (guest avatars follow them). |
 | `focus` | `current`, `recent` | The window in front changed. |
@@ -70,7 +77,7 @@ Swift → Sidecar:
 | `t` | Fields | |
 | --- | --- | --- |
 | `avatarState` | `kind` (`qubit`/`buddy`/null), `onScreen` | So avatar commands answer correctly. |
-| `screens` | `displays` (`[{x,y,w,h,scale}]` work areas, physical px) | For Orbit's mouse "on screen" checks. |
+| `screens` | `displays` (`[{x,y,w,h,scale}]` visible frames in points, top-left origin: the mouse's coordinate space on macOS) | For Orbit's mouse "on screen" checks. |
 | `wake` | `win` | Avatar clicked: start talking with this window in front (`wakeWith`). |
 | `homeWindow` | `id` | The Claude window Orbit lives on. |
 | `frontHint` | `id` | The Claude window the tools should act on. |
@@ -133,7 +140,9 @@ npm run parity -- --app swift     # (from the repo root) the parity suite agains
 ```
 
 `build-app.sh` needs `node` (it embeds the running Node's binary), `npm ci` done at the repo root,
-and the UI built (`npm run build:ui`).
+the UI built (`npm run build:ui`) and the wake-word model (`node scripts/fetch-model.mjs`); it fetches
+Vosk's library itself (`scripts/fetch-vosk.sh`). The macOS helper is built from
+`native/mac/OrbitHelper` when the tree has it (the macOS port's branch).
 
 ## Rules this build keeps
 
