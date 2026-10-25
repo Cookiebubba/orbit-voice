@@ -896,14 +896,19 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     // For the log line when the session ends (no audio or words are kept, only counts).
     const stats = { micBytes: 0, micPeak: 0, heard: 0, replies: 0, tools: 0, grokAudioBytes: 0, note: 0 };
     let pageReason = ''; // why the page hung up, as it said (a code)
+    // Claude voice runs on the user's own Claude Code sign-in: it never needs an xAI key. Only Grok does.
     if (useClaude && !modelsReady(voiceModelsDir)) {
       logWarn('voice', 'Could not start Claude voice: speech models not downloaded');
-      toBrowser({ type: 'bridge.error', message: "Claude voice's speech models aren't downloaded yet. Download them in Settings → Voice engine." });
+      const dl = downloadStatus(voiceModelsDir);
+      toBrowser({
+        type: 'bridge.error',
+        message: dl.state === 'downloading' ? `Claude voice is still getting ready: downloading its speech models (${dl.percent}%).` : "Claude voice's speech models aren't downloaded yet. Download them in Settings → Voice engine.",
+      });
       return browser.close();
     }
     if (!useClaude && !apiKey) {
       logWarn('xai', 'Could not start Grok: no xAI API key saved');
-      toBrowser({ type: 'bridge.error', message: 'No xAI API key yet. Add it on the setup screen.' });
+      toBrowser({ type: 'bridge.error', message: 'Grok voice needs an xAI key. Add one in Settings, or switch to Claude voice.' });
       return browser.close();
     }
     // A spoken update that isn't allowed, has nothing to say, or comes too soon after the last one
@@ -1670,7 +1675,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       setBridgeBase(url); // helpers reach orbit-hands here
       setMcpBridge(url); // connectors' sign-ins come back here
       console.log(`\n  Orbit bridge running:  ${url}\n`);
-      if (!getApiKey()) console.log('  ! No xAI API key yet. Open the app and paste it on the setup screen.\n');
+      if (!getApiKey() && !claudeVoiceOn()) console.log('  ! Grok voice needs an xAI key: add one in Settings, or switch to Claude voice.\n');
       resolve(url);
     });
   });

@@ -98,7 +98,7 @@ test('each engine gets its own search, only while the setting is on', () => {
   assert.deepEqual(names({ webSearch: true, engine: 'grok' }).filter((n) => /search/.test(n)), ['search_web'], 'xAI refused its own: search_web');
   SEARCH_STATE.xaiNative = true;
   assert.match(SEARCH_TOOL_DEF.description, /rather than guessing/);
-  updateSettings({ webSearch: true });
+  updateSettings({ webSearch: true, voiceEngine: 'grok' }); // Grok's wording (Claude voice's names search_web)
   assert.match(agentContext().instructions, /search the web instead of guessing/);
   updateSettings({ webSearch: false });
   assert.ok(!/Web search/.test(agentContext().instructions));

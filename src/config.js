@@ -47,9 +47,11 @@ export const DEFAULTS = Object.freeze({
   // Web search for current facts: Grok uses xAI's own search tools; Claude voice a quick, isolated
   // Claude Code run with only WebSearch and WebFetch (see searchWeb in brain.js).
   webSearch: true,
-  // The voice itself: 'grok' (xAI realtime) or 'claude' (beta: local speech models + Claude Haiku
-  // through the user's own Claude Code; models are downloaded when it's first turned on).
-  voiceEngine: 'grok',
+  // The voice itself: 'claude' (local speech models + Claude Haiku through the user's own Claude
+  // Code, so it runs on their Claude plan with no xAI key; models are downloaded when it's first
+  // used) or 'grok' (xAI realtime, needs an xAI key). New installs start on Claude; installs from
+  // before Claude was the default keep Grok (see engineFor).
+  voiceEngine: 'claude',
   claudeVoice: 0, // which of Kitten's 8 voices Claude voice speaks with (0–7)
   // The brain behind Claude voice: 'haiku' (fastest), 'sonnet', 'opus' or 'fable', and its effort.
   claudeVoiceModel: 'haiku',
@@ -261,9 +263,11 @@ export function initConfig({ dir, secrets, brainSecrets } = {}) {
   const fromEnv = {};
   for (const [envName, key] of Object.entries(ENV_OVERRIDES)) if (env[envName] !== undefined) fromEnv[key] = env[envName];
 
+  const settingsFile = path.join(configDir, 'settings.json');
+  const hadFile = fs.existsSync(settingsFile);
   let fromFile = {};
   try {
-    fromFile = JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8'));
+    fromFile = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
   } catch {}
   // Before the avatar choice, the pixel buddy was an on/off switch: off means no avatar.
   if (fromFile && typeof fromFile === 'object' && fromFile.avatar === undefined && fromFile.buddy === false) fromFile.avatar = 'none';
@@ -271,7 +275,27 @@ export function initConfig({ dir, secrets, brainSecrets } = {}) {
 
   // First run of the desktop app on a machine that used the dev version: bring the key over.
   if (!secretStore.get() && env.XAI_API_KEY) secretStore.set(env.XAI_API_KEY.trim());
+
+  const saved = sanitize(fromFile).voiceEngine;
+  settings.voiceEngine = engineFor({ saved, hadFile, hasKey: !!secretStore.get() });
+  // A brand-new install says so in its file straight away, so adding an xAI key later (without
+  // changing anything else) never reads as an install from before Claude was the default.
+  if (!saved && !hadFile && settings.voiceEngine === 'claude') {
+    try {
+      fs.writeFileSync(settingsFile, JSON.stringify({ voiceEngine: 'claude' }, null, 2));
+    } catch {}
+  }
   return settings;
+}
+
+/**
+ * Which voice engine to start on. A saved choice always wins. Without one: an install from before
+ * Claude was the default (a settings file without the choice, which only Grok users had, or an xAI
+ * key already saved) stays on Grok; a new install starts on Claude, which needs no xAI key.
+ */
+export function engineFor({ saved, hadFile = false, hasKey = false } = {}) {
+  if (saved === 'grok' || saved === 'claude') return saved;
+  return hadFile || hasKey ? 'grok' : 'claude';
 }
 
 export const getSettings = () => ({ ...settings });
@@ -292,7 +316,9 @@ export function updateSettings(patch) {
   settings = { ...settings, ...clean };
   if (settingsWriter) settingsWriter(Object.fromEntries(changed.map((k) => [k, settings[k]])));
   else {
-    const toSave = Object.fromEntries(Object.entries(settings).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(DEFAULTS[k])));
+    // The voice engine is always written out, even at its default, so the file says it was chosen
+    // (an older file without it was a Grok install: see engineFor).
+    const toSave = Object.fromEntries(Object.entries(settings).filter(([k, v]) => k === 'voiceEngine' || JSON.stringify(v) !== JSON.stringify(DEFAULTS[k])));
     fs.writeFileSync(path.join(configDir, 'settings.json'), JSON.stringify(toSave, null, 2));
   }
   for (const fn of listeners) fn(changed, getSettings());
