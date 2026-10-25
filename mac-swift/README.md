@@ -87,6 +87,40 @@ Swift app injects the same API as a `WKUserScript` at document start: calls post
 `orb:state`, `orb:action`; and from the page `buddy:hit`, `buddy:hover`, `buddy:talk`, `buddy:lift`,
 `buddy:sound`, `orb:*`). So the pages run unchanged.
 
+### Voice
+
+The call logic is `OrbitKit/Voice/VoiceSession` (a faithful port of `ui/src/useVoice.ts`, with the
+page's timings, driven by a clock so its tests run in virtual time); the device side is the
+`OrbitVoice` library (`AudioIO`, the `/voice` socket, `GlobalHotkey`, `WakeWord`). The shell uses:
+
+```swift
+let voice = VoiceController(endpoints: ready)            // the sidecar's `ready` line (base + auth links)
+try await voice.loadConfig()                             // settings + hasKey from /api/config
+voice.onState = { orb in /* orb:state to the orb and avatars (OrbSync) */ }
+voice.onEvent = { name, data in /* parity events: voice.phase {phase, asleep}, hotkey, sound, hangup */ }
+voice.onEmote = { cue in /* buddy:emote */ }
+voice.onAvatarEvent = { e in /* buddy:event draft | sent | error */ }
+voice.orbExtras = (claudeWorking, pulseMe, pulseGrok, pulseAmount)
+// Feed it the bridge's /api/events (or call voice.followBridgeEvents()):
+voice.handleBridgeEvent(evt)                             // orbit.wake, settings.changed, claude.finished
+// Actions: hotkey() sleep() wake() announce() endWake() type(_:) ask(_:) mute(_:) hangup()
+//          avatarTalk() playSound("throw") playIntoMic(wav:gapMs:) parityVoice()
+// UI: @Published state, captions (history), draft, sessionTitle, settings, hasKey; sounds (parity)
+
+let hotkey = GlobalHotkey(accelerator: settings.wakeHotkey)
+hotkey.onPress = { voice.hotkey() }
+hotkey.onSaved = { accel in /* POST /api/settings {wakeHotkey: accel} */ }
+hotkey.start()                                           // hotkey.set(_:) -> HotkeyInfo, suspend(_:), info
+
+let wake = WakeWord(link: voice.link)                    // "Hey Orbit": hidden WKWebView on the bridge's wake.html
+voice.attach(wakeWord: wake)                             // runs only while off/asleep, setting on, with a key
+```
+
+`ORBIT_MUTE_OUTPUT=1` and `ORBIT_FAKE_MIC=<wav>` work as `parity/PROTOCOL.md` says (the fake mic
+needs no microphone permission). `swift run VoiceDemo` drives the controller headless against a
+bridge; `node mac-swift/scripts/voice-check-bridge.mjs` starts one in a throwaway profile with the
+stand-in Grok (see both files' headers).
+
 ## Build and run (on a Mac)
 
 ```bash
