@@ -116,3 +116,19 @@ test('under Orbit, the pipe comes first; otherwise the old order', () => {
   assert.deepEqual(inputOrder({ inputMethod: 'cdp' }, { pipeOn: true, cdpOn: true }), ['pipe', 'value', 'cdp']);
   assert.deepEqual(inputOrder({ inputMethod: 'pipe' }), ['value'], 'a remembered pipe without a keeper is no pipe');
 });
+
+test('macOS: an app goes back to normal through Launch Services (open -a), with its own arguments', async () => {
+  const { launchNormally } = await import('../src/anywhere/keeper.js');
+  const calls = [];
+  const spawnImpl = (cmd, args, opts) => (calls.push({ cmd, args, opts }), { unref() {} });
+  assert.equal(launchNormally('/Applications/Discord.app/Contents/MacOS/Discord', ['--start-minimized'], { spawnImpl, platform: 'darwin' }), true);
+  assert.deepEqual(calls[0].cmd, '/usr/bin/open');
+  assert.deepEqual(calls[0].args, ['-n', '-a', '/Applications/Discord.app', '--args', '--start-minimized']);
+  launchNormally('/Applications/OpenCode.app/Contents/MacOS/opencode', [], { spawnImpl, platform: 'darwin' });
+  assert.deepEqual(calls[1].args, ['-n', '-a', '/Applications/OpenCode.app'], 'no --args without arguments');
+  launchNormally('/usr/local/bin/tool', ['x'], { spawnImpl, platform: 'darwin' });
+  assert.equal(calls[2].cmd, '/usr/local/bin/tool', 'a plain program (not in an .app) starts directly');
+  launchNormally('C:\Apps\Discord.exe', ['--x'], { spawnImpl, platform: 'win32' });
+  assert.equal(calls[3].cmd, 'C:\Apps\Discord.exe', 'Windows starts the program itself, as before');
+  assert.equal(pipePathFor('a1b2c3d4e5f6a7b8', 'darwin').endsWith('orbit-keeper-a1b2c3d4e5f6a7b8.sock'), true);
+});
