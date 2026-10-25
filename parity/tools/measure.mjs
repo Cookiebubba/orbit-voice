@@ -17,6 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startApp } from '../lib/apps.mjs';
+import { kinds, tree, webkitPids } from '../lib/procs.mjs';
 import { silentWav } from '../run.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -26,34 +27,6 @@ const RUNS = Number(opt('runs', 3));
 const IDLE_S = Number(opt('idle', 30));
 const paths = { repo: REPO, swiftApp: path.join(REPO, 'mac-swift', 'dist', 'Orbit Native.app'), electronRoot: REPO };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-function ps() {
-  return execFileSync('ps', ['-Ao', 'pid=,ppid=,rss=,time=,command='], { encoding: 'utf8', maxBuffer: 32 << 20 })
-    .split('\n')
-    .filter(Boolean)
-    .map((l) => {
-      const m = l.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+([\d:.]+)\s+(.*)$/);
-      return m && { pid: +m[1], ppid: +m[2], rssKb: +m[3], cpu: cpuSeconds(m[4]), cmd: m[5] };
-    })
-    .filter(Boolean);
-}
-function cpuSeconds(t) {
-  return t.split(':').reduce((s, x) => s * 60 + Number(x), 0);
-}
-const isWebKit = (p) => /com\.apple\.WebKit\.(WebContent|GPU|Networking)/.test(p.cmd);
-
-/** The app's process tree plus WebKit processes not in `webkitBefore`. */
-function tree(rootPid, webkitBefore) {
-  const all = ps();
-  const ids = new Set([rootPid]);
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const p of all) if (!ids.has(p.pid) && ids.has(p.ppid)) (ids.add(p.pid), (grew = true));
-  }
-  for (const p of all) if (isWebKit(p) && !webkitBefore.has(p.pid)) ids.add(p.pid);
-  return all.filter((p) => ids.has(p.pid));
-}
 
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 const du = (p) => (fs.existsSync(p) ? Number(execFileSync('du', ['-sk', p], { encoding: 'utf8' }).split('\t')[0]) * 1024 : null);
@@ -66,7 +39,7 @@ async function measure(which) {
     fs.mkdirSync(profile, { recursive: true });
     const silence = path.join(run, 'silence.wav');
     fs.writeFileSync(silence, silentWav(0.2));
-    const webkitBefore = new Set(ps().filter(isWebKit).map((p) => p.pid));
+    const webkitBefore = webkitPids();
     const t0 = Date.now();
     const app = await startApp(which, {
       paths,
@@ -96,15 +69,6 @@ async function measure(which) {
     processes: median(out.map((r) => r.processes)),
     runs: out,
   };
-}
-
-function kinds(list) {
-  const k = {};
-  for (const p of list) {
-    const name = /node\/bin\/node/.test(p.cmd) ? 'node sidecar' : /orbit-helper/.test(p.cmd) ? 'orbit-helper' : isWebKit(p) ? 'WebKit' : /Helper/.test(p.cmd) ? 'Electron helper' : /OrbitNative|Electron\.app\/Contents\/MacOS\/Electron$|Electron .*integ$/.test(p.cmd) ? 'app' : 'other';
-    k[name] = Math.round(((k[name] || 0) + p.rssKb / 1024) * 10) / 10;
-  }
-  return k;
 }
 
 const result = {

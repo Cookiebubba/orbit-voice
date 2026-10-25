@@ -26,7 +26,8 @@ mac-swift/
   Tests/                     XCTest: OrbitKitTests, OrbitSpeechTests, OrbitWakeTests, OrbitParityTests
   sidecar/sidecar.mjs        starts Orbit's bridge (src/server.js) for the Swift shell
   scripts/build-app.sh       builds "Orbit Native.app" (embedded Node, the core, the UI pages, models)
-  scripts/sign.sh            signs it with the dev identity (stable designated requirement)
+  scripts/sign.sh            signs it (a Developer ID, the dev identity, or ad hoc)
+  scripts/package.sh         the release files: zip, DMG, latest-mac-native.yml (notarized when asked)
   scripts/fetch-vosk.sh      Vosk's macOS library, pinned checksum, into .vendor/
   Resources/                 entitlements
 ```
@@ -142,7 +143,23 @@ npm run parity -- --app swift     # (from the repo root) the parity suite agains
 `build-app.sh` needs `node` (it embeds the running Node's binary), `npm ci` done at the repo root,
 the UI built (`npm run build:ui`) and the wake-word model (`node scripts/fetch-model.mjs`); it fetches
 Vosk's library itself (`scripts/fetch-vosk.sh`). The macOS helper is built from
-`native/mac/OrbitHelper` when the tree has it (the macOS port's branch).
+`native/mac/OrbitHelper`, which comes with the macOS port (`src/platform/mac`): build from a tree
+that has both (the macOS port merged). The app is Apple silicon only, like the Electron Mac build.
+
+## Releasing
+
+```bash
+ORBIT_SIGN_ID="Developer ID Application: <name> (<team>)" scripts/build-app.sh
+ORBIT_SIGN_ID="..." ORBIT_NOTARY_PROFILE=<profile> scripts/package.sh
+```
+
+`package.sh` notarizes and staples the app and the DMG (a keychain profile made once with
+`xcrun notarytool store-credentials <profile>`), then writes `dist/Orbit-Native-<v>-arm64-mac.zip`,
+`dist/Orbit-Native-<v>-arm64.dmg` and `dist/latest-mac-native.yml`. Upload all three to the same
+GitHub release as the Electron build's files: each build reads only its own feed (Orbit Native's
+updater takes only Orbit-Native zips). A Developer ID build installs its updates itself, and only an
+update that is Orbit Native, of the feed's version, and signed by the same Developer ID. It refuses
+a test build (`--test`), and won't notarize anything not signed with a Developer ID.
 
 ## Rules this build keeps
 
@@ -156,7 +173,9 @@ Vosk's library itself (`scripts/fetch-vosk.sh`). The macOS helper is built from
 Native (Swift):
 
 - The app shell: menu bar, dock, single instance per profile, login item (SMAppService), the
-  updater (GitHub Releases' latest-mac.yml, verified download, install behind a flag), its own log.
+  updater (its own feed in each GitHub release, latest-mac-native.yml; SHA-512-checked download;
+  a Developer ID build installs only the same signer's Orbit Native), its own log, and recovery:
+  if the core process dies, Orbit relaunches itself quietly (it gives up after 3 stops in 10 min).
 - The launcher (white, Qubit's unchanged engine as the hero, the avatar carousel, icon-only buttons),
   Settings with every setting, History, the permissions onboarding (Microphone and Accessibility;
   Screen Recording optional, in Settings), as the Electron Mac build has them.
@@ -167,14 +186,17 @@ Native (Swift):
 - The voice client: AVAudioEngine mic and playback with the voice volume, the whole call logic of
   useVoice.ts (VoiceSession), the global hotkey (Carbon).
 - Phase 2, step 1: Claude voice's listening and speaking (Silero VAD, Moonshine, Kitten) in the app
-  through sherpa-onnx's C API, the core then only sees words (`/voice?speech=local`).
+  through sherpa-onnx's C API, the core then only sees words (`/voice?speech=local`). The models are
+  loaded only while Claude voice is the engine, and the core is told not to load them too.
 - Phase 2, step 2: "Hey Orbit" with Vosk's C library (the same model, grammar, pattern and debounce
   as the web wake page).
 
 Still the shared Node core (as a sidecar, unchanged): the bridge, the agent and its tools, consent,
 send-intent, offers, sleep and stop, the Claude desktop driver and Orbit anywhere (through the macOS
 port's helper), the MCP manager, Grok. Phase 2 steps 3 to 5 (consent and friends, tools and the agent
-prompt, Orbit anywhere) are not started.
+prompt, Orbit anywhere) are not started: those checks run inside the core's tool handlers and its
+fast paths on each transcript, so moving them means moving the agent itself (most of the core), while
+the Windows build keeps the Node core. The shell plus the shared core is the shippable shape.
 
 Measured on the MacBook Air M4 (parity/tools/measure.mjs, median of 3, display asleep):
 

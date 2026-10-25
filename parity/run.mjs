@@ -39,7 +39,7 @@ const OUT = path.resolve(opt('out', path.join(HERE, 'out')));
 const KEEP = flag('keep');
 // --env K=V (repeatable): extra environment for every app this run starts (e.g. ORBIT_SPEECH=core).
 const EXTRA_ENV = Object.fromEntries(process.argv.flatMap((a, i) => (a === '--env' && process.argv[i + 1]?.includes('=') ? [process.argv[i + 1].split(/=(.*)/s).slice(0, 2)] : [])));
-const paths = {
+export const paths = {
   repo: REPO,
   swiftApp: path.resolve(opt('swift-app', path.join(REPO, 'mac-swift', 'dist', 'Orbit Native.app'))),
   electronRoot: path.resolve(opt('electron-root', REPO)),
@@ -47,7 +47,7 @@ const paths = {
   audio: path.resolve(opt('audio', path.join(HERE, 'out', 'audio'))),
 };
 // Ports: each build its own, so a leftover from one never answers for the other.
-const PORTS = { swift: { bridge: 4521, driver: 4522 }, electron: { bridge: 4541, driver: 4542 }, standin: 4525, grok: 4526 };
+export const PORTS = { swift: { bridge: 4521, driver: 4522 }, electron: { bridge: 4541, driver: 4542 }, standin: 4525, grok: 4526 };
 const FAKE_XAI_KEY = 'xai-parityfakekey0000000000000000000000';
 
 export function loadCases(dir = path.join(HERE, 'cases')) {
@@ -101,7 +101,7 @@ function readRecord(records, name) {
 }
 
 /** Prepares a case's temp folder, profile and fixtures; returns env for the app and teardown. */
-async function prepare(c, which) {
+export async function prepare(c, which) {
   const run = fs.mkdtempSync(path.join(os.tmpdir(), `orbit-parity-${which}-`));
   const dirs = { run, profile: path.join(run, 'profile'), records: path.join(run, 'records'), logs: path.join(run, 'logs'), bin: path.join(run, 'bin') };
   for (const d of Object.values(dirs)) fs.mkdirSync(d, { recursive: true });

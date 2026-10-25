@@ -15,7 +15,8 @@ each build serves in test mode, and two runners execute them: `run.mjs` (Node) a
 | `cases/avatar.json` | avatar | Qubit on the stand-in Claude window: his strip, standing on the prompt box, following the window, click-through, click to talk, pick up and throw inside the window with "Wheee!", a gentle put-down without, sleep then click, one avatar per place while switching, free-floating, None, his art rules. |
 | `cases/onboarding.json` | onboarding | The macOS permissions onboarding over faked permission states. |
 | `cases/window.json` | window | Driving the stand-in Claude window: found, sessions, switch, drafts typed into its box, send on a yes, Stop, answering a card. |
-| `cases/voice.json` | voice | Spoken scenarios end to end: a synthesised clip into each app's own microphone path, on-device speech to text, a scripted Claude Code, the tool calls and their effect: draft, a natural yes, a no, same-breath send, go to sleep, stop, answering a card, switching the model, an avatar command. |
+| `cases/voice.json` | voice | Spoken scenarios end to end: a synthesised clip into each app's own microphone path, on-device speech to text, a scripted Claude Code, the tool calls and their effect: draft, a natural yes, a no, same-breath send, go to sleep, stop, answering a card, switching the model, an avatar command, "Hey Orbit" and a decoy. |
+| `cases/shell.json` | shell | What the app does by itself: Orbit Native relaunches itself (quietly, with its settings) when its core process dies. Electron's core runs inside the app, so it's n/a there. |
 
 ## Running (on a Mac)
 
@@ -30,6 +31,13 @@ The matrix goes to `parity/out/matrix.json` and `parity/out/matrix.md`. The same
 
 ```bash
 cd mac-swift && swift test --filter OrbitParityTests        # ORBIT_PARITY_AREA=avatar, ORBIT_PARITY_APP=electron
+```
+
+## Measuring
+
+```bash
+node parity/tools/measure.mjs                 # size, start-up, idle CPU and memory of both builds
+node parity/tools/soak.mjs --cycles 40        # 40 whole calls in a row; fails if memory keeps growing
 ```
 
 ## Test doubles (never the real thing)
