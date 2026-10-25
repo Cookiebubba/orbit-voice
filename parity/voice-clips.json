@@ -27,7 +27,7 @@
     },
     {
       "id": "stop",
-      "text": "Stop.",
+      "text": "Stop it, please.",
       "sid": 3,
       "expect": "stop"
     },

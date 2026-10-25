@@ -31,7 +31,7 @@ final class ShellHotkey: HotkeyControl {
 
   @discardableResult func start() -> Bool {
     if let real { return real.start() }
-    fakeRegistered = HotkeyAccelerator.isAcceptable(fakeAccel)
+    fakeRegistered = HotkeyAccelerator.isAcceptable(fakeAccel) && HotkeyAccelerator.parse(fakeAccel) != nil
     return fakeRegistered
   }
 
@@ -49,6 +49,10 @@ final class ShellHotkey: HotkeyControl {
     }
     guard HotkeyAccelerator.isAcceptable(accel) else {
       var i = info(); i.ok = false; i.error = HotkeyAccelerator.noShortcutError; return i
+    }
+    // (One the system couldn't register: the real hotkey refuses it, and so does this stand-in.)
+    guard HotkeyAccelerator.parse(accel) != nil else {
+      var i = info(); i.ok = false; i.error = HotkeyAccelerator.takenError; return i
     }
     fakeAccel = accel
     fakeRegistered = true
@@ -200,6 +204,11 @@ extension AppDelegate {
         v?.orbExtras.claudeWorking = !(evt["working"]?.arrayValue?.isEmpty ?? true)
       }
     }
-    overlays?.start()
+    // The avatar comes up from the settings, so only once they've loaded (else it would start as the
+    // default, the pixel buddy, and switch).
+    Task { @MainActor [weak self, weak ui] in
+      for _ in 0..<200 where !(ui?.settings.loaded ?? true) { try? await Task.sleep(nanoseconds: 25_000_000) }
+      self?.overlays?.start()
+    }
   }
 }
