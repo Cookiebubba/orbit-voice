@@ -190,3 +190,9 @@ test('the probes are single expressions that parse', () => {
     assert.doesNotThrow(() => new Function(`return ${src.replace(/^\s*\/\/.*$/gm, '').trim()}`), f);
   }
 });
+
+test('the stand-in hotkey takes only what Electron would (modifiers, then one key)', async () => {
+  const { isValidAccelerator } = await import('../electron/parity-core.js');
+  for (const a of ['Control+Alt+G', 'Command+Alt+G', 'CmdOrCtrl+Space', 'Control+Shift+F18', 'Alt+Plus']) assert.equal(isValidAccelerator(a), true, a);
+  for (const a of ['Nonsense+++', 'Alt', 'Control+Control+G', 'Hyper+G', 'Control+', '', 'G+Control']) assert.equal(isValidAccelerator(a), false, a);
+});

@@ -23,7 +23,7 @@ import { authUrl, hotkeyLabel } from '../src/server.js';
 import { runAvatarCommand } from '../src/avatar-commands.js';
 import { logInfo, logWarn } from '../src/log.js';
 import { setTestCursor } from './avatar-hover.js';
-import { BODY_MAX, PARITY_FEATURES, SOUNDS_MAX, cleanData, createRing, hostOk, isWav, parsePerms, rect, shapeAvatar, shapeState, tokenOk, validateAct, onScreen } from './parity-core.js';
+import { BODY_MAX, PARITY_FEATURES, SOUNDS_MAX, cleanData, createRing, hostOk, isValidAccelerator, isWav, parsePerms, rect, shapeAvatar, shapeState, tokenOk, validateAct, onScreen } from './parity-core.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
@@ -43,7 +43,12 @@ const note = (type, data) => events.push({ at: Date.now(), type, data: cleanData
 
 // The global hotkey: held here (main.js registers it as usual; nothing reaches the system).
 const hotkeys = new Map();
-globalShortcut.register = (accel, cb) => (hotkeys.set(accel, cb), true);
+globalShortcut.register = (accel, cb) => {
+  // (Electron throws on an accelerator it can't parse; main.js treats that as "not registered".)
+  if (!isValidAccelerator(accel)) throw new Error(`Invalid accelerator: ${accel}`);
+  hotkeys.set(accel, cb);
+  return true;
+};
 globalShortcut.isRegistered = (accel) => hotkeys.has(accel);
 globalShortcut.unregister = (accel) => void hotkeys.delete(accel);
 globalShortcut.unregisterAll = () => hotkeys.clear();

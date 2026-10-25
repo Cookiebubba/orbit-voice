@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Orbit Native (hardened runtime): the microphone (macOS still asks), and Apple Events for driving
-  the Claude app. WebKit's own processes carry their own entitlements.
+  Orbit Native (hardened runtime): the microphone (macOS still asks), Apple Events for driving the
+  Claude app, and loading the speech and wake-word libraries (sherpa-onnx's, from the core's copy, and
+  Vosk's), which a self-signed or ad-hoc build can't match by Team ID (the Electron build's
+  entitlements do the same for sherpa-onnx). WebKit's own processes carry their own entitlements.
 -->
 <plist version="1.0">
 <dict>
   <key>com.apple.security.device.audio-input</key><true/>
   <key>com.apple.security.automation.apple-events</key><true/>
+  <key>com.apple.security.cs.disable-library-validation</key><true/>
 </dict>
 </plist>

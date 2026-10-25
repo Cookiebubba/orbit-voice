@@ -12,6 +12,18 @@ export const EVENTS_MAX = 200;
 /** The events ring's types (PROTOCOL.md), and nothing else. */
 export const PARITY_EVENTS = Object.freeze(['avatar.created', 'avatar.closed', 'avatar.talk', 'avatar.lift', 'avatar.sound', 'avatar.command', 'voice.phase', 'hotkey', 'core.ready']);
 export const SOUNDS_MAX = 50;
+
+// Electron's accelerator grammar (modifiers, then one key), so the driver's stand-in hotkey refuses
+// what globalShortcut.register itself would throw on.
+const MODIFIERS = new Set(['command', 'cmd', 'control', 'ctrl', 'commandorcontrol', 'cmdorctrl', 'alt', 'option', 'altgr', 'shift', 'super', 'meta']);
+const KEYS = /^([a-z0-9]|f([1-9]|1[0-9]|2[0-4])|plus|space|tab|capslock|numlock|scrolllock|backspace|delete|insert|return|enter|up|down|left|right|home|end|pageup|pagedown|escape|esc|volumeup|volumedown|volumemute|medianexttrack|mediaprevioustrack|mediastop|mediaplaypause|printscreen|num[0-9]|numdec|numadd|numsub|nummult|numdiv|[)!@#$%^&*(:;:+=<,_\-.>?/~`{\]|}"'])$/;
+export function isValidAccelerator(accel) {
+  if (typeof accel !== 'string' || !accel || accel.length > 60) return false;
+  const parts = accel.split('+');
+  if (parts.some((p) => p === '')) return false;
+  const key = parts.pop().toLowerCase();
+  return parts.every((m) => MODIFIERS.has(m.toLowerCase())) && new Set(parts.map((m) => m.toLowerCase())).size === parts.length && KEYS.test(key) && !MODIFIERS.has(key);
+}
 export const BODY_MAX = 1 << 20;
 const MIC_STATES = new Set(['granted', 'denied', 'not-determined', 'restricted']);
 
