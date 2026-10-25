@@ -41,8 +41,9 @@ export function watchApp(stdout) {
 }
 
 /** { pid, hwnd, title, state(), waitFor(pred, ms), events, pipe?, close() } */
-export async function startSlateApp(title = `ORBIT-SLATE-${process.pid}`, { pipe = false, port = 0, x = 60, y = 60, userDataDir = '' } = {}) {
-  const [exe, args] = slateCommand(title, { userDataDir, extra: [...(pipe ? ['--remote-debugging-pipe'] : []), ...(port ? [`--remote-debugging-port=${port}`] : [])] });
+export async function startSlateApp(title = `ORBIT-SLATE-${process.pid}`, { pipe = false, port = 0, x = 60, y = 60, userDataDir = '', args: more = [] } = {}) {
+  const [exe, base] = slateCommand(title, { userDataDir, extra: [...(pipe ? ['--remote-debugging-pipe'] : []), ...(port ? [`--remote-debugging-port=${port}`] : [])] });
+  const args = [...base, ...more]; // (after the app's own path: they're the app's arguments)
   const env = { ...process.env, SLATE_X: String(x), SLATE_Y: String(y) };
   delete env.ELECTRON_RUN_AS_NODE;
   const child = spawn(exe, args, { stdio: ['pipe', 'pipe', 'pipe', ...(pipe ? ['pipe', 'pipe'] : [])], env, windowsHide: false });
@@ -75,6 +76,12 @@ export async function startSlateApp(title = `ORBIT-SLATE-${process.pid}`, { pipe
       } catch {}
       await Promise.race([new Promise((r) => child.once('exit', r)), sleep(3000)]);
       if (child.exitCode === null) child.kill();
+      // (Never left running: whatever process the app reported as its own goes too.)
+      for (const pid of [this.pid, child.pid]) {
+        try {
+          if (pid) process.kill(pid);
+        } catch {}
+      }
     },
   };
 }

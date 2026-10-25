@@ -211,7 +211,7 @@ function AnywhereSection({ s, update, name }: { s: SettingsT; update: Update; na
           checked={s.anywhereCdp}
           onChange={(anywhereCdp) => update({ anywhereCdp })}
           label="Also use apps' own debugging ports"
-          hint={`Only for an app you started yourself with --remote-debugging-port. Usually not needed: for apps that only notice real typing (Discord, OpenCode), ${name} asks once to restart them under its own control instead.`}
+          hint={`Only for an app you started yourself with --remote-debugging-port. Usually not needed: for apps that only notice real typing (Discord, OpenCode), ${name} asks (every time) to restart them under its own control instead.`}
         />
         <Toggle
           className="mt-4"
@@ -252,7 +252,7 @@ function UnderOrbitList({ apps, name, onStop }: { apps: string[]; name: string; 
   return (
     <div className="mt-4">
       <div className="text-[13px] font-medium text-fg">Apps under {name}</div>
-      <div className="mt-1 text-[12px] text-muted">{name} restarted these under its own control so it can type, click and look without your mouse. Only {name} can connect; no port is open. Stop restarts the app the normal way.</div>
+      <div className="mt-1 text-[12px] text-muted">{name} may restart these under its own control so it can type, click and look without your mouse; it still asks you out loud every time first. Only {name} can connect; no port is open. Stop restarts the app the normal way.</div>
       <ul className="mt-2 space-y-1">
         {apps.map((a) => (
           <li key={a} className="flex items-center justify-between rounded-lg bg-soft px-3 py-1.5 text-[13px] text-fg">

@@ -57,6 +57,12 @@ export async function startWebInputApp(title = `ORBIT-WEB-INPUT-${process.pid}`,
       } catch {}
       await Promise.race([new Promise((r) => child.once('exit', r)), sleep(3000)]);
       if (child.exitCode === null) child.kill();
+      // (Never left running: whatever process the app reported as its own goes too.)
+      for (const pid of [this.pid, child.pid]) {
+        try {
+          if (pid) process.kill(pid);
+        } catch {}
+      }
     },
   };
 }

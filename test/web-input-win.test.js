@@ -75,7 +75,7 @@ test('web app without a debugging port: Orbit sees it wasn\x27t taken and asks t
     await s.say(`in ${app.title} type hello from orbit into the prompt box`);
     const res = await s.act({ control: 'Prompt', action: 'set_text', text: 'hello from orbit' });
     assert.equal(res.held, true, JSON.stringify(res));
-    assert.match(res.ask, /only takes real typing/);
+    assert.match(res.ask, /isn't under Orbit right now/);
     assert.match(res.ask, /under Orbit/, 'offers to restart it under Orbit, not to borrow focus');
     await sleep(400);
     assert.equal(app.state().prompt, '', 'not taken (yet)');

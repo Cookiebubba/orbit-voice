@@ -18,15 +18,20 @@
 //   - Text a web app didn't take (hands.js: it shows, but the app's Send stays grey): Orbit tries
 //     the other no-focus way by itself, and if none works it asks once, for that app, whether it may
 //     borrow the focus for a moment to type it ("borrow"), held like an outward act until a clear yes.
-//   - A rich editor in an app that isn't under Orbit (Discord's message box): Orbit asks once, for
-//     that app, whether to restart it under Orbit (keeper.js: a private pipe, no port), held like
-//     an outward act until a clear yes. The yes is remembered; later, Orbit restarts that app under
-//     itself when it needs to and says so. The user can take it back (release_app_from_orbit, or
-//     Settings).
+//   - A rich editor in an app that isn't under Orbit (Discord's message box): Orbit asks out loud,
+//     every time, whether to restart it under Orbit (keeper.js: a private pipe, no port), held like
+//     an outward act until a clear yes. The owner's rule: "Orbit must ask me out loud every time
+//     before restarting any app under its keeper, even ones I approved before." The approval list
+//     (anywhereUnderOrbit) only means the app may be put under Orbit; it never skips the question,
+//     and no path (the same-breath send included) restarts an app without it. The user can take an
+//     approval back (release_app_from_orbit, or Settings).
+//   - After a restart, the act waits (up to about 30 s) for the app's real main window, not a splash
+//     or updater window ("Discord Updater"), with the control in a fresh look, before it's done
+//     again; if it never comes, Orbit says so and types nowhere else.
 
 import crypto from 'node:crypto';
 import { appName, listWindows } from '../platform/index.js';
-import { approveApp, approvedApps, isApproved, keepers, releaseFromOrbit, restartUnderOrbit, revokeApp } from './keeper.js';
+import { approveApp, approvedApps, keepers, releaseFromOrbit, restartUnderOrbit, revokeApp } from './keeper.js';
 import { HAND_LIMITS, describeAct, perform, plan, sameBreathSend } from './hands.js';
 import { windowText } from './policy.js';
 import { label, resolveWindow } from './windows.js';
@@ -62,6 +67,41 @@ export const ACT_TOOL_DEFS = Object.freeze([
   },
 ]);
 
+/** Restarting an app under Orbit: how long the act waits for its real main window (ms). */
+export const RESTART_WAIT_MS = 30_000;
+// A splash, updater or loading window (Discord's "Discord Updater"): never where the act goes.
+const SPLASH = /\b(updat(e|er|ing)|splash|launcher|loading|installer|starting)\b/i;
+const exeName = (e) => String(e || '').split(/[\\/]/).pop().toLowerCase();
+
+/**
+ * The restarted app's real main window in `list` (listWindows()): its keeper's app process (`pid`),
+ * or a new window of the same program (`exe`, not among the hwnds in `before`, as a child process's);
+ * shown (not cloaked or minimized), titled, at least 400x300, and not a splash or updater window.
+ * The one titled most like the old window (`title`) wins, then the biggest. null if none yet.
+ */
+export function pickRestartedWindow(list, { pid, exe = '', before = new Set(), title = '' } = {}) {
+  const want = exeName(exe);
+  const words = (t) => new Set(String(t || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 2));
+  const old = words(title);
+  // (listWindows() keeps the size in `rect`; a bare { w, h } is taken too.)
+  const size = (w) => ({ w: Number(w.rect?.w ?? w.w) || 0, h: Number(w.rect?.h ?? w.h) || 0 });
+  const cands = (Array.isArray(list) ? list : []).filter((w) => {
+    if (!w || !w.title || w.cloaked || w.min) return false;
+    const mine = (pid && Number(w.pid) === Number(pid)) || (want && exeName(w.exe) === want && !before.has(w.hwnd));
+    if (!mine) return false;
+    if (SPLASH.test(String(w.title))) return false;
+    return size(w).w >= 400 && size(w).h >= 300;
+  });
+  if (!cands.length) return null;
+  const score = (w) => {
+    const t = words(w.title);
+    let same = 0;
+    for (const x of old) if (t.has(x)) same++;
+    return same * 1e7 + size(w).w * size(w).h;
+  };
+  return cands.sort((a, b) => score(b) - score(a))[0];
+}
+
 const keyOf = (p) => crypto.createHash('sha256').update(JSON.stringify([p.win.hwnd, p.node.rid || p.node.i, p.node.t, p.node.n || '', p.action, String(p.text || '')])).digest('hex').slice(0, 12);
 
 /**
@@ -81,23 +121,52 @@ export function createActHandlers(ctx) {
   };
   const words = (s) => String(s || '').split(/[^\p{L}\p{N}]+/u).filter(Boolean).length;
 
-  // Restart the plan's app under Orbit, find its new window, and do the act again through the pipe.
-  async function underOrbitThenRetry(pl) {
+  // Restart the plan's app under Orbit (only ever after the user's clear yes to the question), wait
+  // for its real main window with the control in it (never a splash or updater window), and do the
+  // act again through the pipe. Timed out: said plainly, and nothing is typed anywhere else.
+  async function underOrbitThenRetry(pl, { waitMs = RESTART_WAIT_MS } = {}) {
+    const app = appName(pl.win) || 'The app';
+    const control = pl.node.n || pl.node.a || '';
+    const listNow = async () => {
+      const l = await Promise.resolve(listWindows()).catch(() => []);
+      return Array.isArray(l) ? l : [];
+    };
+    const before = new Set((await listNow()).map((w) => w.hwnd));
     const rs = await restartUnderOrbit(pl.win);
     if (!rs.ok) return { ok: false, error: rs.error };
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const end = Date.now() + waitMs;
     let win = null;
-    for (let i = 0; i < 60 && !win; i++) {
-      const list = await Promise.resolve(listWindows()).catch(() => []);
-      win = (Array.isArray(list) ? list : []).find((w) => Number(w.pid) === Number(rs.state.appPid) && w.title && !w.cloaked) || null;
-      if (!win) await new Promise((r) => setTimeout(r, 250));
+    let last = null;
+    while (Date.now() < end) {
+      win = pickRestartedWindow(await listNow(), { pid: rs.state.appPid, exe: pl.win.exe || rs.state.exe, before, title: pl.win.title });
+      if (win) {
+        // A fresh look at that window: the control must be there (its page has loaded).
+        const p2 = await plan({ win, control, action: pl.action, text: pl.text });
+        if (p2.ok) {
+          const r = await perform(p2.plan, pl.action === 'type' || pl.action === 'set_text' ? { only: 'pipe' } : {});
+          if (r.ok) return { ok: true, r };
+          last = r; // (its page target may not be ready on the pipe yet: try again)
+        } else last = p2;
+      }
+      await sleep(400);
     }
-    if (!win) return { ok: false, error: `${appName(pl.win) || 'The app'} restarted under Orbit, but its window didn't show up yet. Try again in a moment.` };
-    await new Promise((r) => setTimeout(r, 1500)); // its page settles
-    const p2 = await plan({ win, control: pl.node.n || pl.node.a || '', action: pl.action, text: pl.text });
-    if (!p2.ok) return { ok: false, error: p2.error };
-    const r = await perform(p2.plan, pl.action === 'type' || pl.action === 'set_text' ? { only: 'pipe' } : {});
-    if (!r.ok) return r;
-    return { ok: true, r };
+    const what = win ? `its main window didn't have ${control ? `"${control}"` : 'that control'} ready` : "its main window didn't come up";
+    return { ok: false, error: `${app} restarted under Orbit, but ${what} within ${Math.round(waitMs / 1000)} seconds, so nothing was typed.`, timed_out: true };
+  }
+
+  /** Hold a restart under Orbit for the user's clear yes (asked out loud, every time). */
+  function askRestart(pl, app) {
+    const ask = `${app} isn't under Orbit right now. Restart ${app} under Orbit so I can type there? It'll close and reopen for a few seconds.`;
+    held = { key: keyOf(pl), plan: pl, at: Date.now(), kind: 'keeper', ask };
+    notify({ type: 'bridge.anywhere', action: 'held', app });
+    return {
+      held: true,
+      confirm_key: held.key,
+      ask,
+      why: 'Orbit closes the app and starts it again under its own control (a private pipe only Orbit holds, no network port). The user is asked out loud every time, even for an app they okayed before.',
+      next_step: 'Ask the user exactly that, in one or two short sentences, and wait. Call confirm_window_action with the key only after their clear yes.',
+    };
   }
 
   return {
@@ -140,6 +209,8 @@ export function createActHandlers(ctx) {
         const chatEnter = action === 'enter' && /message|chat|reply|comment/i.test(String(pl.node.n || pl.node.a || ''));
         if ((action === 'press' || chatEnter) && tally.typed && sameBreathSend(spoke.text, tally.typed, chatEnter ? 'send' : pl.node.n)) {
           const r = await perform(pl);
+          // (Needs the app under Orbit: that's never done in the same breath; it's asked.)
+          if (!r.ok && r.needs_keeper) return askRestart(pl, appName(t.win) || 'That app');
           if (!r.ok) return r;
           notify({ type: 'bridge.anywhere', action: 'act', app: appName(t.win), outward: true });
           return { done: true, did: r.did, verified: r.verified, read_back: `Sent "${windowText(tally.typed, 200)}".`, next_step: 'Read back what was sent, once, in a few words ("Sent: running late.").' };
@@ -157,26 +228,9 @@ export function createActHandlers(ctx) {
       let r = await perform(pl);
       if (!r.ok && !r.needs_keeper) return r;
       const app = appName(t.win) || 'That app';
-      // Text the app didn't take (or Enter) and the app isn't under Orbit: approved before, so
-      // restarted under Orbit now (said once); else asked once.
-      if (r.needs_keeper && (r.registered === false || !r.ok)) {
-        if (isApproved(t.win)) {
-          const again = await underOrbitThenRetry(pl);
-          if (!again.ok) return again;
-          r = again.r;
-          if (action === 'type' || action === 'set_text') tally.typed = typed;
-          notify({ type: 'bridge.anywhere', action: 'act', app });
-          return { done: true, did: r.did, verified: r.verified, restarted: true, next_step: `Say in a few words that ${app} was restarted under Orbit (the user okayed that before) and it's done.` };
-        }
-        held = { key: keyOf(pl), plan: pl, at: Date.now(), kind: 'keeper', ask: `${app} only takes real typing. Restart ${app} under Orbit so it can type and look without your mouse? Only Orbit can connect; nothing stays open.` };
-        return {
-          held: true,
-          confirm_key: held.key,
-          ask: held.ask,
-          why: 'Orbit closes the app and starts it again under its own control (a private pipe only Orbit holds, no network port). Asked once per app; a yes is remembered, and the user can take it back.',
-          next_step: 'Ask the user that, in one or two short sentences, and wait. Call confirm_window_action with the key only after their clear yes.',
-        };
-      }
+      // Text the app didn't take (or Enter) and the app isn't under Orbit: a restart under Orbit is
+      // asked out loud, every time (an app okayed before too), and done only on a clear yes.
+      if (r.needs_keeper && (r.registered === false || !r.ok)) return askRestart(pl, app);
       const boxBefore = r.before; // (never passed on)
       delete r.before;
       if (action === 'type' || action === 'set_text') tally.typed = typed;
@@ -234,7 +288,7 @@ export function createActHandlers(ctx) {
         const done = await underOrbitThenRetry(again.plan);
         if (!done.ok) return done;
         notify({ type: 'bridge.anywhere', action: 'act', app: appName(again.plan.win) });
-        return { done: true, did: done.r.did, verified: done.r.verified, next_step: `Say in a few words that ${appName(again.plan.win) || 'the app'} is now under Orbit and it's done.` };
+        return { done: true, did: done.r.did, verified: done.r.verified, restarted: true, next_step: `Say in a few words that ${appName(again.plan.win) || 'the app'} is now under Orbit and it's done.` };
       }
       // A yes to borrowing focus: typed that way now (the whole box, as it was meant to read), and
       // remembered for this app (hands.js).
