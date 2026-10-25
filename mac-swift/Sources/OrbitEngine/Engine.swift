@@ -45,6 +45,9 @@ public final class Engine: @unchecked Sendable {
   /** Speaks a Claude voice sample on this Mac (the app's OrbitSpeech): 24 kHz samples. */
   public var claudePreview: (@Sendable (_ text: String, _ sid: Int, _ speed: Double) async throws -> [Float])?
 
+  /** The voice session in Swift (/voice, the sessions routes, Claude's watcher), once it's switched on. */
+  public private(set) var voice: EngineVoice?
+
   /** The Node core while parts of the engine still run there: its port and sign-in token. */
   private let core = Locked<(port: UInt16, token: String)?>(nil)
   private var server: BridgeServer?
@@ -114,7 +117,34 @@ public final class Engine: @unchecked Sendable {
     Task.detached { _ = await MacSystem.loginShellPath(log: { log.info("app", $0) }) }
   }
 
+  /**
+   * The voice session runs here instead of in the core (before start()): the Claude window through
+   * `desktop`; `realtimeURL` stands in for xAI's and `home` for the user's home folder (tests). The
+   * core's own watcher events are dropped.
+   */
+  @discardableResult
+  public func enableVoice(desktop: Desktop, realtimeURL: String? = nil, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> EngineVoice {
+    let v = EngineVoice(engine: self, desktop: desktop, realtimeURL: realtimeURL, home: home)
+    voice = v
+    events.coreClaudeEvents = false
+    v.start()
+    // Claude voice warm once the login shell's PATH is in (Claude Code is usually found through it).
+    let log = self.log
+    Task.detached { [weak v] in
+      _ = await MacSystem.loginShellPath(log: { log.info("app", $0) })
+      v?.prewarm()
+    }
+    return v
+  }
+
+  /** POST /api/settings came in, or the speech models are in: Claude voice is warmed up. */
+  func prewarm() {
+    onPrewarm?()
+    voice?.prewarm()
+  }
+
   public func stop() {
+    voice?.stop()
     upstreamEvents?.cancel()
     server?.stop()
     events.closeAll()
@@ -148,6 +178,12 @@ public final class Engine: @unchecked Sendable {
     if path == "/voice" && r.isWebSocketUpgrade {
       // Only Orbit's own signed-in windows (the ws server's verifyClient): anything else is refused.
       guard policy.sameOrigin(r), policy.hasValidSession(r) else { return .response(BridgeResponse(status: 401)) }
+      if let v = voice {
+        let announce = r.query("announce") == "1"
+        // Orbit Native hears and speaks on its own (Claude voice only): only words go back and forth.
+        let localSpeech = r.query("speech") == "local"
+        return .webSocket { ws in v.accept(ws, announce: announce, localSpeech: localSpeech) }
+      }
       return passToCore(r, session: true)
     }
     let isApi = path.hasPrefix("/api/")
@@ -179,13 +215,14 @@ public final class Engine: @unchecked Sendable {
       do { try xaiKey.set(key) } catch { return .response(BridgePolicy.json(500, ["error": "Orbit could not save the key."])) }
       voicesCache.set(nil) // (the voices are the account's)
       onKeyChanged?()
+      voice?.keyChanged()
       return .response(BridgePolicy.json(200, ["hasKey": true]))
     case "POST /api/settings":
       var patch = JSONValue(any: BridgePolicy.readJSON(r.body)).objectValue ?? [:]
       // The hotkey and the orb's place belong to the desktop shell, which validates them itself.
       for k in ["wakeHotkey", "orbPosition", "orbStickAnchor"] { patch.removeValue(forKey: k) }
       config.update(patch)
-      onPrewarm?()
+      prewarm()
       return .response(BridgePolicy.json(200, config.publicSettings().mapValues(\.any)))
     case "POST /api/brain/key":
       // The optional Anthropic API key. An empty key removes it.
@@ -200,6 +237,12 @@ public final class Engine: @unchecked Sendable {
       return await voiceRoute(r)
     case "GET /api/brain", "POST /api/brain/login", "POST /api/brain/test":
       return await brainRoute(r)
+    case "GET /api/sessions":
+      guard let v = voice else { return nil }
+      return .response(await v.sessionsRoute())
+    case "POST /api/switch":
+      guard let v = voice else { return nil }
+      return .response(await v.switchRoute(r))
     case "GET /api/logs":
       return .response(BridgePolicy.json(200, ["dir": log.dir?.path ?? NSNull(), "entries": log.recent(limit: 50, minLevel: .info).map(\.any)]))
     case "GET /api/usage":
@@ -384,7 +427,18 @@ public final class EventHub: @unchecked Sendable {
     }
   }
 
-  public func broadcast(_ evt: JSONValue) { send(line: JSONText.of(evt)) }
+  /** Claude's working state and spoken-update wakes come from the core (false once the engine's own watcher has them). */
+  var coreClaudeEvents: Bool {
+    get { lock.withLock { _coreClaudeEvents } }
+    set { lock.withLock { _coreClaudeEvents = newValue } }
+  }
+  private var _coreClaudeEvents = true
+
+  public func broadcast(_ evt: JSONValue) {
+    let line = JSONText.of(evt)
+    if evt["type"]?.stringValue == "claude.status" { lock.withLock { lastStatus = line } }
+    send(line: line)
+  }
 
   func send(line: String) {
     let list = lock.withLock { Array(clients.values) }
@@ -395,6 +449,7 @@ public final class EventHub: @unchecked Sendable {
   func fromCore(line: String) {
     guard let v = try? JSONValue.parse(line), let type = v["type"]?.stringValue else { return }
     if type == "settings.changed" { return }
+    if !coreClaudeEvents && (type.hasPrefix("claude.") || type == "orbit.wake") { return }
     if type == "claude.status" { lock.withLock { lastStatus = line } }
     send(line: line)
   }

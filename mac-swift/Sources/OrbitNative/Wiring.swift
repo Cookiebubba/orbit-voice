@@ -134,7 +134,10 @@ extension AppDelegate {
     let o = Overlays(
       endpoints: e,
       settings: { [weak self] in self?.ui?.settings.values ?? SettingsSchema.defaults },
-      send: { [weak self] m in self?.sidecar?.send(m) },
+      send: { [weak self] m in
+        self?.sidecar?.send(m)
+        self?.engine?.voice?.shellMessage(m) // (the avatar on screen, the Claude window in front)
+      },
       onTalk: { [weak v] in v?.avatarTalk() },
       onSound: { [weak self, weak v] name in
         v?.playSound(name)

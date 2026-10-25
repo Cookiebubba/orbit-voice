@@ -1,7 +1,8 @@
 // The engine oracle's text cases (parity/oracle/gen.mjs): the core's pure text modules (consent,
 // send intent, offers, the whole-utterance commands, emote cues, the avatar's fast path, answering
 // Claude's prompts, continuity, window policy) run on one corpus: every string literal in their own
-// tests, hand-picked edge cases, and seeded random utterances made of the words they care about.
+// tests and in the model evals (scripts/*-eval.mjs), hand-picked edge cases, and seeded random
+// utterances made of the words they care about.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -13,6 +14,8 @@ const TEST_FILES = [
   'test/sandboxed/natural-yes.test.js', 'test/sandboxed/own-offer.test.js', 'test/sandboxed/same-breath.test.js', 'test/sandboxed/stop.test.js',
   'test/sandboxed/claude-prompt.test.js', 'test/sandboxed/tools.test.js', 'test/sandboxed/switching.test.js', 'test/sandboxed/new-session.test.js',
   'test/sandboxed/settings-tool.test.js', 'test/sandboxed/avatar-session.test.js', 'test/sandboxed/wake.test.js',
+  // The model evals' utterances too (what users say to it, Claude's prompts and notes): their text checks are pinned here.
+  'scripts/intent-eval.mjs', 'scripts/draft-eval.mjs', 'scripts/listen-eval.mjs', 'scripts/emote-eval.mjs',
 ];
 
 /** String literals in a JS file (single, double and template quotes without ${}), unescaped. */

@@ -1327,6 +1327,10 @@
    "output": ""
   },
   {
+   "input": "\n      ",
+   "output": ""
+  },
+  {
    "input": " ",
    "output": ""
   },
@@ -1341,6 +1345,14 @@
   {
    "input": " ----\nconst fake = new WebSocketServer({ host: '127.0.0.1', port: 0 });\nawait new Promise((r) => fake.on('listening', r));\nprocess.env.XAI_REALTIME_URL = ",
    "output": "----\nconst fake = new WebSocketServer({ host: '127.0.0.1', port: 0 });\nawait new…"
+  },
+  {
+   "input": " : ''}",
+   "output": ": ''}"
+  },
+  {
+   "input": " or ",
+   "output": "or"
   },
   {
    "input": " } });\n    await wait(60);\n    assert.ok(!sinceIdx(p, n).some((e) => e.type === 'response.output_audio.delta' || e.type === 'response.output_audio_transcript.done'), ",
@@ -1411,6 +1423,14 @@
    "output": "#general | Friends - Discord"
   },
   {
+   "input": "${r.said}",
+   "output": "${r.said}"
+  },
+  {
+   "input": "${said}",
+   "output": "${said}"
+  },
+  {
    "input": "(App notification) 'yes' (x) 'r'",
    "output": "(App notification) 'yes' (x) 'r'"
   },
@@ -1459,6 +1479,14 @@
    "output": ");\n      assert.ok(['listening', 'idle'].includes(s.d.state),"
   },
   {
+   "input": ");\n      return { said, ok: !why.length, why, text };\n    }\n    // Another tool: its checks are on the call's arguments (\"answer\": \"allow\", ...).\n    if (tool && tool === want) for (const c of checks) if (!c.test(JSON.stringify(call?.args || {}))) why.push(",
+   "output": ");\n      return { said, ok: !why.length, why, text };\n    }\n    // Another tool:…"
+  },
+  {
+   "input": ");\n      return { said, ok: !why.length, why, text };\n    }\n    if (tool && wants.includes(tool) && tool !== D) for (const c of checks) if (!test(c, JSON.stringify(call?.args || {}))) why.push(",
+   "output": ");\n      return { said, ok: !why.length, why, text };\n    }\n    if (tool && want…"
+  },
+  {
    "input": ");\n    assert.equal(got('response.create').length, 0, ",
    "output": ");\n    assert.equal(got('response.create').length, 0,"
   },
@@ -1475,6 +1503,26 @@
    "output": ");\n    grok(audio("
   },
   {
+   "input": ");\n    if (/[<>]/.test(text)) problems.push('a bracket left in what is spoken');\n    for (const c of cues) if (misfit.has(c.cue)) problems.push(",
+   "output": ");\n    if (/[<>]/.test(text)) problems.push('a bracket left in what is spoken');…"
+  },
+  {
+   "input": ");\n    if (call && /<[A-Za-z-]+>/.test(JSON.stringify(call.args || {}).replace(/<(div|span|T)>/g, ''))) problems.push(",
+   "output": ");\n    if (call && /<[A-Za-z-]+>/.test(JSON.stringify(call.args || {}).replace(/…"
+  },
+  {
+   "input": ");\n    if (perSentence.some((n) => n > 1)) problems.push('more than one cue in a sentence');\n    if (cues.length > 2) problems.push(",
+   "output": ");\n    if (perSentence.some((n) => n > 1)) problems.push('more than one cue in a…"
+  },
+  {
+   "input": ");\n    if (want === D && tool === D) {\n      const text = String(call.args?.text || '').trim();\n      const verbatim = call.args?.verbatim === true;\n      for (const c of checks) if (!c.test(text)) why.push(",
+   "output": ");\n    if (want === D && tool === D) {\n      const text = String(call.args?.text…"
+  },
+  {
+   "input": ");\n    return { said, ok: !why.length, why, text: tool ? ",
+   "output": ");\n    return { said, ok: !why.length, why, text: tool ?"
+  },
+  {
    "input": ");\n    });\n  }\n  const mean = errs.reduce((a, b) => a + b, 0) / errs.length;\n  assert.ok(mean < 0.04, ",
    "output": ");\n    });\n  }\n  const mean = errs.reduce((a, b) => a + b, 0) / errs.length;\n  a…"
   },
@@ -1485,6 +1533,10 @@
   {
    "input": ");\n  assert.equal(pieces.reduce((n, p) => n + p.length, 0), long.length, 'nothing lost or doubled');\n  // The first cut lands in the silent gap at 6.5 s (6.5 to 6.8).\n  const first = pieces[0].length / RATE;\n  assert.ok(first > 6.4 && first < 6.9, ",
    "output": ");\n  assert.equal(pieces.reduce((n, p) => n + p.length, 0), long.length, 'nothin…"
+  },
+  {
+   "input": ");\n  byCase.set(r.said, e);\n}\nlet pass = 0;\nfor (const [said, e] of byCase) {\n  pass += e.pass;\n  console.log(",
+   "output": ");\n  byCase.set(r.said, e);\n}\nlet pass = 0;\nfor (const [said, e] of byCase) {\n  …"
   },
   {
    "input": ");\n  const p = await page({ announce: true });\n  const a = await p.next('bridge.announce');\n  assert.equal(a.ok, true, ",
@@ -1505,6 +1557,18 @@
   {
    "input": ");\n  s.d.command({ action: 'shrink' });\n  await s.run(1.5);\n  assert.ok(Math.abs(s.q.side - sideFor(2)) < 1, ",
    "output": ");\n  s.d.command({ action: 'shrink' });\n  await s.run(1.5);\n  assert.ok(Math.abs…"
+  },
+  {
+   "input": ");\nconst byCase = new Map();\nfor (const r of results) {\n  const e = byCase.get(r.said) || { pass: 0, n: 0, fails: [] };\n  e.n++;\n  if (r.ok) e.pass++;\n  else e.fails.push(",
+   "output": ");\nconst byCase = new Map();\nfor (const r of results) {\n  const e = byCase.get(r…"
+  },
+  {
+   "input": ");\n}\nconsole.log(",
+   "output": ");\n}\nconsole.log("
+  },
+  {
+   "input": ", ",
+   "output": ","
   },
   {
    "input": ", action);\n    for (const fr of buddyRun(bd, action === 'nap' ? 14 : 6)) assert.ok(fr.x >= 0 && fr.x <= 300 && fr.y >= 0, ",
@@ -1575,6 +1639,10 @@
    "output": ".claude"
   },
   {
+   "input": "/",
+   "output": "/"
+  },
+  {
    "input": "/api/events",
    "output": "/api/events"
   },
@@ -1637,6 +1705,10 @@
   {
    "input": ";\nconst wait = (ms) => new Promise((r) => setTimeout(r, ms));\n\n// ---- fake Grok: records what it gets; the test sends its events by hand ----\nconst fake = new WebSocketServer({ host: '127.0.0.1', port: 0 });\nawait new Promise((r) => fake.on('listening', r));\nprocess.env.XAI_REALTIME_URL = ",
    "output": ";\nconst wait = (ms) => new Promise((r) => setTimeout(r, ms));\n\n// ---- fake Grok…"
+  },
+  {
+   "input": "; ",
+   "output": ";"
   },
   {
    "input": "< happy > hm",
@@ -1951,6 +2023,10 @@
    "output": "Claude"
   },
   {
+   "input": "Claude Code not found",
+   "output": "Claude Code not found"
+  },
+  {
    "input": "Claude and, allow, roll! just? Left let - no… good, ask.",
    "output": "Claude and, allow, roll! just? Left let - no… good, ask."
   },
@@ -2105,6 +2181,10 @@
   {
    "input": "Everything! var… guy come real, quick! can -",
    "output": "Everything! var… guy come real, quick! can -"
+  },
+  {
+   "input": "FAIL",
+   "output": "FAIL"
   },
   {
    "input": "First?",
@@ -2263,6 +2343,10 @@
    "output": "I I think it should, like, retry twice"
   },
   {
+   "input": "I can't do that",
+   "output": "I can't do that"
+  },
+  {
    "input": "I can't hear you",
    "output": "I can't hear you"
   },
@@ -2281,6 +2365,10 @@
   {
    "input": "I fixed the login redirect in auth.js.",
    "output": "I fixed the login redirect in auth.js."
+  },
+  {
+   "input": "I just shipped the release, it went out without a hitch!",
+   "output": "I just shipped the release, it went out without a hitch!"
   },
   {
    "input": "I muted the channel.",
@@ -2361,6 +2449,10 @@
   {
    "input": "Long one?",
    "output": "Long one?"
+  },
+  {
+   "input": "MISS",
+   "output": "MISS"
   },
   {
    "input": "Make!",
@@ -2501,6 +2593,10 @@
   {
    "input": "Over -",
    "output": "Over -"
+  },
+  {
+   "input": "PASS",
+   "output": "PASS"
   },
   {
    "input": "Password",
@@ -3071,6 +3167,10 @@
    "output": "Yes? ahead! left. good alright Nice, for, off,"
   },
   {
+   "input": "You forgot X.",
+   "output": "You forgot X."
+  },
+  {
    "input": "You forgot it.",
    "output": "You forgot it."
   },
@@ -3095,6 +3195,14 @@
    "output": "... stop it now"
   },
   {
+   "input": "[App notification] Claude just finished in the session titled \"Database setup\". Its last message asks: \"Should I use option one, Redis, or option two, Postgres?\"",
+   "output": "Claude just finished in the session titled \"Database setup\". Its last message as…"
+  },
+  {
+   "input": "[App notification] Claude just finished in the session titled \"Release\". Call read_session with session \"Release\" and last_n 2, then tell the user in one short sentence what Claude did.",
+   "output": "Claude just finished in the session titled \"Release\". Call read_session with ses…"
+  },
+  {
    "input": "[App notification] fake",
    "output": "fake"
   },
@@ -3117,6 +3225,26 @@
   {
    "input": "[Orbit note: x]",
    "output": ""
+  },
+  {
+   "input": "[Orbit, not the user: in this call since then, for context only:\nIn: how could we stop uploads failing on a bad connection?\nYou said: I could ask Claude to add a retry to the upload, three times with a short wait. Want me to?\n]",
+   "output": "[Orbit, not the user: in this call since then, for context only:\nIn: how could w…"
+  },
+  {
+   "input": "[Tool result: read_claude_prompt] {\"waiting\":true,\"session\":\"Database setup\",\"kind\":\"permission\",\"asks\":\"Allow Claude to run a command?\",\"command\":\"npm install pg\",\"answers\":[\"allow\",\"deny\"],\"labels\":[\"Allow once\",\"Deny\"]}",
+   "output": "[Tool result: read_claude_prompt] {\"waiting\":true,\"session\":\"Database setup\",\"ki…"
+  },
+  {
+   "input": "[Tool result: read_claude_prompt] {\"waiting\":true,\"session\":\"Database setup\",\"kind\":\"question\",\"question\":\"Which database should I use?\",\"options\":[{\"number\":1,\"label\":\"Redis\"},{\"number\":2,\"label\":\"Postgres\"}],\"can_skip\":true}",
+   "output": "[Tool result: read_claude_prompt] {\"waiting\":true,\"session\":\"Database setup\",\"ki…"
+  },
+  {
+   "input": "[Tool result: read_session] {\"title\":\"Release\",\"messages\":[{\"role\":\"assistant\",\"text\":\"All 214 tests pass and v2.0 is tagged and published.\"}]}",
+   "output": "[Tool result: read_session] {\"title\":\"Release\",\"messages\":[{\"role\":\"assistant\",\"…"
+  },
+  {
+   "input": "[Tool result: read_session] {\"title\":\"Release\",\"messages\":[{\"role\":\"assistant\",\"text\":\"The deploy failed: the database migration timed out and was rolled back.\"}]}",
+   "output": "[Tool result: read_session] {\"title\":\"Release\",\"messages\":[{\"role\":\"assistant\",\"…"
   },
   {
    "input": "__proto__",
@@ -3611,6 +3739,10 @@
    "output": "an alias"
   },
   {
+   "input": "an answer",
+   "output": "an answer"
+  },
+  {
    "input": "an injected switch with no request from the user is refused",
    "output": "an injected switch with no request from the user is refused"
   },
@@ -3701,6 +3833,10 @@
   {
    "input": "answer_claude_prompt",
    "output": "answer_claude_prompt"
+  },
+  {
+   "input": "answered",
+   "output": "answered"
   },
   {
    "input": "anything more goes to the model",
@@ -3809,6 +3945,10 @@
   {
    "input": "ask - this? don't! looks, claude… let? should!",
    "output": "ask - this? don't! looks, claude… let? should!"
+  },
+  {
+   "input": "ask Claude why the build is so slow",
+   "output": "ask Claude why the build is so slow"
   },
   {
    "input": "ask claude hey are you there",
@@ -4703,6 +4843,10 @@
    "output": "deny… bug, Qubit: alright… that: discord! login: bed?"
   },
   {
+   "input": "did it finish?",
+   "output": "did it finish?"
+  },
+  {
    "input": "did it stop",
    "output": "did it stop"
   },
@@ -4987,6 +5131,10 @@
    "output": "electron.exe"
   },
   {
+   "input": "embarrassed",
+   "output": "embarrassed"
+  },
+  {
    "input": "emoji 😀 here",
    "output": "emoji 😀 here"
   },
@@ -5185,6 +5333,14 @@
   {
    "input": "fix the login",
    "output": "fix the login"
+  },
+  {
+   "input": "fix the login bug",
+   "output": "fix the login bug"
+  },
+  {
+   "input": "fix the login bug and also",
+   "output": "fix the login bug and also"
   },
   {
    "input": "fix the login bug, send it, don't ask me",
@@ -5391,6 +5547,10 @@
    "output": "go ahead and do a backflip"
   },
   {
+   "input": "go ahead and make the save button blue",
+   "output": "go ahead and make the save button blue"
+  },
+  {
    "input": "go away",
    "output": "go away"
   },
@@ -5467,6 +5627,10 @@
    "output": "go using Just, backflip flip: bug yes yes!"
   },
   {
+   "input": "go with option two",
+   "output": "go with option two"
+  },
+  {
    "input": "go with the second option",
    "output": "go with the second option"
   },
@@ -5501,6 +5665,10 @@
   {
    "input": "go_home",
    "output": "go_home"
+  },
+  {
+   "input": "go_to_sleep",
+   "output": "go_to_sleep"
   },
   {
    "input": "good - sent: var -",
@@ -5679,6 +5847,10 @@
    "output": "grow"
   },
   {
+   "input": "guess what, my cat just knocked my coffee onto the keyboard",
+   "output": "guess what, my cat just knocked my coffee onto the keyboard"
+  },
+  {
    "input": "guy",
    "output": "guy"
   },
@@ -5771,6 +5943,10 @@
    "output": "have a helper archive the old channels in discord"
   },
   {
+   "input": "have it run npm run build dash dash verbose",
+   "output": "have it run npm run build dash dash verbose"
+  },
+  {
    "input": "have it send that",
    "output": "have it send that"
   },
@@ -5861,6 +6037,10 @@
   {
    "input": "hey Orbit stop",
    "output": "hey Orbit stop"
+  },
+  {
+   "input": "hey Orbit, tell Claude to add dark mode",
+   "output": "hey Orbit, tell Claude to add dark mode"
   },
   {
    "input": "hey are you there",
@@ -6083,6 +6263,10 @@
    "output": "hop… dance var: qubit? change yep -"
   },
   {
+   "input": "how are you today?",
+   "output": "how are you today?"
+  },
+  {
    "input": "how could we avoid that in the future?",
    "output": "how could we avoid that in the future?"
   },
@@ -6207,6 +6391,14 @@
    "output": "interrupt it"
   },
   {
+   "input": "is Redis faster than Postgres for a cache?",
+   "output": "is Redis faster than Postgres for a cache?"
+  },
+  {
+   "input": "is Redis faster than Postgres for this?",
+   "output": "is Redis faster than Postgres for this?"
+  },
+  {
    "input": "is it in the box?",
    "output": "is it in the box?"
   },
@@ -6227,12 +6419,20 @@
    "output": "it and home: great using: guy:"
   },
   {
+   "input": "it asked them a question with options",
+   "output": "it asked them a question with options"
+  },
+  {
    "input": "it bed says!",
    "output": "it bed says!"
   },
   {
    "input": "it jump… to, quick discord… Then.",
    "output": "it jump… to, quick discord… Then."
+  },
+  {
+   "input": "it needs their OK to go on (a permission prompt)",
+   "output": "it needs their OK to go on (a permission prompt)"
   },
   {
    "input": "it no… roll?",
@@ -6493,6 +6693,10 @@
   {
    "input": "let hey no always nap?",
    "output": "let hey no always nap?"
+  },
+  {
+   "input": "let it know I'll be back in ten minutes, keep going",
+   "output": "let it know I'll be back in ten minutes, keep going"
   },
   {
    "input": "let it know ill be back in ten minutes keep going",
@@ -7127,6 +7331,10 @@
    "output": "no -"
   },
   {
+   "input": "no cue",
+   "output": "no cue"
+  },
+  {
    "input": "no don't",
    "output": "no don't"
   },
@@ -7459,6 +7667,10 @@
    "output": "ok"
   },
   {
+   "input": "ok  ",
+   "output": "ok"
+  },
+  {
    "input": "ok -",
    "output": "ok -"
   },
@@ -7729,6 +7941,10 @@
   {
    "input": "orbit-claude-prompt-",
    "output": "orbit-claude-prompt-"
+  },
+  {
+   "input": "orbit-eval-",
+   "output": "orbit-eval-"
   },
   {
    "input": "orbit-natural-yes-",
@@ -8065,6 +8281,10 @@
   {
    "input": "prompt it to run the build, just send it",
    "output": "prompt it to run the build, just send it"
+  },
+  {
+   "input": "proud",
+   "output": "proud"
   },
   {
    "input": "pull it up",
@@ -8491,6 +8711,10 @@
    "output": "s blocked on the user: answer_claude_prompt"
   },
   {
+   "input": "s box, and Orbit",
+   "output": "s box, and Orbit"
+  },
+  {
    "input": "s director with his real engine, and the pixel buddy",
    "output": "s director with his real engine, and the pixel buddy"
   },
@@ -8509,6 +8733,14 @@
   {
    "input": "s list: 0 = created, 2 = project not in sidebar. sendToDesktop",
    "output": "s list: 0 = created, 2 = project not in sidebar. sendToDesktop"
+  },
+  {
+   "input": "s own offer drafted once accepted, never when it isn",
+   "output": "s own offer drafted once accepted, never when it isn"
+  },
+  {
+   "input": "s own prompt: the answer the user said, nothing else (checks on the call",
+   "output": "s own prompt: the answer the user said, nothing else (checks on the call"
   },
   {
    "input": "s own settings by voice (\"use Opus\"), on the user",
@@ -8597,6 +8829,14 @@
   {
    "input": "scan",
    "output": "scan"
+  },
+  {
+   "input": "search the web for the latest Node LTS version",
+   "output": "search the web for the latest Node LTS version"
+  },
+  {
+   "input": "search_web",
+   "output": "search_web"
   },
   {
    "input": "second",
@@ -9027,6 +9267,10 @@
    "output": "should Little? good fix says - goodnight goodnight"
   },
   {
+   "input": "should we add caching to the API?",
+   "output": "should we add caching to the API?"
+  },
+  {
    "input": "should? me okay",
    "output": "should? me okay"
   },
@@ -9137,6 +9381,10 @@
   {
    "input": "sleep? make! could goodnight Wake… halt quick Hey, let -",
    "output": "sleep? make! could goodnight Wake… halt quick Hey, let -"
+  },
+  {
+   "input": "so what happened?",
+   "output": "so what happened?"
   },
   {
    "input": "sonnet",
@@ -9375,6 +9623,10 @@
    "output": "sure,"
   },
   {
+   "input": "sure, do that",
+   "output": "sure, do that"
+  },
+  {
    "input": "sure, go for it",
    "output": "sure, go for it"
   },
@@ -9551,6 +9803,10 @@
    "output": "talk quieter"
   },
   {
+   "input": "tell Claude I said thanks, great work",
+   "output": "tell Claude I said thanks, great work"
+  },
+  {
    "input": "tell Claude something else instead",
    "output": "tell Claude something else instead"
   },
@@ -9559,12 +9815,28 @@
    "output": "tell Claude that"
   },
   {
+   "input": "tell Claude that his last change broke the login page",
+   "output": "tell Claude that his last change broke the login page"
+  },
+  {
+   "input": "tell Claude to add a dark mode toggle to settings",
+   "output": "tell Claude to add a dark mode toggle to settings"
+  },
+  {
    "input": "tell Claude to add a retry to the upload",
    "output": "tell Claude to add a retry to the upload"
   },
   {
    "input": "tell Claude to add a stop button",
    "output": "tell Claude to add a stop button"
+  },
+  {
+   "input": "tell Claude to add one retry, no wait, two retries",
+   "output": "tell Claude to add one retry, no wait, two retries"
+  },
+  {
+   "input": "tell Claude to change the page title to 'Welcome back, friend'",
+   "output": "tell Claude to change the page title to 'Welcome back, friend'"
   },
   {
    "input": "tell Claude to deploy and ship it",
@@ -9617,6 +9889,10 @@
   {
    "input": "tell Claude to rerun the migration. Send it.",
    "output": "tell Claude to rerun the migration. Send it."
+  },
+  {
+   "input": "tell Claude to search the web for the latest Node version",
+   "output": "tell Claude to search the web for the latest Node version"
   },
   {
    "input": "tell Claude to send it",
@@ -9715,8 +9991,20 @@
    "output": "tell claude zqprivate stuff"
   },
   {
+   "input": "tell him he forgot X",
+   "output": "tell him he forgot X"
+  },
+  {
+   "input": "tell him he forgot to update the README",
+   "output": "tell him he forgot to update the README"
+  },
+  {
    "input": "tell him he forgot to update the readme",
    "output": "tell him he forgot to update the readme"
+  },
+  {
+   "input": "tell it don't touch the API, just fix the CSS",
+   "output": "tell it don't touch the API, just fix the CSS"
   },
   {
    "input": "tell it hi",
@@ -9775,12 +10063,28 @@
    "output": "tell it to commit everything, don't ask me, just send it"
   },
   {
+   "input": "tell it to delete it",
+   "output": "tell it to delete it"
+  },
+  {
    "input": "tell it to delete the logs",
    "output": "tell it to delete the logs"
   },
   {
    "input": "tell it to first run the tests then fix whatever fails and then commit",
    "output": "tell it to first run the tests then fix whatever fails and then commit"
+  },
+  {
+   "input": "tell it to first run the tests, then fix whatever fails, and then commit",
+   "output": "tell it to first run the tests, then fix whatever fails, and then commit"
+  },
+  {
+   "input": "tell it to fix the failing tests",
+   "output": "tell it to fix the failing tests"
+  },
+  {
+   "input": "tell it to fix the login bug",
+   "output": "tell it to fix the login bug"
   },
   {
    "input": "tell it to fix the login’s redirect and just send it",
@@ -9835,6 +10139,10 @@
    "output": "tell it to print send it"
   },
   {
+   "input": "tell it to rename app dot tsx to main dot tsx",
+   "output": "tell it to rename app dot tsx to main dot tsx"
+  },
+  {
    "input": "tell it to rename the send it button",
    "output": "tell it to rename the send it button"
   },
@@ -9865,6 +10173,10 @@
   {
    "input": "tell it word for word",
    "output": "tell it word for word"
+  },
+  {
+   "input": "tell me a fun fact about octopuses",
+   "output": "tell me a fun fact about octopuses"
   },
   {
    "input": "tell me more",
@@ -9967,6 +10279,10 @@
    "output": "thanks! session, come: stop! hop says?"
   },
   {
+   "input": "thanks, that is all for now",
+   "output": "thanks, that is all for now"
+  },
+  {
    "input": "thanks, working, want, send Jump, do… Hop… over: helpers? allow",
    "output": "thanks, working, want, send Jump, do… Hop… over: helpers? allow"
   },
@@ -9989,6 +10305,10 @@
   {
    "input": "that's all",
    "output": "that's all"
+  },
+  {
+   "input": "that's cool. Also tell it to add logging to the upload",
+   "output": "that's cool. Also tell it to add logging to the upload"
   },
   {
    "input": "that's good",
@@ -10527,6 +10847,10 @@
    "output": "typing a draft"
   },
   {
+   "input": "ugh, I accidentally deleted my whole branch",
+   "output": "ugh, I accidentally deleted my whole branch"
+  },
+  {
    "input": "uh for come!",
    "output": "uh for come!"
   },
@@ -10585,6 +10909,10 @@
   {
    "input": "um add a retry to the login call",
    "output": "um add a retry to the login call"
+  },
+  {
+   "input": "um can you have it add a retry to the upload, like three times",
+   "output": "um can you have it add a retry to the upload, like three times"
   },
   {
    "input": "um fix the parser uh now",
@@ -10681,6 +11009,10 @@
   {
    "input": "use MongoDB",
    "output": "use MongoDB"
+  },
+  {
+   "input": "use MongoDB instead",
+   "output": "use MongoDB instead"
   },
   {
    "input": "use Opus",
@@ -10841,6 +11173,10 @@
   {
    "input": "wait, Send sure! flip… button? session bug first…",
    "output": "wait, Send sure! flip… button? session bug first…"
+  },
+  {
+   "input": "wait, not yet",
+   "output": "wait, not yet"
   },
   {
    "input": "wait, stop it",
@@ -11019,6 +11355,14 @@
    "output": "what did it say?"
   },
   {
+   "input": "what does a 404 error mean",
+   "output": "what does a 404 error mean"
+  },
+  {
+   "input": "what does a 404 error mean?",
+   "output": "what does a 404 error mean?"
+  },
+  {
    "input": "what does it say?",
    "output": "what does it say?"
   },
@@ -11093,6 +11437,10 @@
   {
    "input": "what's Claude doing",
    "output": "what's Claude doing"
+  },
+  {
+   "input": "what's Claude doing right now",
+   "output": "what's Claude doing right now"
   },
   {
    "input": "what's it asking",
@@ -11303,6 +11651,10 @@
    "output": "yeah tell Claude to add a retry to the upload"
   },
   {
+   "input": "yeah that looks good",
+   "output": "yeah that looks good"
+  },
+  {
    "input": "yeah that looks good, send it over",
    "output": "yeah that looks good, send it over"
   },
@@ -11329,6 +11681,10 @@
   {
    "input": "yeah, go ahead",
    "output": "yeah, go ahead"
+  },
+  {
+   "input": "yeah, good idea",
+   "output": "yeah, good idea"
   },
   {
    "input": "yeah, good? don't make!",
@@ -11545,6 +11901,10 @@
   {
    "input": "{}",
    "output": "{}"
+  },
+  {
+   "input": "}",
+   "output": "}"
   },
   {
    "input": "«guillemets»",

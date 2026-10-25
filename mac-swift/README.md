@@ -75,15 +75,38 @@ stops when the page goes away). Claude Code runs in a process group of its own, 
 The settings, the sealed keys and the log file are the engine's alone; the core keeps a copy of the
 settings in memory (`settings` below) and hands its log entries over (`logEntry`).
 
-Ported and held to the core's answers, not yet switched on: the Claude window driver (the macOS
-port's `desktop.js`, replayed against its stand-in Claude), Claude Code's sessions on disk and the
-watcher. They switch over with the voice session (step 4), so the Claude window has one driver and
-the voice's announcements one watcher. Until then `/api/sessions` and `/api/switch` go to the core.
+The voice session is ported and held to the core's answers (step 4):
+- the relay on `/voice` (`VoiceRelay.swift`): spoken updates, wakes and their limits, the fast paths,
+  suppression, cues, the results the user waits on, the resume note
+- the agent's context and tools, the tool runner with every consent check
+- Claude voice's Claude Code driver, with its warm spare
+- the Grok socket, the Claude window driver (the macOS port's `desktop.js` on the helper's `ax` host),
+  Claude Code's sessions on disk and the watcher
 
-The oracle (`parity/oracle`, `node parity/oracle/gen.mjs` on a Mac): settings 5133 cases, log scrub
-321, hotkeys 15, the text checks 2562 (22 functions), window policy 81, the Claude driver 53
-scenarios, sessions and watcher 51 steps, the second brain, web search, finding Claude Code and the
-speech models 1010 cases, 44 whole runs and 27 download steps. Swift matches every one.
+`EngineVoice.swift` puts it on real sockets with `/api/sessions` and `/api/switch`. For now it is
+switched on only in a test build with `ORBIT_SWIFT_VOICE=1` (parity: `--env ORBIT_SWIFT_VOICE=1`). It
+becomes the default once Orbit anywhere and the MCP connectors move too (step 5), because the voice
+reaches them. While it's on, the core's own watcher events (`claude.*`, `orbit.wake`) are dropped
+from the event stream, so there's one watcher.
+
+The oracle (`parity/oracle`, `node parity/oracle/gen.mjs` on a Mac):
+
+| Area | Cases |
+| --- | --- |
+| Settings | 5133 |
+| Log scrub | 321 |
+| Hotkeys | 15 |
+| Text checks (22 functions) | 2562 |
+| Window policy | 81 |
+| Claude driver | 53 scenarios |
+| Sessions and watcher | 51 steps |
+| Second brain, web search, finding Claude Code, speech models | 1010 cases, 44 whole runs, 27 download steps |
+| What the voice is told and given | 8945 cases, 26 contexts |
+| Tool runner | 1599 steps |
+| Claude voice | 297 steps |
+| Voice relay | 13 calls, 299 steps |
+
+Swift matches every one.
 
 ### Sidecar channel (stdin/stdout, one JSON object per line)
 
@@ -231,15 +254,20 @@ Native (Swift):
 - Phase 2, step 2: "Hey Orbit" with Vosk's C library (the same model, grammar, pattern and debounce
   as the web wake page).
 
-- The engine, moving over (see "Engine"): the bridge, settings, keys, log, usage, events, Claude
-  voice's models and the voices, the second brain's routes; ported and checked, switching on with the
-  voice session: the text checks (consent, send intent, offers, the commands, cues, prompts,
-  continuity, window policy), the Claude window driver, sessions and the watcher.
+- The engine, moving over (see "Engine"):
+  - In use: the bridge, settings, keys, log, usage, events, Claude voice's models and the voices,
+    and the second brain's routes.
+  - Ported and checked, in use only in a test build (`ORBIT_SWIFT_VOICE=1`): the whole voice
+    session. That covers the relay, Grok, Claude voice's driver, the agent and its tools, the text
+    checks, the Claude window driver, sessions and the watcher.
 
-Still the Node core behind the Swift bridge (a sidecar on an internal port): the voice session (Grok
-and Claude voice's Claude Code driver), the agent and its tools, the Claude window driver in use, the
-watcher's announcements, Orbit anywhere and the MCP manager. They move next (the voice session, then
-Orbit anywhere and MCP), then Node leaves the bundle. The Windows build keeps the Node core.
+Still the Node core behind the Swift bridge (a sidecar on an internal port):
+- the voice session in a release build
+- Orbit anywhere
+- the MCP manager
+
+Orbit anywhere and MCP move next; then the Swift voice session becomes the default and Node leaves
+the bundle. The Windows build keeps the Node core.
 
 Measured on the MacBook Air M4 (parity/tools/measure.mjs, median of 3, display asleep):
 

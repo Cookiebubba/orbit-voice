@@ -70,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     eng.loadSettings()
     engine = eng
+    if config.testing, ProcessInfo.processInfo.environment["ORBIT_SWIFT_VOICE"] == "1" { enableSwiftVoice(eng) }
     // The core behind it, on a free port of its own (only the engine talks to it).
     guard let corePort = FreePort.pick() else { return fail("Orbit could not find a free local port for its core.") }
     let sc = Sidecar(config: .init(node: config.node, script: config.sidecarScript, coreDir: config.coreDir, profileDir: config.profileDir, port: Int(corePort), sealKey: key, extraEnv: config.sidecarEnv))
@@ -89,6 +90,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       log.warn("app", "Could not start the core: \(error)")
       fail("Orbit's core could not start (\(error.localizedDescription)).")
     }
+  }
+
+  /**
+   * The voice session in Swift instead of the core (a test build with ORBIT_SWIFT_VOICE=1, until Orbit
+   * anywhere moves too): the Claude window through the helper's "ax" host, or the parity suite's
+   * stand-in desktop. What it has for the shell comes as the core's messages do.
+   */
+  func enableSwiftVoice(_ eng: Engine) {
+    let env = ProcessInfo.processInfo.environment
+    let log = eng.log
+    let driver: DesktopDriver?
+    if let fake = env["ORBIT_FAKE_DESKTOP"], !fake.isEmpty {
+      let module = URL(fileURLWithPath: fake)
+      driver = FakeDesktopDriver(node: config.node, hostScript: module.deletingLastPathComponent().appendingPathComponent("fake-desktop-host.mjs"), module: module, env: env)
+    } else if let bin = Self.helperPath(config: config) {
+      let host = HelperHost(launch: HelperHost.helper(bin: URL(fileURLWithPath: bin), mode: "ax"), idleSeconds: 600, requestSeconds: 15, onError: { m in log.warn("claude-window", m) })
+      driver = ClaudeDesktop(request: { op, a in await host.request(op, a) }, onlyPid: Int(env["ORBIT_TEST_CLAUDE_PID"] ?? "") ?? 0)
+    } else {
+      driver = nil
+    }
+    let desktop = Desktop(driver: driver, log: log)
+    desktop.dryRunSends = env["ORBIT_DRY_RUN_SENDS"] == "1"
+    let v = eng.enableVoice(desktop: desktop, realtimeURL: env["XAI_REALTIME_URL"])
+    v.toShell = { [weak self] m in DispatchQueue.main.async { self?.coreMessage(m) } }
+    self.log.info("app", "The voice session runs in Swift (test build)")
   }
 
   /** The core is up behind the engine: the engine signs in to it, then takes the public port. */

@@ -44,8 +44,9 @@ extension Engine {
       Task { [weak self] in
         do {
           try await task?.value
-          self?.onPrewarm?()
+          self?.prewarm()
           self?.onSttReady?() // a live call switches to it now
+          self?.voice?.sttReady()
         } catch {
           self?.log.warn("voice", "Claude voice: \(label) download failed", JS.slice(VoiceModels.message(error), 0, 200))
         }
@@ -58,7 +59,7 @@ extension Engine {
       Task { [weak self] in
         do {
           try await task?.value
-          self?.onPrewarm?()
+          self?.prewarm()
         } catch {
           self?.log.warn("voice", "Claude voice: model download failed", JS.slice(VoiceModels.message(error), 0, 200))
         }
