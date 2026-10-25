@@ -165,7 +165,7 @@ public final class ParityRunner: @unchecked Sendable {
     case "act":
       let r = try await ctx.app.driver("POST", "/parity/act", ["action": x["action"] ?? "", "args": x["args"] ?? .object([:])], timeout: timeout)["body"] ?? .null
       if x["expect"] == nil, r["ok"] == .bool(false) { throw RunnerError("act \(x["action"]?.stringValue ?? ""): \(r["error"]?.stringValue ?? "")") }
-      return try check(r, "act \(x["action"]?.stringValue ?? "")")
+      return try check(r, "act \(x["action"]?.stringValue ?? "")\(r["error"]?.stringValue.map { " (\($0.prefix(160)))" } ?? "")")
     case "state":
       return try check(try await ctx.app.driver("GET", "/parity/state")["body"] ?? .null, "state")
     case "fake":
