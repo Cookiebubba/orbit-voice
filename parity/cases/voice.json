@@ -898,7 +898,8 @@
      "settings": {
       "wakeWord": true
      }
-    }
+    },
+    "key": "xai-parityfakekey0000000000000000000000"
    },
    "steps": [
     {
@@ -931,7 +932,8 @@
       }
      }
     }
-   ]
+   ],
+   "about": "With an xAI key saved: the Electron page only runs the wake word with one (App.tsx), even with Claude voice; Orbit Native doesn't need it there. A known difference, left to decide."
   },
   {
    "id": "voice.wake-word-decoy",
@@ -949,7 +951,8 @@
      "settings": {
       "wakeWord": true
      }
-    }
+    },
+    "key": "xai-parityfakekey0000000000000000000000"
    },
    "steps": [
     {
@@ -973,7 +976,8 @@
       "voice.phase": "off"
      }
     }
-   ]
+   ],
+   "about": "With an xAI key saved: the Electron page only runs the wake word with one (App.tsx), even with Claude voice; Orbit Native doesn't need it there. A known difference, left to decide."
   }
  ]
 }
