@@ -150,3 +150,37 @@ Vosk's library itself (`scripts/fetch-vosk.sh`). The macOS helper is built from
   in tests: with `ORBIT_TEST_CLAUDE_PID` set, both apps act on that pid only.
 - No keys, prompts or transcripts in logs, ever.
 - Qubit's art and colours are the engine's, unchanged (`ui/src/vendor/avatars/qubit-engine.js`).
+
+## Status
+
+Native (Swift):
+
+- The app shell: menu bar, dock, single instance per profile, login item (SMAppService), the
+  updater (GitHub Releases' latest-mac.yml, verified download, install behind a flag), its own log.
+- The launcher (white, Qubit's unchanged engine as the hero, the avatar carousel, icon-only buttons),
+  Settings with every setting, History, the permissions onboarding (Microphone and Accessibility;
+  Screen Recording optional, in Settings), as the Electron Mac build has them.
+- The overlays: Qubit / the pixel buddy on the Claude window (pages unchanged in WKWebViews),
+  click-through except over him, click to talk, pick up and throw inside his window, "Wheee!" on a
+  real throw, guests on other apps' windows, the orb, Orbit's mouse; the Claude window tracker runs
+  the macOS helper's claude-window mode.
+- The voice client: AVAudioEngine mic and playback with the voice volume, the whole call logic of
+  useVoice.ts (VoiceSession), the global hotkey (Carbon).
+- Phase 2, step 1: Claude voice's listening and speaking (Silero VAD, Moonshine, Kitten) in the app
+  through sherpa-onnx's C API, the core then only sees words (`/voice?speech=local`).
+- Phase 2, step 2: "Hey Orbit" with Vosk's C library (the same model, grammar, pattern and debounce
+  as the web wake page).
+
+Still the shared Node core (as a sidecar, unchanged): the bridge, the agent and its tools, consent,
+send-intent, offers, sleep and stop, the Claude desktop driver and Orbit anywhere (through the macOS
+port's helper), the MCP manager, Grok. Phase 2 steps 3 to 5 (consent and friends, tools and the agent
+prompt, Orbit anywhere) are not started.
+
+Measured on the MacBook Air M4 (parity/tools/measure.mjs, median of 3, display asleep):
+
+| | Orbit Native | Electron (orbit-mac) |
+| --- | --- | --- |
+| App size | 213 MB | 390 MB (packaged, arm64) |
+| Start-up (open → ready) | 0.36 s | 0.39 s (from source) |
+| Idle CPU | 0.8 % | 12.4 % |
+| Idle memory | 351 MB (8 processes) | 627 MB (8 processes) |
