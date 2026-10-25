@@ -67,11 +67,13 @@ public final class BridgeLink: NSObject, URLSessionTaskDelegate, @unchecked Send
   }
 
   /** The /voice socket's request: ws://host/voice[?announce=1] with the cookie and Origin. */
-  public func voiceRequest(announce: Bool) async throws -> URLRequest {
+  public func voiceRequest(announce: Bool, localSpeech: Bool = false) async throws -> URLRequest {
     var c = URLComponents(url: endpoints.base, resolvingAgainstBaseURL: false)!
     c.scheme = endpoints.base.scheme == "https" ? "wss" : "ws"
     c.path = "/voice"
-    c.query = announce ? "announce=1" : nil
+    // speech=local: the app hears and speaks itself (Claude voice; see src/claude-voice.js localSpeech).
+    let q = [announce ? "announce=1" : nil, localSpeech ? "speech=local" : nil].compactMap { $0 }
+    c.query = q.isEmpty ? nil : q.joined(separator: "&")
     var req = URLRequest(url: c.url!)
     req.setValue(try await cookie(), forHTTPHeaderField: "Cookie")
     req.setValue(origin, forHTTPHeaderField: "Origin")

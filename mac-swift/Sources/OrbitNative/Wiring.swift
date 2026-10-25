@@ -122,6 +122,16 @@ extension AppDelegate {
     hk.onSaved = { [weak self] accel in self?.sidecar?.send(["t": "shellSettings", "patch": ["wakeHotkey": .string(accel)]]) }
     voiceController = v
     shellHotkey = hk
+    // Phase 2: Claude voice's speech on this Mac in Swift, when its models are in the profile.
+    let wantLocal = !(config.testing && ProcessInfo.processInfo.environment["ORBIT_SPEECH"] == "core")
+    if wantLocal {
+      let profile = config.profileDir
+      let log = self.log
+      DispatchQueue.global(qos: .userInitiated).async {
+        let engine = NativeLocalSpeech.load(profile: profile) { log.info("speech", $0) }
+        DispatchQueue.main.async { [weak v] in v?.localSpeech = engine }
+      }
+    }
     voice = VoiceUIAdapter(v)
     hotkeys = hk
 

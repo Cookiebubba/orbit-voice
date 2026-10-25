@@ -8,7 +8,7 @@
 //   npm run parity -- --case 'bridge\.config'    cases whose id matches
 //   npm run parity -- --list                     the cases, no run
 //
-// Options: --swift-app <path to "Orbit Native.app"> (default mac-swift/dist), --electron-root <a
+// Options: --env K=V (extra env for the apps, repeatable), --swift-app <path to "Orbit Native.app"> (default mac-swift/dist), --electron-root <a
 // checkout with node_modules/electron> (default this repo), --voice-models <folder with Claude
 // voice's speech models> (default ~/orbit-swift-dev/voice-models), --out <folder>, --keep (keep
 // every case's temp folder; failed ones are always kept).
@@ -37,6 +37,8 @@ const AREAS = opt('area', '') ? opt('area').split(',') : null;
 const CASE_RE = opt('case', '') ? new RegExp(opt('case')) : null;
 const OUT = path.resolve(opt('out', path.join(HERE, 'out')));
 const KEEP = flag('keep');
+// --env K=V (repeatable): extra environment for every app this run starts (e.g. ORBIT_SPEECH=core).
+const EXTRA_ENV = Object.fromEntries(process.argv.flatMap((a, i) => (a === '--env' && process.argv[i + 1]?.includes('=') ? [process.argv[i + 1].split(/=(.*)/s).slice(0, 2)] : [])));
 const paths = {
   repo: REPO,
   swiftApp: path.resolve(opt('swift-app', path.join(REPO, 'mac-swift', 'dist', 'Orbit Native.app'))),
@@ -107,7 +109,7 @@ async function prepare(c, which) {
   // The microphone is always the fake one in tests (silence until a case plays a clip into it).
   const silence = path.join(run, 'silence.wav');
   fs.writeFileSync(silence, silentWav(0.2));
-  const env = { PARITY_RECORD_DIR: dirs.records, ORBIT_FAKE_MIC: silence, ...interpolate(c.env || {}, vars) };
+  const env = { PARITY_RECORD_DIR: dirs.records, ORBIT_FAKE_MIC: silence, ...EXTRA_ENV, ...interpolate(c.env || {}, vars) };
   const settings = { ...(c.profile?.settings || {}) };
   const fx = c.fixtures || {};
   const stops = [];

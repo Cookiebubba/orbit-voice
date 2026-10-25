@@ -47,6 +47,13 @@ public final class VoiceController: ObservableObject {
   private var throwPlayer: AVAudioPlayer?
   private var events: Task<Void, Never>?
   private weak var wakeWord: WakeWord?
+  /**
+   * On-device speech (phase 2): with Claude voice, the app hears and speaks itself and only words
+   * cross the socket (`/voice?speech=local`). nil: the core does it, as for the Electron page.
+   */
+  public var localSpeech: LocalSpeechEngine?
+  private var localActive = false
+  private var relay: LocalSpeechRelay?
 
   public init(endpoints: BridgeEndpoints, audio: AudioIO? = nil) {
     link = BridgeLink(endpoints: endpoints)
@@ -199,6 +206,15 @@ public final class VoiceController: ObservableObject {
     case .disconnect(let gen):
       if gen == socketGen { socket?.close(); socket = nil }
     case .send(let m):
+      if localActive, let engine = localSpeech {
+        // The mic audio the session would send goes to the app's own listening instead.
+        switch m {
+        case .audioAppend(let b64): return engine.feed(VoiceAudio.float(pcm16: VoiceAudio.pcm16(base64: b64)))
+        case .audioClear: return engine.reset()
+        case .audioCommit: return
+        default: break
+        }
+      }
       socket?.send(m.text)
     case .openMic:
       audio.prepareOutput()
@@ -215,6 +231,10 @@ public final class VoiceController: ObservableObject {
       audio.schedule(chunk)
     case .stopPlayback:
       audio.stopPlayback()
+      if localActive {
+        localSpeech?.cancelSpeaking()
+        relay?.cancel()
+      }
     case .setVolume(let g):
       audio.prepareOutput()
       audio.setVolume(gain: g)
@@ -261,8 +281,29 @@ public final class VoiceController: ObservableObject {
     socketGen = gen
     let s = VoiceSocket()
     socket = s
+    // Local speech for this call: Claude voice with the app's own speech models.
+    let engine = settings.voiceEngine == "claude" ? localSpeech : nil
+    localActive = engine != nil
+    relay = nil
+    if let engine {
+      engine.reset()
+      let r = LocalSpeechRelay(
+        speak: { text, sid, speed, done in engine.say(text, sid: sid, speed: speed, done: done) },
+        deliver: { [weak self] t in DispatchQueue.main.async { MainActor.assumeIsolated { self?.session.socketMessage(generation: gen, t) } } })
+      relay = r
+      engine.onStarted = { [weak self] in
+        DispatchQueue.main.async { MainActor.assumeIsolated { if self?.socketGen == gen { self?.socket?.send(#"{"type":"orbit.speech_started"}"#) } } }
+      }
+      engine.onHeard = { [weak self] text, ms, stt in
+        let m: JSONValue = ["type": "orbit.transcript", "transcript": .string(text), "ended_ms_ago": .number(Double(ms)), "stt": .string(stt)]
+        DispatchQueue.main.async { MainActor.assumeIsolated { if self?.socketGen == gen { self?.socket?.send(m.text) } } }
+      }
+    }
     s.onOpen = { [weak self] in self?.session.socketOpened(generation: gen) }
-    s.onText = { [weak self] t in self?.session.socketMessage(generation: gen, t) }
+    s.onText = { [weak self] t in
+      guard let self else { return }
+      if let r = self.relay, self.localActive { r.receive(t) } else { self.session.socketMessage(generation: gen, t) }
+    }
     s.onClose = { [weak self] in
       guard let self else { return }
       if self.socketGen == gen { self.socket = nil }
@@ -271,7 +312,7 @@ public final class VoiceController: ObservableObject {
     Task { [weak self] in
       guard let self else { return }
       do {
-        let req = try await self.link.voiceRequest(announce: announce)
+        let req = try await self.link.voiceRequest(announce: announce, localSpeech: engine != nil)
         guard self.socketGen == gen, self.socket === s else { return }
         s.open(req)
       } catch {
