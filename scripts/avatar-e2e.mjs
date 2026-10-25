@@ -928,6 +928,9 @@ async function run() {
   check(await waitFor(() => ignoreCalls.at(-1) === true, 2000), 'the cursor off him: clicks go through to Claude again');
 
   out('17c. Pick him up and throw him');
+  // "Wheee!" plays in Orbit's main window: count each time it starts there.
+  await pjs(`(() => { if (window.__wheee) return true; window.__wheee = []; const play = HTMLMediaElement.prototype.play; HTMLMediaElement.prototype.play = function (...a) { if (/wheee/.test(this.src)) window.__wheee.push({ at: Date.now(), volume: this.volume }); return play.apply(this, a); }; return true; })()`);
+  const wheees = () => pjs('window.__wheee.length');
   await label('throw');
   await qjs(MOTION);
   // A frame change (his window growing to the work area and back) moves his stage coordinates, not
@@ -1014,6 +1017,7 @@ async function run() {
   desk.nudge?.();
   check(await waitFor(() => sameRect(qwin.getBounds(), hostRect()), 1500), 'the window moves and narrows mid-flight: his window follows it', `${JSON.stringify(qwin.getBounds())} vs ${JSON.stringify(hostRect())}`);
   check(await waitFor(async () => (await qjs('window.__lands.length')) > 0, 8000), 'he lands');
+  check((await wheees()) === 1, 'thrown for real: "Wheee!" plays once (in the main window), not again on the bounces', `${await wheees()} play(s), volume ${JSON.stringify(await pjs('window.__wheee.map((w) => +w.volume.toFixed(3))'))}`);
   await flight;
   await watchInside;
   check(outside.length === 0, 'all through the flight he stayed inside that window (never over another)', JSON.stringify(outside.slice(0, 5)));
@@ -1039,6 +1043,22 @@ async function run() {
   const level = await qjs('Math.abs(((((window.__qubit.q.angle + 180) % 360) + 360) % 360) - 180)');
   check(level < 1, 'level on a face afterwards (no held lean)', `${level.toFixed(2)} deg`);
   await expectState('and his life carries on (dozing where he is, Orbit asleep)', { state: 'asleep', air: false }, 15_000);
+  // A put-down: held still, then let go with no speed. Picked up and set down, without a sound.
+  {
+    const pd = await screenPos();
+    mouse('mouseMove', pd.x, pd.y);
+    await wait(60);
+    mouse('mouseDown', pd.x, pd.y);
+    check(await waitFor(() => qjs('window.__qubit.throw.held'), 1500), 'held still a moment: picked up');
+    await wait(300);
+    mouse('mouseUp', pd.x, pd.y);
+    await waitFor(async () => (await qjs('window.__qubit.frame')) === 'strip', 10_000);
+    await wait(400);
+    check((await wheees()) === 1, 'set down gently: no sound', `${await wheees()} play(s)`);
+    mouse('mouseMove', pd.x - 600, pd.y);
+    await waitFor(() => ignoreCalls.at(-1) === true, 2000);
+    await expectState('dozing again after being set down', { state: 'asleep', air: false }, 15_000);
+  }
   await snap('after-throw');
   // Throw your avatar, off: a press and drag never picks him up.
   const throwSwitch = (click) => pjs(`(() => { const b = document.querySelector('button[role=switch][aria-label="Throw your avatar"]'); if (b && ${!!click}) b.click(); return b ? b.getAttribute('aria-checked') : null; })()`);
@@ -1126,6 +1146,7 @@ async function run() {
   drag('mouseUp', dx, dy);
   fakeCursor = { x: dx + 500, y: dy + 300 };
   check(await waitFor(async () => (await qjs('window.__lands2.length')) > 0, 8000), 'thrown, he lands');
+  check((await wheees()) === 2, 'thrown while Orbit is asleep: "Wheee!" plays (once)', `${await wheees()} play(s) in all`);
   const land2 = (await qjs('window.__lands2'))[0];
   check(await waitFor(async () => (await qjs('window.__qubit.frame')) === 'strip', 20_000), 'back on his strip');
   await expectState('and dozes off again from where he landed', { state: 'asleep', mode: (m) => m === 'sleepy' || m === 'asleep', air: false }, 15_000);

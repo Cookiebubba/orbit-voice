@@ -24,7 +24,7 @@ import '../vendor/avatars/orbit-nav.js';
 import '../vendor/avatars/qubit-engine.js';
 import { FLOOR, createDirector, sideFor } from './director.js';
 import { createThrow, headBack } from './throw.js';
-import { liftedStage, onStrip, pressKind, pushSample, throwVelocity } from '../buddy/throw.js';
+import { liftedStage, onStrip, pressKind, pushSample, throwSoundFor, throwVelocity } from '../buddy/throw.js';
 
 const E = window.QubitEngine;
 const desktop = window.desktop;
@@ -321,6 +321,8 @@ function pickUp() {
 }
 
 function letGo(v) {
+  // A real throw (not a put-down): "Wheee!" (played by Orbit's main window, at the voice volume).
+  if (throwSoundFor(v, q.side, st.prefs)) desktop?.buddySound?.('throw');
   th.release(v);
   dir.thrown();
 }
@@ -392,7 +394,7 @@ desktop?.onBuddyState?.((s) => {
     visible: s.visible !== false,
     bounds: 'bounds' in s ? brect(s.bounds) : st.bounds,
     lift: 'lift' in s ? lift : st.lift,
-    prefs: s.prefs && typeof s.prefs === 'object' ? { clickTalk: s.prefs.clickTalk !== false, throw: s.prefs.throw !== false } : st.prefs,
+    prefs: s.prefs && typeof s.prefs === 'object' ? { clickTalk: s.prefs.clickTalk !== false, throw: s.prefs.throw !== false, throwSound: s.prefs.throwSound !== false } : st.prefs,
   };
   const geoChanged = JSON.stringify([next.box, next.send, next.scale, next.bounds && [next.bounds.width, next.bounds.height]]) !== JSON.stringify([st.box, st.send, st.scale, st.bounds && [st.bounds.width, st.bounds.height]]);
   const liftChanged = JSON.stringify(next.lift) !== JSON.stringify(st.lift);

@@ -24,6 +24,16 @@ export function pressKind({ dx = 0, dy = 0, ms = 0, released = false, dragging =
   return ms >= P.holdMs ? 'hold' : 'press';
 }
 
+/** The throw sound: only for a real throw, at least this fast (body sides a second), not a put-down. */
+export const THROW_SOUND = Object.freeze({ minSpeedS: 12 });
+
+/** Does letting go at velocity `v` (px/s) with a body `side` px make the throw sound (Settings `prefs`)? */
+export function throwSoundFor(v, side, prefs = {}) {
+  if (prefs.throw === false || prefs.throwSound === false) return false;
+  const s = Math.hypot(Number(v?.x) || 0, Number(v?.y) || 0);
+  return Number.isFinite(s) && side > 0 && s >= THROW_SOUND.minSpeedS * side;
+}
+
 /** Keep a velocity's direction, at most `max` long. */
 export function clampSpeed(v, max = Infinity) {
   const s = Math.hypot(v.x, v.y);

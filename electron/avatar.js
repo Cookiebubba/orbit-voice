@@ -153,7 +153,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       visible: visible(),
       bounds: stripBounds(),
       lift: lifted ? { area: lifted.area, strip: lifted.strip } : null,
-      prefs: { clickTalk: p.clickTalk !== false, throw: p.throw !== false },
+      prefs: { clickTalk: p.clickTalk !== false, throw: p.throw !== false, throwSound: p.throwSound !== false },
     });
   };
   const sendEvent = (name) => {

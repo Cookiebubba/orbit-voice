@@ -381,8 +381,17 @@ function AvatarSection({ s, update, name }: { s: SettingsT; update: Update; name
           checked={s.avatarThrow !== false}
           onChange={(avatarThrow) => update({ avatarThrow })}
           label="Throw your avatar"
-          hint={avatar === "qubit" ? "Press and hold Qubit to pick him up, drag him anywhere on that screen and let go to throw him. He bounces off the edges, lands, shakes it off and carries on from where he landed." : "Press and hold the pixel buddy to pick it up, then drop it somewhere along the strip."}
+          hint={avatar === "qubit" ? "Press and hold Qubit to pick him up, drag him about inside his window and let go to throw him. He bounces off its edges, lands, shakes it off and carries on from where he landed." : "Press and hold the pixel buddy to pick it up, then drop it somewhere along the strip."}
         />
+        <Reveal show={s.avatarThrow !== false && avatar === "qubit"}>
+          <Toggle
+            className="mt-4"
+            checked={s.avatarThrowSound !== false}
+            onChange={(avatarThrowSound) => update({ avatarThrowSound })}
+            label="Sound when thrown"
+            hint="A quick “Wheee!” when you really throw him (not when you set him down), at the voice volume above."
+          />
+        </Reveal>
         <Toggle
           className="mt-4"
           checked={s.showOrb !== false}

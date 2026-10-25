@@ -368,7 +368,7 @@ const avatarKind = () => (['buddy', 'qubit'].includes(getSetting('avatar')) ? ge
 // in for it). Without an avatar the orb always shows, so there is always something on screen.
 const orbAllowed = () => getSetting('showOrb') !== false || !avatarKind();
 // Settings -> Avatar: click it to talk, and pick it up to throw it (its page reads these).
-const avatarPrefs = () => ({ clickTalk: getSetting('avatarClickTalk') !== false, throw: getSetting('avatarThrow') !== false });
+const avatarPrefs = () => ({ clickTalk: getSetting('avatarClickTalk') !== false, throw: getSetting('avatarThrow') !== false, throwSound: getSetting('avatarThrowSound') !== false });
 function setAvatar({ live = false } = {}) {
   const kind = avatarKind();
   const size = getSetting('buddySize');
@@ -450,7 +450,7 @@ focus.on('change', () => avatarHost.onFocus());
 // (A free-floating avatar doesn't need it.)
 const needTracker = () => !!getSetting('orbStick') || (!!avatarKind() && !freeAvatar());
 onSettingsChange((changed) => {
-  if (changed.includes('avatarClickTalk') || changed.includes('avatarThrow')) {
+  if (changed.includes('avatarClickTalk') || changed.includes('avatarThrow') || changed.includes('avatarThrowSound')) {
     avatar?.refresh();
     avatarHost.refresh();
   }
@@ -672,6 +672,11 @@ ipcMain.on('buddy:talk', (e) => {
     wakeWith(known || (a === avatar ? { hwnd, kind: 'app', exe: 'claude.exe', cls: 'Chrome_WidgetWin_1', title: 'Claude' } : { hwnd, kind: 'app' }));
   }
   main?.webContents.send('avatar:talk');
+});
+// Thrown for real: "Wheee!", played by the main window (with Orbit's own audio, at the voice volume).
+ipcMain.on('buddy:sound', (e, name) => {
+  if (!fromUs(e) || name !== 'throw' || getSetting('avatarThrow') === false || getSetting('avatarThrowSound') === false || !avatarFor(e.sender)) return;
+  main?.webContents.send('avatar:sound', 'throw');
 });
 // Picked up to be thrown (true) or put back (false): its window covers the work area meanwhile.
 ipcMain.on('buddy:lift', (e, on) => {

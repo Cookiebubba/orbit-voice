@@ -108,6 +108,9 @@ export function useVoice(options: VoiceOptions) {
   // spoken update's mic shut, or a hang-up waiting, forever.
   const audioEndsAt = useRef(0);
   const isPlaying = () => playing.current.size > 0 && Date.now() < audioEndsAt.current + 250;
+  // A sound of Orbit's own playing (the avatar's "Wheee!"): treated like Orbit's voice by the listening.
+  const ownSoundUntil = useRef(0);
+  const soundPlaying = () => Date.now() < ownSoundUntil.current;
   const playHead = useRef(0); // where the next chunk starts, on this call's AudioContext clock
   /** How long after it's scheduled audio really comes out (Bluetooth earbuds: 0.1–0.3 s). */
   const outLatency = () => {
@@ -200,7 +203,7 @@ export function useVoice(options: VoiceOptions) {
         // Not listening: asleep, a spoken update whose listening window isn't open, or
         // (half-duplex) Grok is talking and might hear itself.
         const a = announceRef.current;
-        const deaf = mutedRef.current || asleepRef.current || (!!a && a.stage === "speaking") || (opts.current.halfDuplex && isPlaying());
+        const deaf = mutedRef.current || asleepRef.current || (!!a && a.stage === "speaking") || (opts.current.halfDuplex && (isPlaying() || soundPlaying()));
         const pcm = new Int16Array(e.data);
         let sum = 0;
         for (let i = 0; i < pcm.length; i++) sum += (pcm[i] / 0x8000) ** 2;
@@ -349,7 +352,7 @@ export function useVoice(options: VoiceOptions) {
         return;
       }
       if (ctx.current?.state === "suspended") void ctx.current.resume().catch(() => {});
-      const quiet = a.ready && !isPlaying() && !responding.current && now - lastAudioAt.current > 300;
+      const quiet = a.ready && !isPlaying() && !soundPlaying() && !responding.current && now - lastAudioAt.current > 300;
       quietSince = quiet ? quietSince || now : 0;
       const heardIt = lastAudioAt.current > a.startedAt;
       if (quiet && now - quietSince >= (heardIt ? 300 : ANNOUNCE_SILENT_OPEN_MS)) {
@@ -871,6 +874,10 @@ export function useVoice(options: VoiceOptions) {
     },
     toggleSleep: hotkey,
     hotkey,
+    /** A sound of Orbit's own is playing for `ms` (the avatar's throw sound): listened to like its voice. */
+    ownSound: (ms: number) => {
+      ownSoundUntil.current = Math.max(ownSoundUntil.current, Date.now() + Math.max(0, ms));
+    },
     sendText,
     ask,
     note: (text: string) => caption({ id: `note-${Date.now()}`, who: "note", text }),

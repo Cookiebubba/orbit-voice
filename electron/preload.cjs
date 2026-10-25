@@ -38,6 +38,14 @@ contextBridge.exposeInMainWorld('desktop', {
   buddyTalk: () => ipcRenderer.send('buddy:talk'),
   // Picked up (true) or put back (false): the avatar's window covers the work area meanwhile.
   buddyLift: (on) => ipcRenderer.send('buddy:lift', !!on),
+  // Thrown for real: the main window plays its sound.
+  buddySound: (name) => ipcRenderer.send('buddy:sound', String(name)),
+  // The main window: an avatar's sound to play ('throw').
+  onAvatarSound: (cb) => {
+    const fn = (_e, name) => cb(name);
+    ipcRenderer.on('avatar:sound', fn);
+    return () => ipcRenderer.removeListener('avatar:sound', fn);
+  },
   // The main window: the avatar was clicked to talk.
   onAvatarTalk: (cb) => {
     const fn = () => cb();

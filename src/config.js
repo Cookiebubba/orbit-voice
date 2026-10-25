@@ -68,6 +68,8 @@ export const DEFAULTS = Object.freeze({
   // Press and hold the avatar to pick it up, drag it about and throw it (Qubit: real physics, then he
   // carries on from where he lands).
   avatarThrow: true,
+  // ...and a "Wheee!" when he's really thrown (not a gentle put-down), at the voice volume.
+  avatarThrowSound: true,
   // The floating orb the main window minimizes into. With an avatar on it can be turned off: the
   // avatar stands in for it and Orbit opens from the tray icon. (Without an avatar it always shows.)
   showOrb: true,
@@ -203,6 +205,7 @@ function sanitize(input) {
         break;
       case 'avatarClickTalk':
       case 'avatarThrow':
+      case 'avatarThrowSound':
         // Only a real yes or no (true/false, or their strings): anything else is ignored.
         if (typeof v === 'boolean' || v === 'true' || v === 'false') out[k] = val;
         break;

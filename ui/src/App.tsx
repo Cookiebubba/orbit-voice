@@ -8,7 +8,8 @@ import { PULSE_DEFAULT } from "./orbLook";
 import AvatarHero from "./hero/AvatarHero";
 import Settings from "./Settings";
 import { playChime } from "./sounds";
-import { DEFAULT_VOLUME } from "./playback.js";
+import { DEFAULT_VOLUME, volumeGain } from "./playback.js";
+import { createThrowSound } from "./throwSound.js";
 import { hotkeyLabel, postJson, useAppState, type Finished } from "./useAppState";
 import { useVoice, type Phase } from "./useVoice";
 import { useWakeWord } from "./useWakeWord";
@@ -95,6 +96,15 @@ export default function App() {
     if (app.config?.hasKey && (v.phase === "off" || v.asleep)) v.hotkey();
   };
   useEffect(() => desktop?.onAvatarTalk?.(() => talkRef.current()), []);
+  // Qubit thrown for real: "Wheee!" at the voice volume, once (a new throw restarts it), awake or
+  // asleep; while it plays Orbit's listening treats it like its own voice.
+  const throwSound = useRef(createThrowSound({ gain: volumeGain }));
+  const soundRef = useRef((_name: string) => {});
+  soundRef.current = (name) => {
+    if (name !== "throw" || settings?.avatarThrow === false || settings?.avatarThrowSound === false) return;
+    v.ownSound(throwSound.current.play(settings?.voiceVolume ?? DEFAULT_VOLUME));
+  };
+  useEffect(() => desktop?.onAvatarSound?.((name) => soundRef.current(name)), []);
 
   // Show which session is open in Claude straight away, and again whenever this window comes back.
   useEffect(() => {

@@ -31,6 +31,7 @@ export type Settings = {
   buddySize: number;
   avatarClickTalk: boolean;
   avatarThrow: boolean;
+  avatarThrowSound: boolean;
   showOrb: boolean;
   autoUpdate: boolean;
   orbStick: boolean;

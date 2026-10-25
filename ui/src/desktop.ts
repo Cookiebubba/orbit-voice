@@ -34,6 +34,8 @@ type DesktopApi = {
   onBuddyCommand?(cb: (c: { action: string; dir?: "left" | "right" }) => void): () => void;
   /** The avatar was clicked to talk (Settings -> Avatar -> Click your avatar to talk). */
   onAvatarTalk?(cb: () => void): () => void;
+  /** An avatar's sound to play here ('throw': Qubit was thrown). */
+  onAvatarSound?(cb: (name: string) => void): () => void;
   /** A feeling as the voice's words play (an emote cue), for the avatar. */
   buddyEmote?(name: string): void;
   onOrbState(cb: (s: OrbSync) => void): () => void;
