@@ -1,0 +1,65 @@
+{
+ "platform": "any",
+ "cases": [
+  {
+   "input": "Control+Alt+G",
+   "output": "⌃⌥G"
+  },
+  {
+   "input": "Command+Alt+G",
+   "output": "⌥⌘G"
+  },
+  {
+   "input": "CommandOrControl+Shift+Space",
+   "output": "⇧⌘Space"
+  },
+  {
+   "input": "CmdOrCtrl+K",
+   "output": "⌘K"
+  },
+  {
+   "input": "Alt+F4",
+   "output": "⌥F4"
+  },
+  {
+   "input": "Super+Meta+x",
+   "output": "⌘X"
+  },
+  {
+   "input": "Option+AltGr+a",
+   "output": "⌥A"
+  },
+  {
+   "input": "Shift+Command+Control+Alt+Z",
+   "output": "⌃⌥⇧⌘Z"
+  },
+  {
+   "input": "F12",
+   "output": "F12"
+  },
+  {
+   "input": "Ctrl+Plus",
+   "output": "⌃Plus"
+  },
+  {
+   "input": "",
+   "output": ""
+  },
+  {
+   "input": "+",
+   "output": ""
+  },
+  {
+   "input": "Control++",
+   "output": "⌃"
+  },
+  {
+   "input": "Cmd+Shift+ArrowUp",
+   "output": "⇧⌘ArrowUp"
+  },
+  {
+   "input": "g",
+   "output": "G"
+  }
+ ]
+}

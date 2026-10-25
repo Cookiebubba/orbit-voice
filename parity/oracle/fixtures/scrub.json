@@ -1,0 +1,1289 @@
+{
+ "platform": "any",
+ "cases": [
+  {
+   "input": "key xai-abcdefgh1234 and more",
+   "output": "key xai-*** and more"
+  },
+  {
+   "input": "xai-short",
+   "output": "xai-short"
+  },
+  {
+   "input": "sk-ant-api03-ABCDEFGHIJ_k-l",
+   "output": "sk-ant-***"
+  },
+  {
+   "input": "Authorization: Bearer abc.def~ghi+/=",
+   "output": "Authorization: Bearer ***"
+  },
+  {
+   "input": "bearer\tXYZ123",
+   "output": "Bearer ***"
+  },
+  {
+   "input": "Bearer tok",
+   "output": "Bearer ***"
+  },
+  {
+   "input": "api_key=supersecret",
+   "output": "api_key=***"
+  },
+  {
+   "input": "API-KEY: \"zzz\"",
+   "output": "API-KEY: \"***\""
+  },
+  {
+   "input": "apikey:123",
+   "output": "apikey:***"
+  },
+  {
+   "input": "token = tok,next",
+   "output": "token = ***,next"
+  },
+  {
+   "input": "password 'hunter2'",
+   "output": "password '***'"
+  },
+  {
+   "input": "secret:{a}",
+   "output": "secret:***}"
+  },
+  {
+   "input": "no secrets here",
+   "output": "no secrets here"
+  },
+  {
+   "input": "",
+   "output": ""
+  },
+  {
+   "input": "tokenless",
+   "output": "tokenless"
+  },
+  {
+   "input": "my token is",
+   "output": "my token ***"
+  },
+  {
+   "input": "token: x",
+   "output": "token: ***"
+  },
+  {
+   "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "output": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+   "input": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééxai-12345678",
+   "output": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééx"
+  },
+  {
+   "input": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+   "output": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+  },
+  {
+   "input": "a\nb\tc",
+   "output": "a\nb\tc"
+  },
+  {
+   "input": "sk-ant-",
+   "output": "sk-ant-"
+  },
+  {
+   "input": "password_-'abcDEF123:.api_key:token,_-=",
+   "output": "password_-'abcDEF123:.api_key:***,_-="
+  },
+  {
+   "input": " . 😀:",
+   "output": " . 😀:"
+  },
+  {
+   "input": "=tokentoken .api_keysk-ant-é.secretpassword",
+   "output": "=tokentoken ***"
+  },
+  {
+   "input": "secreté}xai-token\"'xai-sk-ant-,\"'",
+   "output": "secreté}xai-token\"'***,\"'"
+  },
+  {
+   "input": "épasswordpassword \"Bearer ",
+   "output": "épasswordpassword \"*** "
+  },
+  {
+   "input": "é ",
+   "output": "é "
+  },
+  {
+   "input": "secret\"xai-",
+   "output": "secret\"***"
+  },
+  {
+   "input": "é.}secretéBearer .secret\n",
+   "output": "é.}secretéBearer ***\n"
+  },
+  {
+   "input": "}/😀😀.}xai-_- api_key.api_key",
+   "output": "}/😀😀.}xai-_- api_key.api_key"
+  },
+  {
+   "input": ".}abcDEF123secretapi_key. =xai-xai-é}",
+   "output": ".}abcDEF123secretapi_key. =xai-xai-é}"
+  },
+  {
+   "input": "xai-//api_key😀:😀secret",
+   "output": "xai-//api_key😀:😀secret"
+  },
+  {
+   "input": "secret}Bearer 😀_-.token'=}",
+   "output": "secret}Bearer 😀_-.token'***}"
+  },
+  {
+   "input": "api_keysecret😀/api_key😀_-=/,}",
+   "output": "api_keysecret😀/api_key😀_-=/,}"
+  },
+  {
+   "input": "._-.",
+   "output": "._-."
+  },
+  {
+   "input": ":abcDEF123_-",
+   "output": ":abcDEF123_-"
+  },
+  {
+   "input": "xai-tokenxai-",
+   "output": "xai-***"
+  },
+  {
+   "input": "\n😀",
+   "output": "\n😀"
+  },
+  {
+   "input": "token",
+   "output": "token"
+  },
+  {
+   "input": "_-api_key\"\",",
+   "output": "_-api_key\"\","
+  },
+  {
+   "input": ",.,'. .,sk-ant-",
+   "output": ",.,'. .,sk-ant-"
+  },
+  {
+   "input": "}},abcDEF123",
+   "output": "}},abcDEF123"
+  },
+  {
+   "input": "é:\"_-}",
+   "output": "é:\"_-}"
+  },
+  {
+   "input": "😀.abcDEF123\".",
+   "output": "😀.abcDEF123\"."
+  },
+  {
+   "input": "\n/😀}",
+   "output": "\n/😀}"
+  },
+  {
+   "input": "abcDEF123passwordé.secrettoken",
+   "output": "abcDEF123passwordé.secrettoken"
+  },
+  {
+   "input": "'/}' sk-ant-passwordapi_key😀",
+   "output": "'/}' sk-ant-***😀"
+  },
+  {
+   "input": ":sk-ant-api_keyé",
+   "output": ":sk-ant-api_keyé"
+  },
+  {
+   "input": "}😀=😀:.'passwordapi_keysecret",
+   "output": "}😀=😀:.'passwordapi_keysecret"
+  },
+  {
+   "input": "secret/:}_-Bearer api_keyabcDEF123.",
+   "output": "secret/:}_-Bearer ***"
+  },
+  {
+   "input": "\n😀tokenBearer  .'",
+   "output": "\n😀tokenBearer ***'"
+  },
+  {
+   "input": "\n.é:_-épassword,\"é😀",
+   "output": "\n.é:_-épassword,\"é😀"
+  },
+  {
+   "input": "xai-tokenapi_keyBearer sk-ant-é:/:,api_key",
+   "output": "xai-*** sk-ant-é:/:,api_key"
+  },
+  {
+   "input": "abcDEF123",
+   "output": "abcDEF123"
+  },
+  {
+   "input": "sk-ant-sk-ant-',password:_-Bearer _-abcDEF123.token",
+   "output": "sk-ant-sk-ant-',password:*** ***"
+  },
+  {
+   "input": " password}xai-tokenapi_key\n:}secret",
+   "output": " password}xai-***\n:}secret"
+  },
+  {
+   "input": "sk-ant-Bearer 😀password",
+   "output": "sk-ant-Bearer 😀password"
+  },
+  {
+   "input": "_-sk-ant-_-'",
+   "output": "_-sk-ant-_-'"
+  },
+  {
+   "input": "tokenapi_keytoken:=\nxai-xai-éé",
+   "output": "tokenapi_keytoken:=\n***"
+  },
+  {
+   "input": "/passwordtoken_-sk-ant-/",
+   "output": "/passwordtoken_-sk-ant-/"
+  },
+  {
+   "input": "}sk-ant-.\"sk-ant-é:token:",
+   "output": "}sk-ant-.\"sk-ant-é:token:"
+  },
+  {
+   "input": ",}\n,password",
+   "output": ",}\n,password"
+  },
+  {
+   "input": "secretpasswordpassword 'secret :_-/password",
+   "output": "secretpasswordpassword '*** :_-/password"
+  },
+  {
+   "input": "password:api_key_-abcDEF123'",
+   "output": "password:***'"
+  },
+  {
+   "input": "Bearer ..secretsecretsk-ant-'épassword_-",
+   "output": "Bearer ***'épassword_-"
+  },
+  {
+   "input": " 😀sk-ant-,abcDEF123=_-=}",
+   "output": " 😀sk-ant-,abcDEF123=_-=}"
+  },
+  {
+   "input": ".étoken_-tokenxai-password,=xai-_-secret",
+   "output": ".étoken_-tokenxai-***,=xai-***"
+  },
+  {
+   "input": ".é .",
+   "output": ".é ."
+  },
+  {
+   "input": " Bearer secretBearer .abcDEF123password}api_key",
+   "output": " Bearer *** .abcDEF123password}api_key"
+  },
+  {
+   "input": ",.api_key///password",
+   "output": ",.api_key///password"
+  },
+  {
+   "input": "api_key\n\npasswordsecrettoken:😀=é",
+   "output": "api_key\n\n***"
+  },
+  {
+   "input": "api_key",
+   "output": "api_key"
+  },
+  {
+   "input": "}:token passwordsecret ",
+   "output": "}:token *** "
+  },
+  {
+   "input": " é",
+   "output": " é"
+  },
+  {
+   "input": "token:",
+   "output": "token:"
+  },
+  {
+   "input": "xai-api_keyxai-😀_-😀/',",
+   "output": "xai-***😀_-😀/',"
+  },
+  {
+   "input": "\"secret,.",
+   "output": "\"secret,."
+  },
+  {
+   "input": "\"/:sk-ant-'=,token ",
+   "output": "\"/:sk-ant-'=,token "
+  },
+  {
+   "input": "\"é",
+   "output": "\"é"
+  },
+  {
+   "input": "/api_key\nxai-=='abcDEF123tokenabcDEF123\"",
+   "output": "/api_key\n***'abcDEF123tokenabcDEF123\""
+  },
+  {
+   "input": "xai-",
+   "output": "xai-"
+  },
+  {
+   "input": "' xai-abcDEF123,\n.api_key",
+   "output": "' xai-***,\n.api_key"
+  },
+  {
+   "input": "😀\"\n},épasswordpassword  ,\"",
+   "output": "😀\"\n},épasswordpassword  ,\""
+  },
+  {
+   "input": "sk-ant-//:abcDEF123secreté xai-/",
+   "output": "sk-ant-//:abcDEF123secreté xai-/"
+  },
+  {
+   "input": "xai-sk-ant-'tokenpasswordapi_key",
+   "output": "xai-sk-ant-'tokenpasswordapi_key"
+  },
+  {
+   "input": ",,_-éé.éé\"é",
+   "output": ",,_-éé.éé\"é"
+  },
+  {
+   "input": "_-':_-😀api_key\"api_keyapi_keysecret",
+   "output": "_-':_-😀api_key\"***"
+  },
+  {
+   "input": "secret}sk-ant-,étoken'api_key,",
+   "output": "secret}sk-ant-,étoken'***,"
+  },
+  {
+   "input": "'é😀tokensecret=.",
+   "output": "'é😀tokensecret=***"
+  },
+  {
+   "input": ".'password/}Bearer ",
+   "output": ".'password/}Bearer "
+  },
+  {
+   "input": "\nsk-ant-}",
+   "output": "\nsk-ant-}"
+  },
+  {
+   "input": "secret\"}=",
+   "output": "secret\"}="
+  },
+  {
+   "input": "abcDEF123/",
+   "output": "abcDEF123/"
+  },
+  {
+   "input": "😀sk-ant-",
+   "output": "😀sk-ant-"
+  },
+  {
+   "input": "_-token,épasswordxai-token/",
+   "output": "_-token,épasswordxai-token/"
+  },
+  {
+   "input": " abcDEF123token",
+   "output": " abcDEF123token"
+  },
+  {
+   "input": "_-password",
+   "output": "_-password"
+  },
+  {
+   "input": "secretsecretabcDEF123\"sk-ant- /secret\nsk-ant-:sk-ant-",
+   "output": "secretsecretabcDEF123\"sk-ant- /secret\n***"
+  },
+  {
+   "input": "passwordésk-ant-,😀abcDEF123",
+   "output": "passwordésk-ant-,😀abcDEF123"
+  },
+  {
+   "input": "}abcDEF123sk-ant-:,token\",password'_-",
+   "output": "}abcDEF123sk-ant-:,token\",password'***"
+  },
+  {
+   "input": "passwordsecret tokené}\"_-secret}",
+   "output": "passwordsecret ***}\"_-secret}"
+  },
+  {
+   "input": "sk-ant-:",
+   "output": "sk-ant-:"
+  },
+  {
+   "input": "}😀,abcDEF123 \"sk-ant-abcDEF123=Bearer \"",
+   "output": "}😀,abcDEF123 \"sk-ant-***=Bearer \""
+  },
+  {
+   "input": ":secreté😀sk-ant-é}",
+   "output": ":secreté😀sk-ant-é}"
+  },
+  {
+   "input": "\nabcDEF123,é}\"Bearer 'sk-ant-",
+   "output": "\nabcDEF123,é}\"Bearer 'sk-ant-"
+  },
+  {
+   "input": ",",
+   "output": ","
+  },
+  {
+   "input": "=",
+   "output": "="
+  },
+  {
+   "input": ":épassword\"😀 ",
+   "output": ":épassword\"*** "
+  },
+  {
+   "input": "/_-😀}",
+   "output": "/_-😀}"
+  },
+  {
+   "input": "\n",
+   "output": "\n"
+  },
+  {
+   "input": ",xai-abcDEF123=_-sk-ant-token}Bearer token.\n",
+   "output": ",xai-***=_-sk-ant-token}Bearer ***\n"
+  },
+  {
+   "input": "\né\"xai-xai-abcDEF123",
+   "output": "\né\"xai-***"
+  },
+  {
+   "input": "\nabcDEF123_-password,'sk-ant-passwordtokenBearer _-.",
+   "output": "\nabcDEF123_-password,'sk-ant-*** _-."
+  },
+  {
+   "input": ":",
+   "output": ":"
+  },
+  {
+   "input": "/,\npassword'}abcDEF123,'sk-ant-}token",
+   "output": "/,\npassword'}abcDEF123,'sk-ant-}token"
+  },
+  {
+   "input": "==",
+   "output": "=="
+  },
+  {
+   "input": "xai-.\".Bearer sk-ant-xai-api_key::",
+   "output": "xai-.\".Bearer ******::"
+  },
+  {
+   "input": "/:abcDEF123'tokené ,",
+   "output": "/:abcDEF123'tokené ,"
+  },
+  {
+   "input": "secret\n\n api_key/",
+   "output": "secret\n\n ***"
+  },
+  {
+   "input": "😀,secret\"xai-}\n}",
+   "output": "😀,secret\"***}\n}"
+  },
+  {
+   "input": "/_-:\"",
+   "output": "/_-:\""
+  },
+  {
+   "input": "éé.api_key\"",
+   "output": "éé.api_key\""
+  },
+  {
+   "input": "sk-ant-tokenpassword\".api_keytoken",
+   "output": "sk-ant-***\".api_keytoken"
+  },
+  {
+   "input": "xai-😀.\"/api_key'passwordabcDEF123",
+   "output": "xai-😀.\"/api_key'***"
+  },
+  {
+   "input": "\"abcDEF123Bearer ",
+   "output": "\"abcDEF123Bearer "
+  },
+  {
+   "input": "/password\"",
+   "output": "/password\""
+  },
+  {
+   "input": ",é",
+   "output": ",é"
+  },
+  {
+   "input": ".Bearer ",
+   "output": ".Bearer "
+  },
+  {
+   "input": "token}\"😀abcDEF123/ _-secret.",
+   "output": "token}\"😀abcDEF123/ _-secret."
+  },
+  {
+   "input": "Bearer Bearer \"Bearer sk-ant-'xai-/é/😀",
+   "output": "Bearer *** \"Bearer ***'xai-/é/😀"
+  },
+  {
+   "input": "secret",
+   "output": "secret"
+  },
+  {
+   "input": "\napi_keysk-ant-token",
+   "output": "\napi_keysk-ant-token"
+  },
+  {
+   "input": "api_keyapi_key,'ésecretabcDEF123/api_keysecretBearer é",
+   "output": "api_keyapi_key,'ésecretabcDEF123/api_keysecretBearer é"
+  },
+  {
+   "input": "é:passwordéabcDEF123abcDEF123abcDEF123_-/\"_-",
+   "output": "é:passwordéabcDEF123abcDEF123abcDEF123_-/\"_-"
+  },
+  {
+   "input": "token.sk-ant-\"..😀,,passwordabcDEF123,",
+   "output": "token.sk-ant-\"..😀,,passwordabcDEF123,"
+  },
+  {
+   "input": "_-token:\n.,😀abcDEF123 abcDEF123/",
+   "output": "_-token:\n***,😀abcDEF123 abcDEF123/"
+  },
+  {
+   "input": "_-",
+   "output": "_-"
+  },
+  {
+   "input": "token .sk-ant-..Bearer token",
+   "output": "token *** ***"
+  },
+  {
+   "input": "api_key:'api_keyBearer \":password",
+   "output": "api_key:'*** \":password"
+  },
+  {
+   "input": "._-token., 😀/:.\n",
+   "output": "._-token., 😀/:.\n"
+  },
+  {
+   "input": "😀,Bearer 'api_key,=xai-}:token_-",
+   "output": "😀,Bearer 'api_key,=xai-}:token_-"
+  },
+  {
+   "input": "} ",
+   "output": "} "
+  },
+  {
+   "input": ",passwordapi_key='}\n ",
+   "output": ",passwordapi_key='}\n "
+  },
+  {
+   "input": "secretsk-ant-/é\"",
+   "output": "secretsk-ant-/é\""
+  },
+  {
+   "input": ":api_key:tokentoken password",
+   "output": ":api_key:*** password"
+  },
+  {
+   "input": "_-=api_key,abcDEF123=\"",
+   "output": "_-=api_key,abcDEF123=\""
+  },
+  {
+   "input": "passwordBearer .😀_-/é",
+   "output": "passwordBearer ***😀_-/é"
+  },
+  {
+   "input": "\n,Bearer xai-ésecret 😀",
+   "output": "\n,Bearer ***ésecret ***"
+  },
+  {
+   "input": "😀é",
+   "output": "😀é"
+  },
+  {
+   "input": "tokensk-ant-abcDEF123api_key_-._-.secretapi_keyapi_keyapi_key",
+   "output": "tokensk-ant-***._-.secretapi_keyapi_keyapi_key"
+  },
+  {
+   "input": "' 😀_-Bearer }😀",
+   "output": "' 😀_-Bearer }😀"
+  },
+  {
+   "input": "\"sk-ant-_-abcDEF123",
+   "output": "\"sk-ant-***"
+  },
+  {
+   "input": "secret'😀",
+   "output": "secret'***"
+  },
+  {
+   "input": "passwordésk-ant-_- sk-ant-",
+   "output": "passwordésk-ant-_- sk-ant-"
+  },
+  {
+   "input": "sk-ant-passwordtokensecretsk-ant-é'= /:",
+   "output": "sk-ant-***é'= /:"
+  },
+  {
+   "input": "xai-Bearer ,",
+   "output": "xai-Bearer ,"
+  },
+  {
+   "input": "\"\n\napi_key=secretxai-sk-ant-.:=",
+   "output": "\"\n\napi_key=***"
+  },
+  {
+   "input": ",=,=",
+   "output": ",=,="
+  },
+  {
+   "input": " api_key.}=abcDEF123abcDEF123=",
+   "output": " api_key.}=abcDEF123abcDEF123="
+  },
+  {
+   "input": "secretapi_key.xai-😀api_key secret,  ",
+   "output": "secretapi_key.xai-😀api_key ***,  "
+  },
+  {
+   "input": "_-é\n",
+   "output": "_-é\n"
+  },
+  {
+   "input": "./abcDEF123",
+   "output": "./abcDEF123"
+  },
+  {
+   "input": " }/éapi_key",
+   "output": " }/éapi_key"
+  },
+  {
+   "input": "/Bearer api_key,😀,api_key",
+   "output": "/Bearer ***,😀,api_key"
+  },
+  {
+   "input": "token😀secret_-api_keytokentoken\"",
+   "output": "token😀secret_-api_keytokentoken\""
+  },
+  {
+   "input": "/api_keypassword",
+   "output": "/api_keypassword"
+  },
+  {
+   "input": "_-abcDEF123xai-:tokenxai-token.=",
+   "output": "_-abcDEF123xai-:tokenxai-token.="
+  },
+  {
+   "input": "_-.",
+   "output": "_-."
+  },
+  {
+   "input": "::token, \"xai-",
+   "output": "::token, \"xai-"
+  },
+  {
+   "input": "'\n\né_-",
+   "output": "'\n\né_-"
+  },
+  {
+   "input": "',='/sk-ant-password/",
+   "output": "',='/sk-ant-***/"
+  },
+  {
+   "input": "=xai-=_-Bearer }/:",
+   "output": "=xai-=_-Bearer }/:"
+  },
+  {
+   "input": "Bearer ",
+   "output": "Bearer "
+  },
+  {
+   "input": "Bearer api_key",
+   "output": "Bearer ***"
+  },
+  {
+   "input": "étokenBearer abcDEF123sk-ant-,abcDEF123abcDEF123api_key",
+   "output": "étokenBearer ***,abcDEF123abcDEF123api_key"
+  },
+  {
+   "input": "'_-",
+   "output": "'_-"
+  },
+  {
+   "input": ",'api_keysecret",
+   "output": ",'api_keysecret"
+  },
+  {
+   "input": "xai-:api_key_-abcDEF123api_key",
+   "output": "xai-:api_key_-abcDEF123api_key"
+  },
+  {
+   "input": "token/api_key=passwordBearer .éapi_key",
+   "output": "token/api_key=*** ***éapi_key"
+  },
+  {
+   "input": "secret api_key",
+   "output": "secret ***"
+  },
+  {
+   "input": "abcDEF123secretsk-ant-abcDEF123\"token.token",
+   "output": "abcDEF123secretsk-ant-***\"token.token"
+  },
+  {
+   "input": "é",
+   "output": "é"
+  },
+  {
+   "input": "tokenapi_keyapi_keytoken:. \néxai-abcDEF123",
+   "output": "tokenapi_keyapi_keytoken:*** \néxai-***"
+  },
+  {
+   "input": " api_keyBearer _-é",
+   "output": " api_keyBearer ***é"
+  },
+  {
+   "input": "Bearer ",
+   "output": "Bearer "
+  },
+  {
+   "input": "\" ,_-:\ntoken",
+   "output": "\" ,_-:\ntoken"
+  },
+  {
+   "input": ":=api_key é",
+   "output": ":=api_key ***"
+  },
+  {
+   "input": "éabcDEF123=secret _-😀Bearer /\nsk-ant-",
+   "output": "éabcDEF123=secret *** ***\nsk-ant-"
+  },
+  {
+   "input": " Bearer /}'password😀",
+   "output": " Bearer ***}'password😀"
+  },
+  {
+   "input": "sk-ant-api_keyabcDEF123}😀 ",
+   "output": "sk-ant-***}😀 "
+  },
+  {
+   "input": ".password😀 sk-ant-password,\"😀=xai-",
+   "output": ".password😀 sk-ant-***,\"😀=xai-"
+  },
+  {
+   "input": "token",
+   "output": "token"
+  },
+  {
+   "input": " /tokenapi_key}Bearer Bearer api_keyabcDEF123",
+   "output": " /tokenapi_key}Bearer *** api_keyabcDEF123"
+  },
+  {
+   "input": "tokené}sk-ant-api_keyapi_keyxai-é",
+   "output": "tokené}sk-ant-***é"
+  },
+  {
+   "input": "abcDEF123xai-= =.'./",
+   "output": "abcDEF123xai-= =.'./"
+  },
+  {
+   "input": "_-/\n:",
+   "output": "_-/\n:"
+  },
+  {
+   "input": "\ntoken/xai-\n'xai-\"api_key",
+   "output": "\ntoken/xai-\n'xai-\"api_key"
+  },
+  {
+   "input": "\ntokenBearer  api_key\n'é",
+   "output": "\ntokenBearer ***\n'é"
+  },
+  {
+   "input": "token '../\"",
+   "output": "token '***\""
+  },
+  {
+   "input": "\n,:xai-😀abcDEF123sk-ant-",
+   "output": "\n,:xai-😀abcDEF123sk-ant-"
+  },
+  {
+   "input": "\n= api_keyxai-ésk-ant-=",
+   "output": "\n= api_keyxai-ésk-ant-="
+  },
+  {
+   "input": "_-sk-ant-",
+   "output": "_-sk-ant-"
+  },
+  {
+   "input": "sk-ant-Bearer token\"/.😀:",
+   "output": "sk-ant-Bearer ***\"/.😀:"
+  },
+  {
+   "input": "}",
+   "output": "}"
+  },
+  {
+   "input": "Bearer ",
+   "output": "Bearer "
+  },
+  {
+   "input": "_-=/_-ésecret/😀",
+   "output": "_-=/_-ésecret/😀"
+  },
+  {
+   "input": ",tokenxai-abcDEF123",
+   "output": ",tokenxai-***"
+  },
+  {
+   "input": "/abcDEF123xai-secretsk-ant-=api_key😀 ",
+   "output": "/abcDEF123xai-***=api_key😀 "
+  },
+  {
+   "input": ",secret/secret:''",
+   "output": ",secret/secret:''"
+  },
+  {
+   "input": "_-'xai-.token\".",
+   "output": "_-'xai-.token\"***"
+  },
+  {
+   "input": "api_key=password':_-\nBearer ",
+   "output": "api_key=***':_-\nBearer "
+  },
+  {
+   "input": "tokenxai-secret ",
+   "output": "tokenxai-secret "
+  },
+  {
+   "input": "=}😀token /Bearer é\ntokensecret",
+   "output": "=}😀token *** é\ntokensecret"
+  },
+  {
+   "input": "api_keypasswordabcDEF123.'",
+   "output": "api_keypasswordabcDEF123.'"
+  },
+  {
+   "input": ". /😀'=api_key.:",
+   "output": ". /😀'=api_key.:"
+  },
+  {
+   "input": "secret_-\".Bearer _-,passwordsecret",
+   "output": "secret_-\".Bearer ***,passwordsecret"
+  },
+  {
+   "input": ",'}",
+   "output": ",'}"
+  },
+  {
+   "input": "'api_keytoken,\n\n\"Bearer ",
+   "output": "'api_keytoken,\n\n\"Bearer "
+  },
+  {
+   "input": "😀",
+   "output": "😀"
+  },
+  {
+   "input": "token\" \"Bearer .",
+   "output": "token\" \"*** ***"
+  },
+  {
+   "input": "token_-_-'api_key:,password",
+   "output": "token_-_-'api_key:,password"
+  },
+  {
+   "input": ":😀xai-}token",
+   "output": ":😀xai-}token"
+  },
+  {
+   "input": "'sk-ant-\".',/",
+   "output": "'sk-ant-\".',/"
+  },
+  {
+   "input": "api_key\",é",
+   "output": "api_key\",é"
+  },
+  {
+   "input": "api_key😀\n:\"\": ",
+   "output": "api_key😀\n:\"\": "
+  },
+  {
+   "input": "abcDEF123secret\",token_-😀secretpassword",
+   "output": "abcDEF123secret\",token_-😀secretpassword"
+  },
+  {
+   "input": "xai-:😀.\n=sk-ant-'😀secretBearer ",
+   "output": "xai-:😀.\n=sk-ant-'😀secretBearer "
+  },
+  {
+   "input": "password.xai-",
+   "output": "password.xai-"
+  },
+  {
+   "input": "'sk-ant-xai-=abcDEF123\nxai-}\"xai-api_key",
+   "output": "'sk-ant-xai-=abcDEF123\nxai-}\"xai-api_key"
+  },
+  {
+   "input": "\"xai-secreté/😀sk-ant-password_-token:",
+   "output": "\"xai-secreté/😀sk-ant-***:"
+  },
+  {
+   "input": "password",
+   "output": "password"
+  },
+  {
+   "input": "😀secret",
+   "output": "😀secret"
+  },
+  {
+   "input": "xai-/_-password'xai-secret:'",
+   "output": "xai-/_-password'***'"
+  },
+  {
+   "input": "secret password=sk-ant-Bearer  ",
+   "output": "secret ***  "
+  },
+  {
+   "input": "=tokensk-ant-./:/api_key\n",
+   "output": "=tokensk-ant-./:/api_key\n"
+  },
+  {
+   "input": "xai-_-",
+   "output": "xai-_-"
+  },
+  {
+   "input": "sk-ant-/",
+   "output": "sk-ant-/"
+  },
+  {
+   "input": "abcDEF123xai-}é:passwordtoken ..",
+   "output": "abcDEF123xai-}é:passwordtoken ***"
+  },
+  {
+   "input": "/'",
+   "output": "/'"
+  },
+  {
+   "input": "'Bearer =",
+   "output": "'Bearer ***"
+  },
+  {
+   "input": "\"xai-",
+   "output": "\"xai-"
+  },
+  {
+   "input": ".",
+   "output": "."
+  },
+  {
+   "input": "\".api_keypassword",
+   "output": "\".api_keypassword"
+  },
+  {
+   "input": "/tokenabcDEF123_-'xai-api_key'/}",
+   "output": "/tokenabcDEF123_-'xai-api_key'***}"
+  },
+  {
+   "input": "xai-😀/",
+   "output": "xai-😀/"
+  },
+  {
+   "input": ",é",
+   "output": ",é"
+  },
+  {
+   "input": "'😀token😀\n😀abcDEF123Bearer 😀_-,",
+   "output": "'😀token😀\n😀abcDEF123Bearer 😀_-,"
+  },
+  {
+   "input": "sk-ant-\n",
+   "output": "sk-ant-\n"
+  },
+  {
+   "input": ",",
+   "output": ","
+  },
+  {
+   "input": "xai-,abcDEF123😀\ntoken\n",
+   "output": "xai-,abcDEF123😀\ntoken\n"
+  },
+  {
+   "input": "password}secret./😀",
+   "output": "password}secret./😀"
+  },
+  {
+   "input": "\"passwordabcDEF123/xai-",
+   "output": "\"passwordabcDEF123/xai-"
+  },
+  {
+   "input": "sk-ant-",
+   "output": "sk-ant-"
+  },
+  {
+   "input": "'==tokensecretBearer ésk-ant-/",
+   "output": "'==tokensecretBearer ésk-ant-/"
+  },
+  {
+   "input": "abcDEF123xai-}token/api_key\nsecretsecret=,",
+   "output": "abcDEF123xai-}token/api_key\n***,"
+  },
+  {
+   "input": "=\né .password/Bearer abcDEF123_-",
+   "output": "=\né .password/Bearer ***"
+  },
+  {
+   "input": " ",
+   "output": " "
+  },
+  {
+   "input": "abcDEF123''/xai-xai-",
+   "output": "abcDEF123''/xai-xai-"
+  },
+  {
+   "input": "tokené",
+   "output": "tokené"
+  },
+  {
+   "input": ":=é\"'::/. }",
+   "output": ":=é\"'::/. }"
+  },
+  {
+   "input": "sk-ant-}xai-=.:_-sk-ant-Bearer _-:secret",
+   "output": "sk-ant-}xai-=.:_-sk-ant-Bearer ***:secret"
+  },
+  {
+   "input": "\"",
+   "output": "\""
+  },
+  {
+   "input": " 😀😀api_key:\n",
+   "output": " 😀😀api_key:\n"
+  },
+  {
+   "input": "secret_-xai-'",
+   "output": "secret_-xai-'"
+  },
+  {
+   "input": "',Bearer 'api_keytoken},Bearer ",
+   "output": "',Bearer 'api_keytoken},Bearer "
+  },
+  {
+   "input": "_-}token\n",
+   "output": "_-}token\n"
+  },
+  {
+   "input": "Bearer 😀token'sk-ant-_-token.abcDEF123sk-ant-😀",
+   "output": "Bearer 😀token'***"
+  },
+  {
+   "input": "api_keyBearer sk-ant-\"😀",
+   "output": "api_keyBearer ***\"😀"
+  },
+  {
+   "input": "Bearer 'passwordxai-😀token\"'",
+   "output": "Bearer 'passwordxai-😀token\"'"
+  },
+  {
+   "input": "passwordpassword/",
+   "output": "passwordpassword/"
+  },
+  {
+   "input": ":api_keysecret\"abcDEF123Bearer sk-ant-tokensk-ant-/}",
+   "output": ":api_keysecret\"*** ******/}"
+  },
+  {
+   "input": ".",
+   "output": "."
+  },
+  {
+   "input": "}=",
+   "output": "}="
+  },
+  {
+   "input": " ",
+   "output": " "
+  },
+  {
+   "input": ".password=sk-ant-' secret\"é",
+   "output": ".password=***' secret\"***"
+  },
+  {
+   "input": "=sk-ant-/=Bearer ",
+   "output": "=sk-ant-/=Bearer "
+  },
+  {
+   "input": "api_key'.sk-ant-",
+   "output": "api_key'***"
+  },
+  {
+   "input": "abcDEF123abcDEF123",
+   "output": "abcDEF123abcDEF123"
+  },
+  {
+   "input": ":\n_-,é_-.Bearer \nBearer ,",
+   "output": ":\n_-,é_-.Bearer *** ,"
+  },
+  {
+   "input": "/,=é",
+   "output": "/,=é"
+  },
+  {
+   "input": "_-secret/sk-ant-_-😀.=._-token,",
+   "output": "_-secret/sk-ant-_-😀.=._-token,"
+  },
+  {
+   "input": "Bearer sk-ant-secret=",
+   "output": "Bearer ***"
+  },
+  {
+   "input": "Bearer Bearer ,passwordBearer \npassword'::'=",
+   "output": "Bearer *** ,passwordBearer ***'::'="
+  },
+  {
+   "input": "./😀abcDEF123_-., ",
+   "output": "./😀abcDEF123_-., "
+  },
+  {
+   "input": "/xai-'",
+   "output": "/xai-'"
+  },
+  {
+   "input": "\npassword'😀\n}=",
+   "output": "\npassword'***\n}="
+  },
+  {
+   "input": "=. }:abcDEF123\n\n} =api_key",
+   "output": "=. }:abcDEF123\n\n} =api_key"
+  },
+  {
+   "input": "sk-ant-/sk-ant-:.Bearer =}tokensecret",
+   "output": "sk-ant-/sk-ant-:.Bearer ***}tokensecret"
+  },
+  {
+   "input": "\" 'secretabcDEF123:\"}\n",
+   "output": "\" 'secretabcDEF123:\"}\n"
+  },
+  {
+   "input": "=passwordxai-=abcDEF123}secret.",
+   "output": "=passwordxai-=abcDEF123}secret."
+  },
+  {
+   "input": "tokenéapi_keyapi_keyapi_key😀'abcDEF123api_key, ",
+   "output": "tokenéapi_keyapi_keyapi_key😀'abcDEF123api_key, "
+  },
+  {
+   "input": ",:\n😀",
+   "output": ",:\n😀"
+  },
+  {
+   "input": "xai-._-' =_-secretpasswordsk-ant-xai-",
+   "output": "xai-._-' =_-secretpasswordsk-ant-xai-"
+  },
+  {
+   "input": "😀.,é",
+   "output": "😀.,é"
+  },
+  {
+   "input": "secreté :secret,}Bearer ",
+   "output": "secreté :secret,}Bearer "
+  },
+  {
+   "input": "/,/},abcDEF123token/",
+   "output": "/,/},abcDEF123token/"
+  },
+  {
+   "input": ":.'",
+   "output": ":.'"
+  },
+  {
+   "input": "\"=api_key",
+   "output": "\"=api_key"
+  },
+  {
+   "input": ".}",
+   "output": ".}"
+  },
+  {
+   "input": "\"sk-ant-:_-Bearer /Bearer ",
+   "output": "\"sk-ant-:_-Bearer *** "
+  },
+  {
+   "input": "}😀=  ",
+   "output": "}😀=  "
+  },
+  {
+   "input": "sk-ant-\"é\"Bearer   /.xai-abcDEF123",
+   "output": "sk-ant-\"é\"Bearer ******"
+  },
+  {
+   "input": "😀_-passwordééabcDEF123'secret",
+   "output": "😀_-passwordééabcDEF123'secret"
+  },
+  {
+   "input": "api_keysk-ant-é_-secret /",
+   "output": "api_keysk-ant-é_-secret ***"
+  },
+  {
+   "input": "_-,api_key}",
+   "output": "_-,api_key}"
+  },
+  {
+   "input": "=\"'''sk-ant-",
+   "output": "=\"'''sk-ant-"
+  },
+  {
+   "input": "xai-token,api_key}api_key😀",
+   "output": "xai-token,api_key}api_key😀"
+  },
+  {
+   "input": "sk-ant-=😀}=\nsk-ant-",
+   "output": "sk-ant-=😀}=\nsk-ant-"
+  },
+  {
+   "input": "😀,",
+   "output": "😀,"
+  },
+  {
+   "input": "😀api_keypassword😀Bearer =passwordsecret}é,",
+   "output": "😀api_keypassword😀Bearer ***}é,"
+  },
+  {
+   "input": "api_keysecretsk-ant-\"}",
+   "output": "api_keysecretsk-ant-\"}"
+  },
+  {
+   "input": "Bearer ",
+   "output": "Bearer "
+  },
+  {
+   "input": "😀éapi_key,,épasswordsk-ant-Bearer _-'",
+   "output": "😀éapi_key,,épasswordsk-ant-Bearer ***'"
+  },
+  {
+   "input": "Bearer _-sk-ant-:secretxai-😀:secret😀",
+   "output": "Bearer ***:secretxai-😀:secret😀"
+  },
+  {
+   "input": "xai-}sk-ant-",
+   "output": "xai-}sk-ant-"
+  },
+  {
+   "input": ".Bearer ",
+   "output": ".Bearer "
+  },
+  {
+   "input": "sk-ant-sk-ant-}\"sk-ant-}}}\":",
+   "output": "sk-ant-sk-ant-}\"sk-ant-}}}\":"
+  },
+  {
+   "input": "abcDEF123secret\né_-",
+   "output": "abcDEF123secret\n***"
+  },
+  {
+   "input": "passwordsk-ant-xai-é passwordxai-xai-xai-é_-abcDEF123",
+   "output": "passwordsk-ant-xai-é passwordxai-***é_-abcDEF123"
+  },
+  {
+   "input": ".secret::abcDEF123é:passwordapi_key",
+   "output": ".secret::***"
+  }
+ ]
+}
