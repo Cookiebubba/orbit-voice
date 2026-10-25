@@ -33,7 +33,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, safeStorage, screen, session, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, safeStorage, screen, session, shell } from 'electron';
 import { createFakeGrok } from '../test/e2e/fake-grok.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -139,11 +139,42 @@ app.whenReady().then(() => {
 
 // Whether the avatar's window takes the mouse (only while the cursor is on him).
 const ignoreCalls = [];
+const ignoreTimes = []; // [when, ignore], for the flapping checks
 const origIgnore = BrowserWindow.prototype.setIgnoreMouseEvents;
 BrowserWindow.prototype.setIgnoreMouseEvents = function (ignore, o) {
-  if (isAvatar(this)) ignoreCalls.push(!!ignore);
+  if (isAvatar(this)) {
+    ignoreCalls.push(!!ignore);
+    ignoreTimes.push([Date.now(), !!ignore]);
+  }
   return origIgnore.call(this, ignore, o);
 };
+/** Changes of the mouse mode closer together than `ms` since `from` (an index into ignoreTimes). */
+const fastFlaps = (from, ms = 150) => {
+  const c = ignoreTimes.slice(from);
+  let n = 0;
+  for (let i = 1; i < c.length; i++) if (c[i][1] !== c[i - 1][1] && c[i][0] - c[i - 1][0] < ms) n++;
+  return n;
+};
+// What his page sends Orbit, counted per channel; and (17g) a page whose timer is throttled: its
+// heartbeat (a rect the same as the last one) never arrives. A rect that changed (he moved, so frames
+// ran) still does.
+const fromAvatar = {};
+let heartbeatsMuted = false;
+const lastSaid = {};
+const ipcOn = ipcMain.on.bind(ipcMain);
+ipcMain.on = (channel, fn) =>
+  ipcOn(channel, (e, ...a) => {
+    if (/\/(qubit|buddy)\.html/.test(e.sender?.getURL?.() || '')) {
+      fromAvatar[channel] = (fromAvatar[channel] || 0) + 1;
+      if (channel === 'buddy:hit' || channel === 'buddy:hover') {
+        // (Its press state rides the same heartbeat; a press starting or ending still says so at once.)
+        const key = JSON.stringify(a);
+        if (heartbeatsMuted && key === lastSaid[channel]) return;
+        lastSaid[channel] = key;
+      }
+    }
+    return fn(e, ...a);
+  });
 
 // ---------- a throwaway profile ----------
 const KEY = `xai-avatar${'k'.repeat(40)}`;
@@ -797,6 +828,7 @@ async function run() {
 
   out('16. Switch avatars live (Settings -> Avatar)');
   const hotkey16 = [...hotkeys.values()][0];
+  const PRESS_HOLD = 420; // (ui/src/buddy/throw.js PRESS.holdMs)
   await pjs(`document.querySelector('button[aria-label="Settings"]').click()`);
   await waitFor(() => pjs(`[...document.querySelectorAll('[role=radio]')].some((b) => b.textContent === 'Pixel buddy')`), 5000);
   const pickAvatar = (name) => pjs(`(() => { const b = [...document.querySelectorAll('[role=radio]')].find((x) => x.textContent === ${JSON.stringify(name)}); b && b.click(); return !!b; })()`);
@@ -895,9 +927,13 @@ async function run() {
   await wait(2500);
   const pos = await qjs('(() => { const q = window.__qubit.q; return { x: Math.round(q._rx), y: Math.round(q._ry) }; })()');
   const n0 = ignoreCalls.length;
+  // (The cursor Orbit polls goes along: it, not the page's own guess, decides.)
+  const onScreen = (x, y) => ({ x: qwin.getBounds().x + x, y: qwin.getBounds().y + y });
+  fakeCursor = onScreen(pos.x - 300, pos.y);
   qwin.webContents.sendInputEvent({ type: 'mouseMove', x: pos.x - 300, y: pos.y });
   await wait(150);
   check(ignoreCalls.length === n0, 'the cursor away from him: clicks still go through');
+  fakeCursor = onScreen(pos.x, pos.y);
   qwin.webContents.sendInputEvent({ type: 'mouseMove', x: pos.x, y: pos.y });
   check(await waitFor(() => ignoreCalls.at(-1) === false, 2000), 'the cursor on him: his window takes the mouse');
   // Click your avatar to talk (on by default): a quick click starts Orbit, as "Hey Orbit" would.
@@ -924,6 +960,7 @@ async function run() {
   await expectState('and dozes off again', { mode: 'asleep', action: null }, 10_000);
   await talkSwitch(true);
   check(await waitFor(async () => (await qjs('window.__qubit.state.prefs.clickTalk')) === true, 3000), 'on again');
+  fakeCursor = onScreen(pos.x - 300, pos.y);
   qwin.webContents.sendInputEvent({ type: 'mouseMove', x: pos.x - 300, y: pos.y });
   check(await waitFor(() => ignoreCalls.at(-1) === true, 2000), 'the cursor off him: clicks go through to Claude again');
 
@@ -1152,6 +1189,327 @@ async function run() {
   await expectState('and dozes off again from where he landed', { state: 'asleep', mode: (m) => m === 'sleepy' || m === 'asleep', air: false }, 15_000);
   check(await waitFor(() => ignoreCalls.at(-1) === true, 2000), 'click-through again, the cursor away from him');
   out(`  landed at stage x ${Math.round(land2.x)} after ${land2.secs.toFixed(2)} s`);
+  fakeCursor = null;
+
+  out('17e. A long session: throws, quick put-downs, sleeps, calls ending, the box changing, a lagging page');
+  // The owner's report (after 3f3d55a): after a while, clicking Qubit to talk and picking him up both
+  // stopped working. Cause: a lift and drop his page didn't follow wiped Orbit's idea of where he is,
+  // and a Qubit standing still never said it again. Here everything that churns his window happens
+  // many times over, part of it with his page's messages arriving late (as when it or the main
+  // process is busy), with no forwarded mouse moves at all; then he must still be clickable and
+  // throwable.
+  await label('long');
+  const at17 = async () => {
+    const b = qwin.getBounds();
+    const p = await qjs('(() => { const q = window.__qubit.q; return { x: q._rx, y: q._ry }; })()');
+    return { x: Math.round(b.x + p.x), y: Math.round(b.y + p.y) };
+  };
+  const ev = (type, gx, gy, down = false) => {
+    fakeCursor = { x: Math.round(gx), y: Math.round(gy) };
+    const b = qwin.getBounds();
+    qwin.webContents.sendInputEvent({ type, x: Math.round(gx - b.x), y: Math.round(gy - b.y), globalX: Math.round(gx), globalY: Math.round(gy), button: 'left', clickCount: 1, ...(down ? { modifiers: ['leftButtonDown'] } : {}) });
+  };
+  const settle17 = async () => {
+    await waitFor(async () => !(await qjs('window.__qubit.throw.active || window.__qubit.returning')) && (await qjs('window.__qubit.frame')) === 'strip', 20_000);
+    await wait(300);
+  };
+  const lagOn = () => {
+    const wc = qwin.webContents;
+    if (wc.__realSend) return;
+    const real = wc.send.bind(wc);
+    wc.__realSend = real;
+    let chain = Promise.resolve();
+    wc.send = (...a) => {
+      chain = chain.then(() => wait(250)).then(() => !wc.isDestroyed() && real(...a));
+    };
+  };
+  const lagOff = () => {
+    const wc = qwin.webContents;
+    if (wc.__realSend) {
+      wc.send = wc.__realSend;
+      delete wc.__realSend;
+    }
+  };
+  const sleepByVoice = async () => {
+    const c = fake.current();
+    if (!c || c.ws.readyState !== 1) return;
+    void fake.userSays(c, 'go to sleep', { kind: 'sleep', tools: [{ name: 'go_to_sleep' }] });
+    await waitFor(() => c.ws.readyState !== 1, 15_000);
+  };
+  const kinds = [];
+  for (let i = 0; i < 14; i++) {
+    if (i === 6) lagOn();
+    if (i === 10) lagOff();
+    if (i % 4 === 1) {
+      [...hotkeys.values()][0](); // a call...
+      await waitFor(() => fake.current() && fake.current().configured > 0 && fake.current().ws.readyState === 1, 10_000);
+    }
+    const p = await at17();
+    const kind = ['throw', 'put-down', 'slow-click', 'instant-lift', 'throw', 'put-down', 'throw'][i % 7];
+    kinds.push(kind);
+    ev('mouseMove', p.x, p.y);
+    await wait(40);
+    if (kind === 'throw') {
+      ev('mouseDown', p.x, p.y);
+      let gx = p.x;
+      let gy = p.y;
+      for (let k = 0; k < 10; k++) {
+        gx += i % 2 ? 8 : -8;
+        gy -= 6;
+        ev('mouseMove', gx, gy, true);
+        await wait(16);
+      }
+      for (let k = 0; k < 5; k++) {
+        gx += i % 2 ? 30 : -30;
+        gy -= 15;
+        ev('mouseMove', gx, gy, true);
+        await wait(14);
+      }
+      ev('mouseUp', gx, gy);
+      ev('mouseMove', gx + 300, gy + 200);
+    } else if (kind === 'put-down') {
+      ev('mouseDown', p.x, p.y);
+      await wait(440); // just past the hold: picked up, then let go at once
+      ev('mouseUp', p.x, p.y);
+      ev('mouseMove', p.x - 400, p.y);
+    } else if (kind === 'slow-click') {
+      ev('mouseDown', p.x, p.y);
+      await wait(380); // too long for a click, too short to pick him up: a poke
+      ev('mouseUp', p.x, p.y);
+      ev('mouseMove', p.x - 400, p.y);
+    } else {
+      // The page asks for the work area and gives it back at once (a pickup that landed at once).
+      await qjs('window.desktop.buddyLift(true); window.desktop.buddyLift(false); true');
+    }
+    await settle17();
+    if (i === 5) {
+      // The prompt box changes under him (three lines typed, then cleared).
+      desk.windows[0].promptText = 'one\ntwo\nthree';
+      desk.caret?.();
+      await wait(600);
+      desk.windows[0].promptText = '';
+      desk.caret?.();
+      await wait(600);
+    }
+    if (i % 4 === 3) await sleepByVoice(); // ...and "go to sleep"
+  }
+  lagOff();
+  out(`  ${kinds.length} rounds: ${kinds.join(', ')}`);
+  await sleepByVoice();
+  await expectState('after all that: asleep, still', { state: 'asleep', air: false }, 25_000);
+  await wait(2500); // (perfectly still now: only the heartbeat can tell Orbit where he is)
+  let q17 = await at17();
+  fakeCursor = { x: q17.x - 500, y: q17.y };
+  check(await waitFor(() => ignoreCalls.at(-1) === true, 2000), 'the cursor away from him: clicks go through');
+  fakeCursor = { x: q17.x, y: q17.y };
+  check(await waitFor(() => ignoreCalls.at(-1) === false, 4000), 'the cursor on him (no forwarded moves): his window still takes the mouse');
+  check((await qjs('window.__qubit.press')) === null, 'no press left over from all that');
+  const n17 = fake.conns.length;
+  ev('mouseDown', q17.x, q17.y);
+  await wait(60);
+  ev('mouseUp', q17.x, q17.y);
+  check(await waitFor(() => fake.conns.length > n17 && fake.conns.at(-1).configured > 0, 10_000), 'a click on him still wakes Orbit');
+  await sleepByVoice();
+  await expectState('asleep again', { state: 'asleep', air: false }, 25_000);
+  q17 = await at17();
+  ev('mouseMove', q17.x, q17.y);
+  await wait(200);
+  ev('mouseDown', q17.x, q17.y);
+  let gx17 = q17.x;
+  for (let k = 0; k < 12; k++) {
+    gx17 -= 9;
+    ev('mouseMove', gx17, q17.y - k * 8, true);
+    await wait(16);
+  }
+  check(await waitFor(() => qjs('window.__qubit.throw.held'), 2000), 'and he can still be picked up');
+  ev('mouseUp', gx17, q17.y - 96);
+  ev('mouseMove', gx17 - 400, q17.y);
+  await settle17();
+  check(await waitFor(() => ignoreCalls.at(-1) === true, 4000), 'and let go, clicks go through again');
+  const hoverLines = (() => { try { return fs.readFileSync(path.join(getConfigDir(), 'logs', 'orbit.log'), 'utf8'); } catch { return ''; } })();
+  check(/hover polling started/.test(hoverLines) && /its window (takes the mouse|lets clicks through)/.test(hoverLines), 'the log says when hover polling starts and the mouse mode changes');
+  fakeCursor = null;
+
+  out('17f. Real-world presses on a Tiny Qubit: a fast press-and-drag, and press-hold-drag, after the box re-measures');
+  // The owner's report (after d48762f): he couldn't be picked up at will. Input here follows what
+  // Windows and Electron deliver: a press reaches his page only if his window took the mouse (else it
+  // goes to the app underneath), a press it took keeps the mouse until the button is up, and while the
+  // window lets clicks through, moves arrive only as Electron forwards them, with no button.
+  await label('tiny');
+  (await import('../src/config.js')).updateSettings({ buddySize: 1 }); // Tiny (as Settings -> Avatar -> Size does)
+  await expectState('Tiny: 26 px', { side: (v) => Math.abs(v - 26) < 1 }, 6000);
+  let capture17 = false;
+  let down17 = false;
+  const ign17 = () => (ignoreCalls.length ? ignoreCalls.at(-1) : true);
+  const deliver17 = (type, gx, gy, buttons) => {
+    const b = qwin.getBounds();
+    qwin.webContents.sendInputEvent({ type, x: Math.round(gx - b.x), y: Math.round(gy - b.y), globalX: Math.round(gx), globalY: Math.round(gy), button: 'left', clickCount: 1, ...(buttons ? { modifiers: ['leftButtonDown'] } : {}) });
+  };
+  const os17 = (type, gx, gy) => {
+    fakeCursor = { x: Math.round(gx), y: Math.round(gy) };
+    if (type === 'mouseDown') {
+      down17 = true;
+      if (!ign17()) {
+        capture17 = true;
+        deliver17(type, gx, gy);
+        return true;
+      }
+      return false; // (to the app underneath)
+    }
+    if (type === 'mouseUp') {
+      down17 = false;
+      if (capture17) deliver17(type, gx, gy);
+      capture17 = false;
+      return true;
+    }
+    deliver17('mouseMove', gx, gy, (capture17 || !ign17()) && down17);
+    return true;
+  };
+  const tinyAt = async () => {
+    const b = qwin.getBounds();
+    const p = await qjs('(() => { const q = window.__qubit.q; return { x: q._rx, y: q._ry }; })()');
+    return { x: b.x + p.x, y: b.y + p.y };
+  };
+  const tinySettle = async () => {
+    await waitFor(async () => !(await qjs('window.__qubit.throw.active || window.__qubit.returning')) && (await qjs('window.__qubit.frame')) === 'strip', 20_000);
+    await wait(400);
+  };
+  const tries = [];
+  for (let round = 0; round < 3; round++) {
+    desk.windows[0].promptText = round % 2 ? '' : 'one\ntwo';
+    desk.caret?.();
+    await wait(1200);
+    for (const how of ['fast press-and-drag', 'press, hold, drag', 'drag with a stray buttonless move']) {
+      const p = await tinyAt();
+      for (let k = 6; k >= 0; k--) {
+        os17('mouseMove', p.x - k * 12, p.y + 2); // the cursor comes onto him
+        await wait(16);
+      }
+      await wait(90); // (Orbit's poll sees it)
+      const took = os17('mouseDown', p.x, p.y);
+      if (how === 'press, hold, drag') await wait(PRESS_HOLD + 60);
+      for (let k = 1; k <= 8; k++) {
+        if (how === 'drag with a stray buttonless move' && k === 2) deliver17('mouseMove', p.x - 20, p.y - 12, false); // as a late forwarded move would
+        os17('mouseMove', p.x - k * 14, p.y - k * 9);
+        await wait(12);
+      }
+      const picked = await waitFor(() => qjs('window.__qubit.throw.held'), 1500);
+      tries.push([round, how, took, picked]);
+      os17('mouseUp', p.x - 112, p.y - 72);
+      os17('mouseMove', p.x - 500, p.y);
+      await tinySettle();
+    }
+  }
+  const misses = tries.filter((t) => !t[2] || !t[3]);
+  check(misses.length === 0, `every press on a Tiny Qubit picked him up (${tries.length} tries: fast drags, hold-then-drag, a stray buttonless move mid-press)`, JSON.stringify(misses));
+  const log17 = (() => { try { return fs.readFileSync(path.join(getConfigDir(), 'logs', 'orbit.log'), 'utf8'); } catch { return ''; } })();
+  check(/a press on it: pickup/.test(log17), 'the log says what each press came to');
+  fakeCursor = null;
+
+  out('17g. A throttled page: frozen by Chromium, then its timers silent, on a Tiny Qubit');
+  // The live report (0edbf9b): after the overlay sat quiet a while, a press on him went to the app
+  // underneath. A rect Orbit hadn't heard for 3 s was dropped, and a page's timers can be slowed or
+  // stopped (Chromium throttles and freezes pages; a busy renderer misses beats) while he stands
+  // still. Now the last rect stands until the page or the window says otherwise, and the mode can't
+  // flap faster than 150 ms at his edge.
+  await tinySettle();
+  // (a) Frozen for real: Chromium's own page freeze (timers, frames, everything), for 8 s.
+  // (Orbit turns background throttling off for his window, and Chromium won't freeze a page then:
+  // it's forced back on for this.)
+  const dbg = qwin.webContents.debugger;
+  const g0 = await tinyAt();
+  os17('mouseMove', g0.x - 300, g0.y);
+  await wait(300);
+  let froze = false;
+  try {
+    qwin.webContents.setBackgroundThrottling(true);
+    if (!dbg.isAttached()) dbg.attach('1.3');
+    await dbg.sendCommand('Page.enable');
+    await dbg.sendCommand('Page.setWebLifecycleState', { state: 'frozen' });
+    froze = true;
+  } catch (err) {
+    out(`  (could not freeze the page: ${err?.message || err})`);
+  }
+  await wait(200);
+  const fz0 = ignoreTimes.length;
+  const said0 = (fromAvatar['buddy:hit'] || 0) + (fromAvatar['buddy:hover'] || 0);
+  await wait(8000);
+  const said = (fromAvatar['buddy:hit'] || 0) + (fromAvatar['buddy:hover'] || 0) - said0;
+  check(froze && said === 0, `his page was frozen by Chromium for 8 s (${said} words from it meanwhile)`);
+  check(ignoreTimes.length === fz0, 'meanwhile the mouse mode never changed (no flapping, nothing dropped)');
+  for (let k = 6; k >= 0; k--) {
+    os17('mouseMove', g0.x - k * 12, g0.y + 2);
+    await wait(16);
+  }
+  check(await waitFor(() => ign17() === false, 1500), 'onto him while his page is still frozen: his window takes the mouse (Orbit kept his rect)');
+  try {
+    await dbg.sendCommand('Page.setWebLifecycleState', { state: 'active' });
+    dbg.detach();
+  } catch {}
+  qwin.webContents.setBackgroundThrottling(false);
+  await wait(60);
+  const took17g = os17('mouseDown', g0.x, g0.y);
+  for (let k = 1; k <= 8; k++) {
+    os17('mouseMove', g0.x - k * 14, g0.y - k * 9);
+    await wait(12);
+  }
+  check(took17g && (await waitFor(() => qjs('window.__qubit.throw.held'), 2000)), 'and a fast press-and-drag right after picks him up');
+  os17('mouseUp', g0.x - 112, g0.y - 72);
+  os17('mouseMove', g0.x - 500, g0.y);
+  await tinySettle();
+  // (b) His page's timer throttled for 10 s at a time (intensive throttling: a beat a minute or
+  // none): no heartbeat arrives, only a rect that changed. Input still reaches the page, as it would.
+  heartbeatsMuted = true;
+  const g1 = await tinyAt();
+  const fl0 = ignoreTimes.length;
+  await wait(10_000);
+  const tries17g = [];
+  await qjs(`(() => { window.__downs17g = 0; addEventListener('pointerdown', () => window.__downs17g++, true); return true; })()`);
+  const clicks17g = () => qjs('window.__downs17g');
+  for (const how of ['fast press-and-drag', 'press, hold, drag', 'click']) {
+    Object.assign(g1, await tinyAt()); // (where he is now: changed rects still reach Orbit)
+    const c0 = await clicks17g();
+    for (let k = 6; k >= 0; k--) {
+      os17('mouseMove', g1.x - k * 12, g1.y + 2);
+      await wait(16);
+    }
+    await wait(90);
+    const took = os17('mouseDown', g1.x, g1.y);
+    if (how === 'press, hold, drag') await wait(PRESS_HOLD + 60);
+    if (how === 'click') {
+      await wait(60);
+      os17('mouseUp', g1.x, g1.y);
+      tries17g.push([how, took, (await waitFor(async () => (await clicks17g()) > c0, 1500)) && (await waitFor(async () => (await qjs('window.__qubit.press')) === null, 1500))]); // (reached his page, and ended as a click)
+      break;
+    }
+    for (let k = 1; k <= 8; k++) {
+      os17('mouseMove', g1.x - k * 14, g1.y - k * 9);
+      await wait(12);
+    }
+    tries17g.push([how, took, await waitFor(() => qjs('window.__qubit.throw.held'), 1500)]);
+    os17('mouseUp', g1.x - 112, g1.y - 72);
+    os17('mouseMove', g1.x - 500, g1.y);
+    await tinySettle();
+    await wait(4000); // (longer than the 3 s after which Orbit used to drop a rect)
+  }
+  heartbeatsMuted = false;
+  check(tries17g.every((t) => t[1] && t[2]), `with his page's timers silent, every press still reached him (${tries17g.map((t) => t[0]).join(', ')})`, JSON.stringify(tries17g));
+  check(fastFlaps(fl0) === 0, 'and the mouse mode never changed faster than 150 ms');
+  // (c) A hand at his edge: the cursor wobbles in and out by a few px every 40 ms for 2 s.
+  await tinySettle();
+  const g2 = await tinyAt();
+  const side17 = await qjs('window.__qubit.q.side');
+  const edge = g2.x + Math.max(side17 * 0.62, 18);
+  const wb0 = ignoreTimes.length;
+  for (let i = 0; i < 50; i++) {
+    os17('mouseMove', edge + (i % 2 ? 4 : -3), g2.y);
+    await wait(40);
+  }
+  os17('mouseMove', g2.x - 500, g2.y);
+  await wait(400);
+  check(fastFlaps(wb0) === 0, `the cursor wobbling at his edge never flaps the mode faster than 150 ms (${ignoreTimes.length - wb0} changes in 2 s)`);
+  const log17g = fs.readFileSync(path.join(getConfigDir(), 'logs', 'orbit.log'), 'utf8');
+  check(/no word from its page for \d+ s .*keeping where it last was/.test(log17g), 'the log says when his page went quiet (and that Orbit kept his place)');
   fakeCursor = null;
 
   out('17b. Show the orb (Settings -> Avatar)');

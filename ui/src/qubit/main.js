@@ -76,6 +76,10 @@ function start() {
   requestAnimationFrame(() => (mount.style.opacity = '1'));
 }
 setTimeout(start, 2500); // the box never turned up: the floor will do
+// His rect and press state, every half second on a timer of their own: it never waits on a frame
+// being drawn (Chromium stops drawing a window it thinks is covered, and a frame hook that throws
+// would stop it too). Orbit forgets a rect it hasn't heard for 3 s.
+setInterval(() => sendHit(performance.now()), 500);
 
 // The frame loop: the engine's own ticker at the display's full rate, or (asleep and still) a
 // 30 fps one here. (The engine's ticker.lowPower is not used: it counts the skipped frames' time
@@ -203,17 +207,39 @@ function setHover(on) {
   desktop?.buddyHover?.(on, held);
 }
 let hitSent = '';
-/** His rect in this window's px, for Orbit's own hover check (only when it changed). */
-function sendHit() {
+let hitSentAt = 0;
+let hoverSentAt = 0;
+/** How far from his centre a press counts as on him (px): the same for Orbit's check and this page's. */
+const hitR = () => Math.max(q.side * 0.62, 18);
+const onHim = (x, y) => {
+  const cx = q._rx ?? q.cx;
+  const cy = q._ry ?? q.ground - q.cy;
+  const r = hitR();
+  return Math.abs(x - cx) <= r && Math.abs(y - cy) <= r;
+};
+/** A press's outcome, for Orbit's log (fixed words only, rate-limited there). */
+const pressLog = (outcome, why = '') => desktop?.buddyPress?.(outcome, why);
+/**
+ * His rect in this window's px, for Orbit's own hover check: when it changes, and every half second
+ * anyway (Orbit forgets a rect it hasn't heard for 3 s, so nothing it was told can go stale). The
+ * press state rides the same heartbeat.
+ */
+function sendHit(now = performance.now()) {
   if (!q || gone) return;
-  const r = q.side * 0.62;
+  const r = hitR();
   const x = q._rx ?? q.cx;
   const y = q._ry ?? q.ground - q.cy;
   const rect = { x: Math.round(x - r), y: Math.round(y - r), w: Math.round(2 * r), h: Math.round(2 * r) };
   const key = `${rect.x},${rect.y},${rect.w},${frame}`;
-  if (key === hitSent) return;
-  hitSent = key;
-  desktop?.buddyHit?.(rect);
+  if (key !== hitSent || now - hitSentAt > 500) {
+    hitSent = key;
+    hitSentAt = now;
+    desktop?.buddyHit?.(rect);
+  }
+  if (now - hoverSentAt > 500) {
+    hoverSentAt = now;
+    desktop?.buddyHover?.(hovering, !!press);
+  }
 }
 const frameOrigin = () => (frame === 'area' && liftedAt ? liftedAt.area : st.bounds || { x: screenX, y: screenY });
 const toStage = (p) => {
@@ -229,7 +255,7 @@ addEventListener('mousemove', (e) => {
   pointer = { x: e.screenX, y: e.screenY };
   if (!press) {
     q.setPointer({ x: e.clientX, y: e.clientY });
-    setHover(!gone && dir.hit(e.clientX, e.clientY));
+    setHover(!gone && onHim(e.clientX, e.clientY));
     cursor();
   }
 });
@@ -248,10 +274,13 @@ let keepAliveAt = 0;
 let returning = false; // landed away from his strip: on his way back
 
 addEventListener('pointerdown', (e) => {
+  // A press left over from a pointerup that never came: gone (a new press means the button was up).
+  if (press && e.pointerId === press.id) press = null;
   // (On his way back to his strip too: a click still talks, and a press picks him up again.)
-  if (e.button !== 0 || !q || gone || press) return;
-  if (!dir.hit(e.clientX, e.clientY) && !th.flying) return;
-  if (th.flying && !dir.hit(e.clientX, e.clientY)) return;
+  if (e.button !== 0 || !q) return;
+  if (gone) return pressLog('ignored', 'leaving');
+  if (press) return pressLog('ignored', 'press-already');
+  if (!onHim(e.clientX, e.clientY)) return pressLog('ignored', 'not-on-him');
   try {
     document.documentElement.setPointerCapture(e.pointerId);
   } catch {}
@@ -264,6 +293,9 @@ addEventListener('pointerdown', (e) => {
 });
 addEventListener('pointermove', (e) => {
   if (!press || e.pointerId !== press.id) return;
+  // (No "button is up" guess from a move here: a move reporting no button can arrive mid-press, and
+  // ending the press on it meant no press ever became a pickup. A press whose pointerup was lost is
+  // cleared by the next press instead, and Orbit lets go of a press it stops hearing about.)
   for (const c of e.getCoalescedEvents?.() || [e]) pushSample(press.samples, { x: c.screenX, y: c.screenY, t: c.timeStamp });
   pointer = { x: e.screenX, y: e.screenY };
   if (!press.dragging && canThrow() && pressKind({ dx: e.screenX - press.x, dy: e.screenY - press.y, ms: e.timeStamp - press.t }) === 'drag') pickUp();
@@ -271,7 +303,9 @@ addEventListener('pointermove', (e) => {
 });
 addEventListener('pointerup', (e) => {
   if (!press || e.pointerId !== press.id) return;
-  const p = press;
+  endPress(e, press);
+});
+function endPress(e, p) {
   press = null;
   try {
     document.documentElement.releasePointerCapture(e.pointerId);
@@ -283,13 +317,17 @@ addEventListener('pointerup', (e) => {
     const kind = pressKind({ dx: e.screenX - p.x, dy: e.screenY - p.y, ms: e.timeStamp - p.t, released: true });
     if (kind === 'click' && st.prefs.clickTalk !== false) {
       // "Hey Orbit", with this window in front: the same wake path (see electron/main.js buddy:talk).
+      pressLog('click', 'talk');
       desktop?.buddyTalk?.();
       dir.ack();
-    } else dir.poke();
+    } else {
+      pressLog('click', kind === 'click' ? 'poke' : !canThrow() ? 'throw-off' : 'too-long-for-a-click');
+      dir.poke();
+    }
   }
   hoverNow();
   cursor();
-});
+}
 addEventListener('pointercancel', (e) => {
   if (!press || e.pointerId !== press.id) return;
   const p = press;
@@ -311,7 +349,8 @@ function heldTarget() {
   return s && { x: s.x - press.off.x, y: s.y - press.off.y };
 }
 
-function pickUp() {
+function pickUp(how = 'drag') {
+  pressLog('pickup', how);
   press.dragging = true;
   returning = false; // (picked up on his way back: that walk is over)
   th.hold(heldTarget());
@@ -360,13 +399,24 @@ async function goBack() {
 /** After a release or landing: does the cursor still sit on him? (else the window lets clicks through) */
 function hoverNow() {
   const s = toStage(pointer);
-  setHover(!!s && !gone && !!q && dir.hit(s.x, s.y));
+  setHover(!!s && !gone && !!q && onHim(s.x, s.y));
 }
 
+let stuckSince = 0; // a throw or walk back that never ends (it can't: it's ended here after 25 s)
 function frameTick(dt, now) {
-  sendHit();
+  sendHit(now);
+  if ((th.active || returning) && !press) {
+    stuckSince ||= now;
+    if (now - stuckSince > 25_000) {
+      stuckSince = 0;
+      if (th.held) th.release({ x: 0, y: 0 });
+      returning = false;
+      dir.homeAgain();
+      lift(false);
+    }
+  } else stuckSince = 0;
   // Held still a moment: picked up. (Event and frame times share one clock.)
-  if (press && !press.dragging && canThrow() && pressKind({ ms: Math.max(0, now - press.t) }) === 'hold') pickUp();
+  if (press && !press.dragging && canThrow() && pressKind({ ms: Math.max(0, now - press.t) }) === 'hold') pickUp('hold');
   if (press?.dragging) th.move(heldTarget());
   if (!press && (th.active || returning || frame === 'area')) {
     hoverNow();

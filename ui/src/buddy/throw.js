@@ -9,8 +9,12 @@
 //     on (never the taskbar). His usual strip, the floor along its bottom and Claude's prompt box are
 //     carried into that bigger stage's coordinates, so he can land back on them.
 
-/** Press thresholds: px of movement before it's a drag, ms a click may last, ms of holding still that picks him up. */
-export const PRESS = Object.freeze({ slop: 5, clickMs: 350, holdMs: 320 });
+/**
+ * Press thresholds: px of movement before it's a drag, ms a click may last, ms of holding still that
+ * picks him up. Holding starts after a click ends, never before: a slow click (330 ms, say) used to
+ * pick him up and set him straight down.
+ */
+export const PRESS = Object.freeze({ slop: 5, clickMs: 350, holdMs: 420 });
 
 /**
  * What a press is so far: 'drag' once it moved more than `slop` px from where it went down, 'hold'

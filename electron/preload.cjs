@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('desktop', {
   // gets Orbit's state and says when the cursor is over it (so it can take clicks).
   buddyEvent: (name) => ipcRenderer.send('buddy:event', name),
   buddyHover: (on, held) => ipcRenderer.send('buddy:hover', !!on, !!held),
+  // A press on the avatar and what came of it ('click' | 'pickup' | 'ignored', and why), for the log.
+  buddyPress: (outcome, why) => ipcRenderer.send('buddy:press', String(outcome), String(why || '')),
   // Where the avatar is drawn (its window's px), so its window takes the mouse there.
   buddyHit: (r) => ipcRenderer.send('buddy:hit', r && typeof r === 'object' ? { x: +r.x, y: +r.y, w: +r.w, h: +r.h } : null),
   // The real cursor near the avatar's window (screen px; null: away), polled by Orbit itself.

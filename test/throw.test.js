@@ -53,6 +53,19 @@ test('press: a quick press-and-release is a click; moving a few px or holding st
   assert.equal(pressKind({ dx: 7, dy: 0, ms: 90, released: true }), 'drag', 'moved then let go fast: a throw, not a click');
 });
 
+test('press: a fast press-and-drag with no pause picks him up at once; press, hold, then drag does too', () => {
+  // Fast: the first move already past the slop, 12 ms after the press.
+  assert.equal(pressKind({ dx: -14, dy: -9, ms: 12 }), 'drag', 'no pause needed');
+  assert.equal(pressKind({ dx: -3, dy: -2, ms: 8 }), 'press', 'not before the slop');
+  // Held still: picked up at the hold, then dragged (the page is dragging from then on).
+  assert.equal(pressKind({ dx: 0, dy: 0, ms: PRESS.holdMs + 5 }), 'hold');
+  assert.equal(pressKind({ dx: -10, dy: -6, ms: PRESS.holdMs + 80, dragging: true }), 'drag');
+  // A hold only starts after a click's time is up (a slow click is never a pickup and a put-down).
+  assert.ok(PRESS.holdMs > PRESS.clickMs, `hold ${PRESS.holdMs} ms > click ${PRESS.clickMs} ms`);
+  assert.equal(pressKind({ dx: 0, dy: 0, ms: PRESS.clickMs + 10 }), 'press', 'between a click and a hold: still a press');
+  assert.equal(pressKind({ dx: 0, dy: 0, ms: PRESS.clickMs + 10, released: true }), 'hold', 'let go there: not a click (a poke)');
+});
+
 test('throw velocity: a least-squares fit over the last 80 ms of samples, clamped', () => {
   // Steady 1200 px/s right and 600 px/s up, sampled every 8 ms.
   const s = [];

@@ -14,6 +14,7 @@ import { createThrowSound } from "./throwSound.js";
 import { hotkeyLabel, postJson, useAppState, type Finished } from "./useAppState";
 import { useVoice, type Phase } from "./useVoice";
 import { useWakeWord } from "./useWakeWord";
+import { canTalk, needsModelDownload, screenFor, talkNotice, type ClaudeVoiceReady, type TalkBlocked } from "./talk.js";
 
 const PHASE_LABEL: Record<Phase, string> = {
   off: "Sleeping", // hung up: nothing is billed until you start again
@@ -31,13 +32,22 @@ export default function App() {
   const app = useAppState({ onFinished: (f) => finishedRef.current(f), onWake: () => wakeRef.current() });
   const settings = app.config?.settings;
   const v = useVoice({ listenMode: settings?.listenMode ?? "always", halfDuplex: settings?.halfDuplex ?? false, volume: settings?.voiceVolume ?? DEFAULT_VOLUME });
+  // Claude voice needs no key; Grok voice needs an xAI key (asked for inline, only when you try).
+  const talkable = canTalk(app.config);
+  const hotkeyRef = useRef(() => {}); // the hotkey's (and the wake word's) action, set below
   // "Hey Orbit" / "Hey Grok": offline, and only while Grok is off or asleep. Same effect as the hotkey.
   const { status: wakeStatus, element: wakeFrame } = useWakeWord({
-    enabled: !!settings?.wakeWord && !!app.config?.hasKey && (v.phase === "off" || v.asleep),
-    onWake: () => v.hotkey(),
+    enabled: !!settings?.wakeWord && talkable && (v.phase === "off" || v.asleep),
+    onWake: () => hotkeyRef.current(),
   });
   const wakeOn = wakeStatus === "listening";
   const [view, setView] = useState<View>("main");
+  const [focusKey, setFocusKey] = useState(false); // Settings opened from the "needs an xAI key" notice
+  // A try to talk that couldn't start: why, and (Claude voice) its readiness as last checked.
+  const [blocked, setBlocked] = useState<TalkBlocked>(null);
+  const [claudeStatus, setClaudeStatus] = useState<ClaudeVoiceReady | null>(null);
+  const claudeReady = useRef(false); // checked once per run: then calls start straight away
+  const notice = talkNotice(blocked, app.config, claudeStatus);
   const [typing, setTyping] = useState(false);
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -64,8 +74,61 @@ export default function App() {
   // The bridge asks Grok to wake by itself ("Wake Grok to say it", or something you asked for is
   // ready). It checks the settings, spacing and hourly limit; this only connects if Grok is off.
   wakeRef.current = () => {
-    if (app.config?.hasKey) v.announce();
+    if (talkable) v.announce();
   };
+
+  /**
+   * Start a call by `go` (start, the hotkey's start, an ask), if it can start: Grok without a key,
+   * or Claude voice not ready yet (Claude Code missing, speech models not here), shows a short
+   * notice on the main page instead (and the models' download starts). `engine` overrides the
+   * saved one (just switched to Claude).
+   */
+  const tryTalk = async (go: () => void, engine = settings?.voiceEngine) => {
+    if (engine !== "claude") {
+      if (!canTalk(app.config)) return setBlocked("grok-key");
+      setBlocked(null);
+      return go();
+    }
+    if (claudeReady.current) {
+      setBlocked(null);
+      return go();
+    }
+    let st: ClaudeVoiceReady | null = await fetch("/api/claude-voice")
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    if (st?.claudeFound && st.models?.state === "ready") {
+      claudeReady.current = true;
+      setBlocked(null);
+      return go();
+    }
+    if (!st) {
+      setBlocked(null);
+      return go(); // couldn't check: the bridge says what's wrong, if anything
+    }
+    if (needsModelDownload(st)) {
+      const r = await postJson("/api/claude-voice/download", {})
+        .then((x) => x.json())
+        .catch(() => null);
+      if (r?.models) st = { ...st, models: r.models };
+    }
+    setClaudeStatus(st);
+    setBlocked("claude");
+  };
+  // While the speech models download, follow their progress (the notice goes when they're ready).
+  const modelsLoading = notice?.kind === "claude-models";
+  useEffect(() => {
+    if (!modelsLoading) return;
+    const id = setInterval(() => {
+      fetch("/api/claude-voice")
+        .then((r) => r.json())
+        .then((st: ClaudeVoiceReady) => {
+          if (st.claudeFound && st.models.state === "ready") claudeReady.current = true;
+          setClaudeStatus(st);
+        })
+        .catch(() => {});
+    }, 1000);
+    return () => clearInterval(id);
+  }, [modelsLoading]);
 
   // The avatar (pixel buddy or Qubit) carries each new draft to Claude's box, stomps Send when it
   // goes, and (Qubit) shivers at an error.
@@ -88,14 +151,20 @@ export default function App() {
   // Right-clicking the floating orb toggles sleep; the global hotkey starts / sleeps / wakes.
   const actions = useRef(v);
   actions.current = v;
-  useEffect(() => desktop?.onOrbAction((a) => a === "toggle-sleep" && actions.current.toggleSleep()), []);
-  useEffect(() => desktop?.onHotkey(() => actions.current.hotkey()), []);
+  // The hotkey (and the wake word, the orb): hung up, it starts a call (if one can start); in a
+  // call, it sleeps / wakes as before.
+  hotkeyRef.current = () => {
+    if (v.phase === "off") void tryTalk(() => actions.current.hotkey());
+    else v.hotkey();
+  };
+  useEffect(() => desktop?.onOrbAction((a) => a === "toggle-sleep" && hotkeyRef.current()), []);
+  useEffect(() => desktop?.onHotkey(() => hotkeyRef.current()), []);
   useEffect(() => desktop?.onShowSettings?.(() => setView("settings")), []);
-  // A click on the avatar: the wake word's own path, when the wake word would be listening (Orbit
-  // off or asleep, with a key). Already awake, the avatar's little nod is all.
+  // A click on the avatar: the wake word's own path (Orbit off or asleep). Already awake, the
+  // avatar's little nod is all. Grok without a key: the notice on the main page says why.
   const talkRef = useRef(() => {});
   talkRef.current = () => {
-    if (app.config?.hasKey && (v.phase === "off" || v.asleep)) v.hotkey();
+    if (v.phase === "off" || v.asleep) hotkeyRef.current();
   };
   useEffect(() => desktop?.onAvatarTalk?.(() => talkRef.current()), []);
   // Qubit thrown for real: "Wheee!" at the voice volume, once (a new throw restarts it), awake or
@@ -128,6 +197,17 @@ export default function App() {
   if (!app.config) return <Centered>Loading…</Centered>;
 
   const on = v.phase !== "off";
+  const screen = screenFor(view); // never a key screen: the main page shows with or without a key
+  const startTalk = () => void tryTalk(() => v.start());
+  const openSettings = () => {
+    setFocusKey(notice?.kind === "grok-key");
+    setView("settings");
+  };
+  const switchToClaude = async () => {
+    setBlocked(null);
+    await app.updateSettings({ voiceEngine: "claude" });
+    void tryTalk(() => v.start(), "claude");
+  };
   const recent = v.captions.filter((c) => c.who !== "note" || c === v.captions[v.captions.length - 1]).slice(-3);
   // Connected but not listening: Grok is finishing its goodbye before hanging up, or ("one
   // question" mode) answering / holding a draft that waits for your yes.
@@ -153,7 +233,9 @@ export default function App() {
           onSwitched={(title) => v.setSessionTitle(title)}
           onAsk={(title) => {
             setView("main");
-            v.ask(`What's happening in my Claude session called "${title}"?`);
+            const ask = () => v.ask(`What's happening in my Claude session called "${title}"?`);
+            if (on) ask();
+            else void tryTalk(ask);
           }}
         />
         <div className="ml-auto flex [-webkit-app-region:no-drag]">
@@ -176,13 +258,20 @@ export default function App() {
         </div>
       </div>
 
-      {desktop && isMac && view === "main" && <MacPermissionsBanner />}
-      {view === "settings" ? (
-        <Settings config={app.config} update={app.updateSettings} onClose={() => setView("main")} />
-      ) : view === "history" ? (
+      {desktop && isMac && screen === "main" && <MacPermissionsBanner />}
+      {screen === "settings" ? (
+        <Settings
+          config={app.config}
+          update={app.updateSettings}
+          onKeySaved={app.setHasKey}
+          focusKey={focusKey}
+          onClose={() => {
+            setFocusKey(false);
+            setView("main");
+          }}
+        />
+      ) : screen === "history" ? (
         <History items={v.captions} onClose={() => setView("main")} />
-      ) : !app.config.hasKey ? (
-        <KeySetup onSaved={app.setHasKey} />
       ) : (
         <>
           {/* the hero: the avatar carousel, Qubit in the middle, then what Orbit is doing */}
@@ -192,10 +281,22 @@ export default function App() {
               onChoose={(avatar) => app.updateSettings({ avatar })}
               voice={heroVoice}
               label={heroLabel}
-              onActivate={() => (!on ? v.start() : v.endWake() || (v.asleep && v.wake()))}
+              onActivate={() => (!on ? startTalk() : v.endWake() || (v.asleep && v.wake()))}
             />
             <div className="mt-5 text-[16px] font-semibold tracking-[-0.02em]">{status}</div>
-            {desktop && hint && <div className="mt-1.5 text-center font-mono text-[11px] leading-snug text-muted">{hint}</div>}
+            {desktop && hint && !notice && <div className="mt-1.5 text-center font-mono text-[11px] leading-snug text-muted">{hint}</div>}
+            {notice && !on && (
+              <div role="status" className="mt-2 flex max-w-[320px] flex-col items-center gap-2 text-center">
+                <p className={cn("text-[12.5px] leading-snug", notice.kind === "claude-models" ? "text-ink" : "text-amber-700")}>{notice.text}</p>
+                {notice.kind !== "claude-models" && (
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <NoticeButton onClick={openSettings}>Open Settings</NoticeButton>
+                    {notice.kind === "grok-key" && <NoticeButton onClick={switchToClaude}>Use Claude voice</NoticeButton>}
+                    {notice.kind === "claude-models-error" && <NoticeButton onClick={startTalk}>Try again</NoticeButton>}
+                  </div>
+                )}
+              </div>
+            )}
             {claudeWorking && (
               <div className="mt-2 flex max-w-full items-center gap-1.5 text-[12px] text-ink">
                 <span className="working-dot" aria-hidden />
@@ -231,7 +332,7 @@ export default function App() {
                 ref={inputRef}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder="Type to Grok…"
+                placeholder={settings?.voiceEngine === "claude" ? "Type to Orbit…" : "Type to Grok…"}
                 className="h-10 flex-1 bg-transparent text-[13px] text-fg outline-none select-text placeholder:text-faint"
               />
               <button aria-label="Send" title="Send" className="grid size-8 place-items-center rounded-full bg-fg text-white disabled:opacity-25" disabled={!text.trim()}>
@@ -255,7 +356,7 @@ export default function App() {
                 </IconButton>
               </>
             ) : (
-              <IconButton label="Start talking" onClick={v.start} big active>
+              <IconButton label="Start talking" onClick={startTalk} big active>
                 <Mic size={27} />
               </IconButton>
             )}
@@ -303,41 +404,11 @@ function IconButton(props: { label: string; onClick: () => void; active?: boolea
   );
 }
 
-function KeySetup({ onSaved }: { onSaved: () => void }) {
-  const [key, setKey] = useState("");
-  const [error, setError] = useState("");
+/** A small pill button in the main page's notice (the same look as Settings' small buttons). */
+function NoticeButton(props: { onClick: () => void; children: React.ReactNode }) {
   return (
-    <form
-      className="flex flex-1 flex-col justify-center gap-3 px-6"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        setError("");
-        const r = await postJson("/api/key", { key });
-        if (r.ok) onSaved();
-        else setError((await r.json().catch(() => ({}))).error || "Could not save the key.");
-      }}
-    >
-      <h2 className="wordmark text-[40px]">Orbit</h2>
-      <p className="eyebrow">Welcome</p>
-      <p className="text-[13px] leading-relaxed text-ink">
-        Orbit uses Grok Voice from xAI. Paste your xAI API key to start. Get one at{" "}
-        <a href="https://console.x.ai" target="_blank" rel="noreferrer" className="text-fg underline decoration-black/25 underline-offset-2 hover:decoration-fg">
-          console.x.ai
-        </a>{" "}
-        → API Keys. It's stored encrypted, only on this computer.
-      </p>
-      <input
-        value={key}
-        onChange={(e) => setKey(e.target.value)}
-        type="password"
-        placeholder="xai-…"
-        autoComplete="off"
-        className="h-10 rounded-xl border border-line bg-soft px-3 text-[13px] text-fg outline-none select-text placeholder:text-faint focus:border-black/40"
-      />
-      {error && <p className="text-[12px] text-amber-700">{error}</p>}
-      <button disabled={!key.trim()} className="h-11 rounded-full bg-fg text-[14px] font-semibold text-white transition-colors hover:bg-[#2b2b2b] disabled:opacity-30">
-        Save key
-      </button>
-    </form>
+    <button onClick={props.onClick} className="rounded-full bg-soft px-3 py-1.5 text-[12.5px] text-ink transition-colors hover:bg-black/[0.08] hover:text-fg">
+      {props.children}
+    </button>
   );
 }
