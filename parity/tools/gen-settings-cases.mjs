@@ -63,8 +63,10 @@ cases.push({
   title: 'A shortcut that is not valid is refused and the old one stays',
   needs: ['settings', 'hotkey'],
   steps: [
+    { do: 'state', expect: { 'hotkey.registered': true } },
+    { do: 'save', from: 'state', path: 'hotkey.accelerator', as: 'before' },
     { do: 'act', action: 'settings.ui', args: { key: 'wakeHotkey', value: 'Nonsense+++' }, expect: { ok: false } },
-    { do: 'state', expect: { 'hotkey.accelerator': 'Control+Alt+G', 'hotkey.registered': true } },
+    { do: 'state', expect: { 'hotkey.accelerator': '${before}', 'hotkey.registered': true } },
   ],
 });
 cases.push({

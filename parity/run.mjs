@@ -159,7 +159,7 @@ async function step(s, ctx) {
     case 'act': {
       const r = await ctx.app.driver.act(x.action, x.args || {}, timeout);
       if (x.expect === undefined && r.body?.ok === false) throw new Error(`act ${x.action}: ${r.body.error}`);
-      return check(r.body, `act ${x.action}`);
+      return check(r.body, `act ${x.action}${r.body?.error ? ` (${String(r.body.error).slice(0, 160)})` : ''}`);
     }
     case 'state':
       return check((await ctx.app.driver.state()).body, 'state');
@@ -180,7 +180,7 @@ async function step(s, ctx) {
         why = x.expect === undefined ? '' : match(last, x.expect, ctx.vars);
         return why === null || why === '';
       }, timeout, x.everyMs || 150);
-      if (!ok) throw new Error(`until ${x.probe}${x.path ? ` ${x.path}` : ''} (${timeout} ms): ${why || 'never matched'}`);
+      if (!ok) throw new Error(`until ${x.probe}${x.path ? ` ${x.path}` : ''} (${timeout} ms): ${why || 'never matched'}${last?.error ? ` (${String(last.error).slice(0, 160)})` : ''}`);
       return last;
     }
     case 'save': {

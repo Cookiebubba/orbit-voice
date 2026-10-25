@@ -1,101 +1,741 @@
 {
-  "area": "bridge",
-  "about": "The bridge's HTTP/WebSocket contract as each app runs it (its own profile, key store, models, UI files). The core is the same code in both builds; these check each build wires it up the same way.",
-  "cases": [
-    { "id": "bridge.auth.api-needs-session", "title": "The API refuses a request with no session cookie",
-      "steps": [{ "do": "http", "path": "/api/config", "auth": false, "expect": { "status": 401 } }] },
-    { "id": "bridge.auth.expired-link", "title": "A sign-in link with the wrong token is refused",
-      "steps": [{ "do": "http", "path": "/auth?t=0000000000000000000000000000000000000000000000000000000000000000", "auth": false, "expect": { "status": 403 } }] },
-    { "id": "bridge.auth.sign-in-cookie", "title": "The app's sign-in link sets an HttpOnly, SameSite=Strict cookie and redirects to the page",
-      "steps": [{ "do": "http", "path": "${authPath}", "auth": false, "expect": { "status": 302, "headers.set-cookie": { "$match": "HttpOnly; SameSite=Strict" }, "headers.location": "/" } }] },
-    { "id": "bridge.auth.host-check", "title": "Requests for another host name are refused (DNS rebinding)",
-      "steps": [{ "do": "http", "path": "/api/config", "host": "evil.example:${port}", "expect": { "status": 421 } }] },
-    { "id": "bridge.auth.cross-site", "title": "A cross-site API request is refused",
-      "steps": [{ "do": "http", "path": "/api/config", "headers": { "sec-fetch-site": "cross-site" }, "expect": { "status": 403 } }] },
-    { "id": "bridge.auth.post-origin", "title": "A POST from another origin is refused",
-      "steps": [{ "do": "http", "method": "POST", "path": "/api/settings", "origin": "http://evil.example", "body": { "speed": 1.2 }, "expect": { "status": 403 } }] },
-    { "id": "bridge.config.shape", "title": "GET /api/config: version, no key yet, a key store (the Keychain; a test profile may use its own), settings, limits, defaults",
-      "steps": [{ "do": "http", "path": "/api/config", "expect": { "status": 200, "body": {
-        "version": { "$match": "^[0-9]+[.][0-9]+[.][0-9]+" }, "hasKey": false, "keyStorage": { "$in": ["macos-keychain", "env-file"] },
-        "settings.voice": "eve", "settings.speed": 1, "settings.voiceVolume": 0.75, "settings.wakeHotkey": "Control+Alt+G",
-        "settings.hotkeyLabel": { "$type": "string" }, "settings.avatar": { "$in": ["buddy", "qubit", "none"] },
-        "limits": { "minSpeed": 0.7, "maxSpeed": 1.5 }, "defaults.listenMode": "always" } } }] },
-    { "id": "bridge.config.private-keys-hidden", "title": "The shell's own settings (orb position) never reach the page",
-      "profile": { "settings": { "orbPosition": [100, 100], "orbStickAnchor": { "corner": "br", "dx": 10, "dy": 10 } } },
-      "steps": [{ "do": "http", "path": "/api/config", "expect": { "status": 200, "body": { "settings.orbPosition": { "$absent": true }, "settings.orbStickAnchor": { "$absent": true } } } }] },
-    { "id": "bridge.config.mac-hotkey-label", "title": "The hotkey's label uses the Mac's symbols",
-      "steps": [{ "do": "http", "path": "/api/config", "expect": { "status": 200, "body": { "settings.hotkeyLabel": { "$match": "⌃" } } } }] },
-    { "id": "bridge.settings.round-trip", "title": "POST /api/settings saves, answers with the new settings, and GET shows them",
-      "steps": [
-        { "do": "http", "method": "POST", "path": "/api/settings", "body": { "speed": 1.2, "announce": "chime", "avatar": "qubit" }, "expect": { "status": 200, "body": { "speed": 1.2, "announce": "chime", "avatar": "qubit" } } },
-        { "do": "http", "path": "/api/config", "expect": { "body": { "settings.speed": 1.2, "settings.announce": "chime", "settings.avatar": "qubit" } } }
-      ] },
-    { "id": "bridge.settings.clamped-and-cleaned", "title": "Out-of-range and unknown settings are clamped or dropped",
-      "steps": [
-        { "do": "http", "method": "POST", "path": "/api/settings", "body": { "speed": 9, "announce": "shout", "nonsense": 1, "claudeVoice": 12 }, "expect": { "status": 200, "body": { "speed": 1.5, "announce": "speak", "nonsense": { "$absent": true }, "claudeVoice": 0 } } }
-      ] },
-    { "id": "bridge.settings.shell-owned", "title": "The page can't set the hotkey or the orb's position (the shell owns them)",
-      "steps": [
-        { "do": "http", "method": "POST", "path": "/api/settings", "body": { "wakeHotkey": "Control+Alt+K", "orbPosition": [5, 5] }, "expect": { "status": 200, "body": { "wakeHotkey": "Control+Alt+G" } } }
-      ] },
-    { "id": "bridge.settings.persisted", "title": "A changed setting is written to the profile's settings.json",
-      "steps": [
-        { "do": "http", "method": "POST", "path": "/api/settings", "body": { "halfDuplex": true }, "expect": { "status": 200 } },
-        { "do": "fake", "name": "../profile/settings.json", "expect": { "halfDuplex": true } }
-      ] },
-    { "id": "bridge.key.rejects-junk", "title": "POST /api/key refuses something that isn't an xAI key",
-      "steps": [{ "do": "http", "method": "POST", "path": "/api/key", "body": { "key": "nope" }, "expect": { "status": 400 } }] },
-    { "id": "bridge.key.stored-sealed", "title": "A saved key reads back as present and is never echoed",
-      "steps": [
-        { "do": "http", "method": "POST", "path": "/api/key", "body": { "key": "xai-parityfakekey1111111111111111111111" }, "expect": { "status": 200, "body": { "hasKey": true } } },
-        { "do": "http", "path": "/api/config", "expect": { "body": { "hasKey": true } } },
-        { "do": "save", "from": "last", "path": "body", "as": "cfg" },
-        { "do": "http", "path": "/api/logs", "expect": { "status": 200 } }
-      ] },
-    { "id": "bridge.brain.key-rejects-junk", "title": "POST /api/brain/key refuses something that isn't an Anthropic key",
-      "steps": [{ "do": "http", "method": "POST", "path": "/api/brain/key", "body": { "key": "nope" }, "expect": { "status": 400 } }] },
-    { "id": "bridge.brain.status", "title": "GET /api/brain reports whether Claude Code is found",
-      "steps": [{ "do": "http", "path": "/api/brain", "expect": { "status": 200, "body": { "found": { "$type": "boolean" }, "hasKey": false } } }] },
-    { "id": "bridge.claude-voice.status", "title": "GET /api/claude-voice reports the speech models' state and size",
-      "steps": [{ "do": "http", "path": "/api/claude-voice", "expect": { "status": 200, "body": { "mb": { "$gt": 100 }, "claudeFound": { "$type": "boolean" }, "models": { "$type": "object" } } } }] },
-    { "id": "bridge.voices.claude", "title": "Claude voice's eight voices come from this Mac",
-      "steps": [{ "do": "http", "path": "/api/voice?engine=claude", "expect": { "status": 200, "body": { "engine": "claude", "voices": { "$len": 8 }, "minSpeed": 0.7, "maxSpeed": 1.5 } } }] },
-    { "id": "bridge.claude-voice.preview", "title": "A Claude voice sample is spoken on this Mac (a WAV)",
-      "fixtures": { "claudeVoice": { "rules": { "rules": [] } } },
-      "steps": [{ "do": "http", "method": "POST", "path": "/api/claude-voice/preview", "body": { "voice": 2, "speed": 1 }, "timeoutMs": 20000, "expect": { "status": 200, "headers.content-type": "audio/wav", "body.bytes": { "$gt": 20000 } } }] },
-    { "id": "bridge.usage", "title": "GET /api/usage answers",
-      "steps": [{ "do": "http", "path": "/api/usage", "expect": { "status": 200, "body": { "$type": "object" } } }] },
-    { "id": "bridge.logs", "title": "GET /api/logs gives the log folder (in the test profile) and recent entries",
-      "steps": [{ "do": "http", "path": "/api/logs", "expect": { "status": 200, "body": { "dir": { "$match": "orbit-parity-" }, "entries": { "$type": "array" } } } }] },
-    { "id": "bridge.api.unknown", "title": "An unknown API route is a 404",
-      "steps": [{ "do": "http", "path": "/api/nope", "expect": { "status": 404 } }] },
-    { "id": "bridge.static.pages", "title": "The UI pages the shells load are served with a content security policy",
-      "steps": [
-        { "do": "http", "path": "/qubit.html", "expect": { "status": 200, "headers.content-security-policy": { "$match": "default-src" } } },
-        { "do": "http", "path": "/buddy.html", "expect": { "status": 200 } },
-        { "do": "http", "path": "/mouse.html", "expect": { "status": 200 } },
-        { "do": "http", "path": "/", "expect": { "status": 200 } }
-      ] },
-    { "id": "bridge.static.wake-page", "title": "The wake-word page may only be framed by Orbit itself",
-      "steps": [{ "do": "http", "path": "/wake.html", "expect": { "status": 200, "headers.x-frame-options": "SAMEORIGIN", "headers.content-security-policy": { "$match": "wasm" } } }] },
-    { "id": "bridge.static.wake-model", "title": "The offline wake-word model ships with the app",
-      "steps": [{ "do": "http", "path": "/models/vosk-model-small-en-us-0.15.tar.gz", "timeoutMs": 30000, "expect": { "status": 200, "headers.content-type": "application/gzip", "body.bytes": { "$gt": 40000000 } } }] },
-    { "id": "bridge.static.no-traversal", "title": "Paths outside the UI folder aren't served",
-      "steps": [
-        { "do": "http", "path": "/..%2fpackage.json", "expect": { "status": 404 } },
-        { "do": "http", "path": "/%2e%2e/src/server.js", "expect": { "status": { "$in": [400, 404] } } }
-      ] },
-    { "id": "bridge.ws.needs-session", "title": "The voice socket refuses a connection with no session",
-      "steps": [{ "do": "ws", "auth": false, "timeoutMs": 3000, "expect": { "opened": false } }] },
-    { "id": "bridge.ws.bad-origin", "title": "The voice socket refuses another origin",
-      "steps": [{ "do": "ws", "origin": "http://evil.example", "timeoutMs": 3000, "expect": { "opened": false } }] },
-    { "id": "bridge.ws.no-key", "title": "With no xAI key the voice socket says so and closes",
-      "steps": [{ "do": "ws", "timeoutMs": 4000, "expect": { "messages": { "$some": { "type": "bridge.error", "message": { "$match": "xAI API key" } } } } }] },
-    { "id": "bridge.ws.grok-ready", "title": "With a key, a call reaches (the stand-in) Grok and the page is told it's ready",
-      "fixtures": { "grok": true },
-      "steps": [
-        { "do": "ws", "timeoutMs": 8000, "expect": { "messages": { "$some": { "type": "bridge.ready", "model": { "$type": "string" } } } } },
-        { "do": "until", "probe": "fake", "name": "fake-grok", "expect": { "conns": { "$some": { "configured": { "$gte": 1 }, "auth": "present" } } } }
-      ] }
-  ]
+ "area": "bridge",
+ "about": "The bridge's HTTP/WebSocket contract as each app runs it (its own profile, key store, models, UI files). The core is the same code in both builds; these check each build wires it up the same way.",
+ "cases": [
+  {
+   "id": "bridge.auth.api-needs-session",
+   "title": "The API refuses a request with no session cookie",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/api/config",
+     "auth": false,
+     "expect": {
+      "status": 401
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.auth.expired-link",
+   "title": "A sign-in link with the wrong token is refused",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/auth?t=0000000000000000000000000000000000000000000000000000000000000000",
+     "auth": false,
+     "expect": {
+      "status": 403
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.auth.sign-in-cookie",
+   "title": "The app's sign-in link sets an HttpOnly, SameSite=Strict cookie and redirects to the page",
+   "steps": [
+    {
+     "do": "http",
+     "path": "${authPath}",
+     "auth": false,
+     "expect": {
+      "status": 302,
+      "headers.set-cookie": {
+       "$match": "HttpOnly; SameSite=Strict"
+      },
+      "headers.location": "/"
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.auth.host-check",
+   "title": "Requests for another host name are refused (DNS rebinding)",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/api/config",
+     "host": "evil.example:${port}",
+     "expect": {
+      "status": 421
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.auth.cross-site",
+   "title": "A cross-site API request is refused",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/api/config",
+     "headers": {
+      "sec-fetch-site": "cross-site"
+     },
+     "expect": {
+      "status": 403
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.auth.post-origin",
+   "title": "A POST from another origin is refused",
+   "steps": [
+    {
+     "do": "http",
+     "method": "POST",
+     "path": "/api/settings",
+     "origin": "http://evil.example",
+     "body": {
+      "speed": 1.2
+     },
+     "expect": {
+      "status": 403
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.config.shape",
+   "title": "GET /api/config: version, no key yet, a key store (the Keychain; a test profile may use its own), settings, limits, defaults (the default hotkey: ⌘⌥G on a Mac in the macOS port, else ⌃⌥G)",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/api/config",
+     "expect": {
+      "status": 200,
+      "body": {
+       "version": {
+        "$match": "^[0-9]+[.][0-9]+[.][0-9]+"
+       },
+       "hasKey": false,
+       "keyStorage": {
+        "$in": [
+         "macos-keychain",
+         "env-file"
+        ]
+       },
+       "settings.voice": "eve",
+       "settings.speed": 1,
+       "settings.voiceVolume": 0.75,
+       "settings.wakeHotkey": {
+        "$in": [
+         "Command+Alt+G",
+         "Control+Alt+G"
+        ]
+       },
+       "settings.hotkeyLabel": {
+        "$type": "string"
+       },
+       "settings.avatar": {
+        "$in": [
+         "buddy",
+         "qubit",
+         "none"
+        ]
+       },
+       "limits": {
+        "minSpeed": 0.7,
+        "maxSpeed": 1.5
+       },
+       "defaults.listenMode": "always"
+      }
+     }
+    },
+    {
+     "do": "save",
+     "from": "last",
+     "path": "body.defaults.wakeHotkey",
+     "as": "dk"
+    },
+    {
+     "do": "http",
+     "path": "/api/config",
+     "expect": {
+      "body.settings.wakeHotkey": "${dk}"
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.config.private-keys-hidden",
+   "title": "The shell's own settings (orb position) never reach the page",
+   "profile": {
+    "settings": {
+     "orbPosition": [
+      100,
+      100
+     ],
+     "orbStickAnchor": {
+      "corner": "br",
+      "dx": 10,
+      "dy": 10
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "http",
+     "path": "/api/config",
+     "expect": {
+      "status": 200,
+      "body": {
+       "settings.orbPosition": {
+        "$absent": true
+       },
+       "settings.orbStickAnchor": {
+        "$absent": true
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.config.mac-hotkey-label",
+   "title": "The hotkey's label uses the Mac's symbols",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/api/config",
+     "expect": {
+      "status": 200,
+      "body": {
+       "settings.hotkeyLabel": {
+        "$match": "[⌃⌥⌘]"
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.settings.round-trip",
+   "title": "POST /api/settings saves, answers with the new settings, and GET shows them",
+   "steps": [
+    {
+     "do": "http",
+     "method": "POST",
+     "path": "/api/settings",
+     "body": {
+      "speed": 1.2,
+      "announce": "chime",
+      "avatar": "qubit"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "speed": 1.2,
+       "announce": "chime",
+       "avatar": "qubit"
+      }
+     }
+    },
+    {
+     "do": "http",
+     "path": "/api/config",
+     "expect": {
+      "body": {
+       "settings.speed": 1.2,
+       "settings.announce": "chime",
+       "settings.avatar": "qubit"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.settings.clamped-and-cleaned",
+   "title": "Out-of-range and unknown settings are clamped or dropped",
+   "steps": [
+    {
+     "do": "http",
+     "method": "POST",
+     "path": "/api/settings",
+     "body": {
+      "speed": 9,
+      "announce": "shout",
+      "nonsense": 1,
+      "claudeVoice": 12
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "speed": 1.5,
+       "announce": "speak",
+       "nonsense": {
+        "$absent": true
+       },
+       "claudeVoice": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.settings.shell-owned",
+   "title": "The page can't set the hotkey or the orb's position (the shell owns them)",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/api/config",
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "do": "save",
+     "from": "last",
+     "path": "body.settings.wakeHotkey",
+     "as": "hk"
+    },
+    {
+     "do": "http",
+     "method": "POST",
+     "path": "/api/settings",
+     "body": {
+      "wakeHotkey": "Control+Alt+K",
+      "orbPosition": [
+       5,
+       5
+      ]
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "wakeHotkey": "${hk}"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.settings.persisted",
+   "title": "A changed setting is written to the profile's settings.json",
+   "steps": [
+    {
+     "do": "http",
+     "method": "POST",
+     "path": "/api/settings",
+     "body": {
+      "halfDuplex": true
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "do": "fake",
+     "name": "../profile/settings.json",
+     "expect": {
+      "halfDuplex": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.key.rejects-junk",
+   "title": "POST /api/key refuses something that isn't an xAI key",
+   "steps": [
+    {
+     "do": "http",
+     "method": "POST",
+     "path": "/api/key",
+     "body": {
+      "key": "nope"
+     },
+     "expect": {
+      "status": 400
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.key.stored-sealed",
+   "title": "A saved key reads back as present and is never echoed",
+   "steps": [
+    {
+     "do": "http",
+     "method": "POST",
+     "path": "/api/key",
+     "body": {
+      "key": "xai-parityfakekey1111111111111111111111"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "hasKey": true
+      }
+     }
+    },
+    {
+     "do": "http",
+     "path": "/api/config",
+     "expect": {
+      "body": {
+       "hasKey": true
+      }
+     }
+    },
+    {
+     "do": "save",
+     "from": "last",
+     "path": "body",
+     "as": "cfg"
+    },
+    {
+     "do": "http",
+     "path": "/api/logs",
+     "expect": {
+      "status": 200
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.brain.key-rejects-junk",
+   "title": "POST /api/brain/key refuses something that isn't an Anthropic key",
+   "steps": [
+    {
+     "do": "http",
+     "method": "POST",
+     "path": "/api/brain/key",
+     "body": {
+      "key": "nope"
+     },
+     "expect": {
+      "status": 400
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.brain.status",
+   "title": "GET /api/brain reports whether Claude Code is found",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/api/brain",
+     "expect": {
+      "status": 200,
+      "body": {
+       "found": {
+        "$type": "boolean"
+       },
+       "hasKey": false
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.claude-voice.status",
+   "title": "GET /api/claude-voice reports the speech models' state and size",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/api/claude-voice",
+     "expect": {
+      "status": 200,
+      "body": {
+       "mb": {
+        "$gt": 100
+       },
+       "claudeFound": {
+        "$type": "boolean"
+       },
+       "models": {
+        "$type": "object"
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.voices.claude",
+   "title": "Claude voice's eight voices come from this Mac",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/api/voice?engine=claude",
+     "expect": {
+      "status": 200,
+      "body": {
+       "engine": "claude",
+       "voices": {
+        "$len": 8
+       },
+       "minSpeed": 0.7,
+       "maxSpeed": 1.5
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.claude-voice.preview",
+   "title": "A Claude voice sample is spoken on this Mac (a WAV)",
+   "fixtures": {
+    "claudeVoice": {
+     "rules": {
+      "rules": []
+     }
+    }
+   },
+   "steps": [
+    {
+     "do": "http",
+     "method": "POST",
+     "path": "/api/claude-voice/preview",
+     "body": {
+      "voice": 2,
+      "speed": 1
+     },
+     "timeoutMs": 20000,
+     "expect": {
+      "status": 200,
+      "headers.content-type": "audio/wav",
+      "body.bytes": {
+       "$gt": 20000
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.usage",
+   "title": "GET /api/usage answers",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/api/usage",
+     "expect": {
+      "status": 200,
+      "body": {
+       "$type": "object"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.logs",
+   "title": "GET /api/logs gives the log folder (in the test profile) and recent entries",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/api/logs",
+     "expect": {
+      "status": 200,
+      "body": {
+       "dir": {
+        "$match": "orbit-parity-"
+       },
+       "entries": {
+        "$type": "array"
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.api.unknown",
+   "title": "An unknown API route is a 404",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/api/nope",
+     "expect": {
+      "status": 404
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.static.pages",
+   "title": "The UI pages the shells load are served with a content security policy",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/qubit.html",
+     "expect": {
+      "status": 200,
+      "headers.content-security-policy": {
+       "$match": "default-src"
+      }
+     }
+    },
+    {
+     "do": "http",
+     "path": "/buddy.html",
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "do": "http",
+     "path": "/mouse.html",
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "do": "http",
+     "path": "/",
+     "expect": {
+      "status": 200
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.static.wake-page",
+   "title": "The wake-word page may only be framed by Orbit itself",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/wake.html",
+     "expect": {
+      "status": 200,
+      "headers.x-frame-options": "SAMEORIGIN",
+      "headers.content-security-policy": {
+       "$match": "wasm"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.static.wake-model",
+   "title": "The offline wake-word model ships with the app",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/models/vosk-model-small-en-us-0.15.tar.gz",
+     "timeoutMs": 30000,
+     "expect": {
+      "status": 200,
+      "headers.content-type": "application/gzip",
+      "body.bytes": {
+       "$gt": 40000000
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.static.no-traversal",
+   "title": "Paths outside the UI folder aren't served",
+   "steps": [
+    {
+     "do": "http",
+     "path": "/..%2fpackage.json",
+     "expect": {
+      "status": 404
+     }
+    },
+    {
+     "do": "http",
+     "path": "/%2e%2e/src/server.js",
+     "expect": {
+      "status": {
+       "$in": [
+        400,
+        404
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.ws.needs-session",
+   "title": "The voice socket refuses a connection with no session",
+   "steps": [
+    {
+     "do": "ws",
+     "auth": false,
+     "timeoutMs": 3000,
+     "expect": {
+      "opened": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.ws.bad-origin",
+   "title": "The voice socket refuses another origin",
+   "steps": [
+    {
+     "do": "ws",
+     "origin": "http://evil.example",
+     "timeoutMs": 3000,
+     "expect": {
+      "opened": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.ws.no-key",
+   "title": "With no xAI key the voice socket says so and closes",
+   "steps": [
+    {
+     "do": "ws",
+     "timeoutMs": 4000,
+     "expect": {
+      "messages": {
+       "$some": {
+        "type": "bridge.error",
+        "message": {
+         "$match": "xAI API key"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "bridge.ws.grok-ready",
+   "title": "With a key, a call reaches (the stand-in) Grok and the page is told it's ready",
+   "fixtures": {
+    "grok": true
+   },
+   "steps": [
+    {
+     "do": "ws",
+     "timeoutMs": 8000,
+     "expect": {
+      "messages": {
+       "$some": {
+        "type": "bridge.ready",
+        "model": {
+         "$type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "do": "until",
+     "probe": "fake",
+     "name": "fake-grok",
+     "expect": {
+      "conns": {
+       "$some": {
+        "configured": {
+         "$gte": 1
+        },
+        "auth": "present"
+       }
+      }
+     }
+    }
+   ]
+  }
+ ]
 }

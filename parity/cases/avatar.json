@@ -1403,8 +1403,8 @@
    ]
   },
   {
-   "id": "avatar.free-without-claude",
-   "title": "With no Claude window, Qubit floats free along the bottom of the screen",
+   "id": "avatar.hidden-without-claude",
+   "title": "With no Claude window, Qubit isn't shown (he lives on the Claude window)",
    "needs": [
     "avatar"
    ],
@@ -1415,26 +1415,19 @@
    },
    "steps": [
     {
-     "do": "until",
-     "probe": "state",
-     "timeoutMs": 20000,
-     "expect": {
-      "avatars": {
-       "$some": {
-        "kind": "qubit",
-        "visible": true
-       }
-      }
-     }
+     "do": "sleep",
+     "ms": 4000
     },
     {
      "do": "state",
      "expect": {
-      "avatars.0.host": {
-       "$absent": true
-      },
-      "avatars.0.frame.w": {
-       "$gt": 200
+      "avatars": {
+       "$count": {
+        "where": {
+         "visible": true
+        },
+        "is": 0
+       }
       }
      }
     }
@@ -1444,7 +1437,8 @@
    "id": "avatar.art-rules",
    "title": "Qubit's art: one solid fill, the eye a hole, no stroke, shadow or gradient",
    "needs": [
-    "avatar"
+    "avatar",
+    "window"
    ],
    "profile": {
     "settings": {
@@ -1502,13 +1496,24 @@
       }
      }
     }
-   ]
+   ],
+   "fixtures": {
+    "standin": {
+     "frame": {
+      "x": 200,
+      "y": 120,
+      "w": 980,
+      "h": 680
+     }
+    }
+   }
   },
   {
    "id": "avatar.command-reaches-page",
    "title": "A command for the avatar reaches his page",
    "needs": [
-    "avatar"
+    "avatar",
+    "window"
    ],
    "profile": {
     "settings": {
@@ -1552,7 +1557,17 @@
       }
      }
     }
-   ]
+   ],
+   "fixtures": {
+    "standin": {
+     "frame": {
+      "x": 200,
+      "y": 120,
+      "w": 980,
+      "h": 680
+     }
+    }
+   }
   }
  ]
 }

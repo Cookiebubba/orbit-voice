@@ -2285,6 +2285,18 @@
    ],
    "steps": [
     {
+     "do": "state",
+     "expect": {
+      "hotkey.registered": true
+     }
+    },
+    {
+     "do": "save",
+     "from": "state",
+     "path": "hotkey.accelerator",
+     "as": "before"
+    },
+    {
      "do": "act",
      "action": "settings.ui",
      "args": {
@@ -2298,7 +2310,7 @@
     {
      "do": "state",
      "expect": {
-      "hotkey.accelerator": "Control+Alt+G",
+      "hotkey.accelerator": "${before}",
       "hotkey.registered": true
      }
     }
