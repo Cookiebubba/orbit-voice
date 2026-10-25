@@ -1,12 +1,12 @@
 import { marked } from "https://cdn.jsdelivr.net/npm/marked@12.0.2/lib/marked.esm.js";
 import DOMPurify from "https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.es.mjs";
-import { startQubit } from "./qubit.js?v=10";
+import { startQubit } from "./qubit.js?v=11";
 
 /* --------------------------------- config --------------------------------- */
 const REPO = "Cookiebubba/orbit-voice";
 const X_HANDLE = "brandynships";
 // The main button downloads this beta; the line under it, the latest stable release.
-const BETA_TAG = "v1.3.0-beta.1";
+const BETA_TAG = "v1.3.0-beta.2";
 
 const GITHUB = `https://github.com/${REPO}`;
 const RAW = `https://raw.githubusercontent.com/${REPO}/main/`;
