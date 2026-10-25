@@ -111,7 +111,7 @@ final class OrbitSpeechTests: XCTestCase {
     var i = 0
     while i + SpeechConfig.window <= s16.count {
       vad.accept(Array(s16[i..<(i + SpeechConfig.window)]))
-      while let seg = vad.popSegment() { segments.append(seg) }
+      while let seg = vad.popSegment() { segments.append(seg.samples) }
       i += SpeechConfig.window
     }
     XCTAssertEqual(segments.count, 1)

@@ -110,13 +110,14 @@ public final class SpeechVad {
   public func accept(_ samples16k: [Float]) { vad.acceptWaveform(samples: samples16k) }
   public var speaking: Bool { vad.isSpeechDetected() }
   public var hasSegment: Bool { !vad.isEmpty() }
-  /** The oldest finished speech segment's samples (16 kHz), removed from the queue. */
-  public func popSegment() -> [Float]? {
+  /** The oldest finished speech segment: where it starts (samples since the VAD was last reset) and
+   *  its samples (16 kHz), removed from the queue. */
+  public func popSegment() -> (start: Int, samples: [Float])? {
     guard !vad.isEmpty() else { return nil }
     let seg = vad.front()
-    let s = seg.samples
+    let r = (seg.start, seg.samples)
     vad.pop()
-    return s
+    return r
   }
   public func flush() { vad.flush() }
   public func reset() { vad.reset() }
