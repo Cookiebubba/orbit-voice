@@ -34,7 +34,10 @@ if [ -z "$ID" ] && [ -f "$KC" ] && [ -f "$DEV/cert.pem" ]; then
 fi
 [ -z "$ID" ] && ID="-"
 
-sign() { codesign --force --timestamp=none --options runtime --sign "$ID" "$@"; }
+# A Developer ID build gets a secure timestamp (notarization needs one); dev and ad-hoc builds don't.
+TS="--timestamp=none"
+[ -n "${ORBIT_SIGN_ID:-}" ] && TS="--timestamp"
+sign() { codesign --force "$TS" --options runtime --sign "$ID" "$@"; }
 
 # Native code inside the core and the app's Frameworks first.
 while IFS= read -r -d '' f; do sign "$f" >/dev/null; done < <(find "$APP/Contents/Frameworks" -name '*.dylib' -type f -print0 2>/dev/null)

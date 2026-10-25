@@ -1,6 +1,8 @@
-// Updates from GitHub Releases, natively, from the same source as the Electron build
-// (electron/updater.js + electron-updater): the release's latest-mac.yml, written by
-// electron-builder, names the version, each zip and its SHA-512.
+// Updates from GitHub Releases, natively, from the same releases as the Electron build
+// (electron/updater.js + electron-updater), but from Orbit Native's own feed in each release:
+// latest-mac-native.yml (scripts/package.sh writes it, in electron-builder's latest-mac.yml shape)
+// names the version, the Orbit-Native zips and their SHA-512. Electron's latest-mac.yml names the
+// Electron app's zips, which this build never takes (file(arch:) only picks Orbit-Native ones).
 //
 // Channels follow the installed version, as electron/updater.js: a stable install (1.2.0) reads
 // /releases/latest (never a prerelease); a beta install (1.3.0-beta.1) reads the releases list and
@@ -10,14 +12,17 @@
 // Off: nothing is checked until "Check now" (which then downloads what it finds). A download is
 // checked against the yml's SHA-512 before it counts as ready, and lands in the profile folder.
 // Installing replaces the app bundle when Orbit quits; that needs a signed release, so it runs only
-// when `installEnabled` is set (ORBIT_UPDATE_INSTALL=1 or the integrator's release build).
+// when `installEnabled` is set (a release build: OrbitUpdateInstall in Info.plist, or
+// ORBIT_UPDATE_INSTALL=1), and only for a copy that is Orbit Native, of the version the feed named,
+// signed by the same signer as the running app (its designated requirement).
 //
 // Why not Sparkle: it reads its own EdDSA-signed appcast, so releases would need a second feed and
-// signing key next to latest-mac.yml; this keeps one release pipeline for both builds and adds no
-// dependency.
+// signing key; this keeps one release pipeline for both builds and adds no dependency (the
+// download is checked by SHA-512 and the install by code signature).
 import CryptoKit
 import Foundation
 import Observation
+import Security
 
 public enum UpdateStatus: String, Sendable, Codable {
   /** Running from source: no updates. */
@@ -120,13 +125,13 @@ public struct ReleaseInfo: Equatable, Sendable {
   public var releaseDate: String?
 
   /**
-   * electron-builder's latest-mac.yml (a small, fixed shape; no YAML library needed):
+   * latest-mac-native.yml, in electron-builder's latest-mac.yml shape (small and fixed; no YAML library needed):
    *   version: 1.3.0
    *   files:
-   *     - url: Orbit-1.3.0-arm64-mac.zip
+   *     - url: Orbit-Native-1.3.0-arm64-mac.zip
    *       sha512: <base64>
    *       size: 123
-   *   path: Orbit-1.3.0-arm64-mac.zip
+   *   path: Orbit-Native-1.3.0-arm64-mac.zip
    *   sha512: <base64>
    *   releaseDate: '2026-10-01T00:00:00.000Z'
    */
@@ -167,10 +172,15 @@ public struct ReleaseInfo: Equatable, Sendable {
     return ReleaseInfo(version: version, files: files, path: top["path"], sha512: top["sha512"], releaseDate: top["releaseDate"])
   }
 
-  /** The zip for this Mac: arm64 names say so; the Intel one doesn't. */
+  /**
+   * Orbit Native's zip for this Mac (arm64 names say so; the Intel one doesn't). Only files named
+   * for Orbit Native ("Orbit-Native-1.4.0-arm64-mac.zip"): never the Electron app's.
+   */
   public func file(arch: String) -> ReleaseFile? {
-    let zips = files.filter { $0.url.lowercased().hasSuffix(".zip") }
-    let pool = zips.isEmpty ? files : zips
+    let pool = files.filter {
+      let name = ($0.url as NSString).lastPathComponent.lowercased()
+      return name.hasSuffix(".zip") && name.contains("native")
+    }
     if arch == "arm64" { return pool.first { $0.url.contains("arm64") } ?? pool.first { !$0.url.contains("x64") } }
     return pool.first { !$0.url.contains("arm64") }
   }
@@ -180,7 +190,7 @@ public struct ReleaseInfo: Equatable, Sendable {
 public func describeUpdateError(_ message: String) -> String {
   func has(_ p: String) -> Bool { message.range(of: p, options: [.regularExpression, .caseInsensitive]) != nil }
   if has("net::|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET|ECONNREFUSED|socket hang up|offline|could not connect|timed out|cannot find host|network connection") { return "Couldn't reach GitHub. Check your connection." }
-  if has("(latest|beta)(-mac)?\\.yml|404") { return "The newest release has no update info yet." }
+  if has("(latest|beta)(-mac)?(-native)?\\.yml|404") { return "The newest release has no update info yet." }
   if has("code signature|code ?sign|not signed|SecCode|designated requirement") { return "Updates on a Mac need a signed copy of Orbit. Download the new version from GitHub instead." }
   if has("sha512|checksum") { return "The download was damaged, so it was thrown away. It will retry." }
   return "Couldn't check for updates."
@@ -228,11 +238,20 @@ public final class UpdateChecker {
   @ObservationIgnored private var found: (info: ReleaseInfo, assetBase: URL)?
   @ObservationIgnored private let log: (String) -> Void
 
+  /** Orbit Native's feed in each GitHub release (Electron's is latest-mac.yml). */
+  public nonisolated static let feedFile = "latest-mac-native.yml"
+  /** The bundle identifier an update must have. */
+  public nonisolated static let bundleID = "dev.orbit.voice.native"
+  /** A release build may replace itself (build-app.sh writes this key for a Developer ID build). */
+  public nonisolated static var releaseInstallAllowed: Bool {
+    ProcessInfo.processInfo.environment["ORBIT_UPDATE_INSTALL"] == "1" || (Bundle.main.object(forInfoDictionaryKey: "OrbitUpdateInstall") as? Bool) == true
+  }
+
   public static let firstCheckDelay: Duration = .seconds(20)
   public static let checkEvery: Duration = .seconds(6 * 3600)
 
   public init(currentVersion: String, isPackaged: Bool, downloadsDir: URL, feed: UpdateFeed = .github, arch: String = UpdateChecker.machineArch,
-              session: URLSession? = nil, installEnabled: Bool = ProcessInfo.processInfo.environment["ORBIT_UPDATE_INSTALL"] == "1",
+              session: URLSession? = nil, installEnabled: Bool = UpdateChecker.releaseInstallAllowed,
               log: @escaping (String) -> Void = { _ in }) {
     self.currentVersion = currentVersion
     self.isPackaged = isPackaged
@@ -294,12 +313,12 @@ public final class UpdateChecker {
       }
       guard let (_, tag) = best else { return nil }
       let base = feed.web.appendingPathComponent("releases/download/\(tag)")
-      guard let info = ReleaseInfo.parse(yml: String(decoding: try await fetch(base.appendingPathComponent("latest-mac.yml")), as: UTF8.self)) else { throw UpdateFailure(message: "latest-mac.yml unreadable") }
+      guard let info = ReleaseInfo.parse(yml: String(decoding: try await fetch(base.appendingPathComponent(Self.feedFile)), as: UTF8.self)) else { throw UpdateFailure(message: "\(Self.feedFile) unreadable") }
       return (info, base)
     }
     // A stable install: the latest release only (GitHub never points "latest" at a prerelease).
     let base = feed.web.appendingPathComponent("releases/latest/download")
-    guard let info = ReleaseInfo.parse(yml: String(decoding: try await fetch(base.appendingPathComponent("latest-mac.yml")), as: UTF8.self)) else { throw UpdateFailure(message: "latest-mac.yml unreadable") }
+    guard let info = ReleaseInfo.parse(yml: String(decoding: try await fetch(base.appendingPathComponent(Self.feedFile)), as: UTF8.self)) else { throw UpdateFailure(message: "\(Self.feedFile) unreadable") }
     return (info, base)
   }
 
@@ -415,6 +434,12 @@ public final class UpdateChecker {
       set(UpdateState(status: .error, message: describeUpdateError("code signature invalid")))
       return false
     }
+    // And it is Orbit Native, the version the feed named, from the same signer as this copy.
+    if let why = Self.refuseUpdate(newApp, replacing: appBundle, version: state.version) {
+      log("Update not installed: \(why)")
+      set(UpdateState(status: .error, message: describeUpdateError("code signature invalid")))
+      return false
+    }
     // A tiny shell waits for this process to exit, then swaps the bundles (and reopens if asked).
     let pid = ProcessInfo.processInfo.processIdentifier
     func q(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
@@ -424,5 +449,27 @@ public final class UpdateChecker {
     sh.executableURL = URL(fileURLWithPath: "/bin/sh")
     sh.arguments = ["-c", script]
     return (try? sh.run()) != nil
+  }
+}
+
+extension UpdateChecker {
+  /**
+   * Why `newApp` may not replace `current`, or nil when it may: it must be Orbit Native (bundle
+   * identifier), of `version` (when given), and satisfy the running copy's designated requirement,
+   * so only the same signer's build installs (an ad-hoc build's requirement is its own cdhash, so it
+   * never takes another build).
+   */
+  public nonisolated static func refuseUpdate(_ newApp: URL, replacing current: URL, version: String?) -> String? {
+    guard let info = NSDictionary(contentsOf: newApp.appendingPathComponent("Contents/Info.plist")) else { return "no Info.plist" }
+    guard info["CFBundleIdentifier"] as? String == bundleID else { return "not Orbit Native" }
+    if let version, info["CFBundleShortVersionString"] as? String != version { return "not version \(version)" }
+    var mine: SecStaticCode?
+    var theirs: SecStaticCode?
+    var req: SecRequirement?
+    guard SecStaticCodeCreateWithPath(current as CFURL, [], &mine) == errSecSuccess, let mine,
+          SecCodeCopyDesignatedRequirement(mine, [], &req) == errSecSuccess, let req else { return "this copy's signature can't be read" }
+    guard SecStaticCodeCreateWithPath(newApp as CFURL, [], &theirs) == errSecSuccess, let theirs else { return "the update's signature can't be read" }
+    let flags = SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSCheckNestedCode | kSecCSStrictValidate)
+    return SecStaticCodeCheckValidity(theirs, flags, req) == errSecSuccess ? nil : "signed by someone else"
   }
 }

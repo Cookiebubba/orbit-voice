@@ -81,8 +81,11 @@ for dep in ws sherpa-onnx-node "sherpa-onnx-darwin-$(uname -m | sed s/x86_64/x64
 done
 
 echo "== Info.plist"
-PARITY=""
-[ "$TEST" = 1 ] && PARITY="  <key>OrbitParityAllowed</key><true/>"
+EXTRA_KEYS=""
+[ "$TEST" = 1 ] && EXTRA_KEYS="  <key>OrbitParityAllowed</key><true/>"
+# A release signed with a Developer ID (ORBIT_SIGN_ID) installs its own updates (UpdateChecker:
+# only Orbit Native, the feed's version, the same signer). Dev and test builds only download them.
+if [ "$TEST" = 0 ] && [ -n "${ORBIT_SIGN_ID:-}" ]; then EXTRA_KEYS="  <key>OrbitUpdateInstall</key><true/>"; fi
 # A test build also carries the parity suite's page probes (avatar.eval).
 [ "$TEST" = 1 ] && mkdir -p "$APP/Contents/Resources/parity-probes" && cp "$ROOT"/parity/probes/*.js "$APP/Contents/Resources/parity-probes/"
 cat > "$APP/Contents/Info.plist" <<EOF
@@ -106,7 +109,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
   <key>NSAccessibilityUsageDescription</key><string>Orbit uses Accessibility to read and drive the Claude app window: typing your prompts, pressing Send and answering its cards.</string>
   <key>NSAppleEventsUsageDescription</key><string>Orbit uses this to type your prompts into the Claude app and press Send for you.</string>
   <key>NSScreenCaptureUsageDescription</key><string>Orbit looks at a window only when you ask it to.</string>
-$PARITY
+$EXTRA_KEYS
 </dict>
 </plist>
 EOF

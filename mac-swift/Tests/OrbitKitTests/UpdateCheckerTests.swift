@@ -18,13 +18,13 @@ final class FakeGitHub: @unchecked Sendable {
     """
     version: \(v)
     files:
-      - url: Orbit-\(v)-x64-mac.zip
+      - url: Orbit-Native-\(v)-x64-mac.zip
         sha512: \(corrupt ? "AAAA" : sha)
         size: \(zip.count)
-      - url: Orbit-\(v)-arm64-mac.zip
+      - url: Orbit-Native-\(v)-arm64-mac.zip
         sha512: \(corrupt ? "AAAA" : sha)
         size: \(zip.count)
-    path: Orbit-\(v)-arm64-mac.zip
+    path: Orbit-Native-\(v)-arm64-mac.zip
     sha512: \(sha)
     releaseDate: '2026-10-01T00:00:00.000Z'
     """
@@ -32,8 +32,8 @@ final class FakeGitHub: @unchecked Sendable {
 
   func handle(_ r: TestHTTPServer.Request) -> TestHTTPServer.Response {
     switch r.path {
-    case "/o/r/releases/latest/download/latest-mac.yml": return .text(yml(latestVersion))
-    case "/o/r/releases/download/v1.5.0-beta.2/latest-mac.yml": return .text(yml("1.5.0-beta.2"))
+    case "/o/r/releases/latest/download/latest-mac-native.yml": return .text(yml(latestVersion))
+    case "/o/r/releases/download/v1.5.0-beta.2/latest-mac-native.yml": return .text(yml("1.5.0-beta.2"))
     case "/api/repos/o/r/releases": return .json(releases)
     default:
       if r.path.hasSuffix(".zip") { return .init(status: 200, headers: ["Content-Type": "application/zip"], body: zip) }
@@ -64,8 +64,13 @@ final class UpdateLogicTests: XCTestCase {
     let info = ReleaseInfo.parse(yml: y)!
     XCTAssertEqual(info.version, "1.4.0")
     XCTAssertEqual(info.files.count, 2)
-    XCTAssertEqual(info.file(arch: "arm64")?.url, "Orbit-1.4.0-arm64-mac.zip")
-    XCTAssertEqual(info.file(arch: "x64")?.url, "Orbit-1.4.0-x64-mac.zip")
+    XCTAssertEqual(info.file(arch: "arm64")?.url, "Orbit-Native-1.4.0-arm64-mac.zip")
+    XCTAssertEqual(info.file(arch: "x64")?.url, "Orbit-Native-1.4.0-x64-mac.zip")
+    // The Electron app's feed names only its own zips: Orbit Native never takes one of those.
+    let electron = ReleaseInfo.parse(yml: "version: 1.4.0\nfiles:\n  - url: Orbit-1.4.0-arm64-mac.zip\n    sha512: def\npath: Orbit-1.4.0-arm64-mac.zip\n")!
+    XCTAssertNil(electron.file(arch: "arm64"))
+    XCTAssertNil(electron.file(arch: "x64"))
+    XCTAssertEqual(UpdateChecker.feedFile, "latest-mac-native.yml")
     XCTAssertEqual(info.files[0].size, 300_000)
     XCTAssertEqual(info.releaseDate, "2026-10-01T00:00:00.000Z")
     XCTAssertNil(ReleaseInfo.parse(yml: "files: []"))
@@ -81,7 +86,7 @@ final class UpdateLogicTests: XCTestCase {
 
 extension FakeGitHub {
   static func yml(_: Void?) -> String {
-    "version: 1.4.0\nfiles:\n  - url: Orbit-1.4.0-x64-mac.zip\n    sha512: abc\n    size: 300000\n  - url: Orbit-1.4.0-arm64-mac.zip\n    sha512: def\n    size: 300000\npath: Orbit-1.4.0-arm64-mac.zip\nsha512: def\nreleaseDate: '2026-10-01T00:00:00.000Z'\n"
+    "version: 1.4.0\nfiles:\n  - url: Orbit-Native-1.4.0-x64-mac.zip\n    sha512: abc\n    size: 300000\n  - url: Orbit-Native-1.4.0-arm64-mac.zip\n    sha512: def\n    size: 300000\npath: Orbit-Native-1.4.0-arm64-mac.zip\nsha512: def\nreleaseDate: '2026-10-01T00:00:00.000Z'\n"
   }
 }
 
@@ -108,9 +113,9 @@ final class UpdateCheckerTests: XCTestCase {
     XCTAssertEqual(s.status, .ready)
     XCTAssertEqual(s.version, "1.4.0")
     XCTAssertEqual(seen, [.checking, .available, .downloading, .ready])
-    XCTAssertEqual(u.downloaded?.lastPathComponent, "Orbit-1.4.0-arm64-mac.zip")
+    XCTAssertEqual(u.downloaded?.lastPathComponent, "Orbit-Native-1.4.0-arm64-mac.zip")
     XCTAssertEqual(try Data(contentsOf: u.downloaded!), gh.zip)
-    XCTAssertTrue(gh.server.requests.contains { $0.path.hasSuffix("/releases/latest/download/Orbit-1.4.0-arm64-mac.zip") })
+    XCTAssertTrue(gh.server.requests.contains { $0.path.hasSuffix("/releases/latest/download/Orbit-Native-1.4.0-arm64-mac.zip") })
     XCTAssertFalse(gh.server.requests.contains { $0.path.contains("/api/") }, "a stable install never reads the prerelease list")
     // Ready stays ready (no second check), and installing is off without the flag.
     let again = await u.check()
@@ -149,7 +154,7 @@ final class UpdateCheckerTests: XCTestCase {
     let s = await u.check()
     XCTAssertEqual(s.status, .ready)
     XCTAssertEqual(s.version, "1.5.0-beta.2")
-    XCTAssertTrue(gh.server.requests.contains { $0.path == "/o/r/releases/download/v1.5.0-beta.2/Orbit-1.5.0-beta.2-arm64-mac.zip" })
+    XCTAssertTrue(gh.server.requests.contains { $0.path == "/o/r/releases/download/v1.5.0-beta.2/Orbit-Native-1.5.0-beta.2-arm64-mac.zip" })
   }
 
   func testMissingYml() async throws {
@@ -168,3 +173,55 @@ final class UpdateCheckerTests: XCTestCase {
     XCTAssertEqual(s.message, "Couldn't reach GitHub. Check your connection.")
   }
 }
+
+/** What may replace the running app: Orbit Native, the named version, the same signer. */
+final class UpdateInstallGuardTests: XCTestCase {
+  var dir: URL!
+  override func setUp() { dir = FileManager.default.temporaryDirectory.appendingPathComponent("orbit-guard-\(UUID().uuidString)") }
+  override func tearDown() { try? FileManager.default.removeItem(at: dir) }
+
+  /** A tiny app bundle (a copy of /usr/bin/true as its executable), ad-hoc signed. */
+  func bundle(_ name: String, id: String = UpdateChecker.bundleID, version: String = "1.4.0", salt: String = "") throws -> URL {
+    let app = dir.appendingPathComponent("\(name).app")
+    let macos = app.appendingPathComponent("Contents/MacOS")
+    try FileManager.default.createDirectory(at: macos, withIntermediateDirectories: true)
+    try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/bin/true"), to: macos.appendingPathComponent("OrbitNative"))
+    let plist: NSDictionary = ["CFBundleIdentifier": id, "CFBundleExecutable": "OrbitNative", "CFBundleShortVersionString": version, "CFBundlePackageType": "APPL", "OrbitSalt": salt]
+    plist.write(to: app.appendingPathComponent("Contents/Info.plist"), atomically: true)
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+    p.arguments = ["--force", "--sign", "-", "--identifier", id, app.path]
+    p.standardError = FileHandle.nullDevice
+    try p.run()
+    p.waitUntilExit()
+    XCTAssertEqual(p.terminationStatus, 0, "codesign")
+    return app
+  }
+
+  func testOnlyTheSameSignersOrbitNativeOfThatVersion() throws {
+    let current = try bundle("current")
+    // An identical copy (same code, same signature): fine.
+    let same = dir.appendingPathComponent("copy/current.app")
+    try FileManager.default.createDirectory(at: same.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.copyItem(at: current, to: same)
+    XCTAssertNil(UpdateChecker.refuseUpdate(same, replacing: current, version: "1.4.0"))
+    XCTAssertNil(UpdateChecker.refuseUpdate(same, replacing: current, version: nil))
+    // Not the version the feed named.
+    XCTAssertEqual(UpdateChecker.refuseUpdate(same, replacing: current, version: "1.5.0"), "not version 1.5.0")
+    // Another app (the Electron build's bundle id).
+    let other = try bundle("other", id: "dev.orbit.voice")
+    XCTAssertEqual(UpdateChecker.refuseUpdate(other, replacing: current, version: "1.4.0"), "not Orbit Native")
+    // Orbit Native, but not this signer's build (an ad-hoc requirement is the build's own hash).
+    let stranger = try bundle("stranger", salt: "another build")
+    XCTAssertEqual(UpdateChecker.refuseUpdate(stranger, replacing: current, version: "1.4.0"), "signed by someone else")
+    // Tampered after signing.
+    let tampered = dir.appendingPathComponent("t/current.app")
+    try FileManager.default.createDirectory(at: tampered.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.copyItem(at: current, to: tampered)
+    try Data("#!/bin/sh\n".utf8).write(to: tampered.appendingPathComponent("Contents/MacOS/OrbitNative"))
+    XCTAssertEqual(UpdateChecker.refuseUpdate(tampered, replacing: current, version: "1.4.0"), "signed by someone else")
+    // No bundle at all.
+    XCTAssertEqual(UpdateChecker.refuseUpdate(dir.appendingPathComponent("none.app"), replacing: current, version: nil), "no Info.plist")
+  }
+}
+
