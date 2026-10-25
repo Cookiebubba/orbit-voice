@@ -69,7 +69,7 @@ final class HotkeyAcceleratorTests: XCTestCase {
 
   func testHotkeyInfoCarriesTheLabel() {
     let i = HotkeyInfo(accelerator: "Control+Alt+G", label: A.label("Control+Alt+G"), registered: true)
-    XCTAssertEqual(i.defaultAccelerator, "Control+Alt+G")
+    XCTAssertEqual(i.defaultAccelerator, "Command+Alt+G")
     XCTAssertEqual(i.parity, ParityHotkey(accelerator: "Control+Alt+G", label: "⌃⌥G", registered: true))
   }
 }

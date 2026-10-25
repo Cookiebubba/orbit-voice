@@ -16,6 +16,7 @@ final class NativeWake: WakeListening {
   private var recognizer: NativeWakeRecognizer?
   private var active = false
   private var loading = false
+  private var failed = false
   private let queue = DispatchQueue(label: "orbit.wake")
 
   init(audio: AudioIO, archive: URL, cache: URL, log: @escaping (String) -> Void) {
@@ -25,7 +26,13 @@ final class NativeWake: WakeListening {
     self.log = log
   }
 
-  var listening: Bool { active && recognizer != nil }
+  var listening: Bool { active && recognizer != nil && !failed }
+
+  var wakeStatus: String {
+    guard active else { return "off" }
+    if failed { return "error" }
+    return recognizer == nil ? "loading" : "listening"
+  }
 
   func setActive(_ on: Bool) {
     guard on != active else { return }
@@ -46,7 +53,10 @@ final class NativeWake: WakeListening {
         MainActor.assumeIsolated {
           guard let self else { return }
           self.loading = false
-          guard let r else { return self.log("Hey Orbit: the wake-word model could not be loaded") }
+          guard let r else {
+            self.failed = true
+            return self.log("Hey Orbit: the wake-word model could not be loaded")
+          }
           self.recognizer = r
           self.log("Hey Orbit: listening on this Mac (Vosk, native)")
           if self.active { self.listen(r) }
@@ -63,6 +73,7 @@ final class NativeWake: WakeListening {
         DispatchQueue.main.async { MainActor.assumeIsolated { if self?.active == true { self?.onWake() } } }
       }
     }
+    failed = !ok
     if !ok { log("Hey Orbit: the microphone isn't available (not allowed yet?)") }
   }
 

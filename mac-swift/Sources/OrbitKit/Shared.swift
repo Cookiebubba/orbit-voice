@@ -124,9 +124,12 @@ public struct ParityVoice: Codable, Equatable, Sendable {
   public var lastError: String?
   public var draft: ParityDraft?
   public var sentCount: Int
-  public init(phase: VoicePhase = .off, asleep: Bool = false, connected: Bool = false, muted: Bool = false, playedMs: Double = 0, scheduledMs: Double = 0, chunks: Int = 0, lastError: String? = nil, draft: ParityDraft? = nil, sentCount: Int = 0) {
+  /** "Hey Orbit": off, loading, listening (ready to hear it) or error. */
+  public var wakeWord: String
+  public init(phase: VoicePhase = .off, asleep: Bool = false, connected: Bool = false, muted: Bool = false, playedMs: Double = 0, scheduledMs: Double = 0, chunks: Int = 0, lastError: String? = nil, draft: ParityDraft? = nil, sentCount: Int = 0, wakeWord: String = "off") {
     self.phase = phase; self.asleep = asleep; self.connected = connected; self.muted = muted; self.playedMs = playedMs
     self.scheduledMs = scheduledMs; self.chunks = chunks; self.lastError = lastError; self.draft = draft; self.sentCount = sentCount
+    self.wakeWord = wakeWord
   }
 }
 

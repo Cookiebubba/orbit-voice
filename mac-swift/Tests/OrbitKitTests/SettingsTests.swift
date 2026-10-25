@@ -147,7 +147,7 @@ final class SettingsModelTests: XCTestCase {
     XCTAssertTrue(m.loaded)
     XCTAssertTrue(m.hasKey)
     XCTAssertEqual(m.string("avatar"), "buddy")
-    XCTAssertEqual(m.hotkeyLabel, "⌃⌥G")
+    XCTAssertEqual(m.hotkeyLabel, "⌥⌘G")
 
     // Clamped here before it's sent, as the bridge would.
     let r = await m.set("speed", 2.4)

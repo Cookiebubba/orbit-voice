@@ -101,7 +101,7 @@ public struct HotkeyControlInfo: Equatable, Sendable {
   /** Set by `set`: did it take, and if not why. */
   public var ok: Bool?
   public var error: String?
-  public init(accelerator: String, label: String? = nil, registered: Bool, defaultAccelerator: String = "Control+Alt+G", ok: Bool? = nil, error: String? = nil) {
+  public init(accelerator: String, label: String? = nil, registered: Bool, defaultAccelerator: String = HotkeyAccelerator.defaultAccelerator, ok: Bool? = nil, error: String? = nil) {
     self.accelerator = accelerator; self.label = label ?? SettingsSchema.hotkeyLabel(accelerator); self.registered = registered
     self.defaultAccelerator = defaultAccelerator; self.ok = ok; self.error = error
   }
@@ -219,7 +219,7 @@ public final class FakeHotkeyControl: HotkeyControl {
   /** Accelerators "taken by another app" (set fails on these). */
   public var taken: Set<String> = []
   public var onSet: ((String) -> Void)?
-  public init(accelerator: String = "Control+Alt+G") { self.accelerator = accelerator }
+  public init(accelerator: String = HotkeyAccelerator.defaultAccelerator) { self.accelerator = accelerator }
   public func info() -> HotkeyControlInfo { HotkeyControlInfo(accelerator: accelerator, registered: !suspended) }
   public func set(_ accel: String) -> HotkeyControlInfo {
     guard accel.range(of: "^[A-Za-z0-9_+.-]{1,60}$", options: .regularExpression) != nil else { var i = info(); i.ok = false; i.error = "No shortcut given."; return i }

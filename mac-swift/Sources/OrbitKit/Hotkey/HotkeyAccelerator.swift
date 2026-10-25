@@ -20,8 +20,8 @@ public struct HotkeyInfo: Codable, Equatable, Sendable {
 }
 
 public struct HotkeyAccelerator: Equatable, Sendable {
-  /** src/config.js DEFAULTS.wakeHotkey */
-  public static let defaultAccelerator = "Control+Alt+G"
+  /** src/config.js DEFAULTS.wakeHotkey on macOS (⌘⌥G; Ctrl+Alt+G is the Windows one). */
+  public static let defaultAccelerator = "Command+Alt+G"
 
   // Carbon's modifier masks (Events.h: cmdKey, shiftKey, optionKey, controlKey).
   public static let cmdKey: UInt32 = 1 << 8

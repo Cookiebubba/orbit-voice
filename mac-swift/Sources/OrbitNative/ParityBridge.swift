@@ -78,6 +78,10 @@ extension AppDelegate {
     case "quit":
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { NSApp.terminate(nil) }
       return ["ok": true]
+    case "key.saved":
+      guard let ui else { return ["ok": false, "error": "not ready"] }
+      ui.settings.markHasKey()
+      return ["ok": true]
     case "voice.hotkey":
       guard let hk = shellHotkey else { return ["ok": false, "error": "no hotkey"] }
       return hk.press() ? ["ok": true] : ["ok": false, "error": "The hotkey is not registered."]

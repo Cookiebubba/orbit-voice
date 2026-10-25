@@ -34,10 +34,12 @@ public final class SettingsModel {
   public private(set) var failed = false
 
   @ObservationIgnored private let transport: any SettingsTransport
+  /** The key was saved here: the rest of the app (the voice) learns it has one, as the page's config does. */
+  @ObservationIgnored public var onKeySaved: () -> Void = {}
 
   public init(transport: any SettingsTransport) {
     self.transport = transport
-    values["hotkeyLabel"] = .string(SettingsSchema.hotkeyLabel("Control+Alt+G"))
+    values["hotkeyLabel"] = .string(SettingsSchema.hotkeyLabel(HotkeyAccelerator.defaultAccelerator))
   }
 
   public func load() async {
@@ -68,7 +70,10 @@ public final class SettingsModel {
   }
 
   /** The key was saved (POST /api/key went through). */
-  public func markHasKey() { hasKey = true }
+  public func markHasKey() {
+    hasKey = true
+    onKeySaved()
+  }
 
   // MARK: reading
 

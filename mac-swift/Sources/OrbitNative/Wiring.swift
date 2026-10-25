@@ -122,7 +122,7 @@ extension AppDelegate {
     let io = AudioIO(config: config.testing ? .fromEnvironment() : AudioIO.Config())
     let v = VoiceController(endpoints: e, audio: io)
     let fakeHotkey = config.testing && ParityDriver.config(info: info) != nil
-    let hk = ShellHotkey(accelerator: "Control+Alt+G", fake: fakeHotkey)
+    let hk = ShellHotkey(accelerator: HotkeyAccelerator.defaultAccelerator, fake: fakeHotkey)
     hk.onPress = { [weak v] in v?.hotkey() }
     hk.onSaved = { [weak self] accel in self?.sidecar?.send(["t": "shellSettings", "patch": ["wakeHotkey": .string(accel)]]) }
     voiceController = v
@@ -193,6 +193,7 @@ extension AppDelegate {
   /** After the launcher is up: the bridge's events reach the voice and the overlays too. */
   func wireBridgeEvents() {
     guard let ui, let v = voiceController else { return }
+    ui.settings.onKeySaved = { [weak v] in v?.keySaved() }
     ui.appState.onWake = nil // (the voice controller answers orbit.wake itself)
     ui.appState.onEvent = { [weak self, weak v] evt in
       v?.handleBridgeEvent(evt)

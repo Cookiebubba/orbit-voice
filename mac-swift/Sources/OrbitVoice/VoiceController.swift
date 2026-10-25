@@ -11,10 +11,14 @@ import OrbitKit
 @MainActor
 public protocol WakeListening: AnyObject {
   var onWake: () -> Void { get set }
+  /** off, loading, listening (ready to hear it) or error: the parity state's `voice.wakeWord`. */
+  var wakeStatus: String { get }
   func setActive(_ on: Bool)
 }
 
-extension WakeWord: WakeListening {}
+extension WakeWord: WakeListening {
+  public var wakeStatus: String { status.rawValue }
+}
 
 @MainActor
 public final class VoiceController: ObservableObject {
@@ -24,7 +28,7 @@ public final class VoiceController: ObservableObject {
   @Published public private(set) var draft: VoiceDraft?
   @Published public private(set) var sessionTitle: String?
   @Published public private(set) var settings = VoiceSettings()
-  /** An xAI key is saved (or Claude voice is on): what "Hey Orbit" and the avatar's click need. */
+  /** An xAI key is saved: what "Hey Orbit", the avatar's click and spoken updates need (as App.tsx's config.hasKey). */
   @Published public private(set) var hasKey = false
 
   /** The orb / avatar sync message, on every change (levels ~20 fps while a call is on). */
@@ -132,7 +136,11 @@ public final class VoiceController: ObservableObject {
   }
 
   /** What the parity driver reports as `voice`. */
-  public func parityVoice() -> ParityVoice { session.parity }
+  public func parityVoice() -> ParityVoice {
+    var v = session.parity
+    v.wakeWord = wakeWord?.wakeStatus ?? "off"
+    return v
+  }
 
   /** The fake mic (ORBIT_FAKE_MIC set): play this clip into it now. */
   @discardableResult public func playIntoMic(wav: URL, gapMs: Double = 0) -> Bool { audio.play(wav: wav, gapMs: gapMs) }
@@ -148,13 +156,19 @@ public final class VoiceController: ObservableObject {
     let c = try await link.getJSON("api/config")
     hasKey = c["hasKey"]?.boolValue ?? false
     if let s = c["settings"] { apply(settings: s) }
+    updateWakeWord()
+  }
+
+  /** The key screen saved a key (the page's setHasKey). */
+  public func keySaved() {
+    hasKey = true
+    updateWakeWord()
   }
 
   /** New settings (the whole object or a changed part). */
   public func apply(settings s: JSONValue) {
     var next = settings
     next.merge(s)
-    if next.voiceEngine == "claude" { hasKey = true } // Claude voice needs no xAI key
     settings = next
     session.setOptions(next.options)
     updateWakeWord()

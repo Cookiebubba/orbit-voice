@@ -112,6 +112,9 @@ public final class ParityRunner: @unchecked Sendable {
       if c.raw.at(path: "fixtures.grok") != nil || c.raw.at(path: "fixtures.key") != nil {
         let r = try await bridge.request(method: "POST", path: "/api/key", body: ["key": c.raw.at(path: "fixtures.key") ?? .string(Self.fakeKey)])
         guard r["status"]?.intValue == 200 else { throw RunnerError("could not set the test key") }
+        // As the app's key screen does once it saved one: the app now knows it has a key.
+        let k = try await app!.driver("POST", "/parity/act", ["action": "key.saved", "args": .object([:])])["body"] ?? .null
+        guard k["ok"] == .bool(true) else { throw RunnerError("the app did not take the saved key: \(k["error"]?.stringValue ?? "no answer")") }
       }
       let steps = c.raw["steps"]?.arrayValue ?? []
       for (i, s) in steps.enumerated() {

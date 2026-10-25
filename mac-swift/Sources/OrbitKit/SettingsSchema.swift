@@ -70,7 +70,7 @@ public enum SettingsSchema {
     SettingSpec("voice", .token(pattern: "^(?i)[a-z0-9_-]{1,40}$", maxLength: 40, lowercase: true), "eve", .voice, "Voice"),
     SettingSpec("speed", .number(min: minSpeed, max: maxSpeed, places: 2), 1, .voice, "Talking speed"),
     SettingSpec("voiceVolume", .number(min: 0, max: 1, places: 2), 0.75, .voice, "Volume"),
-    SettingSpec("wakeHotkey", .token(pattern: "^[A-Za-z0-9_+.-]+$", maxLength: 59, lowercase: false), "Control+Alt+G", .hotkey, "Wake hotkey", postable: false),
+    SettingSpec("wakeHotkey", .token(pattern: "^[A-Za-z0-9_+.-]+$", maxLength: 59, lowercase: false), .string(HotkeyAccelerator.defaultAccelerator), .hotkey, "Wake hotkey", postable: false),
     SettingSpec("listenMode", .choice(["always", "tap"]), "always", .listening, "Listening"),
     SettingSpec("halfDuplex", .bool, false, .listening, "Don't listen while Grok is talking"),
     SettingSpec("wakeWord", .bool, false, .listening, "Wake word: say “Hey Orbit” (or “Hey Grok”)"),

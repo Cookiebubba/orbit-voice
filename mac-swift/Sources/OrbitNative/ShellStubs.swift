@@ -27,7 +27,7 @@ final class IdleVoice: VoiceUI {
 }
 
 final class UnregisteredHotkey: HotkeyControl {
-  var accelerator = "Control+Alt+G"
+  var accelerator = HotkeyAccelerator.defaultAccelerator
   func info() -> HotkeyControlInfo { HotkeyControlInfo(accelerator: accelerator, registered: false) }
   func set(_ accelerator: String) -> HotkeyControlInfo {
     var i = info()
