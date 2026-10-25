@@ -51,7 +51,7 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 
 ## Requirements
 
-- Windows 10 or 11 (x64)
+- Windows 10 or 11 (x64), or macOS 12+ on Apple silicon or Intel (beta: see [docs/MAC.md](docs/MAC.md) for building, the permissions it asks for, and signing)
 - [Claude desktop app](https://claude.ai/download) with Claude Code sessions
 - An [xAI API key](https://console.x.ai). Voice is billed by xAI per minute connected (about $0.08/min at the time of writing). Orbit shows an estimate in Settings → Usage. Saying "go to sleep" hangs up, so sleeping costs nothing (unless you turn on "Wake Grok to say it": each spoken update bills a few seconds).
 - For the second brain: Claude Code, signed in. The Claude desktop app already includes it, and Orbit finds it automatically. Questions count toward your Claude plan, or toward an Anthropic API key if you set one in Settings.
@@ -147,7 +147,7 @@ flowchart LR
 
 ## Build from source
 
-Requires Node.js 20+ on Windows.
+Requires Node.js 20+ on Windows. On a Mac: `bash scripts/mac-setup.sh` (also builds Orbit's Swift helper), then `npm run app`; `npm run dist:mac` builds the dmg and zip ([docs/MAC.md](docs/MAC.md)).
 
 ```bash
 npm ci
