@@ -93,9 +93,12 @@ export function liftedStage({ area, strip, box = null, floor = 3 }) {
   }
   let b = null;
   if (box && [box.x, box.y, box.w, box.h].every(Number.isFinite) && box.w > 0) {
-    b = { x: box.x + dx, y: box.y + dy, w: box.w, h: box.h };
+    // (Only the part inside his stage: a box running past its edge would push him out through it.)
+    const x1b = Math.max(0, box.x + dx);
+    const x2b = Math.min(W, box.x + dx + box.w);
+    b = { x: x1b, y: box.y + dy, w: x2b - x1b, h: box.h };
     const bottom = Math.min(ground, stripGround);
-    if (bottom - b.y > 2 && b.x < W && b.x + b.w > 0) solids.push({ id: 'box', x: b.x, y: b.y, w: b.w, h: bottom - b.y });
+    if (bottom - b.y > 2 && b.w > 8) solids.push({ id: 'box', x: b.x, y: b.y, w: b.w, h: bottom - b.y });
     else b = null;
   }
   return { W, H, ground, dx, dy, ledge, box: b, solids, stripGround: Math.min(ground, stripGround), stripX: [dx, dx + strip.width] };
@@ -110,7 +113,8 @@ export function onStrip(stage, { x, y, half = 0 }) {
   if (!stage) return null;
   const [sx1, sx2] = stage.stripX;
   if (x - half < sx1 - 1 || x + half > sx2 + 1) return null;
-  if (stage.box && Math.abs(y - stage.box.y) < 2.5 && x > stage.box.x && x < stage.box.x + stage.box.w) return 'box';
+  // (On the box: any of his base over it, as his engine lets him rest on it.)
+  if (stage.box && Math.abs(y - stage.box.y) < 2.5 && x + half > stage.box.x && x - half < stage.box.x + stage.box.w) return 'box';
   if (Math.abs(y - stage.stripGround) < 2.5) return 'floor';
   return null;
 }

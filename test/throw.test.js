@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { PRESS, clampSpeed, liftedStage, nearestStripSpot, onStrip, pressKind, pushSample, throwVelocity } from '../ui/src/buddy/throw.js';
 import { THROW, createThrow, headBack } from '../ui/src/qubit/throw.js';
 import { FLOOR, createDirector, sideFor } from '../ui/src/qubit/director.js';
+import { buddyBoundsFor, liftRectFor } from '../electron/buddy-geometry.js';
 
 const fakeEl = () => ({ style: {}, attrs: {}, children: [], setAttribute(k, v) { this.attrs[k] = v; }, appendChild(c) { this.children.push(c); return c; }, remove() {} });
 globalThis.document ??= { createElementNS: () => fakeEl() };
@@ -280,6 +281,87 @@ test('landed away from his strip (the screen edge beside it): he gets back onto 
       q.destroy();
     });
   }
+});
+
+// ---------------------------------------------------------------- inside the window he lives on
+// While held or thrown his window covers the window he lives on (the Claude window, or the app's for
+// Orbit anywhere), clipped to the work area: he stays inside it, never over another window.
+test('the lifted rect: the host window clipped to the work area; no host, the work area', () => {
+  const area = { x: 0, y: 0, width: 1920, height: 1040 };
+  assert.deepEqual(liftRectFor({ x: 300, y: 100, width: 1000, height: 700 }, area), { x: 300, y: 100, width: 1000, height: 700 });
+  // Maximised (its invisible borders hang over the edges and under the taskbar): clipped.
+  assert.deepEqual(liftRectFor({ x: -8, y: -8, width: 1936, height: 1056 }, area), { x: 0, y: 0, width: 1920, height: 1040 });
+  // Half off the screen: only the part on it.
+  assert.deepEqual(liftRectFor({ x: 1500, y: 600, width: 1000, height: 700 }, area), { x: 1500, y: 600, width: 420, height: 440 });
+  assert.deepEqual(liftRectFor(null, area), area, 'no window to live on: the work area');
+  assert.equal(liftRectFor({ x: 5000, y: 0, width: 800, height: 600 }, area), null, 'not on this screen at all');
+  assert.equal(liftRectFor({ x: 0, y: 0, width: 800, height: 600 }, null), null);
+});
+
+function windowScene({ host, workArea = AREA, box = BOX, seed = 3 } = {}) {
+  const lifted = liftRectFor(host, workArea);
+  const strip = buddyBoundsFor(host);
+  const st = liftedStage({ area: lifted, strip, box, floor: FLOOR });
+  const q = E.create({ mount: null, width: st.W, height: st.H, size: 36, floor: FLOOR, x: st.W / 2, mode: 'idle', keepAlive: true });
+  q.brainT.play = q.brainT.stunt = Infinity;
+  q.bounds = [0, st.W];
+  const th = createThrow(q);
+  th.setSolids(st.solids);
+  return { q, th, st, lifted, strip };
+}
+
+test('thrown inside his window: random throws bounce off its edges and land on its floor or the prompt box', async () => {
+  const problems = [];
+  const where = new Set();
+  await withRandom(31, async () => {
+    const R = seeded(91);
+    for (let n = 0; n < 40; n++) {
+      // Windows of different sizes and places, some hanging off the screen.
+      const host = { x: Math.round(-200 + R() * 1200), y: Math.round(R() * 400), width: Math.round(700 + R() * 900), height: Math.round(450 + R() * 600) };
+      const { q, th, st, lifted } = windowScene({ host, box: R() < 0.7 ? BOX : null });
+      assert.equal(st.W, lifted.width, 'his stage is that window (clipped), not the screen');
+      th.hold({ x: q.cx, y: q.ground - q.cy });
+      th.move({ x: R() * st.W, y: R() * st.ground });
+      for (let i = 0; i < 30; i++) {
+        q.update(1 / 60);
+        inside(q, st, problems, `held ${n}`);
+        await null;
+      }
+      const ang = R() * Math.PI * 2;
+      const speed = R() * THROW.maxSpeedS * q.S;
+      th.release({ x: Math.cos(ang) * speed, y: Math.sin(ang) * speed });
+      const { landed } = await fly(q, th, st, 14, problems, `throw ${n}`);
+      assert.ok(landed, `throw ${n} landed`);
+      assert.ok(Math.abs(wrap(q.angle)) < 1, `throw ${n} flat on a face`);
+      const on = onStrip(st, { x: q.cx, y: q.ground - q.sy, half: q.side / 2 });
+      assert.ok(on === 'floor' || on === 'box', `throw ${n}: on his window's floor or the prompt box (${on}, x ${Math.round(q.cx)} y ${Math.round(q.ground - q.sy)}, stage ${JSON.stringify({ W: st.W, ground: st.ground, sg: st.stripGround, box: st.box, ledge: st.ledge, sx: st.stripX })})`);
+      where.add(on);
+      q.destroy();
+    }
+  });
+  assert.deepEqual(problems.slice(0, 5), [], 'never outside his window (so never over another one)');
+  assert.ok(where.has('floor'));
+});
+
+test("held: dragged past his window's edge, he stops at the edge", async () => {
+  await withRandom(32, async () => {
+    const { q, th, st } = windowScene({ host: { x: 300, y: 100, width: 1000, height: 700 } });
+    th.hold({ x: q.cx, y: q.ground - q.cy });
+    const problems = [];
+    for (const target of [{ x: -900, y: 300 }, { x: st.W + 900, y: 300 }, { x: 400, y: -800 }, { x: 400, y: st.H + 800 }]) {
+      th.move(target);
+      for (let i = 0; i < 40; i++) {
+        q.update(1 / 60);
+        inside(q, st, problems, 'held');
+      }
+      const x = q._rx ?? q.cx;
+      const y = q.ground - q.cy;
+      const half = q.side / 2;
+      assert.ok(x >= half - 1 && x <= st.W - half + 1 && y >= half - 1 && y <= st.ground - half + 1, `clamped at the edge for ${JSON.stringify(target)}: ${x.toFixed(0)},${y.toFixed(0)}`);
+    }
+    assert.deepEqual(problems, []);
+    q.destroy();
+  });
 });
 
 // ---------------------------------------------------------------- the strip again, and the director

@@ -64,5 +64,23 @@ export const sendOffsetFor = (box, send) => (box && send ? { r: box.x + box.w - 
 /** The Send button at that offset from a box that moved or grew (its size as last seen). */
 export const sendAtOffset = (box, offset, size) => (box && offset && size ? { x: box.x + box.w - offset.r, y: box.y + box.h - offset.b, w: size.w, h: size.h } : null);
 
+/**
+ * The avatar's window while it's held or thrown: the window it lives on (`host`, DIPs), clipped to the
+ * work area of its display (never under the taskbar), so the avatar stays inside that window and never
+ * shows over another one. No host (free-floating, or none known): the work area itself. null if the
+ * two don't overlap.
+ */
+export function liftRectFor(host, workArea) {
+  const ok = (r) => r && [r.x, r.y, r.width, r.height].every(Number.isFinite) && r.width > 0 && r.height > 0;
+  if (!ok(workArea)) return null;
+  if (!ok(host)) return { x: Math.round(workArea.x), y: Math.round(workArea.y), width: Math.round(workArea.width), height: Math.round(workArea.height) };
+  const x1 = Math.max(host.x, workArea.x);
+  const y1 = Math.max(host.y, workArea.y);
+  const x2 = Math.min(host.x + host.width, workArea.x + workArea.width);
+  const y2 = Math.min(host.y + host.height, workArea.y + workArea.height);
+  if (x2 - x1 < 40 || y2 - y1 < 40) return null;
+  return { x: Math.round(x1), y: Math.round(y1), width: Math.round(x2 - x1), height: Math.round(y2 - y1) };
+}
+
 /** How far Claude's visible prompt box reaches beyond its text field (DIPs). */
 export const BOX_PADDING = Object.freeze({ padX: 12, padTop: 14 });

@@ -959,9 +959,12 @@ async function run() {
     mouse('mouseMove', gx, gy);
     await wait(16);
   }
-  check(await waitFor(() => { const b = qwin.getBounds(); return b.x === FAKE_AREA.x && b.width === FAKE_AREA.width && b.height === FAKE_AREA.height; }, 2000), 'picked up: his window covers the work area of his display (here a pretend one, off screen)', JSON.stringify(qwin.getBounds()));
+  // His window covers the window he lives on (the fake Claude window), clipped to the work area of
+  // its display (a pretend one, off screen): he stays inside it, never over another window.
+  const hostRect = () => { const r = desk.windows[0].rect; return { x: Math.max(r.x, FAKE_AREA.x), y: Math.max(r.y, FAKE_AREA.y), width: Math.min(r.x + r.w, FAKE_AREA.x + FAKE_AREA.width) - Math.max(r.x, FAKE_AREA.x), height: Math.min(r.y + r.h, FAKE_AREA.y + FAKE_AREA.height) - Math.max(r.y, FAKE_AREA.y) }; };
+  const sameRect = (a, b) => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+  check(await waitFor(() => sameRect(qwin.getBounds(), hostRect()), 2000), 'picked up: his window covers the Claude window he lives on (not the whole screen)', `${JSON.stringify(qwin.getBounds())} vs ${JSON.stringify(hostRect())}`);
   check(await waitFor(async () => (await qjs('window.__qubit.frame')) === 'area' && (await qjs('window.__qubit.throw.held')), 2000), 'held, on the work-area stage');
-  check(qwin.isAlwaysOnTop(), 'on top while held (over any window he is dragged across)');
   check(ignoreCalls.at(-1) === false, 'the window takes the mouse while he is held');
   await wait(250);
   const held = await screenPos();
@@ -993,8 +996,27 @@ async function run() {
   // Move the pointer off where he was let go: the window must let clicks through as he flies off.
   mouse('mouseMove', gx + 400, gy + 200);
   check(await waitFor(() => ignoreCalls.at(-1) === true, 1500), 'the moment he is out from under the pointer, clicks go through again');
+  // Every 20 ms of the flight: the whole turned square inside the window he lives on.
+  const outside = [];
+  const watchInside = (async () => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < 4000 && !(await qjs('window.__lands.length'))) {
+      const r = await qjs('(() => { const q = window.__qubit.q, a = (q.angle + q._tilt()) * Math.PI / 180, [hw, hh] = q._halfExtents(); return { x: q._rx, y: q._ry, ex: hw * Math.abs(Math.cos(a)) + hh * Math.abs(Math.sin(a)), ey: hh * Math.abs(Math.cos(a)) + hw * Math.abs(Math.sin(a)), W: innerWidth, H: innerHeight, frame: window.__qubit.frame }; })()');
+      const b = qwin.getBounds();
+      const host = hostRect();
+      if (r.frame === 'area' && (b.x + r.x - r.ex < host.x - 1.5 || b.x + r.x + r.ex > host.x + host.width + 1.5 || b.y + r.y - r.ey < host.y - 1.5 || b.y + r.y + r.ey > host.y + host.height + 1.5)) outside.push([Math.round(b.x + r.x), Math.round(b.y + r.y)]);
+      await wait(20);
+    }
+  })();
+  // The Claude window moves (and narrows) mid-flight: his bounds follow it, live.
+  await wait(250);
+  desk.windows[0].rect = { ...desk.windows[0].rect, x: desk.windows[0].rect.x + 60, w: desk.windows[0].rect.w - 40 };
+  desk.nudge?.();
+  check(await waitFor(() => sameRect(qwin.getBounds(), hostRect()), 1500), 'the window moves and narrows mid-flight: his window follows it', `${JSON.stringify(qwin.getBounds())} vs ${JSON.stringify(hostRect())}`);
   check(await waitFor(async () => (await qjs('window.__lands.length')) > 0, 8000), 'he lands');
   await flight;
+  await watchInside;
+  check(outside.length === 0, 'all through the flight he stayed inside that window (never over another)', JSON.stringify(outside.slice(0, 5)));
   const land = (await qjs('window.__lands'))[0];
   const bounces = await qjs('window.__bounces');
   out(`  landed after ${land.secs.toFixed(2)} s, ${bounces} bounce(s), impact ${Math.round(land.impact)} px/s`);
@@ -1002,10 +1024,11 @@ async function run() {
   // On the screen's bottom edge beside his strip, or on the strip: either way he ends up back on it.
   check(await waitFor(async () => (await qjs('window.__qubit.frame')) === 'strip', 20_000), 'back on his strip: his window is the strip again');
   const strip1 = qwin.getBounds();
-  check(strip1.x === strip0.x && strip1.y === strip0.y && strip1.width === strip0.width && strip1.height === strip0.height, 'the same strip as before', JSON.stringify(strip1));
+  const r1 = desk.windows[0].rect;
+  check(strip1.x === r1.x && strip1.y === r1.y + r1.h - strip0.height && strip1.width === r1.w && strip1.height === strip0.height, 'his strip, where the window is now', JSON.stringify(strip1));
   check(ignoreCalls.at(-1) === true, 'click-through again');
   const after = await screenPos();
-  const landScreenX = FAKE_AREA.x + land.x;
+  const landScreenX = hostRect().x + land.x;
   out(`  he landed at screen x ${Math.round(landScreenX)}; back on his strip at ${Math.round(after.x)} (picked up at ${Math.round(p0.x)})`);
   const acts3 = await qjs('window.__acts3');
   out(`  then: ${acts3.slice(0, 12).join(', ')}`);
@@ -1023,6 +1046,7 @@ async function run() {
   await throwSwitch(true);
   check(await waitFor(async () => (await qjs('window.__qubit.state.prefs.throw')) === false, 3000), 'off: his page hears it');
   const p1 = await screenPos();
+  const stripNow = qwin.getBounds();
   mouse('mouseMove', p1.x, p1.y);
   await wait(60);
   mouse('mouseDown', p1.x, p1.y);
@@ -1031,7 +1055,7 @@ async function run() {
     await wait(16);
   }
   await wait(400);
-  check(qwin.getBounds().width === strip0.width && !(await qjs('window.__qubit.throw.active')), 'off: he is not picked up');
+  check(qwin.getBounds().width === stripNow.width && !(await qjs('window.__qubit.throw.active')), 'off: he is not picked up');
   mouse('mouseUp', p1.x - 110, p1.y - 88);
   await throwSwitch(true);
   check(await waitFor(async () => (await qjs('window.__qubit.state.prefs.throw')) === true, 3000), 'on again');
@@ -1092,7 +1116,7 @@ async function run() {
     drag('mouseMove', dx, dy);
     await wait(16);
   }
-  check(await waitFor(async () => (await qjs('window.__qubit.throw.held')) && qwin.getBounds().width === FAKE_AREA.width, 2000), 'asleep, he can still be picked up');
+  check(await waitFor(async () => (await qjs('window.__qubit.throw.held')) && sameRect(qwin.getBounds(), hostRect()), 2000), 'asleep, he can still be picked up');
   for (let i = 0; i < 6; i++) {
     dx += 24;
     dy -= 14;

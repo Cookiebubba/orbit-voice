@@ -11,10 +11,11 @@
 //     little poke);
 //   - press and hold, or drag: he's picked up and follows the pointer; let go and he's thrown
 //     (throw.js), with the pointer's speed (Settings: "Throw your avatar"). While he's held or in the
-//     air his window covers the work area of this display (electron/avatar.js lift), so he can go
-//     anywhere on it; it's still click-through except over him. He lands on the strip's floor or the
-//     prompt box (or the screen's bottom edge, and then hops back to his strip), reacts, and carries
-//     on from where he landed; then the window is his strip again.
+//     air his window covers the window he lives on (electron/avatar.js lift; free-floating, the work
+//     area), so he stays inside it: dragged past its edge he stops there, thrown he bounces off its
+//     edges, and he never shows over another window. It's still click-through except over him. He
+//     lands on its floor or the prompt box, reacts, and carries on from where he landed; then the
+//     window is his strip again. If that window moves or resizes meanwhile, his bounds follow it.
 //
 // Frame budget: nothing runs until he is placed; asleep and still, he drops to 30 fps (see
 // lowPower below); while the window is hidden (Claude minimized) the frame loop stops altogether.
@@ -151,6 +152,19 @@ function syncFrame() {
     if (!press) hoverNow();
     return;
   }
+  if (lift && frame === 'area' && liftedAt && JSON.stringify(lift.area) !== JSON.stringify(liftedAt.area) && sameSize(lift.area)) {
+    // The window he lives on moved or resized mid-throw: he goes with it (same place from its left
+    // edge and its floor), inside its new edges.
+    const prev = liftedAt.area;
+    liftedAt = lift;
+    th.reframe({ shift: { x: 0, y: lift.area.height - prev.height }, W: lift.area.width, H: lift.area.height, floor: FLOOR });
+    const half = q.side / 2;
+    q.cx = Math.min(Math.max(q.cx, half), lift.area.width - half);
+    if (q.cy > q.ground - half) q.cy = q.ground - half;
+    restage();
+    return;
+  }
+  if (lift && frame === 'area') liftedAt = { ...liftedAt, strip: lift.strip };
   if (frame === 'strip' && !lift) dir.setGeometry(geometry());
   else if (frame === 'area') restage();
 }

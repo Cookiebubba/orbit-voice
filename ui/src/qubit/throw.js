@@ -138,15 +138,27 @@ export function createThrow(q, { tune = {} } = {}) {
         h[k] += h[v] * s;
       }
     }
-    const half = q.side / 2;
-    h.x = clamp(h.x, half, q.W - half);
-    h.y = clamp(h.y, half, q.ground - half);
     // The swing: toward a lean that follows the sideways speed, back level when it stops.
     const want = clamp((h.vx / q.side) * 1.2, -T.swingMax, T.swingMax);
     const k = (2 * Math.PI * 3) ** 2;
     const c = 2 * 0.55 * 2 * Math.PI * 3;
     h.wv += (k * (want - wrap(q.angle)) - c * h.wv) * dt;
     q.angle += h.wv * dt;
+    // Inside his stage (the window he lives on), by his turned extents: dragged past its edge, he
+    // stops at it, and no corner pokes over another window. And never inside a solid (the prompt
+    // box): he slides along its top or side instead, so he's never let go inside one.
+    const e = ext();
+    h.x = clamp(h.x, e.x, q.W - e.x);
+    h.y = clamp(h.y, e.y, q.ground - e.y);
+    for (const sd of solids.length ? solids : (q.envSrc && q.envSrc.solids) || []) {
+      if (sd.oneWay || !(h.x + e.x > sd.x && h.x - e.x < sd.x + sd.w && h.y + e.y > sd.y && h.y - e.y < sd.y + sd.h)) continue;
+      const outs = [{ x: h.x, y: sd.y - e.y }];
+      if (sd.x - e.x >= e.x) outs.push({ x: sd.x - e.x, y: h.y });
+      if (sd.x + sd.w + e.x <= q.W - e.x) outs.push({ x: sd.x + sd.w + e.x, y: h.y });
+      const best = outs.reduce((a, b) => (Math.hypot(b.x - h.x, b.y - h.y) < Math.hypot(a.x - h.x, a.y - h.y) ? b : a));
+      h.x = best.x;
+      h.y = Math.max(e.y, best.y);
+    }
     q.cx = h.x;
     q.cy = q.ground - h.y;
     q.air = true;

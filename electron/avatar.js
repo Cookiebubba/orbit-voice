@@ -28,16 +28,18 @@
 // the old one's page fades out (leave()), and then the old window closes.
 //
 // Lifted (lift(true), from the page: the user picked the avatar up to throw it): the window grows to
-// cover the work area of the display it's on (never the taskbar), always on top, so the avatar can be
-// dragged and fly anywhere on that screen. It stays click-through except over the avatar (the page
-// says where it is, as always). The strip's place keeps being worked out meanwhile (the Claude window
-// may move) and is sent to the page, so the avatar can land back on it; lift(false) gives the strip
-// back. If the page goes quiet while lifted (no lift(true) for LIFT_MAX_QUIET_MS), the strip comes back
+// cover the whole window the avatar lives on (the Claude window, or the app window for Orbit
+// anywhere), clipped to the work area of its display (never the taskbar), keeping the strip's place
+// in the z-order, so the avatar is dragged and flies inside that window and never over another one.
+// Free-floating (no window to live on), it covers the work area. It stays click-through except over
+// the avatar. The window's rect and the strip's place keep being worked out meanwhile (the window may
+// move or resize mid-flight: the lifted rect follows it) and are sent to the page; lift(false) gives
+// the strip back. If the page goes quiet while lifted (no lift(true) for LIFT_MAX_QUIET_MS), the strip comes back
 // by itself, so the window can never be left covering the screen.
 
 import { BrowserWindow, screen } from 'electron';
 
-import { BUDDY_HEIGHT, boxInStrip, buddyBoundsFor, freeStripFor, sendAtOffset, sendInStrip, sendOffsetFor, usableBox } from './buddy-geometry.js';
+import { BUDDY_HEIGHT, boxInStrip, buddyBoundsFor, freeStripFor, liftRectFor, sendAtOffset, sendInStrip, sendOffsetFor, usableBox } from './buddy-geometry.js';
 import { isAvatarAction } from '../src/avatar-commands.js';
 import { createHoverPoller } from './avatar-hover.js';
 import { cueName } from '../src/emote-cues.js';
@@ -238,15 +240,19 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   }
 
   /** Picked up: the window covers the work area (always on top) until drop(). Again: still lifted. */
+  /** The lifted window's rect: the host window clipped to the work area (free-floating: the work area). */
+  function liftRect(strip) {
+    const host = !free && claudeDip ? claudeDip : null;
+    return liftRectFor(host, areaFor(host || strip)) || liftRectFor(null, areaFor(strip));
+  }
+
   function lift() {
     if (!win || win.isDestroyed() || !visible() || leaving) return false;
     if (!lifted) {
       const strip = win.getBounds();
-      lifted = { strip, area: areaFor(strip) };
+      lifted = { strip, area: liftRect(strip) };
       win.setBounds(lifted.area);
-      win.setAlwaysOnTop(true, 'screen-saver');
-      layer = 'top';
-      info_(`${kind}: picked up (the window covers the work area while it's held or flying)`);
+      info_(`${kind}: picked up (the window covers ${free ? 'the work area' : 'the window it lives on'} while it's held or flying)`);
     }
     clearTimeout(liftTimer);
     liftTimer = setTimeout(() => {
@@ -296,9 +302,17 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     claudeDip = screen.screenToDipRect(null, { x: claude.x, y: claude.y, width: claude.w, height: claude.h });
     const b = buddyBoundsFor(claudeDip);
     if (lifted) {
-      // Held or flying: the window stays on the work area; the page learns where the strip is now.
-      if (JSON.stringify(b) !== JSON.stringify(lifted.strip)) {
+      // Held or flying: the window covers the host window (its live rect); the page learns where it
+      // and the strip are now.
+      const area = liftRect(b);
+      const moved = JSON.stringify(area) !== JSON.stringify(lifted.area);
+      if (moved || JSON.stringify(b) !== JSON.stringify(lifted.strip)) {
         lifted.strip = b;
+        if (moved) {
+          lifted.area = area;
+          win.setBounds(area);
+        }
+        setLayer(claude.front === 'other' ? `above:${claude.hwnd}` : 'top');
         if (!applyRaw()) send();
       }
       return;
