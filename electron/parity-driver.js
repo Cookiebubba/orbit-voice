@@ -16,6 +16,7 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { app, dialog, globalShortcut, ipcMain, screen, session, shell, systemPreferences } from 'electron';
 import { getSetting } from '../src/config.js';
@@ -34,6 +35,15 @@ const TOKEN = process.env.ORBIT_PARITY_TOKEN || '';
 const FAKE_MIC = process.env.ORBIT_FAKE_MIC || '';
 const MUTED = process.env.ORBIT_MUTE_OUTPUT === '1';
 const JS_TIMEOUT_MS = 2000;
+
+// The fake microphone's page setup (parity-preload.cjs), for the subframes its preload does not reach.
+const FAKE_MIC_SETUP = (() => {
+  try {
+    return String(createRequire(import.meta.url)('./parity-preload.cjs').setup);
+  } catch {
+    return '';
+  }
+})();
 
 const events = createRing();
 const sounds = createRing(SOUNDS_MAX);
@@ -153,6 +163,18 @@ function watchMain(win) {
     };
     wc.on('did-finish-load', initial);
     if (!wc.isLoading()) initial();
+  }
+  // Subframes of Orbit's own pages (the wake word listens from wake.html in an iframe) get the same
+  // window.__orbitParity and fake mic, set up as soon as their document is there: a frame preload
+  // only runs in main frames. (wake.ts opens the mic only after loading its model, well after this.)
+  if (FAKE_MIC && FAKE_MIC_SETUP) {
+    wc.on('frame-created', (_e, { frame }) => {
+      if (!frame || frame === wc.mainFrame) return;
+      frame.on('dom-ready', () => {
+        if (frame.detached || !ours({ getURL: () => frame.url })) return;
+        frame.executeJavaScript(`(${FAKE_MIC_SETUP})(${JSON.stringify({ fakeMic: true })})`, true).catch(() => {});
+      });
+    });
   }
 }
 
@@ -294,7 +316,7 @@ export function startParityDriver(ctx) {
   async function state() {
     const main = ctx.main();
     const orb = ctx.orb();
-    const page = alive(main) ? await js(main.webContents, '(() => { const p = window.__orbitParity; return p ? { voice: p.voice ? p.voice() : null, view: p.app ? p.app.view : null } : null; })()') : null;
+    const page = alive(main) ? await js(main.webContents, '(() => { const p = window.__orbitParity; return p ? { voice: p.voice ? { ...p.voice(), wakeWord: p.app ? p.app.wakeWord : null } : null, view: p.app ? p.app.view : null } : null; })()') : null;
     const pg = page && !page.__error ? page : null;
     const c = ctx.claude();
     const home = ctx.avatar();
@@ -434,6 +456,7 @@ export function startParityDriver(ctx) {
       return { ok: true, perms };
     },
     'onboarding.next': () => ({ ok: false, error: 'Electron has no onboarding screen.' }),
+    'key.saved': () => pageCall('(a.keySaved(), { ok: true })'),
     quit: () => {
       setTimeout(() => app.quit(), 100);
       return { ok: true };

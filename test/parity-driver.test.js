@@ -31,7 +31,7 @@ test('every protocol action is known, and only those', () => {
   const protocol = fs.readFileSync(path.join(ROOT, 'parity', 'PROTOCOL.md'), 'utf8');
   const table = protocol.slice(protocol.indexOf('### `POST /parity/act`'), protocol.indexOf('## Cases'));
   const named = [...table.matchAll(/^\| `([a-z.]+)`(?:, `([a-z.]+)`)? \|/gm)].flatMap((m) => [m[1], m[2]].filter(Boolean));
-  assert.equal(named.length, 17);
+  assert.equal(named.length, 18);
   assert.deepEqual([...PARITY_ACTIONS].sort(), [...new Set(named)].sort());
   assert.deepEqual(validateAct({ action: 'rm -rf' }).ok, false);
   assert.deepEqual(validateAct({ action: '__proto__' }).ok, false);
@@ -132,8 +132,10 @@ test('event data holds small plain values only', () => {
 test('the voice state: the page\x27s values in the protocol\x27s shape, with defaults', () => {
   assert.deepEqual(shapeVoice(null), EMPTY_VOICE);
   assert.deepEqual(shapeVoice({ phase: 'weird', playedMs: -5, chunks: 2.6, draft: { id: 3, text: 'fix it', targetTitle: null }, lastError: 'x'.repeat(300) }), {
-    phase: 'off', asleep: false, connected: false, muted: false, playedMs: 0, scheduledMs: 0, chunks: 3, lastError: 'x'.repeat(200), draft: { id: 3, text: 'fix it', targetTitle: null }, sentCount: 0,
+    phase: 'off', asleep: false, connected: false, muted: false, playedMs: 0, scheduledMs: 0, chunks: 3, lastError: 'x'.repeat(200), draft: { id: 3, text: 'fix it', targetTitle: null }, sentCount: 0, wakeWord: 'off',
   });
+  assert.equal(shapeVoice({ wakeWord: 'listening' }).wakeWord, 'listening');
+  assert.equal(shapeVoice({ wakeWord: 'deaf' }).wakeWord, 'off');
   assert.equal(shapeVoice({ phase: 'speaking', connected: 1 }).connected, true);
   assert.equal(shapeVoice({ draft: { id: 1 } }).draft, null);
 });

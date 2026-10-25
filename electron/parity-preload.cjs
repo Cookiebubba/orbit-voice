@@ -71,3 +71,7 @@ function setup(config) {
 try {
   contextBridge.executeInMainWorld({ func: setup, args: [cfg] });
 } catch {}
+
+// The driver injects the same setup into Orbit's subframes (the wake word's page), which a frame
+// preload does not reach.
+module.exports = { setup };

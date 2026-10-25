@@ -255,6 +255,9 @@ async function runCase(c, which, features) {
     if (c.fixtures?.grok || c.fixtures?.key) {
       const r = await bridge.http({ method: 'POST', path: '/api/key', body: { key: c.fixtures?.key || FAKE_XAI_KEY } });
       if (r.status !== 200) throw new Error(`could not set the test key (HTTP ${r.status})`);
+      // As the app's key screen does once it saved one: the app now knows it has a key.
+      const k = (await app.driver.act('key.saved', {})).body;
+      if (!k?.ok) throw new Error(`the app did not take the saved key: ${k?.error || 'no answer'}`);
     }
     for (let i = 0; i < c.steps.length; i++) {
       try {

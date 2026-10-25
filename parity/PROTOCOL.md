@@ -67,7 +67,8 @@ A snapshot of everything the cases look at. Frames are screen points, top-left o
   "mouse": { "visible": false, "pos": {...} | null, "windows": 0 },
   "voice": { "phase": "off|connecting|listening|thinking|speaking", "asleep": false, "connected": false,
              "muted": false, "playedMs": 0, "scheduledMs": 0, "chunks": 0, "lastError": null,
-             "draft": null | { "id": 1, "text": "...", "targetTitle": null }, "sentCount": 0 },
+             "draft": null | { "id": 1, "text": "...", "targetTitle": null }, "sentCount": 0,
+             "wakeWord": "off|loading|listening|error" },  // "Hey Orbit": listening = ready to hear it
   "onboarding": { "mic": "granted|denied|not-determined|restricted", "ax": true, "screen": true,
                   "step": "done" | "mic" | "ax", "shown": false },  // required: mic, then ax; screen is optional
   "hotkey": { "accelerator": "Control+Alt+G", "label": "⌃⌥G", "registered": true },
@@ -112,6 +113,7 @@ the sounds the shell played (name and time only). Event types (both builds use e
 | `window.minimize` | | Minimize the main window (turns into the orb). |
 | `perms.set` | as `ORBIT_FAKE_PERMS` | Change the fake permission state; the shell re-checks as it would after the user returns from System Settings. |
 | `onboarding.next` | | Press the onboarding's (or the permissions banner's) primary button for the current step. |
+| `key.saved` | | What the app does once its key screen has saved an xAI key (the runner saves it through the bridge first): the app now knows it has one. |
 | `quit` | | Quit cleanly. |
 
 ## Cases

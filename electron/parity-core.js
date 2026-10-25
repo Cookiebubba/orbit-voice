@@ -109,6 +109,7 @@ const ACTIONS = {
   'window.minimize': none,
   'perms.set': (a) => (parsePerms(a, {}) ? { perms: a } : 'mic: granted|denied|not-determined|restricted, ax and screen: booleans'),
   'onboarding.next': none,
+  'key.saved': none,
   quit: none,
 };
 export const PARITY_ACTIONS = Object.freeze(Object.keys(ACTIONS));
@@ -163,7 +164,8 @@ export function createRing(max = EVENTS_MAX) {
 }
 
 const PHASES = new Set(['off', 'connecting', 'listening', 'thinking', 'speaking']);
-export const EMPTY_VOICE = Object.freeze({ phase: 'off', asleep: false, connected: false, muted: false, playedMs: 0, scheduledMs: 0, chunks: 0, lastError: null, draft: null, sentCount: 0 });
+const WAKE = new Set(['off', 'loading', 'listening', 'error']);
+export const EMPTY_VOICE = Object.freeze({ phase: 'off', asleep: false, connected: false, muted: false, playedMs: 0, scheduledMs: 0, chunks: 0, lastError: null, draft: null, sentCount: 0, wakeWord: 'off' });
 
 /** The page's voice state (ui/src/useVoice.ts, window.__orbitParity.voice()) in the protocol's shape. */
 export function shapeVoice(v) {
@@ -181,6 +183,7 @@ export function shapeVoice(v) {
     lastError: typeof v.lastError === 'string' ? v.lastError.slice(0, 200) : null,
     draft: d,
     sentCount: n(v.sentCount),
+    wakeWord: WAKE.has(v.wakeWord) ? v.wakeWord : 'off',
   };
 }
 

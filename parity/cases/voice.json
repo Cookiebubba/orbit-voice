@@ -903,8 +903,12 @@
    },
    "steps": [
     {
-     "do": "sleep",
-     "ms": 4000
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 30000,
+     "expect": {
+      "voice.wakeWord": "listening"
+     }
     },
     {
      "do": "state",
@@ -956,8 +960,12 @@
    },
    "steps": [
     {
-     "do": "sleep",
-     "ms": 4000
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 30000,
+     "expect": {
+      "voice.wakeWord": "listening"
+     }
     },
     {
      "do": "act",

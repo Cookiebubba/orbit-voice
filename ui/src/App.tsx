@@ -112,6 +112,7 @@ export default function App() {
   if (parity) {
     parity.app = {
       view,
+      wakeWord: wakeStatus,
       show: (next: View) => setView(next),
       type: (t: string) => {
         if (v.phase === "off") return { ok: false, error: "The conversation is off (the typing box shows only during a call)." };
@@ -121,6 +122,7 @@ export default function App() {
       sleep: () => v.sleep(),
       wake: () => v.wake(),
       hangup: () => v.stop(),
+      keySaved: () => app.setHasKey(),
       setting: (key: string) => (key === "openAtLogin" ? desktop?.startWithWindows.get() : (app.config?.settings as any)?.[key]),
       setSetting: async (key: string, value: unknown) => {
         if (key === "wakeHotkey") {
