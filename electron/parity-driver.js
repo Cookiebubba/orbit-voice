@@ -362,8 +362,15 @@ export function startParityDriver(ctx) {
       if (!b64) return { ok: false, error: 'Not a readable WAV file (RIFF/WAVE, at most 30 MB).' };
       const main = ctx.main();
       if (!alive(main)) return { ok: false, error: 'The main window is not there.' };
-      const r = await js(main.webContents, `(async () => { const m = window.__orbitParity && window.__orbitParity.mic; if (!m) return { __error: 'no fake mic in the page' }; return m.play(${JSON.stringify(b64)}, ${Number(gapMs) || 0}); })()`, 10_000);
+      const code = `(async () => { const m = window.__orbitParity && window.__orbitParity.mic; if (!m) return { __error: 'no fake mic in the page' }; return m.play(${JSON.stringify(b64)}, ${Number(gapMs) || 0}); })()`;
+      const r = await js(main.webContents, code, 10_000);
       if (!r || r.__error) return { ok: false, error: r?.__error || 'The page did not play it.' };
+      // The same clip into every other frame's fake mic too: the wake word listens from its own frame
+      // (wake.html in an iframe), as the one real microphone would reach every page at once.
+      for (const f of main.webContents.mainFrame.framesInSubtree) {
+        if (f === main.webContents.mainFrame) continue;
+        f.executeJavaScript(code, true).catch(() => {});
+      }
       return { ok: true, ...r };
     },
     'cursor.set': ({ cursor }) => {
