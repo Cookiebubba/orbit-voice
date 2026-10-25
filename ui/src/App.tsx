@@ -106,6 +106,35 @@ export default function App() {
   };
   useEffect(() => desktop?.onAvatarSound?.((name) => soundRef.current(name)), []);
 
+  // Developer testing only (the parity suite): the driver shows views, types and changes settings
+  // through this page's own model. window.__orbitParity exists only under the parity driver's preload.
+  const parity = (window as any).__orbitParity;
+  if (parity) {
+    parity.app = {
+      view,
+      show: (next: View) => setView(next),
+      type: (t: string) => {
+        if (v.phase === "off") return { ok: false, error: "The conversation is off (the typing box shows only during a call)." };
+        v.sendText(String(t).trim());
+        return { ok: true };
+      },
+      sleep: () => v.sleep(),
+      wake: () => v.wake(),
+      hangup: () => v.stop(),
+      setting: (key: string) => (key === "openAtLogin" ? desktop?.startWithWindows.get() : (app.config?.settings as any)?.[key]),
+      setSetting: async (key: string, value: unknown) => {
+        if (key === "wakeHotkey") {
+          const r = await desktop?.hotkey.set(String(value));
+          return r?.ok ? { ok: true } : { ok: false, error: r?.error || "No desktop shell." };
+        }
+        if (key === "openAtLogin") return { ok: true, value: await desktop?.startWithWindows.set(!!value) };
+        if (!app.config || !(key in app.config.settings)) return { ok: false, error: `No setting called ${key}.` };
+        await app.updateSettings({ [key]: value } as any);
+        return { ok: true };
+      },
+    };
+  }
+
   // Show which session is open in Claude straight away, and again whenever this window comes back.
   useEffect(() => {
     const refresh = () =>
