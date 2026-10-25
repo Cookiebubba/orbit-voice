@@ -58,6 +58,8 @@ final class ClaudeWindowMode {
   private var fastUntil = DispatchTime(uptimeNanoseconds: 0)
   private var lastBoxPoll = DispatchTime(uptimeNanoseconds: 0)
   private var claudeFront = false
+  /** Claude's windows as last reported (the prompt box poll reads them instead of listing again). */
+  private var lastWins: [(id: CGWindowID, el: AXUIElement, min: Bool, rect: CGRect, pid: pid_t)] = []
   private var timers: [DispatchSourceTimer] = []
 
   init(onlyPid: pid_t) { self.onlyPid = onlyPid }
@@ -98,6 +100,7 @@ final class ClaudeWindowMode {
 
   private func report(force: Bool = false) {
     let wins = claudeWindows(onlyPid: onlyPid)
+    lastWins = wins
     let frontPid = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
     let claudePidsNow = Set(wins.map { $0.pid })
     let front: String = claudePidsNow.contains(frontPid) ? "claude" : (frontPid == Wins.orbitPid ? "orbit" : "other")
@@ -136,7 +139,7 @@ final class ClaudeWindowMode {
   }
 
   private func findBox() -> AXUIElement? {
-    guard let w = claudeWindows(onlyPid: onlyPid).first(where: { $0.id == boxWin }) else { return nil }
+    guard let w = lastWins.first(where: { $0.id == boxWin }) ?? claudeWindows(onlyPid: onlyPid).first(where: { $0.id == boxWin }) else { return nil }
     // Claude's own page: the largest web area; its prompt box is the text area named "Prompt".
     var found: [AXUIElement] = []
     var count = 0
@@ -158,8 +161,10 @@ final class ClaudeWindowMode {
   }
 
   private func pollBox() {
-    guard let w = claudeWindows(onlyPid: onlyPid).first(where: { $0.id == boxWin }) else { emitBox(nil, nil); return }
-    if w.min { return }
+    guard let known = lastWins.first(where: { $0.id == boxWin }) else { emitBox(nil, nil); return }
+    if known.min { return }
+    // The window's frame now (one AX round trip), the box's frame from its cached element.
+    let w = (rect: AX.frame(known.el) ?? known.rect, el: known.el)
     var rect: CGRect? = nil
     if let el = boxEl, let f = AX.frame(el), f.width > 0, AX.str(el, kAXRoleAttribute) != "" {
       rect = f
