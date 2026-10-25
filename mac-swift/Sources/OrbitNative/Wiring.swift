@@ -127,16 +127,7 @@ extension AppDelegate {
     hk.onSaved = { [weak self] accel in self?.sidecar?.send(["t": "shellSettings", "patch": ["wakeHotkey": .string(accel)]]) }
     voiceController = v
     shellHotkey = hk
-    // Phase 2: Claude voice's speech on this Mac in Swift, when its models are in the profile.
-    let wantLocal = !(config.testing && ProcessInfo.processInfo.environment["ORBIT_SPEECH"] == "core")
-    if wantLocal {
-      let profile = config.profileDir
-      let log = self.log
-      DispatchQueue.global(qos: .userInitiated).async {
-        let engine = NativeLocalSpeech.load(profile: profile) { log.info("speech", $0) }
-        DispatchQueue.main.async { [weak v] in v?.localSpeech = engine }
-      }
-    }
+    // Phase 2: Claude voice's speech on this Mac in Swift (syncLocalSpeech, once the settings are in).
     voice = VoiceUIAdapter(v)
     hotkeys = hk
 
@@ -168,10 +159,12 @@ extension AppDelegate {
     v.onEvent = { [weak self] type, data in
       // ("sound" is recorded where it's played; the rest go to the driver's ring as they are.)
       if type != "sound" { self?.events.add(type, data) }
+      if type == "voice.phase" { self?.syncLocalSpeech() }
     }
     Task { @MainActor [weak self, weak v] in
       try? await v?.loadConfig()
       guard let self, let v else { return }
+      self.syncLocalSpeech()
       let accel = v.settings.wakeHotkey
       if !accel.isEmpty { _ = hk.set(accel) } else { hk.start() }
       if !hk.registered { hk.start() }
@@ -198,6 +191,7 @@ extension AppDelegate {
     ui.appState.onEvent = { [weak self, weak v] evt in
       v?.handleBridgeEvent(evt)
       if evt["type"]?.stringValue == "settings.changed" {
+        self?.syncLocalSpeech()
         let keys = evt["changed"]?.arrayValue?.compactMap(\.stringValue) ?? []
         self?.overlays?.settingsChanged(keys)
       }
@@ -213,3 +207,52 @@ extension AppDelegate {
     }
   }
 }
+
+extension AppDelegate {
+  /**
+   * Claude voice's speech models in the app while Claude voice is the engine, and only then (as the
+   * core loads its own only then): loaded in the background when they're in the profile (at start,
+   * on a settings change, and when a call starts, so models downloaded since are picked up by the
+   * next call), and let go when the engine is Grok and no call is on. Meanwhile, or if they can't
+   * load, the core does the speech as it does for Electron.
+   */
+  func syncLocalSpeech() {
+    guard config.speechInApp, !quitting, let v = voiceController else { return }
+    if v.settings.voiceEngine != "claude" {
+      if v.localSpeech != nil, v.state.phase == .off {
+        v.localSpeech = nil
+        log.info("speech", "on-device speech in Swift released (Grok is the voice)")
+      }
+      return
+    }
+    guard v.localSpeech == nil, localSpeechTask == nil else { return }
+    let profile = config.profileDir
+    let log = self.log
+    let task = Task.detached(priority: .userInitiated) { NativeLocalSpeech.load(profile: profile) { log.info("speech", $0) } }
+    localSpeechTask = task
+    // A call starting meanwhile waits for them (at most 10 s; loading takes a second or two).
+    v.localSpeechLoading = {
+      await withTaskGroup(of: NativeLocalSpeech?.self) { g in
+        g.addTask { await task.value }
+        g.addTask {
+          try? await Task.sleep(nanoseconds: 10_000_000_000)
+          return nil
+        }
+        let first = await g.next() ?? nil
+        g.cancelAll()
+        return first
+      }
+    }
+    Task { @MainActor [weak self] in
+      let engine = await task.value
+      guard let self else { return }
+      self.localSpeechTask = nil
+      self.voiceController?.localSpeechLoading = nil
+      // Still wanted (the engine may have changed while loading), and not replacing one in use.
+      if let engine, self.voiceController?.settings.voiceEngine == "claude", self.voiceController?.localSpeech == nil {
+        self.voiceController?.localSpeech = engine
+      }
+    }
+  }
+}
+

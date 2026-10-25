@@ -10,8 +10,14 @@ public struct LaunchConfig: Sendable, Equatable {
   public var node: URL
   public var coreDir: URL
   public var sidecarScript: URL
-  /** Env passed through to the sidecar (test builds only). */
+  /** Env passed through to the sidecar (test switches only in test builds). */
   public var sidecarEnv: [String: String]
+  /**
+   * Claude voice's listening and speaking run in the app (phase 2), not the core; a test build can
+   * switch back with ORBIT_SPEECH=core. The sidecar is told (ORBIT_SHELL_SPEECH=1), so the core
+   * doesn't load the same speech models a second time.
+   */
+  public var speechInApp: Bool
 
   public static let testEnvKeys = ["XAI_REALTIME_URL", "ORBIT_FAKE_DESKTOP", "ORBIT_TEST_CLAUDE_PID", "ORBIT_PERSONA", "ORBIT_DRY_RUN_SENDS", "ORBIT_MCP_HOME"]
 
@@ -38,6 +44,8 @@ public struct LaunchConfig: Sendable, Equatable {
       passed["ORBIT_PARITY_ALLOWED"] = "1"
       for k in testEnvKeys { if let v = env[k] { passed[k] = v } }
     }
-    return LaunchConfig(testing: testing, profileDir: profile, port: port, node: node, coreDir: core, sidecarScript: core.appendingPathComponent("mac-swift/sidecar/sidecar.mjs"), sidecarEnv: passed)
+    let speechInApp = !(testing && env["ORBIT_SPEECH"] == "core")
+    if speechInApp { passed["ORBIT_SHELL_SPEECH"] = "1" }
+    return LaunchConfig(testing: testing, profileDir: profile, port: port, node: node, coreDir: core, sidecarScript: core.appendingPathComponent("mac-swift/sidecar/sidecar.mjs"), sidecarEnv: passed, speechInApp: speechInApp)
   }
 }

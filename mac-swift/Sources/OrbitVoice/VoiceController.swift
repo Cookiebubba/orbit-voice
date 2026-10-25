@@ -65,6 +65,12 @@ public final class VoiceController: ObservableObject {
    * cross the socket (`/voice?speech=local`). nil: the core does it, as for the Electron page.
    */
   public var localSpeech: LocalSpeechEngine?
+  /**
+   * The app's speech models while they're still loading: a Claude voice call that starts meanwhile
+   * waits for them (a second or two) rather than leave the speech to the core, which would then
+   * load and keep the same models too. nil: nothing is loading.
+   */
+  public var localSpeechLoading: (() async -> LocalSpeechEngine?)?
   private var localActive = false
   private var relay: LocalSpeechRelay?
 
@@ -304,24 +310,8 @@ public final class VoiceController: ObservableObject {
     socketGen = gen
     let s = VoiceSocket()
     socket = s
-    // Local speech for this call: Claude voice with the app's own speech models.
-    let engine = settings.voiceEngine == "claude" ? localSpeech : nil
-    localActive = engine != nil
+    localActive = false
     relay = nil
-    if let engine {
-      engine.reset()
-      let r = LocalSpeechRelay(
-        speak: { text, sid, speed, done in engine.say(text, sid: sid, speed: speed, done: done) },
-        deliver: { [weak self] t in DispatchQueue.main.async { MainActor.assumeIsolated { self?.session.socketMessage(generation: gen, t) } } })
-      relay = r
-      engine.onStarted = { [weak self] in
-        DispatchQueue.main.async { MainActor.assumeIsolated { if self?.socketGen == gen { self?.socket?.send(#"{"type":"orbit.speech_started"}"#) } } }
-      }
-      engine.onHeard = { [weak self] text, ms, stt in
-        let m: JSONValue = ["type": "orbit.transcript", "transcript": .string(text), "ended_ms_ago": .number(Double(ms)), "stt": .string(stt)]
-        DispatchQueue.main.async { MainActor.assumeIsolated { if self?.socketGen == gen { self?.socket?.send(m.text) } } }
-      }
-    }
     s.onOpen = { [weak self] in self?.session.socketOpened(generation: gen) }
     s.onText = { [weak self] t in
       guard let self else { return }
@@ -332,8 +322,18 @@ public final class VoiceController: ObservableObject {
       if self.socketGen == gen { self.socket = nil }
       self.session.socketClosed(generation: gen)
     }
+    let claude = settings.voiceEngine == "claude"
     Task { [weak self] in
       guard let self else { return }
+      // Local speech for this call: Claude voice with the app's own speech models (waiting for them
+      // if they're loading right now).
+      var engine = claude ? self.localSpeech : nil
+      if claude, engine == nil, let loading = self.localSpeechLoading {
+        engine = await loading()
+        if let engine, self.localSpeech == nil { self.localSpeech = engine }
+      }
+      guard self.socketGen == gen, self.socket === s else { return }
+      if let engine { self.useLocalSpeech(engine, gen: gen) }
       do {
         let req = try await self.link.voiceRequest(announce: announce, localSpeech: engine != nil)
         guard self.socketGen == gen, self.socket === s else { return }
@@ -344,6 +344,23 @@ public final class VoiceController: ObservableObject {
         self.session.handle(.bridgeError(message: "Orbit isn't signed in to its local bridge."))
         self.session.socketClosed(generation: gen)
       }
+    }
+  }
+
+  /** This call's speech is the app's own: words in and out over the socket, audio here. */
+  private func useLocalSpeech(_ engine: LocalSpeechEngine, gen: Int) {
+    localActive = true
+    engine.reset()
+    let r = LocalSpeechRelay(
+      speak: { text, sid, speed, done in engine.say(text, sid: sid, speed: speed, done: done) },
+      deliver: { [weak self] t in DispatchQueue.main.async { MainActor.assumeIsolated { self?.session.socketMessage(generation: gen, t) } } })
+    relay = r
+    engine.onStarted = { [weak self] in
+      DispatchQueue.main.async { MainActor.assumeIsolated { if self?.socketGen == gen { self?.socket?.send(#"{"type":"orbit.speech_started"}"#) } } }
+    }
+    engine.onHeard = { [weak self] text, ms, stt in
+      let m: JSONValue = ["type": "orbit.transcript", "transcript": .string(text), "ended_ms_ago": .number(Double(ms)), "stt": .string(stt)]
+      DispatchQueue.main.async { MainActor.assumeIsolated { if self?.socketGen == gen { self?.socket?.send(m.text) } } }
     }
   }
 }

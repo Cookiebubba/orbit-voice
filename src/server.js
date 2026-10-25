@@ -266,7 +266,7 @@ function tokenMatches(value) {
  * The desktop app passes its own config folder and encrypted key store. Tests may pass a `watcher`
  * (anything with on/start/working) to feed in "Claude finished" events.
  */
-export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, brainSecrets, clipboard, models, watcher: injectedWatcher } = {}) {
+export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, brainSecrets, clipboard, models, watcher: injectedWatcher, speechInShell = false } = {}) {
   initConfig({ dir: configDir, secrets, brainSecrets });
   if (clipboard) setClipboardWriter(clipboard);
   const modelsDir = models || path.join(PROJECT_ROOT, 'resources', 'models');
@@ -276,15 +276,21 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
   // Claude voice (beta): speech models live with the settings, downloaded when it's turned on.
   const voiceModelsDir = path.join(getConfigDir(), 'claude-voice-models');
   const claudeVoiceOn = () => getSetting('voiceEngine') === 'claude';
-  /** Load the speech models and start a Claude Code process now, so the next call needn't wait. */
+  /**
+   * Load the speech models and start a Claude Code process now, so the next call needn't wait. A
+   * desktop shell that hears and speaks itself (`speechInShell`: Orbit Native) holds the models, so
+   * only Claude Code is started here (a call without the shell's speech still loads them on connect).
+   */
   const prewarmClaudeVoice = () => {
     if (!claudeVoiceOn() || !modelsReady(voiceModelsDir)) return;
     const claude = findClaude(getSetting('brainClaudePath'));
     if (!claude) return;
-    loadSpeech(voiceModelsDir).catch((e) => logWarn('voice', 'Claude voice: speech models failed to load', String(e?.message || e).slice(0, 200)));
-    // The chosen speech to text too, if it isn't Moonshine and it's downloaded (else Moonshine carries on).
-    const stt = getSetting('claudeVoiceStt');
-    if (stt !== 'moonshine' && sttReady(voiceModelsDir, stt)) loadRecognizer(voiceModelsDir, stt).catch((e) => logWarn('voice', `Claude voice: ${STT_MODELS[stt].label} failed to load`, String(e?.message || e).slice(0, 200)));
+    if (!speechInShell) {
+      loadSpeech(voiceModelsDir).catch((e) => logWarn('voice', 'Claude voice: speech models failed to load', String(e?.message || e).slice(0, 200)));
+      // The chosen speech to text too, if it isn't Moonshine and it's downloaded (else Moonshine carries on).
+      const stt = getSetting('claudeVoiceStt');
+      if (stt !== 'moonshine' && sttReady(voiceModelsDir, stt)) loadRecognizer(voiceModelsDir, stt).catch((e) => logWarn('voice', `Claude voice: ${STT_MODELS[stt].label} failed to load`, String(e?.message || e).slice(0, 200)));
+    }
     const { instructions: text, tools } = agentContext();
     keepSpare({ exe: claude.path, prompt: systemPrompt({ instructions: text, tools }), model: getSetting('claudeVoiceModel'), effort: getSetting('claudeVoiceEffort') });
   };

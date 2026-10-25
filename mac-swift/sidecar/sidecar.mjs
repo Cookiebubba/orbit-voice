@@ -252,6 +252,8 @@ async function main() {
       brainSecrets: sealedKeyStore(sealer, profile, 'anthropic-key.sealed'),
       clipboard: (text) => send({ t: 'clipboard', text: String(text) }),
       models: process.env.ORBIT_MODELS_DIR || path.join(CORE, 'resources', 'models'),
+      // Orbit Native hears and speaks for Claude voice itself (phase 2): the core needn't hold the models too.
+      speechInShell: process.env.ORBIT_SHELL_SPEECH === '1',
     });
   } catch (e) {
     send({ t: 'error', code: e?.code || 'start_failed', message: e?.code === 'EADDRINUSE' ? `Port ${process.env.PORT || 4317} is already in use, probably by another copy of Orbit. Close it first.` : String(e?.message || e).slice(0, 300) });

@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   var shellHotkey: ShellHotkey?
   var overlays: Overlays?
   var wakeWord: (any WakeListening)?
+  var localSpeechTask: Task<NativeLocalSpeech?, Never>?
   var quitting = false
   let startedAt = Date()
 
