@@ -127,7 +127,12 @@ BrowserWindow.prototype.hide = function (...a) {
 // Claude window, far off screen, so a lifted window never covers a real screen.
 // (Electron's screen exists only once the app is ready: stubbed then.)
 const FAKE_AREA = { x: -5600, y: 0, width: 2600, height: 1040 };
+// The cursor Orbit polls for his hover (electron/avatar-hover.js): set by the steps below (never the
+// real one, which stays wherever you left it).
+let fakeCursor = null;
 app.whenReady().then(() => {
+  const realCursor = screen.getCursorScreenPoint.bind(screen);
+  screen.getCursorScreenPoint = () => fakeCursor || realCursor();
   const realMatching = screen.getDisplayMatching.bind(screen);
   screen.getDisplayMatching = (r) => (r && r.x < -2000 ? { id: 999, bounds: { ...FAKE_AREA, height: FAKE_AREA.height + 40 }, workArea: { ...FAKE_AREA }, scaleFactor: 1 } : realMatching(r));
 });
@@ -888,6 +893,7 @@ async function run() {
   };
   // Mouse events in screen px: client px are worked out from wherever his window is at that moment.
   const mouse = (type, gx, gy) => {
+    fakeCursor = { x: Math.round(gx), y: Math.round(gy) };
     const b = qwin.getBounds();
     qwin.webContents.sendInputEvent({ type, x: Math.round(gx - b.x), y: Math.round(gy - b.y), globalX: Math.round(gx), globalY: Math.round(gy), button: 'left', clickCount: 1, ...(type === 'mouseMove' ? { modifiers: ['leftButtonDown'] } : {}) });
   };
@@ -982,6 +988,77 @@ async function run() {
   check(await waitFor(async () => (await qjs('window.__qubit.state.prefs.throw')) === true, 3000), 'on again');
   mouse('mouseMove', p1.x - 600, p1.y);
   await waitFor(() => ignoreCalls.at(-1) === true, 2000);
+
+  out('17d. After "go to sleep" (the voice fast path), with no forwarded mouse moves at all');
+  // The owner's report: after "go to sleep" he could no longer be clicked or thrown. Hover rested on
+  // forwarded mouse moves, which stop for good when Windows drops Electron's mouse hook. Now Orbit
+  // checks the real cursor itself: here no mouse moves reach his page, only the cursor Orbit polls.
+  await label('after-sleep');
+  const hotkey = [...hotkeys.values()][0];
+  hotkey();
+  check(await waitFor(() => fake.current() && fake.current().configured > 0 && fake.current().ws.readyState === 1, 10_000), 'a call');
+  await expectState('listening', { state: 'listening' }, 6000);
+  const cs = fake.current();
+  void fake.userSays(cs, 'go to sleep', { kind: 'sleep', tools: [{ name: 'go_to_sleep' }] });
+  check(await waitFor(() => cs.ws.readyState !== 1, 15_000), '"go to sleep": Orbit hangs up (the fast path)');
+  await expectState('he goes to sleep', { state: 'asleep', mode: 'asleep', air: false }, 25_000);
+  await waitFor(async () => (await qstate()).low, 8000);
+  const spot = async () => {
+    const b = qwin.getBounds();
+    const p = await qjs('(() => { const q = window.__qubit.q; return { x: q._rx, y: q._ry }; })()');
+    return { x: Math.round(b.x + p.x), y: Math.round(b.y + p.y) };
+  };
+  let qat = await spot();
+  fakeCursor = { x: qat.x - 400, y: qat.y };
+  check(await waitFor(() => ignoreCalls.at(-1) === true, 2000), 'the cursor away from him: clicks go through');
+  const nIgn = ignoreCalls.length;
+  fakeCursor = { x: qat.x, y: qat.y }; // onto him, with no mouse move sent to his page
+  check(await waitFor(() => ignoreCalls.length > nIgn && ignoreCalls.at(-1) === false, 2000), 'the cursor on him (no forwarded moves): Orbit sees it and his window takes the mouse');
+  const nConn = fake.conns.length;
+  const b17 = qwin.getBounds();
+  qwin.webContents.sendInputEvent({ type: 'mouseDown', x: qat.x - b17.x, y: qat.y - b17.y, globalX: qat.x, globalY: qat.y, button: 'left', clickCount: 1 });
+  qwin.webContents.sendInputEvent({ type: 'mouseUp', x: qat.x - b17.x, y: qat.y - b17.y, globalX: qat.x, globalY: qat.y, button: 'left', clickCount: 1 });
+  check(await waitFor(() => fake.conns.length > nConn && fake.conns.at(-1).configured > 0, 10_000), 'a click on the sleeping Qubit wakes Orbit (as "Hey Orbit" does)');
+  await expectState('and he listens', { state: (v) => v === 'listening' || v === 'waking', mode: 'listening' }, 6000);
+  const cs2 = fake.current();
+  void fake.userSays(cs2, 'go to sleep', { kind: 'sleep', tools: [{ name: 'go_to_sleep' }] });
+  check(await waitFor(() => cs2.ws.readyState !== 1, 15_000), 'asleep again ("go to sleep")');
+  await expectState('dozing again', { state: 'asleep', mode: 'asleep', air: false }, 25_000);
+  // Thrown while asleep: he starts awake in the air, lands, and dozes off again where he landed.
+  await qjs('window.__lands2 = []; window.__qubit.throw.on("land", (d) => window.__lands2.push(d)); true');
+  qat = await spot();
+  fakeCursor = { x: qat.x, y: qat.y };
+  await waitFor(() => ignoreCalls.at(-1) === false, 2000);
+  const drag = (type, gx, gy) => {
+    fakeCursor = { x: Math.round(gx), y: Math.round(gy) };
+    const b = qwin.getBounds();
+    qwin.webContents.sendInputEvent({ type, x: Math.round(gx - b.x), y: Math.round(gy - b.y), globalX: Math.round(gx), globalY: Math.round(gy), button: 'left', clickCount: 1, ...(type === 'mouseMove' ? { modifiers: ['leftButtonDown'] } : {}) });
+  };
+  let dx = qat.x;
+  let dy = qat.y;
+  drag('mouseDown', dx, dy);
+  for (let i = 0; i < 20; i++) {
+    dx -= 8;
+    dy -= 9;
+    drag('mouseMove', dx, dy);
+    await wait(16);
+  }
+  check(await waitFor(async () => (await qjs('window.__qubit.throw.held')) && qwin.getBounds().width === FAKE_AREA.width, 2000), 'asleep, he can still be picked up');
+  for (let i = 0; i < 6; i++) {
+    dx += 24;
+    dy -= 14;
+    drag('mouseMove', dx, dy);
+    await wait(14);
+  }
+  drag('mouseUp', dx, dy);
+  fakeCursor = { x: dx + 500, y: dy + 300 };
+  check(await waitFor(async () => (await qjs('window.__lands2.length')) > 0, 8000), 'thrown, he lands');
+  const land2 = (await qjs('window.__lands2'))[0];
+  check(await waitFor(async () => (await qjs('window.__qubit.frame')) === 'strip', 20_000), 'back on his strip');
+  await expectState('and dozes off again from where he landed', { state: 'asleep', mode: (m) => m === 'sleepy' || m === 'asleep', air: false }, 15_000);
+  check(await waitFor(() => ignoreCalls.at(-1) === true, 2000), 'click-through again, the cursor away from him');
+  out(`  landed at stage x ${Math.round(land2.x)} after ${land2.secs.toFixed(2)} s`);
+  fakeCursor = null;
 
   out('17b. Show the orb (Settings -> Avatar)');
   const savedOrb = () => JSON.parse(fs.readFileSync(path.join(USER_DATA, 'settings.json'), 'utf8')).showOrb;

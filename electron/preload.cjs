@@ -25,7 +25,15 @@ contextBridge.exposeInMainWorld('desktop', {
   // The avatar (the pixel buddy or Qubit): the main window tells it what happened; its own window
   // gets Orbit's state and says when the cursor is over it (so it can take clicks).
   buddyEvent: (name) => ipcRenderer.send('buddy:event', name),
-  buddyHover: (on) => ipcRenderer.send('buddy:hover', !!on),
+  buddyHover: (on, held) => ipcRenderer.send('buddy:hover', !!on, !!held),
+  // Where the avatar is drawn (its window's px), so its window takes the mouse there.
+  buddyHit: (r) => ipcRenderer.send('buddy:hit', r && typeof r === 'object' ? { x: +r.x, y: +r.y, w: +r.w, h: +r.h } : null),
+  // The real cursor near the avatar's window (screen px; null: away), polled by Orbit itself.
+  onBuddyCursor: (cb) => {
+    const fn = (_e, c) => cb(c);
+    ipcRenderer.on('buddy:cursor', fn);
+    return () => ipcRenderer.removeListener('buddy:cursor', fn);
+  },
   // A quick click on the avatar: start talking (as "Hey Orbit" with its window in front).
   buddyTalk: () => ipcRenderer.send('buddy:talk'),
   // Picked up (true) or put back (false): the avatar's window covers the work area meanwhile.

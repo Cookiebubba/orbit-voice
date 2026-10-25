@@ -107,11 +107,23 @@ function tick(now) {
   if (DEMO) demoStep(dt);
   lastFrame = bd.step({ dt, world: world(), voice, cursor, events: events.splice(0) });
   draw(lastFrame);
+  sendHit(lastFrame);
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
 
 // ---------- the mouse ----------
+// Where it's drawn (its hit box, in this window's px), for Orbit's own hover check from the real
+// cursor (electron/avatar-hover.js): clicks and grabs work even when forwarded mouse moves stop.
+let hitSent = '';
+function sendHit(f) {
+  if (!f || leaving) return;
+  const rect = { x: Math.round((f.x - 8) * scale), y: Math.round(innerHeight - (f.y + 19 + GROUND) * scale), w: Math.round(16 * scale), h: Math.round(21 * scale) };
+  const key = `${rect.x},${rect.y},${rect.w},${rect.h}`;
+  if (key === hitSent) return;
+  hitSent = key;
+  desktop?.buddyHit?.(rect);
+}
 // Mouse moves arrive even while the window lets clicks through (Electron forwards them), so it
 // can look at the cursor; it only takes the mouse while the cursor is on the buddy.
 let hovering = false;

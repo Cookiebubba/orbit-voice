@@ -146,6 +146,8 @@ function syncFrame() {
     dir.setGeometry(geometry(), { keepBody: true });
     // Orbit made the strip click-through again as it gave it back: start from there.
     hovering = false;
+    heldSent = false;
+    hitSent = '';
     if (!press) hoverNow();
     return;
   }
@@ -169,14 +171,35 @@ function restage() {
 addEventListener('resize', syncFrame);
 
 // ---------- the mouse ----------
-// Mouse moves arrive even while the window lets clicks through (Electron forwards them), so he can
-// look at the cursor; the window takes the mouse only while the cursor is on him (or he's held).
+// The window takes the mouse only while the cursor is on him (or he's held). Orbit decides that
+// itself from the real cursor and the rect this page reports every frame he moves (sendHit;
+// electron/avatar-hover.js), so it never rests on forwarded mouse moves alone: those stop for good
+// if Windows drops Electron's mouse hook (a main-thread stall). Forwarded moves, while they come,
+// still update hover at once and his eye; the polled cursor (buddy:cursor) keeps his eye on it
+// otherwise.
 let hovering = false;
+let heldSent = false;
 let pointer = null; // the cursor in screen px (DIPs), for his eye and hover between moves
+let movedAt = 0; // the last forwarded mouse move (performance.now())
 function setHover(on) {
-  if (on === hovering) return;
+  const held = !!press;
+  if (on === hovering && held === heldSent) return;
   hovering = on;
-  desktop?.buddyHover?.(on);
+  heldSent = held;
+  desktop?.buddyHover?.(on, held);
+}
+let hitSent = '';
+/** His rect in this window's px, for Orbit's own hover check (only when it changed). */
+function sendHit() {
+  if (!q || gone) return;
+  const r = q.side * 0.62;
+  const x = q._rx ?? q.cx;
+  const y = q._ry ?? q.ground - q.cy;
+  const rect = { x: Math.round(x - r), y: Math.round(y - r), w: Math.round(2 * r), h: Math.round(2 * r) };
+  const key = `${rect.x},${rect.y},${rect.w},${frame}`;
+  if (key === hitSent) return;
+  hitSent = key;
+  desktop?.buddyHit?.(rect);
 }
 const frameOrigin = () => (frame === 'area' && liftedAt ? liftedAt.area : st.bounds || { x: screenX, y: screenY });
 const toStage = (p) => {
@@ -188,6 +211,7 @@ function cursor() {
 }
 addEventListener('mousemove', (e) => {
   if (!q) return;
+  movedAt = performance.now();
   pointer = { x: e.screenX, y: e.screenY };
   if (!press) {
     q.setPointer({ x: e.clientX, y: e.clientY });
@@ -210,7 +234,8 @@ let keepAliveAt = 0;
 let returning = false; // landed away from his strip: on his way back
 
 addEventListener('pointerdown', (e) => {
-  if (e.button !== 0 || !q || gone || press || returning) return;
+  // (On his way back to his strip too: a click still talks, and a press picks him up again.)
+  if (e.button !== 0 || !q || gone || press) return;
   if (!dir.hit(e.clientX, e.clientY) && !th.flying) return;
   if (th.flying && !dir.hit(e.clientX, e.clientY)) return;
   try {
@@ -274,6 +299,7 @@ function heldTarget() {
 
 function pickUp() {
   press.dragging = true;
+  returning = false; // (picked up on his way back: that walk is over)
   th.hold(heldTarget());
   dir.grabbed();
   lift(true);
@@ -322,6 +348,7 @@ function hoverNow() {
 }
 
 function frameTick(dt, now) {
+  sendHit();
   // Held still a moment: picked up. (Event and frame times share one clock.)
   if (press && !press.dragging && canThrow() && pressKind({ ms: Math.max(0, now - press.t) }) === 'hold') pickUp();
   if (press?.dragging) th.move(heldTarget());
@@ -382,6 +409,14 @@ desktop?.onBuddyEvent?.((name) => {
   } else if (typeof name === 'string' && q && !gone && !th.active) dir.event(name);
 });
 
+// The real cursor near his window, polled by Orbit (screen px; null: away). His eye follows it when
+// no forwarded mouse moves are coming.
+desktop?.onBuddyCursor?.((c) => {
+  if (!q || press || performance.now() - movedAt < 300) return;
+  pointer = c && Number.isFinite(c.x) && Number.isFinite(c.y) ? { x: c.x, y: c.y } : null;
+  q.setPointer(pointer ? toStage(pointer) : null);
+});
+
 // Something you asked him to do ("do a backflip"), by voice.
 desktop?.onBuddyCommand?.((c) => {
   if (c && typeof c === 'object' && q && !gone && !th.active && !returning) dir.command({ action: String(c.action), dir: c.dir === 'left' || c.dir === 'right' ? c.dir : undefined });
@@ -415,6 +450,12 @@ window.__qubit = {
   },
   get returning() {
     return returning;
+  },
+  get press() {
+    return press ? { dragging: press.dragging } : null;
+  },
+  get hovering() {
+    return hovering;
   },
   get running() {
     return running;

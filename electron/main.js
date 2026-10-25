@@ -645,9 +645,14 @@ on('buddy:event', (name) => avatar?.event(name));
 on('buddy:emote', (name) => avatarHost.active()?.emote(name));
 // From the avatar's own page (not one that is fading out after a switch).
 const avatarFor = (sender) => (avatar?.window && sender === avatar.window.webContents ? avatar : avatarHost.guestFor(sender));
-ipcMain.on('buddy:hover', (e, over) => {
+ipcMain.on('buddy:hover', (e, over, held) => {
   if (!fromUs(e)) return;
-  avatarFor(e.sender)?.hover(!!over);
+  avatarFor(e.sender)?.hover(!!over, !!held);
+});
+ipcMain.on('buddy:hit', (e, r) => {
+  if (!fromUs(e)) return;
+  const ok = r && typeof r === 'object' && [r.x, r.y, r.w, r.h].every((n) => Number.isFinite(n) && Math.abs(n) < 100_000);
+  avatarFor(e.sender)?.hit(ok ? r : null);
 });
 // A quick click on the avatar: start talking, the same as "Hey Orbit" with its window in front (the
 // main window runs the wake word's own path; the call takes that window as the one you're in).

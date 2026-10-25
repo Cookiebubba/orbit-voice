@@ -374,6 +374,50 @@ test('director: picked up, thrown and landed, he carries on from where he landed
   }
 });
 
+test('director: thrown while asleep (Orbit off, low power): a start in the air, then he dozes off again where he landed', async () => {
+  await withRandom(14, async () => {
+    const q = E.create({ mount: null, width: 1200, height: 240, size: 36, floor: FLOOR, mode: 'asleep', keepAlive: true });
+    q.brainT.play = q.brainT.stunt = Infinity;
+    const dir = createDirector(q, { seed: 14, life: { dozeS: [600, 600] } });
+    const th = createThrow(q);
+    dir.setVoice({ phase: 'off' });
+    dir.setGeometry({ W: 1200, H: 240, box: null, send: null, side: 36 });
+    dir.place();
+    const step = async (n) => {
+      for (let i = 0; i < n; i++) {
+        q.update(1 / 60);
+        dir.tick(1 / 60);
+        await null;
+      }
+    };
+    await step(90);
+    assert.equal(q.mode, 'asleep');
+    assert.equal(dir.lowPower(), true, 'asleep and still: low power');
+    th.hold({ x: q.cx, y: q.ground - q.cy });
+    dir.grabbed();
+    assert.equal(dir.lowPower(), false, 'held: full rate');
+    assert.equal(q.mode, 'surprised', 'he wakes with a start when picked up');
+    th.move({ x: 300, y: 60 });
+    await step(40);
+    th.release({ x: 400, y: -300 });
+    dir.thrown();
+    let land = null;
+    th.on('land', (d) => {
+      land = d;
+      dir.landed(d);
+    });
+    await step(60 * 10);
+    assert.ok(land, 'landed');
+    assert.equal(dir.reaction, null);
+    assert.ok(['sleepy', 'asleep'].includes(q.mode), `back to sleep (${q.mode})`);
+    assert.ok(Math.abs(q.cx - land.x) < q.side, `where he landed (${q.cx.toFixed(0)} vs ${land.x.toFixed(0)})`);
+    await step(60 * 4);
+    assert.equal(q.mode, 'asleep');
+    assert.equal(dir.lowPower(), true, 'asleep and still again: low power');
+    q.destroy();
+  });
+});
+
 test('director: a click that starts talking is only a tiny acknowledgement; a held or flying Qubit ignores it', async () => {
   await withRandom(13, async () => {
     const q = E.create({ mount: null, width: 1200, height: 240, size: 36, floor: FLOOR, mode: 'asleep', keepAlive: true });

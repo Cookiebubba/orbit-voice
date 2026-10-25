@@ -39,6 +39,7 @@ import { BrowserWindow, screen } from 'electron';
 
 import { BUDDY_HEIGHT, boxInStrip, buddyBoundsFor, freeStripFor, sendAtOffset, sendInStrip, sendOffsetFor, usableBox } from './buddy-geometry.js';
 import { isAvatarAction } from '../src/avatar-commands.js';
+import { createHoverPoller } from './avatar-hover.js';
 import { cueName } from '../src/emote-cues.js';
 
 export { BUDDY_HEIGHT };
@@ -73,6 +74,25 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   let pendingEntrance = false;
   let lifted = null; // { area, strip } (DIPs) while the window covers the work area
   let liftTimer = null;
+  // Whether the window takes the mouse: the real cursor over the avatar (polled here, see
+  // avatar-hover.js), or the page saying so. Never only forwarded mouse moves.
+  const hover = createHoverPoller({
+    getCursor: () => {
+      try {
+        return screen.getCursorScreenPoint();
+      } catch {
+        return null;
+      }
+    },
+    getBounds: () => (win && !win.isDestroyed() ? win.getBounds() : null),
+    setIgnore: (ignore) => {
+      if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(ignore, { forward: true });
+    },
+    isLive: () => !!win && !win.isDestroyed() && win.isVisible() && !leaving,
+    onCursor: (c) => {
+      if (win && !win.isDestroyed()) win.webContents.send('buddy:cursor', c);
+    },
+  });
 
   function ensure() {
     if (win && !win.isDestroyed()) return win;
@@ -102,7 +122,11 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
         sendEvent('enter');
       }
     });
-    win.on('closed', () => (win = null));
+    win.on('closed', () => {
+      hover.stop();
+      win = null;
+    });
+    hover.reset();
     return win;
   }
 
@@ -144,6 +168,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     clearInterval(boxTimer);
     boxTimer = null;
     drop({ quiet: true });
+    hover.stop();
     if (visible()) {
       win.hide();
       send(); // the page stops drawing while hidden
@@ -187,6 +212,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     }
     if (!win.isVisible()) {
       win.showInactive();
+      hover.start();
       layer = null;
     }
     if (layer !== 'top') {
@@ -233,7 +259,8 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     const strip = lifted.strip;
     lifted = null;
     if (!win || win.isDestroyed()) return;
-    win.setIgnoreMouseEvents(true, { forward: true });
+    hover.setHit(null); // (the page sends his rect again, in the strip's px)
+    hover.setPageHover(false);
     win.setBounds(strip);
     layer = null;
     if (quiet) return;
@@ -277,10 +304,12 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     }
     if (!win.isVisible()) {
       win.showInactive();
+      hover.start();
       layer = null;
       send();
     }
     setLayer(claude.front === 'other' ? `above:${claude.hwnd}` : 'top');
+    if (!hover.running) hover.start();
     if (boxless) {
       if (!boxKnown) {
         boxKnown = true; // nothing to wait for: he has the window's bottom edge
@@ -441,9 +470,17 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     refresh() {
       send();
     },
-    /** The cursor is over the avatar (take clicks) or not (let them through to Claude). */
-    hover(on) {
-      if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(!on, { forward: true });
+    /** The page: the cursor is over the avatar, and whether it's held (a press or drag under way). */
+    hover(on, held = false) {
+      hover.setPageHover(on, { held });
+    },
+    /** The page: where the avatar is drawn (window px), so the window takes the mouse over it. */
+    hit(rect) {
+      hover.setHit(rect);
+    },
+    /** For the tests: whether the window takes the mouse now. */
+    get takingMouse() {
+      return hover.taking;
     },
     get window() {
       return win;
@@ -459,6 +496,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       clearInterval(boxTimer);
       clearTimeout(settleTimer);
       clearTimeout(liftTimer);
+      hover.stop();
     },
   };
 }
