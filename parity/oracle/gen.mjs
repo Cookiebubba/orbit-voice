@@ -17,6 +17,7 @@ import { desktopFixtures } from './desktop.mjs';
 import { sessionsFixtures } from './sessions.mjs';
 import { brainFixtures } from './brain.mjs';
 import { voiceFixtures } from './voice.mjs';
+import { toolsFixtures } from './tools.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const FIXTURES = path.join(HERE, 'fixtures');
@@ -120,6 +121,8 @@ export async function build() {
     ...(process.platform === 'darwin' ? { brain: { platform: 'darwin', ...(await brainFixtures(root, rng)) } } : {}),
     // What the voice is told and given, its tools' text checks, Claude voice's text handling.
     ...(process.platform === 'darwin' ? { voice: { platform: 'darwin', ...(await voiceFixtures(root, rng)) } } : {}),
+    // The voice's tool runner on scripted calls (a Mac's sessions folders: made on a Mac).
+    ...(process.platform === 'darwin' ? { tools: { platform: 'darwin', ...toolsFixtures(rng) } } : {}),
   };
 }
 

@@ -11,14 +11,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = fileURLToPath(import.meta.url);
 const ROOTS = 'Library/Application Support/Claude/claude-code-sessions';
-const T0 = 1_800_000_000_000;
+export const T0 = 1_800_000_000_000;
 
 const meta = (o) => JSON.stringify(o);
 const line = (o) => `${JSON.stringify(o)}\n`;
 const iso = (ms) => new Date(ms).toISOString();
 
 /** The made-up home: relative path -> content. */
-function tree() {
+export function tree() {
   const files = {};
   const acc = `${ROOTS}/acct-1/org-1`;
   const acc2 = `${ROOTS}/acct-2/org-9`;
@@ -143,4 +143,4 @@ export function sessionsFixtures() {
   }
 }
 
-if (process.argv[2] === '--run') await runChild(process.argv[3], process.argv[4]);
+if (process.argv[2] === '--run' && path.resolve(process.argv[1]) === HERE) await runChild(process.argv[3], process.argv[4]);
