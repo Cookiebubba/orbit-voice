@@ -346,60 +346,71 @@ public enum VoiceText {
 
   public struct Call: Equatable, Sendable {
     public var name: String
-    public var args: [String: JSONValue]
+    /** The arguments in the order they were written (JSON.stringify of them keeps it). */
+    public var argList: [(String, OJSON)]
+    public init(name: String, argList: [(String, OJSON)]) {
+      self.name = name
+      self.argList = argList
+    }
+    public var args: [String: JSONValue] { OJSON.obj(argList).value.objectValue ?? [:] }
+    /** JSON.stringify(call.args). */
+    public var argsText: String { OJSON.obj(argList).text }
     public var json: JSONValue { ["name": .string(name), "args": .object(args)] }
+    public static func == (a: Call, b: Call) -> Bool { a.name == b.name && a.argsText == b.argsText }
   }
 
-  static func plainObject(_ v: JSONValue?) -> [String: JSONValue]? {
-    if case .object(let o)? = v { return o }
+  static func members(_ v: OJSON?) -> [(String, OJSON)]? {
+    if case .obj(let o)? = v { return o }
     return nil
   }
 
-  /** A call written as a JSON object, however it names its parts. */
-  static func callFromJson(_ j: JSONValue?) -> Call? {
-    guard let o = plainObject(j) else { return nil }
-    guard let name = nameKeys.compactMap({ o[$0]?.stringValue }).first(where: { nameOK.test($0) }) else { return nil }
-    // (JS finds the first key whose value is a string that passes; a key with a non-string is skipped.)
-    let given = argKeys.compactMap { k -> [String: JSONValue]? in
-      guard let v = o[k], case .object(let a) = v else { return nil }
-      return a
-    }.first
-    return Call(name: name, args: given ?? o.filter { !nameKeys.contains($0.key) && !argKeys.contains($0.key) })
+  static func parseJSON(_ s: String) -> OJSON? { try? OJSON.parse(s) }
+
+  /** Sets a key as a JS object does: a new key goes last, an existing one keeps its place. */
+  static func set(_ list: inout [(String, OJSON)], _ k: String, _ v: OJSON) {
+    if let at = list.firstIndex(where: { $0.0 == k }) { list[at].1 = v } else { list.append((k, v)) }
   }
 
-  static func parseJSON(_ s: String) -> JSONValue? { try? JSONValue.parse(s) }
+  /** A call written as a JSON object, however it names its parts. */
+  static func callFromJson(_ j: OJSON?) -> Call? {
+    guard let o = members(j) else { return nil }
+    let get = { (k: String) in o.last { $0.0 == k }?.1 }
+    guard let name = nameKeys.compactMap({ k -> String? in if case .str(let s)? = get(k) { return s }; return nil }).first(where: { nameOK.test($0) }) else { return nil }
+    let given = argKeys.compactMap { members(get($0)) }.first
+    return Call(name: name, argList: given ?? o.filter { !nameKeys.contains($0.0) && !argKeys.contains($0.0) })
+  }
 
   /** A call written as XML, in the forms Claude uses now and then. */
   public static func parseXmlToolCall(_ s: String) -> Call? {
     if let w = JSRegExp(#"^<(parse|tool_call|function)>\s*(\{[\s\S]*\})\s*(?:<\/\1>|$)"#).firstMatch(s), let c = callFromJson(parseJSON(w[2] ?? "")) { return c }
     if let n = JSRegExp(#"^<([a-z]+_[a-z0-9_]+)>\s*(\{[\s\S]*?\})\s*(?:<\/\1>|$|\n)"#).firstMatch(s), let tag = n[1], !["tool_call", "tool_name", "invoke_tool"].contains(tag),
-       let a = plainObject(parseJSON(n[2] ?? "")) {
-      let inner = argKeys.compactMap { plainObject(a[$0]) }.first
-      return Call(name: tag, args: inner ?? a)
+       let a = members(parseJSON(n[2] ?? "")) {
+      let inner = argKeys.compactMap { k in members(a.last { $0.0 == k }?.1) }.first
+      return Call(name: tag, argList: inner ?? a)
     }
     if let tn = JSRegExp(#"<tool_name>\s*([a-z_][a-z0-9_]{0,63})\s*<\/tool_name>"#, "i").firstMatch(s), let name = tn[1] {
       let p = JSRegExp(#"<(parameters|arguments)>\s*(\{[\s\S]*?\})\s*<\/\1>"#).firstMatch(s)
-      return Call(name: name, args: p.flatMap { plainObject(parseJSON($0[2] ?? "")) } ?? [:])
+      return Call(name: name, argList: p.flatMap { members(parseJSON($0[2] ?? "")) } ?? [])
     }
-    if let j = JSRegExp(#"^<invoke_tool>\s*(\{[\s\S]*?\})\s*<\/invoke_tool>"#).firstMatch(s), let o = plainObject(parseJSON(j[1] ?? "")),
-       let name = o["name"]?.stringValue, nameOK.test(name) {
-      return Call(name: name, args: plainObject(o["arguments"]) ?? [:])
+    if let j = JSRegExp(#"^<invoke_tool>\s*(\{[\s\S]*?\})\s*<\/invoke_tool>"#).firstMatch(s), let o = members(parseJSON(j[1] ?? "")),
+       case .str(let name)? = o.last(where: { $0.0 == "name" })?.1, nameOK.test(name) {
+      return Call(name: name, argList: members(o.last { $0.0 == "arguments" }?.1) ?? [])
     }
     var params = JSRegExp(#"<parameter\s+name="([a-z_][a-z0-9_]{0,63})"\s*>([\s\S]*?)(?=<\/parameter>|<parameter\b|<\/invoke|$)"#, "gi").allMatches(s).map { ($0[1] ?? "", $0[2] ?? "") }
     var name = JSRegExp(#"<invoke\s+name="([a-z_][a-z0-9_]{0,63})""#, "i").firstMatch(s)?[1]
       ?? JSRegExp(#"<invoke_(?!tool\b|placeholder\b)([a-z_][a-z0-9_]{0,63})>"#, "i").firstMatch(s)?[1]
     if name?.isEmpty ?? false { name = nil }
     if name == nil && params.count > 1 && JS.trim(params[0].1).isEmpty { name = params.removeFirst().0 }
-    if name == nil && params.count == 1 && JSRegExp(#"^\s*\{[\s\S]*\}\s*$"#).test(params[0].1), let a = plainObject(parseJSON(params[0].1)), nameOK.test(params[0].0) {
-      return Call(name: params[0].0, args: a)
+    if name == nil && params.count == 1 && JSRegExp(#"^\s*\{[\s\S]*\}\s*$"#).test(params[0].1), let a = members(parseJSON(params[0].1)), nameOK.test(params[0].0) {
+      return Call(name: params[0].0, argList: a)
     }
     guard let n = name, nameOK.test(n) else { return nil }
-    var args: [String: JSONValue] = [:]
+    var args: [(String, OJSON)] = []
     for (k, raw) in params where k != n {
       let v = JS.trim(raw)
-      args[k] = v == "true" ? .bool(true) : v == "false" ? .bool(false) : JSRegExp(#"^-?\d+(\.\d+)?$"#).test(v) ? .number(JSNumber.parse(v)) : .string(v)
+      set(&args, k, v == "true" ? .bool(true) : v == "false" ? .bool(false) : JSRegExp(#"^-?\d+(\.\d+)?$"#).test(v) ? .num(JSNumber.parse(v)) : .str(v))
     }
-    return Call(name: n, args: args)
+    return Call(name: n, argList: args)
   }
 
   /** Pulls a call out of what Claude wrote after <tool> (or an XML call). */
@@ -408,9 +419,9 @@ public enum VoiceText {
     while let f = lead.utf16.first, isJSSpace(f) { lead = lead.dropFirst() }
     if xmlCall.test(JS.slice(String(lead), 0, 40)) { return parseXmlToolCall(text) }
     guard let j = parseJSON(JS.trim(text)) else { return nil }
-    if let name = j["name"]?.stringValue {
+    if case .str(let name)? = j["name"] {
       guard nameOK.test(name) else { return nil }
-      return Call(name: name, args: plainObject(j["arguments"]) ?? [:])
+      return Call(name: name, argList: members(j["arguments"]) ?? [])
     }
     return callFromJson(j)
   }

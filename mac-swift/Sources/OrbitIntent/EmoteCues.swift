@@ -25,6 +25,10 @@ public enum EmoteCues {
   public struct Piece: Equatable, Sendable {
     public var text: String
     public var cues: [Cue]
+    public init(text: String, cues: [Cue]) {
+      self.text = text
+      self.cues = cues
+    }
   }
 
   static func isLetter(_ u: UInt16) -> Bool { (65...90).contains(u) || (97...122).contains(u) }
