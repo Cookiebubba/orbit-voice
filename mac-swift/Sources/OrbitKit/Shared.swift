@@ -172,3 +172,13 @@ public struct ParityState: Codable, Equatable, Sendable {
   public var events: [ParityEvent] = []
   public init() {}
 }
+
+/** A value behind a lock, for state shared with callbacks on other threads. */
+public final class Locked<T>: @unchecked Sendable {
+  private var value: T
+  private let lock = NSLock()
+  public init(_ value: T) { self.value = value }
+  public func get() -> T { lock.withLock { value } }
+  public func set(_ v: T) { lock.withLock { value = v } }
+  @discardableResult public func update<R>(_ f: (inout T) -> R) -> R { lock.withLock { f(&value) } }
+}
