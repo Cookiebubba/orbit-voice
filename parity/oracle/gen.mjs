@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { intentFixtures } from './intent.mjs';
+import { desktopFixtures } from './desktop.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const FIXTURES = path.join(HERE, 'fixtures');
@@ -108,6 +109,8 @@ export async function build() {
       // ...and which windows Orbit may read (the macOS port's policy.js: made on a Mac, from a tree with it).
       return { intent: { platform: 'any', ...f.intent }, policy: { platform: 'darwin', ...f.policy } };
     })()),
+    // The Claude driver (the macOS port's platform/mac/desktop.js against its stand-in Claude).
+    ...(fs.existsSync(path.join(root, 'src', 'platform', 'mac', 'desktop.js')) ? { desktop: { platform: 'darwin', ...(await desktopFixtures(root)) } } : {}),
   };
 }
 
@@ -139,7 +142,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
         continue;
       }
       fs.writeFileSync(path.join(FIXTURES, `${name}.json`), `${JSON.stringify(data, null, 1)}\n`);
-      console.log(`${name}: ${data.cases.length} cases`);
+      console.log(`${name}: ${(data.cases || data.scenarios || []).length} ${data.scenarios ? "scenarios" : "cases"}`);
     }
   }
 }
