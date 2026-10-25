@@ -77,6 +77,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   let pendingEntrance = false;
   let lifted = null; // { area, strip } (DIPs) while the window covers the work area
   let liftTimer = null;
+  let lastHit = null; // where the page last said it draws the avatar (window px), for debug()
   // Whether the window takes the mouse: the real cursor over the avatar (polled here, see
   // avatar-hover.js), or a press under way. Never only forwarded mouse moves. Logged when the polling
   // starts or stops and when the mouse mode changes (rate-limited; no text).
@@ -501,6 +502,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     },
     /** The page: where the avatar is drawn (window px), so the window takes the mouse over it. */
     hit(rect) {
+      lastHit = rect ? { ...rect } : null; // (for debug())
       hover.setHit(rect);
     },
     /** For the tests: whether the window takes the mouse now. */
@@ -542,7 +544,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
         boxKnown,
         voice: { ...voice },
         takesMouse: hover.taking,
-        hit: hover.hitRect,
+        hit: lastHit,
       };
     },
     stop() {

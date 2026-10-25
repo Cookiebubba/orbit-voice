@@ -21,14 +21,6 @@ export const HIT_STALE_MS = 3000; // a rect not heard again for this long is for
 export const HELD_STALE_MS = 5000; // ...and a press the page stopped mentioning
 const PAD = 2; // px of slack around the avatar's rect
 
-// Developer testing only (the parity driver's `cursor.set`, electron/parity-driver.js): where every
-// poller takes the cursor to be instead of the real one. null (always, outside the parity suite):
-// the real cursor.
-let testCursor = null;
-export function setTestCursor(p) {
-  testCursor = p && Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: p.x, y: p.y } : null;
-}
-
 export function createHoverPoller({ getCursor, getBounds, setIgnore, isLive = () => true, onCursor = () => {}, onMode = () => {}, onRunning = () => {}, intervalMs = HOVER_POLL_MS, now = () => Date.now(), setTimer = setInterval, clearTimer = clearInterval } = {}) {
   let hit = null; // the avatar's rect in the window's px: { x, y, w, h }
   let hitAt = 0;
@@ -118,10 +110,6 @@ export function createHoverPoller({ getCursor, getBounds, setIgnore, isLive = ()
     get state() {
       return { hit: !!hit, held, taking: !!taking, running: !!timer };
     },
-    /** For the parity driver: the avatar's rect as the page last reported it (window px), or null. */
-    get hitRect() {
-      return hit ? { ...hit } : null;
-    },
   };
 }
 
@@ -143,4 +131,12 @@ export function rateLimitedLog(log, { everyMs = 10_000, now = () => Date.now() }
     last.set(kind, { at: t, skipped: 0 });
     return true;
   };
+}
+
+// Developer testing only (the parity driver's `cursor.set`, electron/parity-driver.js): where every
+// poller takes the cursor to be instead of the real one. null (always, outside the parity suite):
+// the real cursor.
+let testCursor = null;
+export function setTestCursor(p) {
+  testCursor = p && Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: p.x, y: p.y } : null;
 }
