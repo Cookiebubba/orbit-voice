@@ -49,8 +49,9 @@ let package = Package(
     // Phase 2: Orbit's on-device speech in Swift (sherpa-onnx's C API).
     .target(name: "SherpaOnnxC", path: "Sources/SherpaOnnxC"),
     .target(name: "OrbitSpeech", dependencies: ["SherpaOnnxC"], path: "Sources/OrbitSpeech", swiftSettings: [.swiftLanguageMode(.v5)], linkerSettings: sherpaLink),
-    .testTarget(name: "OrbitKitTests", dependencies: ["OrbitKit"], path: "Tests/OrbitKitTests"),
+    .testTarget(name: "OrbitKitTests", dependencies: ["OrbitKit"], path: "Tests/OrbitKitTests", exclude: ["Fixtures"]),
     .testTarget(name: "OrbitSpeechTests", dependencies: ["OrbitSpeech", "OrbitKit"], path: "Tests/OrbitSpeechTests", linkerSettings: sherpaLink),
+    // (Fixtures are read from the source tree by path, as the JS tests read test/fixtures.)
     // Runs ../parity/cases against the Swift build (needs a built test app; see README).
     .testTarget(name: "OrbitParityTests", dependencies: ["OrbitKit"], path: "Tests/OrbitParityTests"),
   ]
