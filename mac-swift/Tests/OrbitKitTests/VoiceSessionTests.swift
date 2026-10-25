@@ -747,6 +747,23 @@ final class VoiceSessionTests: XCTestCase {
     XCTAssertEqual(b["kept"], 0)
   }
 
+  func testSettingsFromTheBridge() {
+    var s = VoiceSettings()
+    s.merge(["listenMode": "tap", "halfDuplex": true, "voiceVolume": 0.4, "wakeWord": true, "announce": "off", "avatarThrowSound": false,
+             "voiceEngine": "claude", "wakeHotkey": "Control+Alt+K", "other": 1])
+    XCTAssertEqual(s.options, VoiceOptions(listenMode: .tap, halfDuplex: true, volume: 0.4))
+    XCTAssertTrue(s.wakeWord)
+    XCTAssertEqual(s.announce, "off")
+    XCTAssertFalse(s.avatarThrowSound)
+    XCTAssertTrue(s.avatarThrow, "missing keys keep their value")
+    XCTAssertEqual(s.voiceEngine, "claude")
+    XCTAssertEqual(s.wakeHotkey, "Control+Alt+K")
+    s.merge(["listenMode": "sometimes", "voiceVolume": "loud", "announce": 3, "wakeHotkey": "Control+!"])
+    XCTAssertEqual(s.listenMode, .tap, "a bad value changes nothing")
+    XCTAssertEqual(s.voiceVolume, 0.4)
+    XCTAssertEqual(s.wakeHotkey, "Control+Alt+K")
+  }
+
   func testOrbSyncCarriesThePagesKeys() {
     var st = VoiceState()
     st.phase = .listening
