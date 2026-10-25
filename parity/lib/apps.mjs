@@ -1,7 +1,7 @@
 // Starting and stopping the apps under test (and the stand-in Claude window) for the parity runner.
 // Everything is launched with `open -n -g` so it runs in the logged-in GUI session as the user's own
 // apps do, with a throwaway profile, its own ports and the test switches from parity/PROTOCOL.md.
-import { execFile, spawn } from 'node:child_process';
+import { execFile, execFileSync, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -44,6 +44,37 @@ export async function ensureGone(pid, ms = 5000) {
     } catch {}
   }
   return !alive(pid);
+}
+
+/** Our own processes whose environment names `needle` (ps shows the environment of one's own processes). */
+export function pidsWithEnv(needle) {
+  try {
+    return execFileSync('ps', ['-Aeww', '-o', 'pid=,command='], { encoding: 'utf8', maxBuffer: 32 << 20 })
+      .split('\n')
+      .filter((l) => l.includes(needle))
+      .map((l) => Number(l.trim().split(/\s+/)[0]))
+      .filter((p) => p > 0 && p !== process.pid);
+  } catch {
+    return [];
+  }
+}
+
+/** Whoever listens on a loopback port (lsof), if it's one of the apps this suite launches. */
+function testAppOnPort(port) {
+  try {
+    const pid = Number(execFileSync('lsof', ['-t', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' }).trim().split('\n')[0]);
+    if (!pid) return 0;
+    const cmd = execFileSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' });
+    return /Orbit Native\.app|Electron\.app\/Contents\/MacOS\/Electron/.test(cmd) ? pid : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** A port held by a test app left over from an earlier case: end it (never anything else). */
+export async function freePort(port) {
+  const pid = testAppOnPort(port);
+  if (pid) await ensureGone(pid, 0);
 }
 
 /** A JSON client for an app's parity driver. */
@@ -90,6 +121,8 @@ export async function until(fn, ms, every = 100) {
  */
 export async function startApp(which, { paths, profileDir, logDir, bridgePort, driverPort, env = {} }) {
   const tok = token();
+  await freePort(driverPort);
+  await freePort(bridgePort);
   const common = {
     ORBIT_PARITY_PORT: driverPort,
     ORBIT_PARITY_TOKEN: tok,
@@ -112,6 +145,8 @@ export async function startApp(which, { paths, profileDir, logDir, bridgePort, d
     return r.status === 200 && r.body?.bridge?.base && r.body.ready !== false ? r.body : null;
   }, which === 'electron' ? 45_000 : 30_000);
   if (!hello?.bridge?.base) {
+    // Never leave it running: it would hold the ports for every case after this one.
+    for (const pid of pidsWithEnv(`ORBIT_PROFILE_DIR=${profileDir}`)) await ensureGone(pid, 0);
     const tail = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').slice(-8).join(' | ') : '');
     throw new Error(`${which} did not come up: ${tail(path.join(logDir, `${which}.err.log`)) || '(no output)'}`.slice(0, 600));
   }
@@ -133,13 +168,17 @@ export async function startApp(which, { paths, profileDir, logDir, bridgePort, d
 export async function startStandIn({ paths, port, logDir, frame }) {
   const tok = token();
   const bundle = path.join(paths.electronRoot, 'node_modules', 'electron', 'dist', 'Electron.app');
+  await freePort(port);
   await openApp(bundle, { env: { PARITY_STANDIN_PORT: port, PARITY_STANDIN_TOKEN: tok, PARITY_STANDIN_FRAME: frame ? JSON.stringify(frame) : undefined }, args: [path.join(paths.repo, 'parity', 'fixtures', 'standin')], logDir, name: 'standin' });
   const call = async (method, p, body) => {
     const r = await fetch(`http://127.0.0.1:${port}${p}`, { method, headers: { 'x-standin-token': tok, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
     return r.json();
   };
   const st = await until(() => call('GET', '/state').then((j) => (j?.pid ? j : null)), 30_000);
-  if (!st?.pid) throw new Error('the stand-in Claude window did not come up');
+  if (!st?.pid) {
+    for (const pid of pidsWithEnv(`PARITY_STANDIN_TOKEN=${tok}`)) await ensureGone(pid, 0);
+    throw new Error('the stand-in Claude window did not come up');
+  }
   return {
     pid: st.pid,
     state: () => call('GET', '/state'),

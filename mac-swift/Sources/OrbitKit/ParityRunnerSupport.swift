@@ -193,6 +193,8 @@ public final class AppHandle: @unchecked Sendable {
       }
       try await Task.sleep(nanoseconds: 100_000_000)
     }
+    // Never leave it running: it would hold the ports for every case after this one.
+    for pid in ChildProcess.pids(withEnv: "ORBIT_PROFILE_DIR=\(profile.path)") { await ChildProcess.waitGone(pid, within: 0) }
     let err = (try? String(contentsOf: logs.appendingPathComponent("\(which).err.log"), encoding: .utf8))?.split(separator: "\n").suffix(8).joined(separator: " | ") ?? ""
     throw RunnerError("\(which) did not come up: \(err.isEmpty ? "(no output)" : err)")
   }
@@ -280,6 +282,21 @@ public final class ChildProcess: @unchecked Sendable {
     while kill(pid, 0) == 0 && Date() < end { try? await Task.sleep(nanoseconds: 50_000_000) }
     if kill(pid, 0) == 0 { kill(pid, SIGTERM); try? await Task.sleep(nanoseconds: 1_500_000_000) }
     if kill(pid, 0) == 0 { kill(pid, SIGKILL) }
+  }
+
+  /** Our own processes whose environment names `needle` (ps shows one's own processes' environment). */
+  public static func pids(withEnv needle: String) -> [Int32] {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/bin/ps")
+    p.arguments = ["-Aeww", "-o", "pid=,command="]
+    let out = Pipe()
+    p.standardOutput = out
+    guard (try? p.run()) != nil else { return [] }
+    let data = out.fileHandleForReading.readDataToEndOfFile()
+    p.waitUntilExit()
+    return String(decoding: data, as: UTF8.self).split(separator: "\n").filter { $0.contains(needle) }
+      .compactMap { Int32($0.split(separator: " ", omittingEmptySubsequences: true).first ?? "") }
+      .filter { $0 > 0 && $0 != getpid() }
   }
 
   public static func ensureGone(_ pid: Int32, within seconds: Double) {
