@@ -74,6 +74,7 @@ Swift → Sidecar:
 | `wake` | `win` | Avatar clicked: start talking with this window in front (`wakeWith`). |
 | `homeWindow` | `id` | The Claude window Orbit lives on. |
 | `frontHint` | `id` | The Claude window the tools should act on. |
+| `shellSettings` | `patch` | Settings the shell owns (`wakeHotkey`, `orbPosition`, `orbStickAnchor`), saved by the core. |
 | `quit` | | Stop background work and exit. |
 
 ### The page shim (WKWebView)

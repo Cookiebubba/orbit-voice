@@ -272,6 +272,12 @@ async function main() {
     tracker?.stop();
     platform.stopUia();
   };
+  // The settings the shell owns (the page can't set them through POST /api/settings): the hotkey once
+  // it's registered, the orb's place. electron/main.js calls updateSettings for these in-process.
+  on('shellSettings', (m) => {
+    const patch = Object.fromEntries(Object.entries(m.patch || {}).filter(([k]) => ['wakeHotkey', 'orbPosition', 'orbStickAnchor'].includes(k)));
+    if (Object.keys(patch).length) config.updateSettings(patch);
+  });
   on('quit', () => shutdown(0));
   const auth = Object.fromEntries(['main', 'orb', 'qubit', 'buddy', 'mouse'].map((v) => [v, server.authUrl(v)]));
   send({ t: 'ready', base, auth, version: config.DEFAULTS ? JSON.parse(fs.readFileSync(path.join(CORE, 'package.json'), 'utf8')).version : '' });
