@@ -206,3 +206,8 @@ Measured on the MacBook Air M4 (parity/tools/measure.mjs, median of 3, display a
 | Start-up (open → ready) | 0.36 s | 0.39 s (from source) |
 | Idle CPU | 0.8 % | 12.4 % |
 | Idle memory | 351 MB (8 processes) | 627 MB (8 processes) |
+
+In calls (parity/tools/soak.mjs: Claude voice, the stand-in Claude Code, 40 calls in a row, none
+failed on either): Orbit Native about 0.9 to 1.0 GB, Electron about 1.4 to 1.5 GB. Both level off; the
+page processes grow for the first ~30 calls (lazy garbage collection), then stay flat. Over 100 calls,
+Orbit Native's growth in the second half was 0.6 MB per call, mostly the shared Node core (~0.2 MB per call).
