@@ -1,5 +1,5 @@
 #!/bin/bash
-# Orbit on a Mac (phase 1): get a fresh checkout ready to run from source and to build.
+# Orbit on a Mac: get a fresh checkout ready to run from source and to build.
 #
 #   bash scripts/mac-setup.sh
 #
@@ -40,6 +40,14 @@ fi
 say "Building the UI"
 npm run build:ui
 
+# ---- Orbit's macOS helper (the Claude app, Orbit anywhere; Swift, from the Xcode command line tools) ----
+say "Building Orbit's macOS helper"
+if xcrun --find swiftc >/dev/null 2>&1; then
+  node scripts/build-mac-helper.mjs
+else
+  echo "No Swift compiler: install the Xcode command line tools (xcode-select --install), then: npm run mac:helper"
+fi
+
 # ---- the offline wake-word model ("Hey Orbit") ----
 say "Fetching the wake-word model"
 node scripts/fetch-model.mjs
@@ -55,7 +63,8 @@ fi
 
 say "Ready."
 cat <<'EOF'
-Run Orbit from source (macOS asks for the microphone the first time):
+Run Orbit from source (macOS asks for the microphone the first time; turn on Accessibility for
+Terminal, or whatever runs it, to use the Claude app by voice):
   npm run app
 
 Build the Mac apps (unsigned unless a Developer ID is in your keychain), into dist/:
@@ -65,5 +74,5 @@ Build the Mac apps (unsigned unless a Developer ID is in your keychain), into di
 Open an unsigned build: right-click Orbit.app -> Open, or
   xattr -dr com.apple.quarantine /Applications/Orbit.app
 
-What works on a Mac so far, and the test checklist: docs/MAC.md
+What works on a Mac, permissions, signing and notarizing: docs/MAC.md
 EOF

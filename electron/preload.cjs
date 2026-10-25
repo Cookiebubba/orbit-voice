@@ -106,6 +106,12 @@ contextBridge.exposeInMainWorld('desktop', {
       return () => ipcRenderer.removeListener('update:state', fn);
     },
   },
+  // macOS: Orbit → Settings… (⌘,) in the menu bar.
+  onShowSettings: (cb) => {
+    const fn = () => cb();
+    ipcRenderer.on('app:settings', fn);
+    return () => ipcRenderer.removeListener('app:settings', fn);
+  },
   onHotkey: (cb) => {
     const fn = () => cb();
     ipcRenderer.on('hotkey', fn);

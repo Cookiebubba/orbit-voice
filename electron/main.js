@@ -404,7 +404,7 @@ function setAvatar({ live = false } = {}) {
       getDesktopInfo,
       log: (m) => logWarn('avatar', m),
       info: (m) => logInfo('avatar', m),
-      // No Claude window to live on (macOS for now): along the bottom of the screen instead.
+      // No Claude window to live on (no window helper): along the bottom of the screen instead.
       free: freeAvatar(),
       onWindow: followSpaces,
       prefs: avatarPrefs,
@@ -546,6 +546,38 @@ function refreshTray() {
       { label: LOGIN_LABEL, type: 'checkbox', checked: loginEnabled(), click: (item) => setLogin(item.checked) },
       { type: 'separator' },
       { label: 'Quit Orbit', click: () => app.quit() },
+    ]),
+  );
+}
+
+/**
+ * macOS: the menu bar's app menu (About, Settings… ⌘,, Hide, Quit ⌘Q), Edit (so ⌘C / ⌘V work in
+ * Orbit's own fields) and Window. No View menu: reload and the developer tools stay out of the
+ * installed app. (Windows has no app menu: the page draws its own title bar.)
+ */
+function createAppMenu() {
+  if (!IS_MAC) return;
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: 'Orbit',
+        submenu: [
+          { role: 'about', label: 'About Orbit' },
+          { type: 'separator' },
+          { label: 'Settings…', accelerator: 'Command+,', click: () => (showMain(), main?.webContents.send('app:settings')) },
+          { type: 'separator' },
+          { role: 'services' },
+          { type: 'separator' },
+          { role: 'hide', label: 'Hide Orbit' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          { role: 'quit', label: 'Quit Orbit' },
+        ],
+      },
+      { role: 'editMenu' },
+      { role: 'windowMenu' },
+      ...(app.isPackaged ? [] : [{ role: 'viewMenu' }]),
     ]),
   );
 }
@@ -828,6 +860,7 @@ app.whenReady().then(async () => {
   if (needTracker()) claudeTracker.start();
   setFocusTracking();
   createTray();
+  createAppMenu();
   updater = createUpdater({
     isPackaged: app.isPackaged,
     version: app.getVersion(),

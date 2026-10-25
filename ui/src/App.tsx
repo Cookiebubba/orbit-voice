@@ -90,6 +90,7 @@ export default function App() {
   actions.current = v;
   useEffect(() => desktop?.onOrbAction((a) => a === "toggle-sleep" && actions.current.toggleSleep()), []);
   useEffect(() => desktop?.onHotkey(() => actions.current.hotkey()), []);
+  useEffect(() => desktop?.onShowSettings?.(() => setView("settings")), []);
   // A click on the avatar: the wake word's own path, when the wake word would be listening (Orbit
   // off or asleep, with a key). Already awake, the avatar's little nod is all.
   const talkRef = useRef(() => {});

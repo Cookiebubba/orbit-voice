@@ -23,7 +23,7 @@ export function buddyBoundsFor(win, height = BUDDY_HEIGHT) {
 export const FREE_STRIP_MAX_WIDTH = 900;
 
 /**
- * The free-floating strip (no Claude window to live on, e.g. macOS for now): along the bottom of a
+ * The free-floating strip (no Claude window to live on, e.g. no window helper): along the bottom of a
  * display's work area (so just above the Dock or taskbar), centred, at most FREE_STRIP_MAX_WIDTH
  * wide with a margin each side.
  */

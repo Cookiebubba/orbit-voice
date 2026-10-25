@@ -60,6 +60,8 @@ type DesktopApi = {
   openLogs(): Promise<void>;
   startWithWindows: { get(): Promise<boolean>; set(enabled: boolean): Promise<boolean> };
   onHotkey(cb: () => void): () => void;
+  /** macOS: Orbit → Settings… (⌘,) was chosen in the menu bar. */
+  onShowSettings?(cb: () => void): () => void;
   updates: {
     get(): Promise<UpdateState>;
     check(): Promise<UpdateState>;

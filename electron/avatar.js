@@ -15,7 +15,7 @@
 //     full looks the Send button keeps its place from the box's right end and bottom (it sits on the
 //     box's row), so it moves with the box.
 //
-// Free-floating (`free`, macOS for now, where there's no Claude window tracker yet): the strip
+// Free-floating (`free`: no Claude window tracker, e.g. a Mac copy without its helper): the strip
 // lives along the bottom of the screen the cursor is on, just above the Dock, always on top and on
 // every Space. There's no prompt box or Send button to stand on there, so the avatar has the
 // floor (the top of the Dock) to itself; it moves when the screen layout changes.
