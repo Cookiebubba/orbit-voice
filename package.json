@@ -67,7 +67,8 @@
       "LICENSE",
       "THIRD_PARTY_NOTICES.md",
       "!src/selftest.js",
-      "!electron/selftest.js"
+      "!electron/selftest.js",
+      "!electron/parity-*"
     ],
     "asarUnpack": [
       "src/desktop.ps1",

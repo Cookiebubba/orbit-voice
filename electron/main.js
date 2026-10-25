@@ -85,10 +85,21 @@ function isOurs(url) {
 let drag = null; // { cursor, win } at drag start
 let quitting = false;
 
+// Developer testing only (the parity suite, parity/PROTOCOL.md): a throwaway profile folder for
+// settings, keys (in a plain .env there, never the Keychain or DPAPI), logs and caches, so the user's
+// own profile is never touched. The single-instance lock lives in it too.
+const PROFILE = !app.isPackaged && process.env.ORBIT_PROFILE_DIR ? path.resolve(process.env.ORBIT_PROFILE_DIR) : null;
+if (PROFILE) app.setPath('userData', PROFILE);
+if (PROFILE && IS_MAC) app.commandLine.appendSwitch('use-mock-keychain');
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => showMain());
+}
+// Developer testing only (never in the installed app): the parity suite's driver (electron/parity-driver.js).
+if (!app.isPackaged && process.env.ORBIT_PARITY_PORT) {
+  const { startParityDriver } = await import('./parity-driver.js');
+  startParityDriver({ main: () => main, orb: () => orb, avatar: () => avatar, avatarHost: () => avatarHost, claude: () => claude, orbitMouse: () => orbitMouse, showMain: () => showMain(), showOrb: () => showOrb() });
 }
 
 /**
@@ -726,8 +737,8 @@ app.whenReady().then(async () => {
     const dir = app.getPath('userData');
     baseUrl = await startServer({
       configDir: dir,
-      secrets: encryptedKeyStore(dir),
-      brainSecrets: encryptedKeyStore(dir, 'anthropic-key.bin'),
+      secrets: PROFILE ? undefined : encryptedKeyStore(dir), // (a test profile: its .env, see above)
+      brainSecrets: PROFILE ? undefined : encryptedKeyStore(dir, 'anthropic-key.bin'),
       clipboard: (text) => clipboard.writeText(text),
       // Offline wake-word model: shipped next to the app (extraResources), or in the repo in dev.
       models: app.isPackaged ? path.join(process.resourcesPath, 'models') : path.join(ROOT, 'resources', 'models'),
