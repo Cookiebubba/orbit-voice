@@ -109,7 +109,9 @@ async function prepare(c, which) {
   // The microphone is always the fake one in tests (silence until a case plays a clip into it).
   const silence = path.join(run, 'silence.wav');
   fs.writeFileSync(silence, silentWav(0.2));
-  const env = { PARITY_RECORD_DIR: dirs.records, ORBIT_FAKE_MIC: silence, ...EXTRA_ENV, ...interpolate(c.env || {}, vars) };
+  // Permission states are faked (all granted) unless a case says otherwise: with a fake microphone
+  // there's nothing to ask for, and a real macOS prompt would hold an app up waiting for a click.
+  const env = { PARITY_RECORD_DIR: dirs.records, ORBIT_FAKE_MIC: silence, ORBIT_FAKE_PERMS: JSON.stringify({ mic: 'granted', ax: true, screen: true }), ...EXTRA_ENV, ...interpolate(c.env || {}, vars) };
   const settings = { ...(c.profile?.settings || {}) };
   const fx = c.fixtures || {};
   const stops = [];

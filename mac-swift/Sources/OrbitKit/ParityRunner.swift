@@ -269,7 +269,9 @@ public final class ParityRunner: @unchecked Sendable {
     // The microphone is always the fake one in tests (silence until a case plays a clip into it).
     let silence = run.appendingPathComponent("silence.wav")
     try Self.silentWav(seconds: 0.2).write(to: silence)
-    var env: [String: String] = ["PARITY_RECORD_DIR": records.path, "ORBIT_FAKE_MIC": silence.path]
+    // Permission states are faked (all granted) unless a case says otherwise: with a fake microphone
+    // there's nothing to ask for, and a real macOS prompt would hold an app up waiting for a click.
+    var env: [String: String] = ["PARITY_RECORD_DIR": records.path, "ORBIT_FAKE_MIC": silence.path, "ORBIT_FAKE_PERMS": #"{"mic":"granted","ax":true,"screen":true}"#]
     for (k, v) in ParityMatch.interpolate(c.raw["env"] ?? .object([:]), .object(vars)).objectValue ?? [:] { env[k] = v.stringValue ?? v.text }
     var settings = c.raw.at(path: "profile.settings")?.objectValue ?? [:]
     let fx = c.raw["fixtures"] ?? .object([:])

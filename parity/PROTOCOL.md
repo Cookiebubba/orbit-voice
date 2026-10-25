@@ -29,7 +29,7 @@ baked in at build time by `mac-swift/scripts/build-app.sh --test`, never in a re
 | `ORBIT_FAKE_MIC` | A WAV file (any rate, mono or stereo) used as the microphone instead of the real one. Electron maps it to Chromium's fake capture device; Swift's audio engine reads it in real time. Can be swapped at run time with `mic.play`. |
 | `ORBIT_MUTE_OUTPUT` | `1`: the voice is "played" (timed, counted, levels computed) but not sent to the speakers. |
 | `ORBIT_FAKE_LOGIN` | `1`: "Open at login" is kept in memory only (reported in `login.enabled`), never registered with macOS. |
-| `ORBIT_FAKE_PERMS` | JSON `{"mic":"granted|denied|not-determined|restricted","ax":bool,"screen":bool}`: what the permissions check reports, for the onboarding cases (never touches the real TCC state). |
+| `ORBIT_FAKE_PERMS` | JSON `{"mic":"granted|denied|not-determined|restricted","ax":bool,"screen":bool}`: what the permissions check reports, for the onboarding cases (never touches the real TCC state). The runners set all granted unless a case sets it (a real macOS prompt would hold an app up). |
 
 ## The driver
 
