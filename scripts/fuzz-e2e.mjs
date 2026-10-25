@@ -337,7 +337,7 @@ async function js(code, timeoutMs = 10_000) {
   return r;
 }
 const clickLabel = (text) => js(`(() => { const b = [...document.querySelectorAll('button')].find((x) => (x.getAttribute('aria-label') || x.textContent || '').includes(${JSON.stringify(text)})); if (b && !b.disabled) b.click(); return !!b; })()`);
-const isOff = () => js(`[...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('Start talking'))`);
+const isOff = () => js(`[...document.querySelectorAll('button')].some((b) => (b.getAttribute('aria-label') || b.textContent || '').includes('Start talking'))`);
 const isGoingToSleep = () => js(`document.body.innerText.includes('Going to sleep')`);
 async function waitFor(fn, ms, step = 150) {
   const t0 = Date.now();

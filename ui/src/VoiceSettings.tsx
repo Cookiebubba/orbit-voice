@@ -106,7 +106,7 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
 
   if (!state) {
     return (
-      <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-[13px] text-white/50">
+      <section className="border-t border-line pt-5 text-[13px] text-muted">
         {error || "Loading voices…"}
       </section>
     );
@@ -121,19 +121,19 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
   const pct = ((speed - state.minSpeed) / (state.maxSpeed - state.minSpeed)) * 100;
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-      <div className="text-[14px] font-medium">{claude ? "Orbit's voice" : "Grok's voice"}</div>
-      <p className="mt-1 text-[12.5px] leading-relaxed text-white/50">
+    <section className="border-t border-line pt-5">
+      <h3 className="eyebrow">{claude ? "Orbit's voice" : "Grok's voice"}</h3>
+      <p className="mt-3 text-[12.5px] leading-relaxed text-muted">
         {claude ? `Spoken on ${thisComputer}. Pick one by ear with Preview. Changes apply right away.` : "Changes apply right away, even mid-conversation."}
       </p>
 
-      <label className="mt-4 mb-1.5 block text-[12px] text-white/50">Voice</label>
+      <label className="mt-4 mb-1.5 block text-[12px] text-muted">Voice</label>
       <div className="flex gap-2">
         <div className="relative flex-1">
           <select
             value={state.voice}
             onChange={(e) => save({ voice: e.target.value })}
-            className="h-10 w-full appearance-none rounded-xl border border-white/15 bg-[#111] pr-8 pl-3 text-[13px] text-white outline-none hover:border-white/30 focus:border-white/50"
+            className="h-10 w-full appearance-none rounded-xl border border-line bg-soft pr-8 pl-3 text-[13px] text-fg outline-none hover:border-black/20 focus:border-black/40 focus:bg-white"
           >
             {!known && <option value={state.voice}>{state.voice}</option>}
             {groups.map((g) => (
@@ -146,13 +146,13 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
               </optgroup>
             ))}
           </select>
-          <ChevronDown size={15} className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-white/50" />
+          <ChevronDown size={15} className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-muted" />
         </div>
         <button
           onClick={playPreview}
           aria-label={preview === "playing" ? "Stop preview" : "Preview voice"}
           title={preview === "playing" ? "Stop preview" : "Preview this voice"}
-          className="flex h-10 items-center gap-1.5 rounded-xl border border-white/15 px-3 text-[13px] text-white/80 hover:border-white/35 hover:text-white"
+          className="flex h-10 items-center gap-1.5 rounded-xl bg-fg px-3.5 text-[13px] font-medium text-white transition-colors hover:bg-[#2b2b2b]"
         >
           {preview === "loading" ? <Loader2 size={14} className="animate-spin" /> : preview === "playing" ? <Square size={12} /> : <Play size={13} />}
           {preview === "playing" ? "Stop" : "Preview"}
@@ -160,8 +160,8 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
       </div>
 
       <div className="mt-5 mb-1.5 flex items-baseline justify-between">
-        <label className="text-[12px] text-white/50">Talking speed</label>
-        <span className="text-[13px] font-medium tabular-nums">{speed.toFixed(2)}×</span>
+        <label className="text-[12px] text-muted">Talking speed</label>
+        <span className="text-[13px] font-medium text-fg tabular-nums">{speed.toFixed(2)}×</span>
       </div>
       <input
         type="range"
@@ -172,19 +172,19 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
         onChange={(e) => changeSpeed(Number(e.target.value))}
         aria-label="Talking speed"
         className="speed-slider w-full"
-        style={{ background: `linear-gradient(to right, #fff ${pct}%, rgba(255,255,255,.15) ${pct}%)` }}
+        style={{ background: `linear-gradient(to right, #0d0d0d ${pct}%, rgba(0,0,0,.1) ${pct}%)` }}
       />
-      <div className="mt-1 flex justify-between text-[11.5px] text-white/40">
+      <div className="mt-1 flex justify-between text-[11.5px] text-faint">
         <span>Slower</span>
-        <button onClick={() => changeSpeed(1)} className={cn("hover:text-white", speed === 1 && "invisible")}>
+        <button onClick={() => changeSpeed(1)} className={cn("hover:text-fg", speed === 1 && "invisible")}>
           Reset to 1×
         </button>
         <span>Faster</span>
       </div>
 
       <div className="mt-5 mb-1.5 flex items-baseline justify-between">
-        <label className="text-[12px] text-white/50">Volume</label>
-        <span className="text-[13px] font-medium tabular-nums">{Math.round(vol * 100)}%</span>
+        <label className="text-[12px] text-muted">Volume</label>
+        <span className="text-[13px] font-medium text-fg tabular-nums">{Math.round(vol * 100)}%</span>
       </div>
       <input
         type="range"
@@ -195,15 +195,15 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
         onChange={(e) => changeVolume(Number(e.target.value))}
         aria-label="Volume"
         className="speed-slider w-full"
-        style={{ background: `linear-gradient(to right, #fff ${vol * 100}%, rgba(255,255,255,.15) ${vol * 100}%)` }}
+        style={{ background: `linear-gradient(to right, #0d0d0d ${vol * 100}%, rgba(0,0,0,.1) ${vol * 100}%)` }}
       />
-      <div className="mt-1 flex justify-between text-[11.5px] text-white/40">
+      <div className="mt-1 flex justify-between text-[11.5px] text-faint">
         <span>Quiet</span>
         <span>Loud</span>
       </div>
-      <p className="mt-1.5 text-[11.5px] leading-snug text-white/40">Applies at once, mid-sentence too. You can also say "talk quieter" or "louder".</p>
+      <p className="mt-1.5 text-[11.5px] leading-snug text-faint">Applies at once, mid-sentence too. You can also say "talk quieter" or "louder".</p>
 
-      {error && <p className="mt-3 text-[12.5px] text-amber-400">{error}</p>}
+      {error && <p className="mt-3 text-[12.5px] text-amber-700">{error}</p>}
     </section>
   );
 }

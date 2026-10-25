@@ -194,7 +194,7 @@ function createMain() {
     // Windows: no frame (the page draws its own title bar). macOS: the page's bar with the system's
     // traffic lights on it (close quits, minimize turns into the orb, as the page's buttons do there).
     ...(IS_MAC ? { titleBarStyle: 'hidden', trafficLightPosition: { x: 14, y: 13 }, fullscreenable: false } : { frame: false }),
-    backgroundColor: '#000000',
+    backgroundColor: '#ffffff', // the page is white (the website's look): no dark flash while it loads
     title: 'Orbit',
     icon: ICON,
     show: false,

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { History as HistoryIcon, Keyboard, Mic, MicOff, Minus, Moon, SendHorizontal, Settings as SettingsIcon, X } from "lucide-react";
-import { Shdr29 } from "@/components/ui/shdr-29";
 import { cn } from "@/lib/utils";
 import History from "./components/History";
 import SessionSwitcher from "./components/SessionSwitcher";
-import { desktop, isMac, orbOpacity, orbProps } from "./desktop";
-import { PULSE_DEFAULT, orbParams } from "./orbLook";
+import { desktop, isMac } from "./desktop";
+import { PULSE_DEFAULT } from "./orbLook";
+import AvatarHero from "./hero/AvatarHero";
 import Settings from "./Settings";
 import { playChime } from "./sounds";
 import { DEFAULT_VOLUME } from "./playback.js";
@@ -115,14 +115,19 @@ export default function App() {
   const waitingForYes = v.asleep && tap && !!v.draft;
   const asleepLabel = waitingForYes ? "Waiting for your answer" : tap ? "Answering" : "Going to sleep…";
   const say = wakeOn ? "Say “Hey Orbit” or press" : "Press";
-  const hint = !on ? (wakeOn ? `Say “Hey Orbit” or press ${hotkey}` : `Tap the orb or press ${hotkey}`) : waitingForYes ? `${say} ${hotkey} to answer` : null;
+  const hint = !on ? (wakeOn ? `Say “Hey Orbit” or press ${hotkey}` : `Click Qubit or press ${hotkey}`) : waitingForYes ? `${say} ${hotkey} to answer` : null;
+
+  // Orbit's state for the hero (his colour and eye follow it while Orbit is live).
+  const heroVoice = { phase: v.phase, asleep: v.asleep, hearing: v.hearing, input: v.levels.input, output: v.levels.output, muted: v.muted, draft: draftWaiting, sending: v.sending, claudeWorking };
+  const heroLabel = !on ? "Start talking" : v.asleep ? "Wake up" : "Voice is on";
+  const status = v.asleep && on ? asleepLabel : v.muted && on && v.phase === "listening" ? "Muted" : PHASE_LABEL[v.phase];
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-black text-white select-none">
+    <div className="flex h-screen flex-col overflow-hidden bg-white text-fg select-none">
       {wakeFrame}
       {/* title bar: draggable in the desktop app (on a Mac the traffic lights sit at its left) */}
-      <div className={cn("flex h-10 shrink-0 items-center gap-1 pr-1 [-webkit-app-region:drag]", desktop && isMac ? "pl-[78px]" : "pl-4")}>
-        <span className="mr-1 text-[13px] font-semibold tracking-tight">Orbit</span>
+      <div className={cn("flex h-11 shrink-0 items-center gap-1.5 pr-1.5 [-webkit-app-region:drag]", desktop && isMac ? "pl-[78px]" : "pl-4")}>
+        <span className="wordmark mr-1 text-[19px]">Orbit</span>
         <SessionSwitcher
           current={v.sessionTitle}
           workingTitles={workingTitles}
@@ -134,18 +139,18 @@ export default function App() {
         />
         <div className="ml-auto flex [-webkit-app-region:no-drag]">
           <TitleButton label="History" active={view === "history"} onClick={() => setView((x) => (x === "history" ? "main" : "history"))}>
-            <HistoryIcon size={14} />
+            <HistoryIcon size={15} />
           </TitleButton>
           <TitleButton label="Settings" active={view === "settings"} onClick={() => setView((x) => (x === "settings" ? "main" : "settings"))}>
-            <SettingsIcon size={14} />
+            <SettingsIcon size={15} />
           </TitleButton>
           {desktop && !isMac && (
             <>
               <TitleButton label="Shrink to orb" onClick={() => desktop?.minimize()}>
-                <Minus size={15} />
+                <Minus size={16} />
               </TitleButton>
               <TitleButton label="Quit" onClick={() => desktop?.close()} danger>
-                <X size={15} />
+                <X size={16} />
               </TitleButton>
             </>
           )}
@@ -160,27 +165,19 @@ export default function App() {
         <KeySetup onSaved={app.setHasKey} />
       ) : (
         <>
-          {/* orb + status */}
+          {/* the hero: the avatar carousel, Qubit in the middle, then what Orbit is doing */}
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-5">
-            <button
-              aria-label={!on ? "Start talking" : v.asleep ? "Wake up" : "Voice is on"}
-              onClick={() => (!on ? v.start() : v.endWake() || (v.asleep && v.wake()))}
-              className={cn("relative rounded-full transition-opacity duration-300", (!on || v.asleep) && "cursor-pointer")}
-            >
-              <span
-                className="block"
-                style={{
-                  opacity: orbOpacity({ phase: v.phase, asleep: v.asleep, hearing: v.hearing, input: v.levels.input, claudeWorking }),
-                  transition: "opacity 300ms",
-                }}
-              >
-                <Shdr29 size={190} {...orbProps(v.phase, v.levels.input, v.levels.output)} params={orbParams({ claudeWorking, phase: v.phase, asleep: v.asleep, ...pulse })} pauseOffscreen={false} interactive />
-              </span>
-            </button>
-            <div className="mt-5 text-[15px] font-medium tracking-tight">{v.asleep && on ? asleepLabel : v.muted && on && v.phase === "listening" ? "Muted" : PHASE_LABEL[v.phase]}</div>
-            {desktop && hint && <div className="mt-1 text-[12px] text-white/40">{hint}</div>}
+            <AvatarHero
+              avatar={settings?.avatar}
+              onChoose={(avatar) => app.updateSettings({ avatar })}
+              voice={heroVoice}
+              label={heroLabel}
+              onActivate={() => (!on ? v.start() : v.endWake() || (v.asleep && v.wake()))}
+            />
+            <div className="mt-5 text-[16px] font-semibold tracking-[-0.02em]">{status}</div>
+            {desktop && hint && <div className="mt-1.5 text-center font-mono text-[11px] leading-snug text-muted">{hint}</div>}
             {claudeWorking && (
-              <div className="mt-2 flex max-w-full items-center gap-1.5 text-[12px] text-white/50">
+              <div className="mt-2 flex max-w-full items-center gap-1.5 text-[12px] text-ink">
                 <span className="working-dot" aria-hidden />
                 <span className="truncate">Claude is working{app.claudeWorking.length === 1 ? ` in ${app.claudeWorking[0].title}` : ` in ${app.claudeWorking.length} sessions`}</span>
               </div>
@@ -191,8 +188,8 @@ export default function App() {
                   key={c.id}
                   className={cn(
                     "line-clamp-2 text-[13px] leading-snug",
-                    c.who === "error" ? "text-amber-400" : c.who === "you" ? "text-white/45" : c.who === "sent" ? "text-emerald-300/80" : "text-white/70",
-                    i === recent.length - 1 && c.who === "grok" && "text-white/90",
+                    c.who === "error" ? "text-amber-700" : c.who === "you" ? "text-faint" : c.who === "sent" ? "text-emerald-700" : "text-muted",
+                    i === recent.length - 1 && c.who === "grok" && "text-fg",
                   )}
                 >
                   {c.who === "sent" ? `Sent to Claude ✓ ${c.text}` : c.text}
@@ -203,7 +200,7 @@ export default function App() {
 
           {typing && on && (
             <form
-              className="mx-4 mb-3 flex items-center rounded-full border border-white/15 bg-white/[0.06] pr-1 pl-4"
+              className="mx-4 mb-2 flex items-center rounded-full bg-soft pr-1 pl-4"
               onSubmit={(e) => {
                 e.preventDefault();
                 v.sendText(text.trim());
@@ -215,38 +212,32 @@ export default function App() {
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder="Type to Grok…"
-                className="h-9 flex-1 bg-transparent text-[13px] outline-none select-text placeholder:text-white/35"
+                className="h-10 flex-1 bg-transparent text-[13px] text-fg outline-none select-text placeholder:text-faint"
               />
-              <button aria-label="Send" className="grid size-7 place-items-center rounded-full bg-white text-black disabled:opacity-30" disabled={!text.trim()}>
+              <button aria-label="Send" title="Send" className="grid size-8 place-items-center rounded-full bg-fg text-white disabled:opacity-25" disabled={!text.trim()}>
                 <SendHorizontal size={14} />
               </button>
             </form>
           )}
 
-          {/* controls */}
-          {/* Sleep in the middle (big), typing on its left, mute on its right. */}
-          <div className="flex h-20 shrink-0 items-center justify-center gap-4">
+          {/* controls: only their icons. Sleep in the middle (big), typing on its left, mute on its right. */}
+          <div className="flex h-[72px] shrink-0 items-center justify-center gap-7 pb-1">
             {on ? (
               <>
-                <RoundButton label="Type instead" active={typing} onClick={() => setTyping((t) => !t)}>
-                  <Keyboard size={18} />
-                </RoundButton>
-                <RoundButton
-                  label={waitingForYes ? `Answer (${hotkey})` : `Go to sleep: hangs up (${hotkey})`}
-                  active={waitingForYes}
-                  onClick={v.toggleSleep}
-                  big
-                >
-                  {waitingForYes ? <Mic size={22} /> : <Moon size={21} />}
-                </RoundButton>
-                <RoundButton label={v.muted ? "Unmute microphone" : "Mute microphone"} danger={v.muted} onClick={v.toggleMute}>
-                  {v.muted ? <MicOff size={18} /> : <Mic size={18} />}
-                </RoundButton>
+                <IconButton label="Type instead" active={typing} onClick={() => setTyping((t) => !t)}>
+                  <Keyboard size={21} />
+                </IconButton>
+                <IconButton label={waitingForYes ? `Answer (${hotkey})` : `Go to sleep: hangs up (${hotkey})`} active={waitingForYes} onClick={v.toggleSleep} big>
+                  {waitingForYes ? <Mic size={27} /> : <Moon size={26} />}
+                </IconButton>
+                <IconButton label={v.muted ? "Unmute microphone" : "Mute microphone"} danger={v.muted} onClick={v.toggleMute}>
+                  {v.muted ? <MicOff size={21} /> : <Mic size={21} />}
+                </IconButton>
               </>
             ) : (
-              <button onClick={v.start} className="flex h-11 items-center gap-2 rounded-full bg-white px-5 text-[14px] font-medium text-black hover:bg-white/90">
-                <Mic size={17} /> Start talking
-              </button>
+              <IconButton label="Start talking" onClick={v.start} big active>
+                <Mic size={27} />
+              </IconButton>
             )}
           </div>
         </>
@@ -256,7 +247,7 @@ export default function App() {
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
-  return <div className="grid h-screen place-items-center bg-black p-6 text-center text-[13px] text-white/60">{children}</div>;
+  return <div className="grid h-screen place-items-center bg-white p-6 text-center text-[13px] text-muted">{children}</div>;
 }
 
 function TitleButton(props: { label: string; onClick: () => void; danger?: boolean; active?: boolean; children: React.ReactNode }) {
@@ -266,9 +257,9 @@ function TitleButton(props: { label: string; onClick: () => void; danger?: boole
       title={props.label}
       onClick={props.onClick}
       className={cn(
-        "grid h-8 w-8 place-items-center rounded-md text-white/60 hover:text-white",
-        props.active && "bg-white/10 text-white",
-        props.danger ? "hover:bg-red-600" : "hover:bg-white/10",
+        "grid h-8 w-8 place-items-center rounded-md text-muted transition-colors hover:text-fg",
+        props.active && "bg-soft text-fg",
+        props.danger ? "hover:bg-red-600 hover:text-white" : "hover:bg-soft",
       )}
     >
       {props.children}
@@ -276,17 +267,16 @@ function TitleButton(props: { label: string; onClick: () => void; danger?: boole
   );
 }
 
-function RoundButton(props: { label: string; onClick: () => void; active?: boolean; danger?: boolean; big?: boolean; children: React.ReactNode }) {
+/** A bottom-bar control: only its icon (no stroke, no fill), with its name as a tooltip. */
+function IconButton(props: { label: string; onClick: () => void; active?: boolean; danger?: boolean; big?: boolean; children: React.ReactNode }) {
   return (
     <button
       aria-label={props.label}
       title={props.label}
       onClick={props.onClick}
-      className={cn(
-        "grid place-items-center rounded-full transition-colors",
-        props.big ? "size-14" : "size-11",
-        props.danger ? "bg-white/[0.08] text-red-400 hover:bg-red-500/20" : props.active ? "bg-white text-black" : "bg-white/[0.08] text-white hover:bg-white/15",
-      )}
+      data-active={!!props.active}
+      data-danger={!!props.danger}
+      className={cn("icon-btn", props.big ? "size-12" : "size-10")}
     >
       {props.children}
     </button>
@@ -307,10 +297,11 @@ function KeySetup({ onSaved }: { onSaved: () => void }) {
         else setError((await r.json().catch(() => ({}))).error || "Could not save the key.");
       }}
     >
-      <h2 className="text-[17px] font-semibold tracking-tight">Welcome to Orbit</h2>
-      <p className="text-[13px] leading-relaxed text-white/60">
+      <h2 className="wordmark text-[40px]">Orbit</h2>
+      <p className="eyebrow">Welcome</p>
+      <p className="text-[13px] leading-relaxed text-ink">
         Orbit uses Grok Voice from xAI. Paste your xAI API key to start. Get one at{" "}
-        <a href="https://console.x.ai" target="_blank" rel="noreferrer" className="text-white underline underline-offset-2">
+        <a href="https://console.x.ai" target="_blank" rel="noreferrer" className="text-fg underline decoration-black/25 underline-offset-2 hover:decoration-fg">
           console.x.ai
         </a>{" "}
         → API Keys. It's stored encrypted, only on this computer.
@@ -321,10 +312,10 @@ function KeySetup({ onSaved }: { onSaved: () => void }) {
         type="password"
         placeholder="xai-…"
         autoComplete="off"
-        className="h-10 rounded-xl border border-white/15 bg-white/[0.06] px-3 text-[13px] outline-none select-text focus:border-white/40"
+        className="h-10 rounded-xl border border-line bg-soft px-3 text-[13px] text-fg outline-none select-text placeholder:text-faint focus:border-black/40"
       />
-      {error && <p className="text-[12px] text-amber-400">{error}</p>}
-      <button disabled={!key.trim()} className="h-10 rounded-full bg-white text-[14px] font-medium text-black disabled:opacity-30">
+      {error && <p className="text-[12px] text-amber-700">{error}</p>}
+      <button disabled={!key.trim()} className="h-11 rounded-full bg-fg text-[14px] font-semibold text-white transition-colors hover:bg-[#2b2b2b] disabled:opacity-30">
         Save key
       </button>
     </form>

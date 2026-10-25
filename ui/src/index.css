@@ -1,21 +1,41 @@
 @import "tailwindcss";
 
+/* The website's look (site/css/site.css): a white page, Inter, quiet greys, the Orbit wordmark.
+   These are its colours as Tailwind tokens: text-fg, text-ink, text-muted, text-faint, bg-soft,
+   border-line. */
+@theme {
+  --color-fg: #0d0d0d;
+  --color-ink: #3d4148;
+  --color-muted: #6b7076;
+  --color-faint: #9a9ea4;
+  --color-line: rgba(0, 0, 0, 0.1);
+  --color-soft: #f4f4f5;
+  --color-claude: #d97757;
+  --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+
 html, body, #root { height: 100%; margin: 0; }
 body {
-  background: #000;
+  background: #fff;
+  color: #0d0d0d;
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* talking-speed slider */
+/* The Orbit wordmark: Inter 700, tight (the website's .wordmark). Orbit has no logo. */
+.wordmark { font-weight: 700; letter-spacing: -0.055em; line-height: 0.9; }
+/* The website's eyebrow: small mono capitals, spaced, muted. */
+.eyebrow { font: 500 10.5px/1 var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: #6b7076; }
+
+/* sliders (talking speed, volume, pulse) */
 .speed-slider { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 999px; outline: none; cursor: pointer; }
-.speed-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px rgba(255,255,255,.12); }
-.speed-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(255,255,255,.35); }
-select option, select optgroup { background: #111; color: #fff; }
+.speed-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #0d0d0d; box-shadow: 0 0 0 4px rgba(0,0,0,.06); }
+.speed-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(0,0,0,.18); }
+select option, select optgroup { background: #fff; color: #0d0d0d; }
 
 /* Claude-is-working indicator (main window and session list; the orb has none) */
 @keyframes working-pulse { 0%, 100% { opacity: .35; transform: scale(.85); } 50% { opacity: 1; transform: scale(1); } }
-.working-dot { display: inline-block; width: 7px; height: 7px; border-radius: 999px; background: #f5a524; animation: working-pulse 1.4s ease-in-out infinite; flex-shrink: 0; }
+.working-dot { display: inline-block; width: 7px; height: 7px; border-radius: 999px; background: #d97757; animation: working-pulse 1.4s ease-in-out infinite; flex-shrink: 0; }
 @media (prefers-reduced-motion: reduce) { .working-dot { animation: none; } }
 
 /* Thin pill scrollbar (components/PillScroll.tsx): a 4px pill in a 12px grab strip; hovering or
@@ -24,6 +44,15 @@ select option, select optgroup { background: #111; color: #fff; }
 .pill-scroll-area::-webkit-scrollbar { display: none; }
 .pill-rail { position: absolute; right: 2px; width: 12px; cursor: default; touch-action: none; }
 .pill-rail::before { content: ""; position: absolute; inset: 0 3px; border-radius: 999px; box-shadow: inset 0 0 0 1px transparent; transition: box-shadow .15s; }
-.pill-rail:hover::before, .pill-rail.dragging::before { box-shadow: inset 0 0 0 1px rgba(255,255,255,.22); }
-.pill-thumb { position: absolute; left: 4px; width: 4px; border-radius: 999px; background: rgba(255,255,255,.28); transition: background-color .15s; }
-.pill-rail:hover .pill-thumb, .pill-rail.dragging .pill-thumb { background: rgba(255,255,255,.55); }
+.pill-rail:hover::before, .pill-rail.dragging::before { box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+.pill-thumb { position: absolute; left: 4px; width: 4px; border-radius: 999px; background: rgba(0,0,0,.18); transition: background-color .15s; }
+.pill-rail:hover .pill-thumb, .pill-rail.dragging .pill-thumb { background: rgba(0,0,0,.4); }
+
+/* Bottom bar: icon-only buttons, no stroke or fill (only the icon; a quiet grey that darkens). */
+.icon-btn { display: grid; place-items: center; border-radius: 999px; color: #6b7076; transition: color .15s, transform .15s; outline: none; }
+.icon-btn:hover { color: #0d0d0d; }
+.icon-btn:active { transform: scale(.94); }
+.icon-btn:focus-visible { color: #0d0d0d; box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px rgba(0,0,0,.35); }
+.icon-btn[data-active="true"] { color: #0d0d0d; }
+.icon-btn[data-danger="true"] { color: #dc2626; }
+.icon-btn:disabled { color: #c4c7cb; cursor: default; transform: none; }

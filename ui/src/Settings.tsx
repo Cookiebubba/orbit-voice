@@ -27,11 +27,12 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
     prefetchVoices("claude");
   }, []);
   return (
-    <PillScroll className="flex flex-col px-4 pb-6">
-      <button onClick={onClose} className="mb-4 flex items-center gap-1.5 self-start rounded-md py-1 pr-2 text-[13px] text-white/60 hover:text-white">
+    <PillScroll className="flex flex-col px-5 pb-8">
+      <button onClick={onClose} className="mb-3 flex items-center gap-1.5 self-start rounded-md py-1 pr-2 text-[13px] text-muted transition-colors hover:text-fg">
         <ArrowLeft size={15} /> Back
       </button>
-      <h2 className="mb-5 text-[17px] font-semibold tracking-tight">Settings</h2>
+      <h2 className="wordmark mb-1 text-[38px]">Settings</h2>
+      <p className="mt-2 mb-3 text-[12.5px] text-muted">Everything saves as soon as you change it.</p>
 
       <div className="flex flex-col">
         <VoiceEngineSection s={s} update={update} />
@@ -53,7 +54,7 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
                 { value: "tap", label: "One question at a time" },
               ]}
             />
-            <p className="mt-2 text-[12.5px] leading-relaxed text-white/50">
+            <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
               {s.listenMode === "always"
                 ? `${name} hears you until you say "go to sleep" or press ${s.hotkeyLabel}. Then it hangs up${claude ? "" : ", so nothing is billed,"} until you press ${s.hotkeyLabel}${s.wakeWord ? ' or say “Hey Orbit”' : ""} again.`
                 : `Press ${s.hotkeyLabel}${s.wakeWord ? ' or say “Hey Orbit”' : ""}, ask one question, and ${name} hangs up after answering (it waits up to a minute if a prompt needs your yes). Nothing in the background gets picked up.`}
@@ -86,7 +87,7 @@ export default function Settings({ config, update, onClose }: { config: AppConfi
                 { value: "off", label: "Off" },
               ]}
             />
-            <p className="mt-2 text-[12.5px] leading-relaxed text-white/50">
+            <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
               {s.announce === "off"
                 ? "Orbit won't tell you when Claude finishes."
                 : `Orbit watches your recent Claude sessions. When Claude finishes a task you get a chime and a ${isMac ? "" : "Windows "}notification${s.announce === "speak" ? `, and if ${name} is on, it says what Claude did.` : "."}`}
@@ -233,7 +234,7 @@ function MousePreview() {
   return (
     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5" aria-hidden>
       {PREVIEW.map((p) => (
-        <span key={p.mode} className="flex items-center gap-1.5 text-[11.5px] text-white/45">
+        <span key={p.mode} className="flex items-center gap-1.5 text-[11.5px] text-muted">
           <svg width="13" height="20" viewBox="0 0 12.2 19.2">
             <path d={ARROW_PATH} fill={css(p.lch)} />
           </svg>
@@ -250,13 +251,13 @@ function UnderOrbitList({ apps, name, onStop }: { apps: string[]; name: string; 
   const label = (a: string) => a.replace(/.exe$/i, "").replace(/^./, (c) => c.toUpperCase());
   return (
     <div className="mt-4">
-      <div className="text-[13px]">Apps under {name}</div>
-      <div className="mt-1 text-[12px] text-white/50">{name} restarted these under its own control so it can type, click and look without your mouse. Only {name} can connect; no port is open. Stop restarts the app the normal way.</div>
+      <div className="text-[13px] font-medium text-fg">Apps under {name}</div>
+      <div className="mt-1 text-[12px] text-muted">{name} restarted these under its own control so it can type, click and look without your mouse. Only {name} can connect; no port is open. Stop restarts the app the normal way.</div>
       <ul className="mt-2 space-y-1">
         {apps.map((a) => (
-          <li key={a} className="flex items-center justify-between rounded-lg bg-white/[0.04] px-3 py-1.5 text-[13px]">
+          <li key={a} className="flex items-center justify-between rounded-lg bg-soft px-3 py-1.5 text-[13px] text-fg">
             <span>{label(a)}</span>
-            <button type="button" className="rounded-md px-2 py-0.5 text-[12px] text-white/70 hover:bg-white/10" onClick={() => onStop(a)}>
+            <button type="button" className="rounded-md px-2 py-0.5 text-[12px] text-ink hover:bg-black/[0.06] hover:text-fg" onClick={() => onStop(a)}>
               Stop
             </button>
           </li>
@@ -268,8 +269,8 @@ function UnderOrbitList({ apps, name, onStop }: { apps: string[]; name: string; 
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-      <div className="mb-3 text-[14px] font-medium">{title}</div>
+    <section className="border-t border-line pt-5">
+      <h3 className="eyebrow mb-4">{title}</h3>
       {children}
     </section>
   );
@@ -277,14 +278,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Segmented<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { value: T; label: string }[] }) {
   return (
-    <div role="radiogroup" className="flex rounded-xl border border-white/15 p-0.5">
+    <div role="radiogroup" className="flex rounded-full bg-soft p-[3px]">
       {options.map((o) => (
         <button
           key={o.value}
           role="radio"
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
-          className={cn("flex-1 rounded-[10px] px-2 py-1.5 text-[12.5px] transition-colors", value === o.value ? "bg-white text-black" : "text-white/70 hover:text-white")}
+          className={cn("flex-1 rounded-full px-2 py-1.5 text-[12.5px] font-medium transition-colors", value === o.value ? "bg-fg text-white" : "text-ink hover:text-fg")}
         >
           {o.label}
         </button>
@@ -297,17 +298,17 @@ function Toggle({ checked, onChange, label, hint, className }: { checked: boolea
   return (
     <div className={cn("flex items-start gap-3", className)}>
       <span className="min-w-0 flex-1">
-        <span className="block text-[13px] text-white/90">{label}</span>
-        {hint && <span className="mt-0.5 block text-[12px] leading-snug text-white/45">{hint}</span>}
+        <span className="block text-[13px] font-medium text-fg">{label}</span>
+        {hint && <span className="mt-1 block text-[12px] leading-snug text-muted">{hint}</span>}
       </span>
       <button
         role="switch"
         aria-checked={checked}
         aria-label={label}
         onClick={() => onChange(!checked)}
-        className={cn("relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors", checked ? "bg-white" : "bg-white/20")}
+        className={cn("relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors", checked ? "bg-fg" : "bg-black/15")}
       >
-        <span className={cn("absolute top-0.5 size-4 rounded-full transition-all", checked ? "left-[18px] bg-black" : "left-0.5 bg-white")} />
+        <span className={cn("absolute top-0.5 size-4 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,.2)] transition-all", checked ? "left-[18px]" : "left-0.5")} />
       </button>
     </div>
   );
@@ -345,20 +346,20 @@ function AvatarSection({ s, update, name }: { s: SettingsT; update: Update; name
         ]}
       />
       <Reveal show={avatar === "buddy"}>
-        <p className="mt-2 text-[12px] leading-snug text-white/45">
+        <p className="mt-2 text-[12px] leading-snug text-muted">
           A little pixel character lives along the bottom of your {isMac ? "screen" : "Claude window"}. It naps while {name} sleeps, listens and talks with it, hops onto the prompt box, carries your drafts in and stomps Send. Click it, or pick it up and drop it.
         </p>
       </Reveal>
       <Reveal show={avatar === "qubit"}>
-        <p className="mt-2 text-[12px] leading-snug text-white/45">
+        <p className="mt-2 text-[12px] leading-snug text-muted">
           A square with one eye lives on your {isMac ? "screen, just above the Dock" : "Claude window"}. He sleeps while {name} sleeps, wakes when you call, his eye stretches as you talk and opens with {name}'s voice. He waits by Send for your yes, stomps it, watches Claude work and celebrates when it's done. His colour shows what's going on.
         </p>
       </Reveal>
       <Reveal show={avatar === "none"}>
-        <p className="mt-2 text-[12px] leading-snug text-white/45">Nothing on your {isMac ? "screen" : "Claude window"}.</p>
+        <p className="mt-2 text-[12px] leading-snug text-muted">Nothing on your {isMac ? "screen" : "Claude window"}.</p>
       </Reveal>
       <Reveal show={avatar !== "none"}>
-        <div className="mt-3 mb-1.5 text-[12px] text-white/50">Size</div>
+        <div className="mt-3 mb-1.5 text-[12px] text-muted">Size</div>
         <Segmented
           value={String(s.buddySize) as "1" | "2" | "3"}
           onChange={(v) => update({ buddySize: Number(v) })}
@@ -367,6 +368,20 @@ function AvatarSection({ s, update, name }: { s: SettingsT; update: Update; name
             { value: "2", label: "Small" },
             { value: "3", label: "Big" },
           ]}
+        />
+        <Toggle
+          className="mt-4"
+          checked={s.avatarClickTalk !== false}
+          onChange={(avatarClickTalk) => update({ avatarClickTalk })}
+          label="Click your avatar to talk"
+          hint={`A quick click on ${avatar === "qubit" ? "Qubit" : "the pixel buddy"} starts talking to ${name}, the same as saying “Hey Orbit” with that window in front. Off: a click is only a little poke.`}
+        />
+        <Toggle
+          className="mt-4"
+          checked={s.avatarThrow !== false}
+          onChange={(avatarThrow) => update({ avatarThrow })}
+          label="Throw your avatar"
+          hint={avatar === "qubit" ? "Press and hold Qubit to pick him up, drag him anywhere on that screen and let go to throw him. He bounces off the edges, lands, shakes it off and carries on from where he landed." : "Press and hold the pixel buddy to pick it up, then drop it somewhere along the strip."}
         />
         <Toggle
           className="mt-4"
@@ -388,10 +403,10 @@ function PulseAmount({ value, update }: { value: number; update: Update }) {
   const pct = Math.round(v * 100);
   const fill = ((v - PULSE_MIN) / (PULSE_MAX - PULSE_MIN)) * 100;
   return (
-    <div className="mt-3 rounded-xl border border-white/10 px-3 py-2.5">
+    <div className="mt-3 rounded-xl bg-soft px-3 py-2.5">
       <div className="mb-2 flex items-center justify-between text-[12.5px]">
-        <span className="text-white/70">How much it pulses</span>
-        <span className="tabular-nums text-white/90">{pct}%</span>
+        <span className="text-ink">How much it pulses</span>
+        <span className="tabular-nums text-fg">{pct}%</span>
       </div>
       <input
         type="range"
@@ -404,9 +419,9 @@ function PulseAmount({ value, update }: { value: number; update: Update }) {
         onPointerUp={() => v !== value && update({ orbPulseAmount: v })}
         onKeyUp={() => v !== value && update({ orbPulseAmount: v })}
         className="speed-slider w-full"
-        style={{ background: `linear-gradient(to right, #fff ${fill}%, rgba(255,255,255,.15) ${fill}%)` }}
+        style={{ background: `linear-gradient(to right, #0d0d0d ${fill}%, rgba(0,0,0,.1) ${fill}%)` }}
       />
-      <div className="mt-1 flex justify-between text-[11px] text-white/40">
+      <div className="mt-1 flex justify-between text-[11px] text-faint">
         <span>Subtle</span>
         <span>Noticeable</span>
       </div>
@@ -490,13 +505,13 @@ function VoiceEngineSection({ s, update }: { s: SettingsT; update: Update }) {
         ]}
       />
       <Reveal show={s.voiceEngine === "grok"}>
-        <p className="mt-2 text-[12px] leading-snug text-white/45">Grok's realtime voice, billed by xAI per minute.</p>
+        <p className="mt-2 text-[12px] leading-snug text-muted">Grok's realtime voice, billed by xAI per minute.</p>
       </Reveal>
       <Reveal show={s.voiceEngine === "claude"}>
-        <p className="mt-2 text-[12px] leading-snug text-white/45">
+        <p className="mt-2 text-[12px] leading-snug text-muted">
           Claude through your own Claude Code sign-in, with speech recognized and spoken on {thisComputer}. No xAI cost. Replies take a moment longer than Grok's.
         </p>
-        <div className="mt-4 mb-1.5 text-[12.5px] text-white/70">Brain</div>
+        <div className="mt-4 mb-1.5 text-[12.5px] text-ink">Brain</div>
         <Segmented
           value={s.claudeVoiceModel}
           onChange={(claudeVoiceModel) => update({ claudeVoiceModel })}
@@ -507,8 +522,8 @@ function VoiceEngineSection({ s, update }: { s: SettingsT; update: Update }) {
             { value: "fable", label: "Fable" },
           ]}
         />
-        <p className="mt-2 text-[12px] leading-snug text-white/45">{BRAIN_SPEED[s.claudeVoiceModel]} You can also say "use Opus" or "switch to Haiku". A change takes over between turns, mid-call too.</p>
-        <div className="mt-4 mb-1.5 text-[12.5px] text-white/70">Effort</div>
+        <p className="mt-2 text-[12px] leading-snug text-muted">{BRAIN_SPEED[s.claudeVoiceModel]} You can also say "use Opus" or "switch to Haiku". A change takes over between turns, mid-call too.</p>
+        <div className="mt-4 mb-1.5 text-[12.5px] text-ink">Effort</div>
         <Segmented
           value={s.claudeVoiceEffort}
           onChange={(claudeVoiceEffort) => update({ claudeVoiceEffort })}
@@ -518,25 +533,25 @@ function VoiceEngineSection({ s, update }: { s: SettingsT; update: Update }) {
             { value: "high", label: "High" },
           ]}
         />
-        <p className="mt-2 text-[12px] leading-snug text-white/45">
+        <p className="mt-2 text-[12px] leading-snug text-muted">
           {s.claudeVoiceEffort === "low" ? "Answers right away. Best for talking." : "Thinks longer before it speaks: slower to answer, especially on Opus and Fable."}
         </p>
-        <div className="mt-4 mb-1.5 text-[12.5px] text-white/70">Speech to text</div>
+        <div className="mt-4 mb-1.5 text-[12.5px] text-ink">Speech to text</div>
         <Segmented value={s.claudeVoiceStt} onChange={chooseStt} options={STT.map(({ value, label }) => ({ value, label }))} />
-        <p className="mt-2 text-[12px] leading-snug text-white/45">{STT.find((o) => o.value === s.claudeVoiceStt)?.hint} All on {thisComputer}. (Grok hears you on xAI's side: this is for Claude voice only.)</p>
+        <p className="mt-2 text-[12px] leading-snug text-muted">{STT.find((o) => o.value === s.claudeVoiceStt)?.hint} All on {thisComputer}. (Grok hears you on xAI's side: this is for Claude voice only.)</p>
         {s.claudeVoiceStt !== "moonshine" && stt && stt.state !== "ready" && (
           <div className="mt-1.5 text-[12px] leading-snug">
             {stt.state === "downloading" ? (
               <>
-                <p className="text-white/70">Downloading… {stt.percent}% (Moonshine listens until it's ready)</p>
-                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/10">
-                  <div className="h-full rounded-full bg-white transition-[width] duration-700 ease-out" style={{ width: `${stt.percent}%` }} />
+                <p className="text-ink">Downloading… {stt.percent}% (Moonshine listens until it's ready)</p>
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/[0.07]">
+                  <div className="h-full rounded-full bg-fg transition-[width] duration-700 ease-out" style={{ width: `${stt.percent}%` }} />
                 </div>
               </>
             ) : (
               <div className="flex items-center gap-3">
-                <p className={cn("flex-1", stt.state === "error" ? "text-amber-300/90" : "text-white/55")}>{stt.state === "error" ? `Download failed: ${stt.error}` : `Needs a ${stt.mb} MB download. Moonshine listens until then.`}</p>
-                <button onClick={() => downloadStt(s.claudeVoiceStt)} className="shrink-0 rounded-lg border border-white/15 px-2.5 py-1 text-[12px] text-white/85 hover:bg-white/10">
+                <p className={cn("flex-1", stt.state === "error" ? "text-amber-700" : "text-muted")}>{stt.state === "error" ? `Download failed: ${stt.error}` : `Needs a ${stt.mb} MB download. Moonshine listens until then.`}</p>
+                <button onClick={() => downloadStt(s.claudeVoiceStt)} className="shrink-0 rounded-lg bg-fg px-2.5 py-1 text-[12px] font-medium text-white transition-colors hover:bg-[#2b2b2b]">
                   {stt.state === "error" ? "Retry" : "Download"}
                 </button>
               </div>
@@ -546,23 +561,23 @@ function VoiceEngineSection({ s, update }: { s: SettingsT; update: Update }) {
         {status && (
           <div className="mt-3 text-[12px] leading-snug">
             <Reveal show={!status.claudeFound}>
-              <p className="mb-2 text-amber-300/90">Claude Code wasn't found. Set it up under Second brain below.</p>
+              <p className="mb-2 text-amber-700">Claude Code wasn't found. Set it up under Second brain below.</p>
             </Reveal>
             <Reveal show={m?.state === "ready"}>
-              <p className="text-white/55">Speech models ready.</p>
+              <p className="text-muted">Speech models ready.</p>
             </Reveal>
             <Reveal show={m?.state === "downloading"}>
-              <p className="text-white/70">Downloading speech models… {m?.percent ?? 0}%</p>
-              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/10">
-                <div className="h-full rounded-full bg-white transition-[width] duration-700 ease-out" style={{ width: `${m?.percent ?? 0}%` }} />
+              <p className="text-ink">Downloading speech models… {m?.percent ?? 0}%</p>
+              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/[0.07]">
+                <div className="h-full rounded-full bg-fg transition-[width] duration-700 ease-out" style={{ width: `${m?.percent ?? 0}%` }} />
               </div>
             </Reveal>
             <Reveal show={m?.state === "idle" || m?.state === "error"}>
               <div className="flex items-center gap-3">
-                <p className={cn("flex-1", m?.state === "error" ? "text-amber-300/90" : "text-white/55")}>
+                <p className={cn("flex-1", m?.state === "error" ? "text-amber-700" : "text-muted")}>
                   {m?.state === "error" ? `Download failed: ${m.error}` : `Needs about ${status.mb} MB of speech models, kept on ${thisComputer}.`}
                 </p>
-                <button onClick={download} className="shrink-0 rounded-lg border border-white/15 px-2.5 py-1 text-[12px] text-white/85 hover:bg-white/10">
+                <button onClick={download} className="shrink-0 rounded-lg bg-fg px-2.5 py-1 text-[12px] font-medium text-white transition-colors hover:bg-[#2b2b2b]">
                   {m?.state === "error" ? "Retry" : "Download"}
                 </button>
               </div>
@@ -657,7 +672,7 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
       />
       <Reveal show={s.brainEnabled}>
         <>
-          <div className="mt-4 mb-1.5 text-[12.5px] text-white/70">Model</div>
+          <div className="mt-4 mb-1.5 text-[12.5px] text-ink">Model</div>
           <Segmented
             value={s.brainModel}
             onChange={(brainModel) => update({ brainModel })}
@@ -668,7 +683,7 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
               { value: "opus", label: "Opus" },
             ]}
           />
-          <p className="mt-2 text-[12px] leading-snug text-white/45">
+          <p className="mt-2 text-[12px] leading-snug text-muted">
             {s.brainModel === "auto"
               ? `${name} chooses per question: Haiku for quick lookups, Sonnet for most code questions, Opus only for hard problems.`
               : `Every question goes to ${s.brainModel[0].toUpperCase() + s.brainModel.slice(1)}.`}
@@ -681,7 +696,7 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
             hint="Claude may read the files of the project open in your Claude session to answer: read-only, only inside that project folder, with common secret files (.env, keys, credentials) blocked. It can't run commands or change anything."
           />
 
-          <div className="mt-4 mb-1.5 text-[12.5px] text-white/70">Connection</div>
+          <div className="mt-4 mb-1.5 text-[12.5px] text-ink">Connection</div>
           <Segmented
             value={s.brainConnection}
             onChange={(brainConnection) => {
@@ -693,7 +708,7 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
               { value: "api-key", label: "Anthropic API key" },
             ]}
           />
-          <p className="mt-2 text-[12px] leading-snug text-white/45">
+          <p className="mt-2 text-[12px] leading-snug text-muted">
             {s.brainConnection === "claude-code"
               ? "Uses your Claude Code sign-in, so questions count toward your Claude plan. No setup if you use Claude Code."
               : `Questions are billed to your Anthropic API account. The key is encrypted on ${thisComputer}.`}
@@ -701,7 +716,7 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
 
           <Reveal show={s.brainConnection === "claude-code" && !!status?.found && status.signedIn !== null}>
             {status && <div className="mt-2 flex items-center justify-between gap-3 text-[12.5px]">
-              <span className={cn("min-w-0 leading-snug", status.signedIn ? "text-white/70" : signingIn?.error ? "text-red-300" : "text-amber-200/90")}>
+              <span className={cn("min-w-0 leading-snug", status.signedIn ? "text-ink" : signingIn?.error ? "text-red-600" : "text-amber-700")}>
                 {status.signedIn
                   ? "Signed in to Claude Code ✓"
                   : signingIn?.error
@@ -714,7 +729,7 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
                 <button
                   onClick={signIn}
                   disabled={!!signingIn && !signingIn.error}
-                  className="h-8 shrink-0 rounded-lg bg-white px-3 text-[12.5px] font-medium text-black disabled:opacity-40"
+                  className="h-8 shrink-0 rounded-lg bg-fg text-white transition-colors hover:bg-[#2b2b2b] px-3 text-[12.5px] font-medium disabled:opacity-40"
                 >
                   {signingIn && !signingIn.error ? "Waiting…" : "Sign in"}
                 </button>
@@ -725,9 +740,9 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
           <Reveal show={s.brainConnection === "api-key"}>
             <div className="mt-2">
               {status?.hasKey && !key ? (
-                <div className="flex items-center justify-between gap-2 text-[12.5px] text-white/70">
+                <div className="flex items-center justify-between gap-2 text-[12.5px] text-ink">
                   <span>API key saved ✓</span>
-                  <button onClick={() => saveKey("")} className="rounded-md px-2 py-1 text-white/50 hover:text-white">
+                  <button onClick={() => saveKey("")} className="rounded-md px-2 py-1 text-muted hover:text-fg">
                     Remove
                   </button>
                 </div>
@@ -745,14 +760,14 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
                     onChange={(e) => setKey(e.target.value)}
                     placeholder="sk-ant-…"
                     autoComplete="off"
-                    className="h-8 min-w-0 flex-1 rounded-lg border border-white/15 bg-black/40 px-2 text-[13px] outline-none select-text focus:border-white/40"
+                    className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-soft px-2 text-[13px] text-fg outline-none select-text placeholder:text-faint focus:border-black/40 focus:bg-white"
                   />
-                  <button disabled={!key.trim()} className="h-8 rounded-lg bg-white px-3 text-[12.5px] font-medium text-black disabled:opacity-30">
+                  <button disabled={!key.trim()} className="h-8 rounded-lg bg-fg text-white transition-colors hover:bg-[#2b2b2b] px-3 text-[12.5px] font-medium disabled:opacity-30">
                     Save
                   </button>
                 </form>
               )}
-              {keyError && <p className="mt-1 text-[12px] text-red-300">{keyError}</p>}
+              {keyError && <p className="mt-1 text-[12px] text-red-600">{keyError}</p>}
             </div>
           </Reveal>
 
@@ -760,16 +775,16 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
             <button
               onClick={runTest}
               disabled={test.state === "testing"}
-              className="h-8 shrink-0 rounded-lg border border-white/15 px-3 text-[12.5px] text-white/80 hover:border-white/40 disabled:opacity-50"
+              className="h-8 shrink-0 rounded-lg px-3 text-[12.5px] bg-soft text-ink transition-colors hover:bg-black/[0.08] hover:text-fg disabled:opacity-50"
             >
               {test.state === "testing" ? "Testing…" : "Test connection"}
             </button>
-            <span className={cn("min-w-0 text-[12px] leading-snug", test.state === "failed" ? "text-red-300" : test.state === "ok" ? "text-emerald-300" : "text-white/45")}>
+            <span className={cn("min-w-0 text-[12px] leading-snug", test.state === "failed" ? "text-red-600" : test.state === "ok" ? "text-emerald-700" : "text-muted")}>
               {test.state === "idle" ? (status ? (status.found ? `Using ${where}.` : "Claude Code not found.") : "") : test.text}
             </span>
           </div>
 
-          <button onClick={() => setAdvanced((a) => !a)} className="mt-3 text-[12px] text-white/45 hover:text-white/80">
+          <button onClick={() => setAdvanced((a) => !a)} className="mt-3 text-[12px] text-muted hover:text-fg">
             {advanced ? "Hide location" : "Claude Code location…"}
           </button>
           <Reveal show={advanced}>
@@ -780,9 +795,9 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
                 onBlur={() => path.trim() !== s.brainClaudePath && update({ brainClaudePath: path.trim() })}
                 placeholder={status?.path && status.source !== "settings" ? `Automatic: ${status.path}` : "Automatic"}
                 spellCheck={false}
-                className="h-8 w-full rounded-lg border border-white/15 bg-black/40 px-2 text-[12px] outline-none select-text focus:border-white/40"
+                className="h-8 w-full rounded-lg border border-line bg-soft px-2 text-[12px] text-fg outline-none select-text placeholder:text-faint focus:border-black/40 focus:bg-white"
               />
-              <p className="mt-1 text-[11.5px] leading-snug text-white/40">Leave empty to find it automatically. Otherwise, the full path to {isMac ? "claude" : "claude.exe"}.</p>
+              <p className="mt-1 text-[11.5px] leading-snug text-faint">Leave empty to find it automatically. Otherwise, the full path to {isMac ? "claude" : "claude.exe"}.</p>
             </div>
           </Reveal>
         </>
@@ -808,17 +823,17 @@ function UsageSection({ costPerMinute, update }: { costPerMinute: number; update
     <Section title="Usage">
       <div className="grid grid-cols-2 gap-2">
         {(["today", "month"] as const).map((k) => (
-          <div key={k} className="rounded-xl bg-white/[0.04] px-3 py-2">
-            <div className="text-[11.5px] text-white/45">{k === "today" ? "Today" : "This month"}</div>
-            <div className="text-[17px] font-semibold tabular-nums">{usage ? money(usage[k].cost) : "…"}</div>
-            <div className="text-[11.5px] text-white/45 tabular-nums">{usage ? `${usage[k].minutes} min connected` : ""}</div>
+          <div key={k} className="rounded-xl bg-soft px-3 py-2.5">
+            <div className="text-[11.5px] text-muted">{k === "today" ? "Today" : "This month"}</div>
+            <div className="text-[18px] font-semibold tracking-[-0.02em] tabular-nums">{usage ? money(usage[k].cost) : "…"}</div>
+            <div className="text-[11.5px] text-muted tabular-nums">{usage ? `${usage[k].minutes} min connected` : ""}</div>
           </div>
         ))}
       </div>
-      <p className="mt-2 text-[12px] leading-snug text-white/45">
+      <p className="mt-2 text-[12px] leading-snug text-muted">
         An estimate from time connected to Grok. Your xAI console has the real bill. Orbit hangs up when you say "go to sleep", so sleeping costs nothing.
       </p>
-      <label className="mt-3 flex items-center justify-between gap-3 text-[12.5px] text-white/70">
+      <label className="mt-3 flex items-center justify-between gap-3 text-[12.5px] text-ink">
         Price per minute (USD)
         <input
           value={rate}
@@ -829,7 +844,7 @@ function UsageSection({ costPerMinute, update }: { costPerMinute: number; update
             else setRate(String(costPerMinute));
           }}
           inputMode="decimal"
-          className="h-8 w-20 rounded-lg border border-white/15 bg-black/40 px-2 text-right text-[13px] tabular-nums outline-none select-text focus:border-white/40"
+          className="h-8 w-20 rounded-lg border border-line bg-soft px-2 text-right text-[13px] tabular-nums text-fg outline-none select-text placeholder:text-faint focus:border-black/40 focus:bg-white"
         />
       </label>
     </Section>
@@ -864,12 +879,12 @@ function UpdatesSection({ version, auto, update }: { version: string; auto: bool
   return (
     <Section title="Updates">
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 text-[12.5px] leading-snug text-white/60">
-          <div className="text-white/80">Orbit {version}</div>
+        <div className="min-w-0 text-[12.5px] leading-snug text-muted">
+          <div className="text-ink">Orbit {version}</div>
           {status && <div className="mt-0.5">{status}</div>}
         </div>
         {u.status === "ready" ? (
-          <button onClick={() => desktop?.updates.install()} className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[12.5px] font-medium text-black">
+          <button onClick={() => desktop?.updates.install()} className="shrink-0 rounded-full bg-fg text-white transition-colors hover:bg-[#2b2b2b] px-3 py-1.5 text-[12.5px] font-medium">
             Restart to update
           </button>
         ) : (
@@ -877,7 +892,7 @@ function UpdatesSection({ version, auto, update }: { version: string; auto: bool
             <button
               disabled={u.status === "checking" || u.status === "downloading"}
               onClick={() => desktop?.updates.check()}
-              className="shrink-0 rounded-full border border-white/15 px-3 py-1.5 text-[12.5px] text-white/80 hover:border-white/35 disabled:opacity-40"
+              className="shrink-0 rounded-full px-3 py-1.5 text-[12.5px] bg-soft text-ink transition-colors hover:bg-black/[0.08] hover:text-fg disabled:opacity-40"
             >
               Check now
             </button>
@@ -910,27 +925,27 @@ function AboutSection({ config }: { config: AppConfig }) {
 
   return (
     <Section title="About">
-      <div className="space-y-1 text-[12.5px] text-white/60">
+      <div className="space-y-1 text-[12.5px] text-muted">
         <div>Orbit {config.version} · open source (MIT)</div>
         <div>xAI key: {config.hasKey ? `saved, ${storage}` : "not set"}</div>
-        <div className="pt-1 text-[11.5px] leading-snug text-white/40">
+        <div className="pt-1 text-[11.5px] leading-snug text-faint">
           Not affiliated with xAI or Anthropic. Grok is a trademark of xAI; Claude is a trademark of Anthropic.
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        <a href={REPO_URL} target="_blank" rel="noreferrer" className="rounded-full border border-white/15 px-3 py-1.5 text-[12.5px] text-white/80 hover:border-white/35">
+        <a href={REPO_URL} target="_blank" rel="noreferrer" className="rounded-full px-3 py-1.5 text-[12.5px] bg-soft text-ink transition-colors hover:bg-black/[0.08] hover:text-fg">
           Source &amp; help
         </a>
-        <button onClick={() => setReplacing((r) => !r)} className="rounded-full border border-white/15 px-3 py-1.5 text-[12.5px] text-white/80 hover:border-white/35">
+        <button onClick={() => setReplacing((r) => !r)} className="rounded-full px-3 py-1.5 text-[12.5px] bg-soft text-ink transition-colors hover:bg-black/[0.08] hover:text-fg">
           Replace xAI key
         </button>
         {desktop && (
-          <button onClick={() => desktop?.openLogs()} className="rounded-full border border-white/15 px-3 py-1.5 text-[12.5px] text-white/80 hover:border-white/35">
+          <button onClick={() => desktop?.openLogs()} className="rounded-full px-3 py-1.5 text-[12.5px] bg-soft text-ink transition-colors hover:bg-black/[0.08] hover:text-fg">
             Open log folder
           </button>
         )}
       </div>
-      <p className="mt-2 text-[11.5px] leading-snug text-white/40">
+      <p className="mt-2 text-[11.5px] leading-snug text-faint">
         Errors are logged (without keys or prompt text) so you can attach them to a bug report. Grok can read recent ones too. Just ask "what went wrong?"
       </p>
       {replacing && (
@@ -952,14 +967,14 @@ function AboutSection({ config }: { config: AppConfig }) {
             type="password"
             autoComplete="off"
             placeholder="xai-…"
-            className="h-9 min-w-0 flex-1 rounded-lg border border-white/15 bg-black/40 px-2.5 text-[13px] outline-none select-text focus:border-white/40"
+            className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-soft px-2.5 text-[13px] text-fg outline-none select-text placeholder:text-faint focus:border-black/40 focus:bg-white"
           />
-          <button disabled={!key.trim()} className="rounded-lg bg-white px-3 text-[13px] font-medium text-black disabled:opacity-30">
+          <button disabled={!key.trim()} className="rounded-lg bg-fg text-white transition-colors hover:bg-[#2b2b2b] px-3 text-[13px] font-medium disabled:opacity-30">
             Save
           </button>
         </form>
       )}
-      {msg && <p className="mt-2 text-[12px] text-white/60">{msg}</p>}
+      {msg && <p className="mt-2 text-[12px] text-muted">{msg}</p>}
     </Section>
   );
 }
@@ -1006,7 +1021,7 @@ function Keys({ parts, dim }: { parts: string[]; dim?: boolean }) {
   return (
     <span className="flex flex-wrap items-center gap-1">
       {parts.map((p, i) => (
-        <kbd key={i} className={cn("min-w-7 rounded-md border px-2 py-1 text-center font-sans text-[13px] font-medium", dim ? "border-white/15 text-white/40" : "border-white/25 bg-white/[0.08] text-white")}>
+        <kbd key={i} className={cn("min-w-7 rounded-md border px-2 py-1 text-center font-sans text-[13px] font-medium", dim ? "border-black/10 bg-white text-faint" : "border-black/15 bg-white text-fg shadow-[0_1px_0_rgba(0,0,0,.08)]")}>
           {p}
         </kbd>
       ))}
@@ -1061,32 +1076,32 @@ function HotkeySection() {
 
   return (
     <Section title="Wake hotkey">
-      <p className="-mt-1 text-[12.5px] leading-relaxed text-white/50">Works from any app: starts Grok when it's off, and puts it to sleep or wakes it when it's on.</p>
+      <p className="-mt-1 text-[12.5px] leading-relaxed text-muted">Works from any app: starts Grok when it's off, and puts it to sleep or wakes it when it's on.</p>
       <button
         data-hotkey-recorder
         onClick={() => {
           setMessage(null);
           setRecording((r) => !r);
         }}
-        className={cn("mt-4 flex min-h-12 w-full items-center justify-center rounded-xl border px-3 py-2 transition-colors", recording ? "border-white/60 bg-white/[0.06]" : "border-white/15 hover:border-white/35")}
+        className={cn("mt-4 flex min-h-12 w-full items-center justify-center rounded-xl border px-3 py-2 transition-colors", recording ? "border-black/40 bg-soft" : "border-line bg-soft hover:border-black/20")}
       >
         {recording ? (
-          partial.length ? <Keys parts={labelParts(partial.join("+"))} dim /> : <span className="text-[13px] text-white/70">Press your new shortcut…</span>
+          partial.length ? <Keys parts={labelParts(partial.join("+"))} dim /> : <span className="text-[13px] text-ink">Press your new shortcut…</span>
         ) : info ? (
           <Keys parts={labelParts(info.accelerator)} />
         ) : null}
       </button>
       <div className="mt-2 flex items-center justify-between text-[12px]">
-        <span className="text-white/40">{recording ? "Esc to cancel" : "Click to change"}</span>
+        <span className="text-faint">{recording ? "Esc to cancel" : "Click to change"}</span>
         {!isDefault && !recording && info && (
-          <button onClick={() => save(info.defaultAccelerator)} className="text-white/60 underline-offset-2 hover:text-white hover:underline">
+          <button onClick={() => save(info.defaultAccelerator)} className="text-muted underline-offset-2 hover:text-fg hover:underline">
             Reset to {labelParts(info.defaultAccelerator).join("+")}
           </button>
         )}
       </div>
-      {message && <p className={cn("mt-3 text-[12.5px] leading-snug", message.bad ? "text-amber-400" : "text-emerald-400")}>{message.text}</p>}
+      {message && <p className={cn("mt-3 text-[12.5px] leading-snug", message.bad ? "text-amber-700" : "text-emerald-700")}>{message.text}</p>}
       {info && !info.registered && !message && (
-        <p className="mt-3 text-[12.5px] leading-snug text-amber-400">This shortcut isn't active. Another app is probably using it. Pick a different one.</p>
+        <p className="mt-3 text-[12.5px] leading-snug text-amber-700">This shortcut isn't active. Another app is probably using it. Pick a different one.</p>
       )}
     </Section>
   );

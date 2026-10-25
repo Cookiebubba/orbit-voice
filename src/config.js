@@ -62,6 +62,12 @@ export const DEFAULTS = Object.freeze({
   // for none; see initConfig.)
   avatar: 'buddy',
   buddySize: 2, // the avatar's size: 1 (tiny) to 3 (big); the pixel buddy is 16 px tall per step
+  // A short click on the avatar starts talking to Orbit (the same as saying "Hey Orbit" with its
+  // window in front). Off: a click is only a little poke.
+  avatarClickTalk: true,
+  // Press and hold the avatar to pick it up, drag it about and throw it (Qubit: real physics, then he
+  // carries on from where he lands).
+  avatarThrow: true,
   // The floating orb the main window minimizes into. With an avatar on it can be turned off: the
   // avatar stands in for it and Orbit opens from the tray icon. (Without an avatar it always shows.)
   showOrb: true,
@@ -194,6 +200,11 @@ function sanitize(input) {
         break;
       case 'avatar':
         if (AVATARS.includes(val)) out.avatar = val;
+        break;
+      case 'avatarClickTalk':
+      case 'avatarThrow':
+        // Only a real yes or no (true/false, or their strings): anything else is ignored.
+        if (typeof v === 'boolean' || v === 'true' || v === 'false') out[k] = val;
         break;
       case 'buddySize':
         if (Number.isInteger(val) && val >= 1 && val <= 3) out.buddySize = val;

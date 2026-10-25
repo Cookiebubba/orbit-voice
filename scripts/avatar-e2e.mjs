@@ -360,7 +360,7 @@ async function run() {
   if (!found) throw new Error('Orbit\x27s main window never loaded (is the UI built? npm --prefix ui run build)');
   if (!path.resolve(getConfigDir()).startsWith(tmp)) throw new Error(`Orbit is using a config folder outside the temp profile: ${getConfigDir()}`);
   if (authUrl().indexOf(`127.0.0.1:${PORT}`) < 0) throw new Error('Orbit is not on the test port');
-  await waitFor(() => pjs(`[...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('Start talking'))`), 20_000);
+  await waitFor(() => pjs(`[...document.querySelectorAll('button')].some((b) => (b.getAttribute('aria-label') || b.textContent || '').includes('Start talking'))`), 20_000);
 
   out('1. Qubit is the avatar: his strip on the Claude window');
   check(await waitFor(() => (qwin = avatarWin('qubit')), 15_000), 'the Qubit window exists');

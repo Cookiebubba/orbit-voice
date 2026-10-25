@@ -29,6 +29,8 @@ export type Settings = {
   claudeVoiceStt: "moonshine" | "parakeet-110m" | "parakeet-v2";
   avatar: "buddy" | "qubit" | "none";
   buddySize: number;
+  avatarClickTalk: boolean;
+  avatarThrow: boolean;
   showOrb: boolean;
   autoUpdate: boolean;
   orbStick: boolean;

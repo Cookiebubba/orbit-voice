@@ -209,7 +209,7 @@ async function run() {
   if (!found) throw new Error("Orbit's main window never loaded (is the UI built? npm --prefix ui run build)");
   if (!path.resolve(getConfigDir()).startsWith(tmp)) throw new Error(`Orbit is using a config folder outside the temp profile: ${getConfigDir()}`);
   // Without a current UI build the page has no Start button and the hotkey starts nothing: say so plainly.
-  if (!(await waitFor(() => pjs(`[...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('Start talking'))`), 20_000))) {
+  if (!(await waitFor(() => pjs(`[...document.querySelectorAll('button')].some((b) => (b.getAttribute('aria-label') || b.textContent || '').includes('Start talking'))`), 20_000))) {
     throw new Error("Orbit's page never showed Start talking (build the UI first: npm --prefix ui run build)");
   }
   check(await waitFor(() => F.started > 0, 5000), 'the focus helper (stand-in) is running');
