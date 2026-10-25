@@ -73,6 +73,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     endpoints = e
     log.info("app", "Core ready on \(e.base.absoluteString) in \(Int(Date().timeIntervalSince(startedAt) * 1000)) ms")
     events.add("core.ready")
+    // Five quiet minutes: earlier stops no longer count towards giving up.
+    let recovery = CoreRecovery(profileDir: config.profileDir)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 300) { [weak self] in
+      if self?.quitting == false { recovery.ranWell() }
+    }
     startVoiceAndOverlays(e)
     startWindows(e)
     wireBridgeEvents()
@@ -90,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       version: OrbitKit.version,
       isPackaged: !config.testing,
       testBuild: config.testing,
-      startHidden: LoginLaunch.wasOpenedAtLogin
+      startHidden: LoginLaunch.wasOpenedAtLogin || CommandLine.arguments.contains(CoreRecovery.relaunchArgument)
     )
     let u = OrbitUI(bridge: BridgeClient(endpoints: e), voice: voice, hotkey: hotkeys, options: options)
     u.onQuit = { NSApp.terminate(nil) }
@@ -127,6 +132,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     guard !quitting else { return }
     log.warn("app", "The core stopped (exit \(code))")
     events.add("core.exit", ["code": .number(Double(code))])
+    switch CoreRecovery(profileDir: config.profileDir).coreStopped() {
+    case .relaunch:
+      log.info("app", "Relaunching Orbit to bring its core back")
+      // A test build carries its test run's switches over (a release build honours none of them).
+      let env = config.testing ? CoreRecovery.testEnvironment(ProcessInfo.processInfo.environment) : [:]
+      let sh = Process()
+      sh.executableURL = URL(fileURLWithPath: "/bin/sh")
+      sh.arguments = ["-c", CoreRecovery.relaunchScript(pid: ProcessInfo.processInfo.processIdentifier, bundle: Bundle.main.bundleURL, env: env)]
+      try? sh.run()
+      NSApp.terminate(nil)
+    case .giveUp:
+      fail("Orbit's core keeps stopping, so Orbit has quit. Open Orbit again to try once more.")
+    }
   }
 
   func fail(_ message: String) {
