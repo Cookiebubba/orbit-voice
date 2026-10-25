@@ -46,9 +46,11 @@ public final class MainClock: OverlayClock {
 
   private func schedule(_ ms: Double, repeats: Bool, _ fn: @escaping @MainActor () -> Void) -> OverlayTimer {
     let token = Token()
-    let t = Timer(timeInterval: max(0.001, ms / 1000), repeats: repeats) { [weak token] _ in
+    // (The timer holds the token, not the caller: a timer nobody keeps still fires. Firing a one-shot
+    // or cancelling lets both go.)
+    let t = Timer(timeInterval: max(0.001, ms / 1000), repeats: repeats) { _ in
       MainActor.assumeIsolated {
-        guard let token, token.timer != nil else { return }
+        guard token.timer != nil else { return }
         if !repeats { token.timer = nil }
         fn()
       }

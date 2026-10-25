@@ -130,9 +130,23 @@ final class AvatarModelTests: XCTestCase {
     XCTAssertEqual(env.windows[0].last("buddy:state")?["boxKnown"], true)
   }
 
-  func testNoClaudeWindowFloatsFreeAboveTheDock() {
+  func testNoClaudeWindowHidesHomeAsElectronsDoes() {
     let env = FakeEnv()
     let a = AvatarModel(kind: .qubit, env: env)
+    a.onClaude(.none)
+    a.setEnabled(true)
+    XCTAssertFalse(env.windows.first?.isVisible ?? false, "no Claude window: no avatar on screen")
+    XCTAssertEqual(a.command(["action": "backflip"])["ok"], false)
+    a.onClaude(claude())
+    XCTAssertTrue(env.windows[0].isVisible, "Claude turns up: onto its window")
+    XCTAssertEqual(env.windows[0].frame, AvatarGeometry.stripBounds(host: host))
+    a.onClaude(.none)
+    XCTAssertFalse(env.windows[0].isVisible)
+  }
+
+  func testWithoutATrackerItFloatsFreeAboveTheDock() {
+    let env = FakeEnv()
+    let a = AvatarModel(kind: .qubit, floatsFree: true, env: env)
     a.onClaude(.none)
     a.setEnabled(true)
     let w = env.windows[0]
@@ -143,11 +157,13 @@ final class AvatarModelTests: XCTestCase {
     XCTAssertEqual(a.hostHwnd, 0)
     XCTAssertEqual(a.boxWindow, 0)
     XCTAssertEqual(w.last("buddy:state")?["boxKnown"], true, "no box will ever come: the page doesn't wait")
-    // Claude turns up: onto its window.
     a.onClaude(claude())
-    XCTAssertEqual(w.frame, AvatarGeometry.stripBounds(host: host))
-    XCTAssertFalse(a.isFree)
-    XCTAssertEqual(env.windows.count, 1, "the same window moves")
+    XCTAssertEqual(w.frame, AvatarGeometry.freeStrip(area: env.area), "free-floating doesn't follow a window")
+    // Lifted, it covers the visible frame.
+    a.lift(true)
+    XCTAssertEqual(w.frame, env.area)
+    a.lift(false)
+    XCTAssertEqual(w.frame, AvatarGeometry.freeStrip(area: env.area))
   }
 
   func testAGuestStandsOnItsWindowsBottomEdgeAndHidesWithoutOne() {
@@ -191,12 +207,6 @@ final class AvatarModelTests: XCTestCase {
     a.lift(true)
     a.lift(false)
     XCTAssertEqual(w.frame, strip)
-    // Free-floating, it covers the visible frame.
-    a.onClaude(.none)
-    a.lift(true)
-    XCTAssertEqual(w.frame, env.area)
-    a.lift(false)
-    XCTAssertEqual(w.frame, AvatarGeometry.freeStrip(area: env.area))
   }
 
   func testTheHostMovingMidThrowMovesTheLiftedWindow() {

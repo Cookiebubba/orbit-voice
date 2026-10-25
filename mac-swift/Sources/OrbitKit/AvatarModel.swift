@@ -7,8 +7,9 @@
 // Where he lives:
 //   - home (the default): the Claude window, standing on its prompt box. The tracker reports where
 //     the box is the moment it moves (onBoxRect); that is turned into the strip's coordinates here.
-//     With no Claude window at all (none open, or no Accessibility to see one), he floats free along
-//     the bottom of the screen the cursor is on, just above the Dock, with the floor to himself.
+//     No Claude window (none open, minimized, or no Accessibility to see one): hidden, as Electron's.
+//   - free (floatsFree: no Claude window tracker at all, e.g. a build without its helper): along the
+//     bottom of the screen the cursor is on, just above the Dock, with the floor to himself.
 //   - boxless (a guest, "Orbit anywhere": his strip on another app's window, see AvatarHostModel):
 //     the same strip on that window, standing on its bottom edge (no box is looked for). Hidden when
 //     there's no window.
@@ -141,6 +142,8 @@ public final class AvatarModel: AvatarHandle {
   public let kind: AvatarKind
   /** A guest on another app's window: no prompt box, never free-floating. */
   public let boxless: Bool
+  /** No window tracker: he floats along the bottom of the screen instead of living on a window. */
+  public let floatsFree: Bool
   private let env: AvatarEnvironment
   private var clock: OverlayClock { env.clock }
 
@@ -166,9 +169,10 @@ public final class AvatarModel: AvatarHandle {
   private lazy var hover: HoverPoller = makeHover()
   private var shownAt: Double = 0
 
-  public init(kind: AvatarKind, boxless: Bool = false, env: AvatarEnvironment) {
+  public init(kind: AvatarKind, boxless: Bool = false, floatsFree: Bool = false, env: AvatarEnvironment) {
     self.kind = kind
     self.boxless = boxless
+    self.floatsFree = floatsFree && !boxless
     self.env = env
   }
 
@@ -286,7 +290,7 @@ public final class AvatarModel: AvatarHandle {
     let w = ensure()
     host = nil
     lastRaw = nil
-    if !free { env.info("\(kind.rawValue): no window to live on: floating along the bottom of the screen") }
+    if !free { env.info("\(kind.rawValue): no window tracker: floating along the bottom of the screen") }
     free = true
     let b = AvatarGeometry.freeStrip(area: env.cursorWorkArea())
     if lifted != nil { lifted!.strip = b }
@@ -354,16 +358,9 @@ public final class AvatarModel: AvatarHandle {
   private func place() {
     if leaving { return }
     if !enabled { return hide() }
-    if !claude.found {
-      if !boxless { return placeFree() }
-      return hide()
-    }
-    if claude.min { return hide() }
+    if floatsFree { return placeFree() }
+    if !claude.found || claude.min { return hide() }
     let w = ensure()
-    if free {
-      free = false
-      env.info("\(kind.rawValue): on a window again")
-    }
     host = claude.rect
     let b = AvatarGeometry.stripBounds(host: claude.rect)
     if let l = lifted {
