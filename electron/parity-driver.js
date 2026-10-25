@@ -323,7 +323,15 @@ export function startParityDriver(ctx) {
   }
 
   /** Run something on the main page's parity object (ui/src/App.tsx). */
+  /** Is the main page up with its parity hooks (the app has finished starting)? */
+  async function pageReady() {
+    const main = ctx.main();
+    if (!alive(main)) return false;
+    return !!(await js(main.webContents, '!!(window.__orbitParity && window.__orbitParity.app)', 1000).catch(() => false));
+  }
   async function pageCall(expr) {
+    // Right after start the page may still be loading: give it a few seconds.
+    for (let i = 0; i < 40 && !(await pageReady()); i++) await new Promise((r) => setTimeout(r, 250));
     const main = ctx.main();
     if (!alive(main)) return { ok: false, error: 'The main window is not there.' };
     const r = await js(main.webContents, `(async () => { const a = window.__orbitParity && window.__orbitParity.app; if (!a) return { ok: false, error: 'The page has not loaded its parity hooks.' }; return ${expr}; })()`, 5000);
@@ -430,7 +438,10 @@ export function startParityDriver(ctx) {
     if (!hostOk(req.headers.host, PORT) || req.headers.origin || !tokenOk(req.headers['x-parity-token'], TOKEN)) return reply(res, 403, { ok: false, error: 'forbidden' });
     const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
     if (req.method === 'GET' && url.pathname === '/parity/hello') {
-      return reply(res, 200, { app: 'electron', version: app.getVersion(), pid: process.pid, platform: process.platform, bridge: { base: bridgeBase() || null, authUrl: bridgeBase() ? authUrl('main') : null }, features: [...PARITY_FEATURES], actions: Object.keys(act) });
+      // ready: the bridge is up, the main page has loaded and the hotkey is held (parity/PROTOCOL.md).
+      return pageReady().then((page) =>
+        reply(res, 200, { app: 'electron', version: app.getVersion(), pid: process.pid, platform: process.platform, ready: !!bridgeBase() && page && hotkeys.size > 0, bridge: { base: bridgeBase() || null, authUrl: bridgeBase() ? authUrl('main') : null }, features: [...PARITY_FEATURES], actions: Object.keys(act) }),
+      );
     }
     if (req.method === 'GET' && url.pathname === '/parity/state') {
       return state().then(

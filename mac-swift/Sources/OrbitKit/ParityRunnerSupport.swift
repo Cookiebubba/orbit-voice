@@ -188,7 +188,7 @@ public final class AppHandle: @unchecked Sendable {
     let probe = AppHandle(which: which, hello: .null, driverPort: driverPort, token: token)
     let end = Date().addingTimeInterval(which == "electron" ? 45 : 30)
     while Date() < end {
-      if let r = try? await probe.driver("GET", "/parity/hello", timeout: 2000), r["status"]?.intValue == 200, let h = r["body"], h.at(path: "bridge.base")?.stringValue?.isEmpty == false {
+      if let r = try? await probe.driver("GET", "/parity/hello", timeout: 2000), r["status"]?.intValue == 200, let h = r["body"], h.at(path: "bridge.base")?.stringValue?.isEmpty == false, h["ready"] != .bool(false) {
         return AppHandle(which: which, hello: h, driverPort: driverPort, token: token)
       }
       try await Task.sleep(nanoseconds: 100_000_000)

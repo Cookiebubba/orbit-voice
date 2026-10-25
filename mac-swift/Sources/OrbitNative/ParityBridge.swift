@@ -14,6 +14,7 @@ final class ParityBridge: ParityDriverDelegate, @unchecked Sendable {
         "app": "swift",
         "version": .string(OrbitKit.version),
         "pid": .number(Double(getpid())),
+        "ready": .bool(s.endpoints != nil && s.ui != nil),
         "bridge": ["base": .string(s.endpoints?.base.absoluteString ?? ""), "authUrl": .string(s.endpoints?.auth["main"]?.absoluteString ?? "")],
         "features": .array(s.features.map { .string($0) }),
       ]

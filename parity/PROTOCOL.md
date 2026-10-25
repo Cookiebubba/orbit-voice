@@ -37,11 +37,12 @@ Base: `http://127.0.0.1:$ORBIT_PARITY_PORT`. JSON in and out. Header `x-parity-t
 
 ### `GET /parity/hello`
 ```json
-{ "app": "electron" | "swift", "version": "1.3.0-beta.1", "pid": 123,
+{ "app": "electron" | "swift", "version": "1.3.0-beta.1", "pid": 123, "ready": true,
   "bridge": { "base": "http://127.0.0.1:4521", "authUrl": "http://127.0.0.1:4521/auth?t=..." },
   "features": ["avatar", "mouse", "voice", "settings", "onboarding", "window", "hotkey", "login", "updater"] }
 ```
-`authUrl` signs a runner in to the bridge (GET it, keep the cookie) for the bridge contract cases.
+`ready` is true once the app has finished starting (bridge up, main window and its page loaded,
+hotkey held); runners wait for it before the first step. `authUrl` signs a runner in to the bridge (GET it, keep the cookie) for the bridge contract cases.
 `features` lists what this build implements; a case whose `needs` names a missing feature is
 reported `unsupported` (counted as not passing).
 

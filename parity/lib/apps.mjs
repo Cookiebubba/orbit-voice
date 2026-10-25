@@ -109,7 +109,7 @@ export async function startApp(which, { paths, profileDir, logDir, bridgePort, d
   const driver = driverClient(driverPort, tok);
   const hello = await until(async () => {
     const r = await driver.hello();
-    return r.status === 200 && r.body?.bridge?.base ? r.body : null;
+    return r.status === 200 && r.body?.bridge?.base && r.body.ready !== false ? r.body : null;
   }, which === 'electron' ? 45_000 : 30_000);
   if (!hello?.bridge?.base) {
     const tail = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').slice(-8).join(' | ') : '');

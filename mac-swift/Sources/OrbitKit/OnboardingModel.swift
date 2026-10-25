@@ -158,11 +158,14 @@ public final class OnboardingModel {
     return real()
   }
 
-  /** The first step still to do. */
+  /**
+   * The first step still to do. Only what Orbit needs (Microphone, Accessibility): Screen Recording is
+   * optional and, as in the Electron Mac build, offered in Settings' "Mac permissions" rather than
+   * asked for here.
+   */
   public var step: OnboardingStep {
     if state.mic != .granted && !skipped.contains(.mic) { return .mic }
     if !state.ax && !skipped.contains(.ax) { return .ax }
-    if !state.screen && !skipped.contains(.screen) { return .screen }
     return .done
   }
 

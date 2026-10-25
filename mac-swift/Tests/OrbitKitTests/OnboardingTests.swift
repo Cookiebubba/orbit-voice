@@ -52,11 +52,9 @@ final class OnboardingTests: XCTestCase {
 
     // Back from System Settings with it on.
     m.setFake(PermissionState(mic: .granted, ax: true, screen: false))
-    XCTAssertEqual(m.step, .screen)
-    XCTAssertFalse(m.screen.step.required)
-    XCTAssertEqual(m.screen.secondary, "Skip")
-    m.skip()
+    // Screen Recording is optional: not a step (Settings offers it), as in the Electron Mac build.
     XCTAssertEqual(m.step, .done)
+    XCTAssertFalse(OnboardingModel.screen(for: .screen, state: m.state).step.required)
     XCTAssertFalse(m.needed)
     XCTAssertTrue(store.completed)
     XCTAssertEqual(shows, [false])
@@ -84,11 +82,11 @@ final class OnboardingTests: XCTestCase {
     XCTAssertTrue(m.needed)
     // Once through, only the optional one off: not shown.
     let (m2, _, _) = model(PermissionState(mic: .granted, ax: true, screen: false), completed: true)
-    XCTAssertEqual(m2.step, .screen)
+    XCTAssertEqual(m2.step, .done)
     XCTAssertFalse(m2.needed)
-    // First launch, only the optional one off: shown.
+    // First launch, only the optional one off: not shown either (nothing needed is missing).
     let (m3, _, _) = model(PermissionState(mic: .granted, ax: true, screen: false))
-    XCTAssertTrue(m3.needed)
+    XCTAssertFalse(m3.needed)
   }
 
   func testPanesAndItemsMatchTheElectronBuild() {
