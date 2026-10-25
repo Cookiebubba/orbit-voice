@@ -13,22 +13,37 @@ let package = Package(
   products: [
     .executable(name: "OrbitNative", targets: ["OrbitNative"]),
     .executable(name: "StandInClaude", targets: ["StandInClaude"]),
+    .executable(name: "UIDemo", targets: ["UIDemo"]),
     .library(name: "OrbitKit", targets: ["OrbitKit"]),
     .library(name: "OrbitSpeech", targets: ["OrbitSpeech"]),
+    .library(name: "OrbitUI", targets: ["OrbitUI"]),
   ],
   targets: [
     // Logic with no UI: everything here is unit tested (Tests/OrbitKitTests).
     .target(name: "OrbitKit", path: "Sources/OrbitKit"),
+    // The windows: launcher, Settings, History, onboarding, menu bar (SwiftUI in AppKit windows).
+    // A library so the app and UIDemo both use it.
+    .target(
+      name: "OrbitUI",
+      dependencies: ["OrbitKit"],
+      path: "Sources/OrbitUI",
+      linkerSettings: [
+        .linkedFramework("AppKit"), .linkedFramework("SwiftUI"), .linkedFramework("WebKit"), .linkedFramework("AVFoundation"),
+        .linkedFramework("ServiceManagement"), .linkedFramework("ApplicationServices"),
+      ]
+    ),
     // The app: AppKit/SwiftUI windows, overlays, audio, hotkeys.
     .executableTarget(
       name: "OrbitNative",
-      dependencies: ["OrbitKit"],
+      dependencies: ["OrbitKit", "OrbitUI"],
       path: "Sources/OrbitNative",
       linkerSettings: [
         .linkedFramework("AppKit"), .linkedFramework("WebKit"), .linkedFramework("AVFoundation"),
         .linkedFramework("Carbon"), .linkedFramework("ServiceManagement"), .linkedFramework("ApplicationServices"),
       ]
     ),
+    // OrbitUI's windows against a running bridge, with a fake voice and hotkey (checks, snapshots).
+    .executableTarget(name: "UIDemo", dependencies: ["OrbitKit", "OrbitUI"], path: "Sources/UIDemo", linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit")]),
     // A stand-in "Claude" window for tests (never the real Claude app).
     .executableTarget(name: "StandInClaude", path: "Sources/StandInClaude", linkerSettings: [.linkedFramework("AppKit")]),
     // Phase 2: Orbit's on-device speech in Swift (sherpa-onnx's C API).
