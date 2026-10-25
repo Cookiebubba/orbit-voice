@@ -17,6 +17,8 @@ let package = Package(
     .library(name: "OrbitKit", targets: ["OrbitKit"]),
     .library(name: "OrbitSpeech", targets: ["OrbitSpeech"]),
     .library(name: "OrbitUI", targets: ["OrbitUI"]),
+    .executable(name: "VoiceDemo", targets: ["VoiceDemo"]),
+    .library(name: "OrbitVoice", targets: ["OrbitVoice"]),
   ],
   targets: [
     // Logic with no UI: everything here is unit tested (Tests/OrbitKitTests).
@@ -31,11 +33,17 @@ let package = Package(
         .linkedFramework("AppKit"), .linkedFramework("SwiftUI"), .linkedFramework("WebKit"), .linkedFramework("AVFoundation"),
         .linkedFramework("ServiceManagement"), .linkedFramework("ApplicationServices"),
       ]
+    // The voice client's device side (AVAudioEngine, the /voice socket, the Carbon hotkey, the wake
+    // word page): a library so the app and VoiceDemo share it. Its logic lives in OrbitKit.
+      name: "OrbitVoice",
+      path: "Sources/OrbitVoice",
+      linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit"), .linkedFramework("AVFoundation"), .linkedFramework("Carbon")]
     ),
     // The app: AppKit/SwiftUI windows, overlays, audio, hotkeys.
     .executableTarget(
       name: "OrbitNative",
       dependencies: ["OrbitKit", "OrbitUI"],
+      dependencies: ["OrbitKit", "OrbitVoice"],
       path: "Sources/OrbitNative",
       linkerSettings: [
         .linkedFramework("AppKit"), .linkedFramework("WebKit"), .linkedFramework("AVFoundation"),
@@ -44,6 +52,8 @@ let package = Package(
     ),
     // OrbitUI's windows against a running bridge, with a fake voice and hotkey (checks, snapshots).
     .executableTarget(name: "UIDemo", dependencies: ["OrbitKit", "OrbitUI"], path: "Sources/UIDemo", linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit")]),
+    // Runs the voice client headless against a bridge, for checks (see its header).
+    .executableTarget(name: "VoiceDemo", dependencies: ["OrbitKit", "OrbitVoice"], path: "Sources/VoiceDemo"),
     // A stand-in "Claude" window for tests (never the real Claude app).
     .executableTarget(name: "StandInClaude", path: "Sources/StandInClaude", linkerSettings: [.linkedFramework("AppKit")]),
     // Phase 2: Orbit's on-device speech in Swift (sherpa-onnx's C API).
