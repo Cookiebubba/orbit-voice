@@ -24,6 +24,8 @@ let package = Package(
     .library(name: "OrbitOverlays", targets: ["OrbitOverlays"]),
     .library(name: "OrbitSpeech", targets: ["OrbitSpeech"]),
     .library(name: "OrbitWake", targets: ["OrbitWake"]),
+    .library(name: "OrbitBridge", targets: ["OrbitBridge"]),
+    .library(name: "OrbitEngine", targets: ["OrbitEngine"]),
   ],
   targets: [
     // Logic with no UI: everything here is unit tested (Tests/OrbitKitTests).
@@ -61,10 +63,14 @@ let package = Package(
     // Phase 2: "Hey Orbit" in Swift (Vosk's C library, the same model and grammar as the wake page).
     .target(name: "VoskC", path: "Sources/VoskC"),
     .target(name: "OrbitWake", dependencies: ["VoskC"], path: "Sources/OrbitWake", linkerSettings: voskLink),
+    // The engine, moving from the Node core to Swift (README "Engine"): the bridge's HTTP server...
+    .target(name: "OrbitBridge", path: "Sources/OrbitBridge", linkerSettings: [.linkedFramework("Network")]),
+    // ...and what answers behind it.
+    .target(name: "OrbitEngine", dependencies: ["OrbitKit", "OrbitBridge"], path: "Sources/OrbitEngine"),
     // The app: the shell that puts it all together.
     .executableTarget(
       name: "OrbitNative",
-      dependencies: ["OrbitKit", "OrbitUI", "OrbitVoice", "OrbitOverlays", "OrbitSpeech", "OrbitWake"],
+      dependencies: ["OrbitKit", "OrbitUI", "OrbitVoice", "OrbitOverlays", "OrbitSpeech", "OrbitWake", "OrbitBridge", "OrbitEngine"],
       path: "Sources/OrbitNative",
       linkerSettings: [
         .linkedFramework("AppKit"), .linkedFramework("WebKit"), .linkedFramework("AVFoundation"),
@@ -80,6 +86,7 @@ let package = Package(
     .executableTarget(name: "OverlayDemo", dependencies: ["OrbitKit", "OrbitOverlays"], path: "Sources/OverlayDemo", linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("WebKit")]),
     // (Fixtures are read from the source tree by path, as the JS tests read test/fixtures.)
     .testTarget(name: "OrbitKitTests", dependencies: ["OrbitKit"], path: "Tests/OrbitKitTests", exclude: ["Fixtures"]),
+    .testTarget(name: "OrbitEngineTests", dependencies: ["OrbitEngine", "OrbitBridge", "OrbitKit"], path: "Tests/OrbitEngineTests"),
     .testTarget(name: "OrbitWakeTests", dependencies: ["OrbitWake"], path: "Tests/OrbitWakeTests", linkerSettings: voskLink),
     .testTarget(name: "OrbitSpeechTests", dependencies: ["OrbitSpeech", "OrbitKit"], path: "Tests/OrbitSpeechTests", exclude: ["reference.mjs", "engine-reference.mjs"], linkerSettings: sherpaLink),
     // Runs ../parity/cases against the Swift build (needs a built test app; see README).

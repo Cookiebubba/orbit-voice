@@ -21,10 +21,14 @@ mac-swift/
                              window tracker (the macOS helper's claude-window mode)
   Sources/OrbitSpeech/       phase 2: Claude voice's speech in Swift (sherpa-onnx's C API)
   Sources/OrbitWake/         phase 2: "Hey Orbit" in Swift (Vosk's C library)
+  Sources/OrbitBridge/       the engine's HTTP server (Network.framework): keep-alive, files, events,
+                             pass-through to the Node core for what hasn't moved yet
+  Sources/OrbitEngine/       the engine in Swift, moving over from the Node core (see "Engine")
   Sources/OrbitNative/       the app: the shell that wires it all to the core (AppDelegate, Wiring)
   Sources/{UI,Voice,Overlay}Demo/  each part on its own against a bridge, for checks
-  Tests/                     XCTest: OrbitKitTests, OrbitSpeechTests, OrbitWakeTests, OrbitParityTests
-  sidecar/sidecar.mjs        starts Orbit's bridge (src/server.js) for the Swift shell
+  Tests/                     XCTest: OrbitKitTests, OrbitEngineTests, OrbitSpeechTests, OrbitWakeTests,
+                             OrbitParityTests
+  sidecar/sidecar.mjs        runs what's left of the Node core (src/server.js) behind the engine
   scripts/build-app.sh       builds "Orbit Native.app" (embedded Node, the core, the UI pages, models)
   scripts/sign.sh            signs it (a Developer ID, the dev identity, or ad hoc)
   scripts/package.sh         the release files: zip, DMG, latest-mac-native.yml (notarized when asked)
@@ -36,9 +40,11 @@ mac-swift/
 
 ```
 Orbit Native.app (Swift)                         sidecar (embedded node, child process)
- ├─ menu bar, dock, launcher, Settings (SwiftUI)  ├─ src/server.js: the bridge on 127.0.0.1:$PORT
- ├─ voice client: AVAudioEngine mic → 24 kHz      │   (claude-voice / Grok, agent, tools, consent,
- │   PCM16 → ws /voice; playback + volume         │    send-intent, Orbit anywhere, MCP manager)
+ ├─ the engine (OrbitEngine): the bridge on       ├─ src/server.js on an internal port: what of
+ │   127.0.0.1:4317, settings, keys, the log      │   the engine is still there (claude-voice / Grok,
+ ├─ menu bar, dock, launcher, Settings (SwiftUI)  │   agent, tools, consent, send-intent, Orbit
+ ├─ voice client: AVAudioEngine mic → 24 kHz      │   anywhere, MCP manager); only the engine talks
+ │   PCM16 → ws /voice; playback + volume         │   to it
  ├─ avatar overlays: WKWebView per place running  ├─ src/platform/mac (Accessibility helper:
  │   qubit.html / buddy.html (engine unchanged)   │    native/mac/OrbitHelper, from the orbit-mac work)
  ├─ Orbit's mouse overlay (mouse.html)            └─ stdio JSON channel ⇄ the Swift shell
@@ -49,6 +55,20 @@ Orbit Native.app (Swift)                         sidecar (embedded node, child p
 
 The Swift app talks to the bridge over its existing HTTP/WebSocket API, exactly as the Electron
 page does, so agent behaviour matches by construction.
+
+### Engine
+
+The engine is moving from the Node core into Swift, part by part, each part switched over only once
+it passes the same tests as the JS (its ported unit tests, the oracle fixtures in `parity/oracle`, made
+by running the JS, and the parity suite). The bridge is Swift's and keeps `src/server.js`'s API
+exactly; whatever it doesn't answer yet it passes on, as bytes, to the Node core on an internal port,
+signed in as the core. When nothing is passed on any more, Node leaves the bundle.
+
+In Swift now: the bridge itself (sign-in, Host/Origin/cross-site guards, CSPs, static pages, the
+wake-word model), `GET /api/config`, `POST /api/settings`, `POST /api/key`, `POST /api/brain/key`,
+`GET /api/logs`, `GET /api/usage`, `GET /api/events` (the core's events merged in). The settings,
+the sealed keys and the log file are the engine's alone; the core keeps a copy of the settings in
+memory (`settings` below) and hands its log entries over (`logEntry`).
 
 ### Sidecar channel (stdin/stdout, one JSON object per line)
 
@@ -72,6 +92,8 @@ Sidecar → Swift:
 | `clipboard` | `text` | Copy to the clipboard. |
 | `openExternal` | `url` | Open an https link in the browser. |
 | `log` | `level`, `scope`, `message` | (No user words, no keys.) |
+| `logEntry` | `entry` (`{at,level,source,message,detail?}`, scrubbed) | One of the core's log entries: the engine keeps the log. |
+| `settingsChanged` | `patch` | The core changed a setting itself (a voice tool, an app okayed for Orbit anywhere): the engine saves it. |
 
 Swift → Sidecar:
 
@@ -82,7 +104,9 @@ Swift → Sidecar:
 | `wake` | `win` | Avatar clicked: start talking with this window in front (`wakeWith`). |
 | `homeWindow` | `id` | The Claude window Orbit lives on. |
 | `frontHint` | `id` | The Claude window the tools should act on. |
-| `shellSettings` | `patch` | Settings the shell owns (`wakeHotkey`, `orbPosition`, `orbStickAnchor`), saved by the core. |
+| `settings` | `all` | Every setting, after any change in the engine: applied in the core's memory (it doesn't save them). |
+| `keyChanged` | | A new xAI key was saved: the core drops what it made for the old one. |
+| `prewarm` | | `POST /api/settings` came in: the core warms Claude voice up, as that route did there. |
 | `quit` | | Stop background work and exit. |
 
 ### The page shim (WKWebView)

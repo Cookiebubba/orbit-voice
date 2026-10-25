@@ -124,7 +124,7 @@ extension AppDelegate {
     let fakeHotkey = config.testing && ParityDriver.config(info: info) != nil
     let hk = ShellHotkey(accelerator: HotkeyAccelerator.defaultAccelerator, fake: fakeHotkey)
     hk.onPress = { [weak v] in v?.hotkey() }
-    hk.onSaved = { [weak self] accel in self?.sidecar?.send(["t": "shellSettings", "patch": ["wakeHotkey": .string(accel)]]) }
+    hk.onSaved = { [weak self] accel in self?.saveShellSettings(["wakeHotkey": .string(accel)]) }
     voiceController = v
     shellHotkey = hk
     // Phase 2: Claude voice's speech on this Mac in Swift (syncLocalSpeech, once the settings are in).
@@ -144,7 +144,7 @@ extension AppDelegate {
         switch ev {
         case .restore: self?.ui?.showMain()
         case .action: v?.hotkey()
-        case .save(let patch): self?.sidecar?.send(["t": "shellSettings", "patch": .object(patch)])
+        case .save(let patch): self?.saveShellSettings(patch)
         }
       },
       onEvent: { [weak self] type, data in self?.events.add(type, data) },

@@ -1,8 +1,11 @@
-// Orbit Native's shell: what electron/main.js does for Electron. It starts Orbit's Node core as a
-// sidecar (the bridge), then the windows (launcher, orb), the avatar overlays, Orbit's mouse, the
-// voice client, the hotkey and the menu bar, and wires them to each other and to the core. In a test
-// build launched with ORBIT_PARITY_PORT it also serves the parity driver.
+// Orbit Native's shell: what electron/main.js does for Electron. It starts Orbit's engine (the
+// bridge, in Swift: OrbitEngine) and, behind it, what of the Node core hasn't moved to Swift yet (a
+// sidecar on an internal port), then the windows (launcher, orb), the avatar overlays, Orbit's mouse,
+// the voice client, the hotkey and the menu bar, and wires them to each other and to the engine. In
+// a test build launched with ORBIT_PARITY_PORT it also serves the parity driver.
 import AppKit
+import OrbitBridge
+import OrbitEngine
 import OrbitKit
 import OrbitOverlays
 import OrbitUI
@@ -16,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   let log = AppLog()
   var instance: SingleInstance?
   var sidecar: Sidecar?
+  var engine: Engine?
   var endpoints: BridgeEndpoints?
   var driver: ParityDriver?
   var parity: ParityBridge?
@@ -56,8 +60,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       log.warn("app", "Could not get the key store's key: \(error)")
       return fail("Orbit could not use your macOS Keychain (access may have been denied), so it can't keep your keys safe. Quit and open Orbit again, and choose Allow.")
     }
-    let sc = Sidecar(config: .init(node: config.node, script: config.sidecarScript, coreDir: config.coreDir, profileDir: config.profileDir, port: config.port, sealKey: key, extraEnv: config.sidecarEnv))
-    sc.onReady = { [weak self] e in DispatchQueue.main.async { self?.coreReady(e) } }
+    // The engine first: it keeps the settings, the keys and the log; the core reads the same files.
+    let eng: Engine
+    do {
+      let models = config.testing ? ProcessInfo.processInfo.environment["ORBIT_MODELS_DIR"].map { URL(fileURLWithPath: $0) } : nil
+      eng = try Engine(paths: .init(profile: config.profileDir, core: config.coreDir, models: models), port: config.port, sealKey: key, version: OrbitKit.version)
+    } catch {
+      return fail("Orbit could not start (\(error.localizedDescription)).")
+    }
+    eng.loadSettings()
+    engine = eng
+    // The core behind it, on a free port of its own (only the engine talks to it).
+    guard let corePort = FreePort.pick() else { return fail("Orbit could not find a free local port for its core.") }
+    let sc = Sidecar(config: .init(node: config.node, script: config.sidecarScript, coreDir: config.coreDir, profileDir: config.profileDir, port: Int(corePort), sealKey: key, extraEnv: config.sidecarEnv))
+    eng.onSettingsChanged = { [weak sc] _, all in sc?.send(["t": "settings", "all": .object(all)]) }
+    eng.onKeyChanged = { [weak sc] in sc?.send(["t": "keyChanged"]) }
+    eng.onPrewarm = { [weak sc] in sc?.send(["t": "prewarm"]) }
+    sc.onReady = { [weak self] e in DispatchQueue.main.async { self?.coreStarted(e, port: corePort) } }
     sc.onMessage = { [weak self] m in DispatchQueue.main.async { self?.coreMessage(m) } }
     sc.onLog = { [weak self] line in self?.log.raw("core", line) }
     sc.onExit = { [weak self] code in DispatchQueue.main.async { self?.coreExited(code) } }
@@ -68,6 +87,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       log.warn("app", "Could not start the core: \(error)")
       fail("Orbit's core could not start (\(error.localizedDescription)).")
     }
+  }
+
+  /** The core is up behind the engine: the engine signs in to it, then takes the public port. */
+  func coreStarted(_ coreEndpoints: BridgeEndpoints, port: UInt16) {
+    guard let eng = engine else { return }
+    let token = URLComponents(url: coreEndpoints.auth["main"] ?? coreEndpoints.base, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "t" }?.value ?? ""
+    eng.setCore(port: port, token: token)
+    Task { @MainActor in
+      do {
+        try await eng.start()
+        self.coreReady(eng.endpoints)
+      } catch {
+        self.log.warn("app", "The bridge could not listen on \(self.config.port): \(error)")
+        self.fail("Port \(self.config.port) is already in use, probably by another copy of Orbit. Close it first.")
+      }
+    }
+  }
+
+  /** Settings the shell owns (the page can't set them through POST /api/settings): the hotkey once it's registered, the orb's place. */
+  func saveShellSettings(_ patch: [String: JSONValue]) {
+    let allowed = patch.filter { ["wakeHotkey", "orbPosition", "orbStickAnchor"].contains($0.key) }
+    if !allowed.isEmpty { engine?.config.update(allowed) }
   }
 
   func coreReady(_ e: BridgeEndpoints) {
@@ -104,7 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       self?.events.add("window.minimize")
       self?.overlays?.showOrb() // minimizing turns into the orb
     }
-    u.onHotkeyChanged = { [weak self] accel in self?.sidecar?.send(["t": "shellSettings", "patch": ["wakeHotkey": .string(accel)]]) }
+    u.onHotkeyChanged = { [weak self] accel in self?.saveShellSettings(["wakeHotkey": .string(accel)]) }
     ui = u
     u.start()
   }
@@ -117,6 +158,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       fail(msg)
     case "log":
       log.raw(m["scope"]?.stringValue ?? "core", m["message"]?.stringValue ?? "")
+    case "logEntry":
+      if let e = m["entry"] { engine?.log.append(core: e) }
+    case "settingsChanged":
+      // A setting the core changed itself (a voice tool, an app okayed for Orbit anywhere).
+      if let p = m["patch"]?.objectValue { engine?.config.update(p) }
     case "clipboard":
       NSPasteboard.general.clearContents()
       NSPasteboard.general.setString(m["text"]?.stringValue ?? "", forType: .string)
@@ -195,6 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     voiceController?.hangup()
     ui?.stop()
     driver?.stop()
+    engine?.stop()
     sidecar?.stop()
     log.info("app", "Quit")
   }
