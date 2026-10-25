@@ -45,12 +45,20 @@ export function cleanWindow(w) {
     elevated: !!w.elevated,
     rect: { x: int(w.x), y: int(w.y), w: Math.max(0, int(w.w)), h: Math.max(0, int(w.h)) },
     dpi: int(w.dpi) > 0 ? int(w.dpi) : 96,
+    // macOS: the app's bundle id and its name as the system shows it (exe is the executable's name there).
+    ...(typeof w.bundle === 'string' && w.bundle ? { bundle: text(w.bundle, 120) } : {}),
+    ...(typeof w.app === 'string' && w.app && w.bundle ? { app: text(w.app, 80) } : {}),
     ...(Number.isFinite(Number(w.idle)) && w.idle !== null && w.idle !== undefined ? { idle: Math.max(0, int(w.idle)) } : {}),
   };
 }
 
-/** The app's name as people say it: "notepad.exe" -> "Notepad", "Discord.exe" -> "Discord". */
+/** The app's name as people say it: "notepad.exe" -> "Notepad", "Discord.exe" -> "Discord" (macOS: the name the system shows). */
 export function appName(win) {
+  if (win?.bundle) {
+    const macKnown = { 'com.microsoft.VSCode': 'VS Code', 'com.google.Chrome': 'Chrome', 'com.microsoft.edgemac': 'Edge', 'com.apple.finder': 'Finder', 'com.anthropic.claudefordesktop': 'Claude', 'com.apple.Terminal': 'Terminal', 'com.googlecode.iterm2': 'iTerm' };
+    const n = macKnown[win.bundle] || text(win.app, 60) || String(win.exe || '');
+    if (n) return n;
+  }
   const exe = String(win?.exe || '').replace(/\.exe$/i, '');
   if (!exe) return '';
   const known = { applicationframehost: '', explorer: 'File Explorer', msedge: 'Edge', chrome: 'Chrome', code: 'VS Code', winword: 'Word', excel: 'Excel', powerpnt: 'PowerPoint', outlook: 'Outlook', windowsterminal: 'Terminal', wt: 'Terminal', photoshop: 'Photoshop', obs64: 'OBS', claude: 'Claude' };
@@ -150,8 +158,8 @@ export function createFocusStore({ settleMs = 300, maxRecent = 30, now = () => D
 /** Orbit's one focus store (fed by the desktop shell; see electron/main.js). */
 export const focus = createFocusStore();
 
-// The native side for questions about windows (describe one, list them): the Windows helper, a test
-// double, or none (browser mode, macOS for now).
+// The native side for questions about windows (describe one, list them): the Windows helper, the
+// macOS helper, a test double, or none (browser mode).
 let backend = null;
 export function setFocusBackend(b) {
   backend = b && typeof b === 'object' ? b : null;

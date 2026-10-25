@@ -12,6 +12,9 @@ const PRIVATE_TITLE = /\b(inprivate|incognito|private browsing|private window)\b
 const SIGN_IN_TITLE = /\b(sign[ -]?in|log[ -]?in|password|credentials?|two[- ]factor|2fa|verification code|one[- ]time (pass)?code)\b/i;
 const BANKING_TITLE = /\b(online banking|banking|bank of|bank account|paypal|venmo|cash app|wells fargo|chase\.com|capital one|barclays|hsbc|revolut|coinbase|binance|kraken|robinhood|fidelity|schwab|vanguard)\b/i;
 const CREDENTIAL_CLASSES = /^(Credential Dialog Xaml Host|#32770 Credential|NativeHWNDHost)$/;
+// macOS (windows reported with their app's bundle id): password managers, Keychain, and the
+// system's own authentication prompts.
+const MAC_PRIVATE_BUNDLES = /^(com\.apple\.(keychainaccess|Passwords|SecurityAgent|LocalAuthentication\.UIAgent|coreautha|loginwindow|ScreenTimeAgent)|com\.agilebits\.onepassword.*|com\.1password\..*|com\.bitwarden\.desktop|org\.keepassxc\.keepassxc|com\.lastpass\..*|com\.dashlane\..*|com\.nordpass\..*|me\.proton\.pass.*|com\.enpass\..*|com\.roboform\..*)$/i;
 
 /**
  * May Orbit read this window? { ok: true } or { ok: false, reason, say } (`say`: one plain
@@ -20,11 +23,11 @@ const CREDENTIAL_CLASSES = /^(Credential Dialog Xaml Host|#32770 Credential|Nati
 export function readable(win) {
   if (!win || !win.hwnd) return { ok: false, reason: 'no_window', say: "There's no window to read." };
   if (win.kind === 'orbit') return { ok: false, reason: 'orbit', say: "That's Orbit's own window." };
-  if (win.kind === 'shell') return { ok: false, reason: 'shell', say: "That's part of Windows itself (the taskbar or desktop), not an app window." };
+  if (win.kind === 'shell') return { ok: false, reason: 'shell', say: win.bundle ? "That's part of macOS itself (the Dock, menu bar or desktop), not an app window." : "That's part of Windows itself (the taskbar or desktop), not an app window." };
   if (win.elevated) return { ok: false, reason: 'elevated', say: 'That app runs as administrator, so Windows keeps Orbit out of it.' };
   const exe = String(win.exe || '');
   const title = String(win.title || '');
-  if (PASSWORD_MANAGERS.test(exe) || CREDENTIAL_CLASSES.test(String(win.cls || ''))) return { ok: false, reason: 'private', say: "That's a password or sign-in window, so Orbit doesn't read it." };
+  if (PASSWORD_MANAGERS.test(exe) || CREDENTIAL_CLASSES.test(String(win.cls || '')) || MAC_PRIVATE_BUNDLES.test(String(win.bundle || ''))) return { ok: false, reason: 'private', say: "That's a password or sign-in window, so Orbit doesn't read it." };
   if (PRIVATE_TITLE.test(title)) return { ok: false, reason: 'private', say: "That's a private browsing window, so Orbit doesn't read it." };
   if (BANKING_TITLE.test(title)) return { ok: false, reason: 'private', say: 'That looks like banking or money, so Orbit stays out of it.' };
   if (SIGN_IN_TITLE.test(title) && !/\b(claude|discord|visual studio code)\b/i.test(title)) return { ok: false, reason: 'private', say: "That's a sign-in window, so Orbit doesn't read it." };

@@ -39,7 +39,7 @@
 
 import { BrowserWindow, screen } from 'electron';
 
-import { BUDDY_HEIGHT, boxInStrip, buddyBoundsFor, freeStripFor, liftRectFor, sendAtOffset, sendInStrip, sendOffsetFor, usableBox } from './buddy-geometry.js';
+import { BUDDY_HEIGHT, boxInStrip, buddyBoundsFor, freeStripFor, helperRectToDip, liftRectFor, sendAtOffset, sendInStrip, sendOffsetFor, usableBox } from './buddy-geometry.js';
 import { isAvatarAction } from '../src/avatar-commands.js';
 import { createHoverPoller } from './avatar-hover.js';
 import { cueName } from '../src/emote-cues.js';
@@ -299,7 +299,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     }
     if (!enabled || !claude?.found || claude.min) return hide();
     ensure();
-    claudeDip = screen.screenToDipRect(null, { x: claude.x, y: claude.y, width: claude.w, height: claude.h });
+    claudeDip = helperRectToDip(screen, claude);
     const b = buddyBoundsFor(claudeDip);
     if (lifted) {
       // Held or flying: the window covers the host window (its live rect); the page learns where it

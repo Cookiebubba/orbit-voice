@@ -1,10 +1,13 @@
-// Node wrapper around desktop.ps1 (Windows UI Automation for the Claude window).
+// Node wrapper around desktop.ps1 (Windows UI Automation for the Claude window), and on macOS around
+// platform/mac/desktop.js (the same steps through the accessibility API and Orbit's macOS helper).
 
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logError, logWarn } from './log.js';
 import { desktopUnsupportedMessage } from './platform/system.js';
+import { createMacDesktop } from './platform/mac/desktop.js';
+import { hasHelper, macAxHost } from './platform/mac/helper.js';
 
 // In the installed app this file is inside app.asar, which PowerShell can't read; the script
 // itself is shipped unpacked next to it.
@@ -37,9 +40,44 @@ export function setDesktopDriver(d) {
   driver = d && typeof d === 'object' ? d : null;
 }
 
+// macOS: the same modes through the accessibility API (created on first use).
+let macDesktop = null;
+let macTestPid = 0;
+/** Orbit's own tests only (electron/main.js, never in the installed app): a stand-in Claude window's process. */
+export function setDesktopTestPid(pid) {
+  macTestPid = Number.isSafeInteger(Number(pid)) && Number(pid) > 0 ? Number(pid) : 0;
+  macDesktop = null;
+}
+function macDriver() {
+  if (macDesktop) return macDesktop;
+  const host = macAxHost({ onError: (m) => logWarn('claude-window', m) });
+  if (!host) return null;
+  macDesktop = createMacDesktop({ request: (op, a) => host.request(op, a), onlyPid: macTestPid });
+  return macDesktop;
+}
+
 function runPs(mode, args = [], timeoutMs = 20000) {
   args = [...args, ...hintArgs()];
   if (driver) return Promise.resolve().then(() => driver.run(mode, args)).catch((e) => ({ ok: false, error: 'script_failed', message: String(e?.message || e).slice(0, 200) }));
+  if (process.platform === 'darwin' && hasHelper()) {
+    const mac = macDriver();
+    if (mac) {
+      let timer;
+      const late = new Promise((resolve) => {
+        timer = setTimeout(() => resolve({ ok: false, error: 'script_failed', message: 'timed out' }), timeoutMs + 5000);
+      });
+      return Promise.race([mac.run(mode, args), late])
+        .catch((e) => ({ ok: false, error: 'script_exception', message: String(e?.message || e).slice(0, 300) }))
+        .then((result) => {
+          clearTimeout(timer);
+          if (!result?.ok) {
+            const log = ['script_failed', 'script_exception'].includes(result?.error) ? logError : logWarn;
+            log('claude-window', `${mode}: ${result?.error}`, result?.message);
+          }
+          return result;
+        });
+    }
+  }
   if (process.platform !== 'win32') {
     return Promise.resolve({ ok: false, error: 'unsupported_platform', message: desktopUnsupportedMessage(process.platform) });
   }

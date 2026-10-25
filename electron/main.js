@@ -1,19 +1,23 @@
 // Desktop shell: a small frameless main window, a floating always-on-top orb that replaces
 // it while minimized, a tray icon, and the global hotkey. The bridge server runs in-process.
 //
-// macOS (phase 1): the same app, minus what drives the Claude window (typing, sending, Stop, the
-// window tracker; src/desktop.js and claude-window.js return early there). So the orb floats free,
-// the avatar lives along the bottom of the screen instead of the Claude window (avatar.js `free`),
-// the main window has the traffic lights, the tray icon is a menu-bar template image, and the
-// microphone is asked for once (macOS privacy) before the page first opens it.
+// macOS: the same app. Orbit's Swift helper (native/mac/OrbitHelper, see src/platform/mac/) stands in
+// for the PowerShell helpers: it drives the Claude window through the accessibility API, follows its
+// windows for the orb and Qubit, and reads and acts in other apps. Without it (or without the
+// Accessibility permission) the orb floats free and Qubit lives along the bottom of the screen. The
+// main window has the traffic lights, the tray icon is a menu-bar template image, and macOS's privacy
+// permissions (Microphone, Accessibility, Screen Recording) are asked for at sensible moments and
+// shown in Settings (see "macOS permissions" below).
 import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, safeStorage, screen, session, shell, systemPreferences, Tray } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEFAULTS, getSetting, onSettingsChange, updateSettings } from '../src/config.js';
 import { createClaudeWindowTracker } from './claude-window.js';
+import { helperRectToDip } from './buddy-geometry.js';
 import { DEFAULT_ANCHOR, anchorFor, isAnchor, orbPositionFor } from './orb-stick.js';
-import { getDesktopInfo, onPromptBoxWork, setDesktopDriver, setFrontWindowHint } from '../src/desktop.js';
+import { getDesktopInfo, onPromptBoxWork, setDesktopDriver, setDesktopTestPid, setFrontWindowHint } from '../src/desktop.js';
+import { hasHelper as hasMacHelper } from '../src/platform/mac/helper.js';
 import { getLogDir, logError, logInfo, logWarn } from '../src/log.js';
 import { authUrl, hotkeyLabel, startServer, stopBackgroundWork } from '../src/server.js';
 import { createUpdater } from './updater.js';
@@ -275,8 +279,13 @@ let orbLayer = null; // 'free' | 'top' | 'above:<hwnd>'
 let claude = null; // the Claude window the orb docks on (the one you were in last): { found, hwnd, min, front, x, y, w, h } in screen pixels
 let claudeDip = null; // the Claude window in DIPs, when sticking
 let fakeWindowHelper = null; // developer testing only: a stand-in for claude-window.ps1 (see below)
+// Developer testing only (never in the installed app): on macOS, a stand-in Claude window's process
+// (scripts/mac-e2e.mjs) for the window tracker and the Claude desktop driver.
+const testClaudePid = () => (!app.isPackaged && Number(process.env.ORBIT_TEST_CLAUDE_PID)) || 0;
+if (testClaudePid()) setDesktopTestPid(testClaudePid());
 const claudeTracker = createClaudeWindowTracker({
   spawnHelper: () => fakeWindowHelper?.() || null,
+  testPid: testClaudePid,
   onChange: (s) => {
     claude = s;
     anywhereContexts.setHomeWindow(s?.found ? s.hwnd : 0); // the Claude window is Orbit's home context
@@ -337,7 +346,7 @@ function placeOrb() {
     }
     return;
   }
-  claudeDip = screen.screenToDipRect(null, { x: claude.x, y: claude.y, width: claude.w, height: claude.h });
+  claudeDip = helperRectToDip(screen, claude);
   if (claude.min || !orbMode) {
     claudeTracker.pause();
     if (orb.isVisible()) orb.hide();
@@ -349,7 +358,9 @@ function placeOrb() {
     orb.showInactive();
     orbLayer = null; // z-order set while hidden may not stick: apply it again now that it shows
   }
-  // From here the helper moves the orb itself the instant Claude moves (no trailing behind).
+  // From here the helper moves the orb itself the instant Claude moves (no trailing behind). On macOS
+  // Orbit moves it, on each report (the helper looks often while Claude's window moves).
+  if (!claudeTracker.movesOrb) setOrbBounds(orbPositionFor(claudeDip, anchor, ORB_SIZE));
   claudeTracker.follow(nativeHandle(orb), anchor);
   setOrbLayer(claude.front === 'other' ? `above:${claude.hwnd}` : 'top');
 }
@@ -412,7 +423,7 @@ function setAvatar({ live = false } = {}) {
  * The avatar floats free when there's no Claude window tracker on this platform (only Windows has
  * one). ORBIT_FREE_AVATAR=1 forces it from source (developer testing: scripts/avatar-free-e2e.mjs).
  */
-const freeAvatar = () => (process.platform !== 'win32' && !fakeWindowHelper) || (!app.isPackaged && process.env.ORBIT_FREE_AVATAR === '1');
+const freeAvatar = () => (process.platform !== 'win32' && !fakeWindowHelper && !(IS_MAC && hasMacHelper())) || (!app.isPackaged && process.env.ORBIT_FREE_AVATAR === '1');
 
 // What the user asks the avatar to do (the voice model's `avatar` tool and the fast path that skips
 // the model) goes to its window.
@@ -642,7 +653,7 @@ on('orb:state', (s) => {
   avatarHost.onVoice(s); // the window the conversation is in gets it; the others rest
   orbitMouse.onVoice(s); // its colour and its pulse while Orbit speaks
   // Orbit woke: the mouse's windows get ready (hidden), so its first glide has its page loaded.
-  if (!mouseWarm && s?.phase && s.phase !== 'off' && mouseWanted() && process.platform === 'win32') {
+  if (!mouseWarm && s?.phase && s.phase !== 'off' && mouseWanted() && (process.platform === 'win32' || IS_MAC)) {
     mouseWarm = true;
     orbitMouse.prewarm();
   }
@@ -669,7 +680,7 @@ ipcMain.on('buddy:talk', (e) => {
   const hwnd = a.hostHwnd;
   if (hwnd) {
     const known = focus.recent?.find?.((r) => Number(r.hwnd) === hwnd);
-    wakeWith(known || (a === avatar ? { hwnd, kind: 'app', exe: 'claude.exe', cls: 'Chrome_WidgetWin_1', title: 'Claude' } : { hwnd, kind: 'app' }));
+    wakeWith(known || (a === avatar ? (IS_MAC ? { hwnd, kind: 'app', exe: 'Claude', bundle: 'com.anthropic.claudefordesktop', cls: 'AXStandardWindow', title: 'Claude' } : { hwnd, kind: 'app', exe: 'claude.exe', cls: 'Chrome_WidgetWin_1', title: 'Claude' }) : { hwnd, kind: 'app' }));
   }
   main?.webContents.send('avatar:talk');
 });

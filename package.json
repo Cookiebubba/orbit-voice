@@ -21,8 +21,9 @@
     "icons:mac": "electron scripts/make-icons.mjs --mac",
     "check": "node src/selftest.js",
     "dist": "npm run build:ui && node scripts/fetch-model.mjs && electron-builder --win --publish never",
-    "dist:mac": "npm run build:ui && node scripts/fetch-model.mjs && node scripts/mac-native.mjs && electron-builder --mac --publish never",
+    "dist:mac": "npm run build:ui && node scripts/fetch-model.mjs && node scripts/build-mac-helper.mjs && node scripts/mac-native.mjs && electron-builder --mac --publish never",
     "mac:native": "node scripts/mac-native.mjs",
+    "mac:helper": "node scripts/build-mac-helper.mjs",
     "fetch-model": "node scripts/fetch-model.mjs",
     "test": "node --test test/*.test.js && node --import ./test/fuzz/register.mjs --test test/sandboxed/*.test.js",
     "fuzz": "node --import ./test/fuzz/register.mjs test/fuzz/fuzz.mjs",
@@ -128,9 +129,19 @@
       "notarize": true,
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Orbit listens so you can talk to Grok or Claude, and for the offline “Hey Orbit” wake word. Your voice goes only to the voice you chose, and only while a conversation is on.",
-        "NSAppleEventsUsageDescription": "Orbit will use this to type your prompts into the Claude app and press Send for you (coming in a later version of Orbit for Mac).",
-        "NSAccessibilityUsageDescription": "Orbit will use Accessibility to read and drive the Claude app window (coming in a later version of Orbit for Mac)."
-      }
+        "NSAppleEventsUsageDescription": "Orbit doesn't send Apple Events today; if it ever asks, it is to hand your prompts to the Claude app.",
+        "NSAccessibilityUsageDescription": "Orbit uses Accessibility to type your prompts into the Claude app, press Send and Stop, answer Claude's questions, and (with Orbit anywhere) read and act in the window you ask about.",
+        "LSMinimumSystemVersion": "12.0"
+      },
+      "extraResources": [
+        {
+          "from": "resources/mac",
+          "to": "mac",
+          "filter": [
+            "orbit-helper"
+          ]
+        }
+      ]
     },
     "dmg": {
       "artifactName": "Orbit-${version}-${arch}.${ext}",

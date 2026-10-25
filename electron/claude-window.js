@@ -9,13 +9,16 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { createWindowPicker } from './claude-windows.js';
+import { hasHelper, spawnHelper as spawnMacHelper } from '../src/platform/mac/helper.js';
 
 // In the installed app this file is inside app.asar, which PowerShell can't read; the script
 // is unpacked next to it (see "asarUnpack" in package.json).
 const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'claude-window.ps1').replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
 const POWERSHELL = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 
-export function createClaudeWindowTracker({ onChange, onBox = () => {}, onError = () => {}, spawnHelper = null }) {
+export function createClaudeWindowTracker({ onChange, onBox = () => {}, onError = () => {}, spawnHelper = null, testPid = () => 0 }) {
+  // (Orbit's own tests on macOS: a stand-in Claude window's process instead of the Claude app.)
+  const macArgs = () => (Number(testPid()) > 0 ? ['--pid', String(Number(testPid()))] : []);
   let child = null;
   let stopped = true;
   let restarts = [];
@@ -52,10 +55,14 @@ export function createClaudeWindowTracker({ onChange, onBox = () => {}, onError 
     onChange(next);
   };
 
+  // macOS: Orbit's Swift helper in its "claude-window" mode (the same reports; Orbit moves the orb itself).
+  const mac = () => process.platform === 'darwin' && hasHelper();
   const start = () => {
-    if (process.platform !== 'win32' && !spawnHelper) return;
     // spawnHelper (tests) may return null to use the real helper.
-    child = spawnHelper?.() || spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT, '-ParentPid', String(process.pid)], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    const fake = spawnHelper?.() || null;
+    if (!fake && process.platform !== 'win32' && !mac()) return;
+    child = fake || (mac() ? spawnMacHelper('claude-window', macArgs()) : spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT, '-ParentPid', String(process.pid)], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }));
+    child.on('error', (e) => onError(`The Claude window watcher could not start: ${String(e?.message || e).slice(0, 160)}`));
     child.stdin.on('error', () => {});
     child.stdin.write(`${command}\n`);
     if (boxCommand) child.stdin.write(`${boxCommand}\n`);
@@ -113,5 +120,7 @@ export function createClaudeWindowTracker({ onChange, onBox = () => {}, onError 
     /** The window the orb docks on (the Claude window you were in last). */
     get current() { return current; },
     get running() { return !stopped; },
+    /** Does the helper move the orb itself (Windows), or does Orbit (macOS)? */
+    get movesOrb() { return process.platform !== 'darwin'; },
   };
 }

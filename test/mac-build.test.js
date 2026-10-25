@@ -104,6 +104,14 @@ test('mac build: sherpa-onnx native packages for both Macs are unpacked from app
   }
 });
 
+test('mac build: the native helper ships in Contents/Resources/mac, built before packaging', () => {
+  assert.deepEqual(mac.extraResources, [{ from: 'resources/mac', to: 'mac', filter: ['orbit-helper'] }]);
+  assert.match(pkg.scripts['dist:mac'], /scripts\/build-mac-helper\.mjs && node scripts\/mac-native\.mjs/);
+  assert.equal(pkg.scripts['mac:helper'], 'node scripts/build-mac-helper.mjs');
+  assert.ok(fs.existsSync(path.join(ROOT, 'native', 'mac', 'OrbitHelper', 'main.swift')));
+  assert.equal(mac.extendInfo.LSMinimumSystemVersion, '12.0');
+});
+
 test('mac build: GitHub publishing (so electron-builder writes latest-mac.yml next to the zips)', () => {
   assert.deepEqual(pkg.build.publish.map((p) => [p.provider, p.owner, p.repo]), [['github', 'Cookiebubba', 'orbit-voice']]);
   assert.ok(!('publish' in mac), 'the same publish config as Windows');

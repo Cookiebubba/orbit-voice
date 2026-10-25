@@ -283,7 +283,8 @@ export function hotkeyLabel(accel = '', platform = process.platform) {
 /** The plain words for "the Claude app can't be controlled here" (desktop.js, tools). */
 export function desktopUnsupportedMessage(platform = process.platform) {
   if (platform === 'darwin') {
-    return "Typing into Claude isn't on Mac yet. In this version Orbit can't type, send, press Stop, switch sessions or answer Claude's prompts in the Claude app on a Mac. It can still hear what your sessions are doing, ask the second brain and search the web. Tell the user that in one short sentence; if it helps, read the prompt out so they can type or paste it themselves.";
+    // Only without Orbit's macOS helper (a copy built without it): the app itself always ships it.
+    return "Orbit can't reach the Claude app on this Mac: its helper is missing from this copy of Orbit (reinstall Orbit). Until then it can't type, send, press Stop, switch sessions or answer Claude's prompts, but it can still hear what your sessions are doing. Tell the user that in one short sentence; if it helps, read the prompt out so they can type or paste it themselves.";
   }
   return 'Controlling the Claude app is only implemented for Windows so far.';
 }

@@ -10,7 +10,9 @@
     refusing to load them. DYLD_* variables stay stripped: they aren't needed, the libraries find
     each other through @rpath = @loader_path.
   - device.audio-input: the microphone (macOS still asks the user; see NSMicrophoneUsageDescription).
-  - automation.apple-events: reserved for driving the Claude app in a later phase (macOS asks first).
+  - automation.apple-events: kept for a future hand-off to the Claude app; Orbit drives Claude through
+    the accessibility API today (its helper, Contents/Resources/mac/orbit-helper, signed with these
+    same entitlements), which needs no entitlement, only the user's Accessibility switch.
 -->
 <plist version="1.0">
 <dict>
