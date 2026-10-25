@@ -895,9 +895,13 @@ async function run() {
   await wait(2500);
   const pos = await qjs('(() => { const q = window.__qubit.q; return { x: Math.round(q._rx), y: Math.round(q._ry) }; })()');
   const n0 = ignoreCalls.length;
+  // (The cursor Orbit polls goes along: it, not the page's own guess, decides.)
+  const onScreen = (x, y) => ({ x: qwin.getBounds().x + x, y: qwin.getBounds().y + y });
+  fakeCursor = onScreen(pos.x - 300, pos.y);
   qwin.webContents.sendInputEvent({ type: 'mouseMove', x: pos.x - 300, y: pos.y });
   await wait(150);
   check(ignoreCalls.length === n0, 'the cursor away from him: clicks still go through');
+  fakeCursor = onScreen(pos.x, pos.y);
   qwin.webContents.sendInputEvent({ type: 'mouseMove', x: pos.x, y: pos.y });
   check(await waitFor(() => ignoreCalls.at(-1) === false, 2000), 'the cursor on him: his window takes the mouse');
   // Click your avatar to talk (on by default): a quick click starts Orbit, as "Hey Orbit" would.
@@ -924,6 +928,7 @@ async function run() {
   await expectState('and dozes off again', { mode: 'asleep', action: null }, 10_000);
   await talkSwitch(true);
   check(await waitFor(async () => (await qjs('window.__qubit.state.prefs.clickTalk')) === true, 3000), 'on again');
+  fakeCursor = onScreen(pos.x - 300, pos.y);
   qwin.webContents.sendInputEvent({ type: 'mouseMove', x: pos.x - 300, y: pos.y });
   check(await waitFor(() => ignoreCalls.at(-1) === true, 2000), 'the cursor off him: clicks go through to Claude again');
 
@@ -1152,6 +1157,145 @@ async function run() {
   await expectState('and dozes off again from where he landed', { state: 'asleep', mode: (m) => m === 'sleepy' || m === 'asleep', air: false }, 15_000);
   check(await waitFor(() => ignoreCalls.at(-1) === true, 2000), 'click-through again, the cursor away from him');
   out(`  landed at stage x ${Math.round(land2.x)} after ${land2.secs.toFixed(2)} s`);
+  fakeCursor = null;
+
+  out('17e. A long session: throws, quick put-downs, sleeps, calls ending, the box changing, a lagging page');
+  // The owner's report (after 3f3d55a): after a while, clicking Qubit to talk and picking him up both
+  // stopped working. Cause: a lift and drop his page didn't follow wiped Orbit's idea of where he is,
+  // and a Qubit standing still never said it again. Here everything that churns his window happens
+  // many times over, part of it with his page's messages arriving late (as when it or the main
+  // process is busy), with no forwarded mouse moves at all; then he must still be clickable and
+  // throwable.
+  await label('long');
+  const at17 = async () => {
+    const b = qwin.getBounds();
+    const p = await qjs('(() => { const q = window.__qubit.q; return { x: q._rx, y: q._ry }; })()');
+    return { x: Math.round(b.x + p.x), y: Math.round(b.y + p.y) };
+  };
+  const ev = (type, gx, gy, down = false) => {
+    fakeCursor = { x: Math.round(gx), y: Math.round(gy) };
+    const b = qwin.getBounds();
+    qwin.webContents.sendInputEvent({ type, x: Math.round(gx - b.x), y: Math.round(gy - b.y), globalX: Math.round(gx), globalY: Math.round(gy), button: 'left', clickCount: 1, ...(down ? { modifiers: ['leftButtonDown'] } : {}) });
+  };
+  const settle17 = async () => {
+    await waitFor(async () => !(await qjs('window.__qubit.throw.active || window.__qubit.returning')) && (await qjs('window.__qubit.frame')) === 'strip', 20_000);
+    await wait(300);
+  };
+  const lagOn = () => {
+    const wc = qwin.webContents;
+    if (wc.__realSend) return;
+    const real = wc.send.bind(wc);
+    wc.__realSend = real;
+    let chain = Promise.resolve();
+    wc.send = (...a) => {
+      chain = chain.then(() => wait(250)).then(() => !wc.isDestroyed() && real(...a));
+    };
+  };
+  const lagOff = () => {
+    const wc = qwin.webContents;
+    if (wc.__realSend) {
+      wc.send = wc.__realSend;
+      delete wc.__realSend;
+    }
+  };
+  const sleepByVoice = async () => {
+    const c = fake.current();
+    if (!c || c.ws.readyState !== 1) return;
+    void fake.userSays(c, 'go to sleep', { kind: 'sleep', tools: [{ name: 'go_to_sleep' }] });
+    await waitFor(() => c.ws.readyState !== 1, 15_000);
+  };
+  const kinds = [];
+  for (let i = 0; i < 14; i++) {
+    if (i === 6) lagOn();
+    if (i === 10) lagOff();
+    if (i % 4 === 1) {
+      [...hotkeys.values()][0](); // a call...
+      await waitFor(() => fake.current() && fake.current().configured > 0 && fake.current().ws.readyState === 1, 10_000);
+    }
+    const p = await at17();
+    const kind = ['throw', 'put-down', 'slow-click', 'instant-lift', 'throw', 'put-down', 'throw'][i % 7];
+    kinds.push(kind);
+    ev('mouseMove', p.x, p.y);
+    await wait(40);
+    if (kind === 'throw') {
+      ev('mouseDown', p.x, p.y);
+      let gx = p.x;
+      let gy = p.y;
+      for (let k = 0; k < 10; k++) {
+        gx += i % 2 ? 8 : -8;
+        gy -= 6;
+        ev('mouseMove', gx, gy, true);
+        await wait(16);
+      }
+      for (let k = 0; k < 5; k++) {
+        gx += i % 2 ? 30 : -30;
+        gy -= 15;
+        ev('mouseMove', gx, gy, true);
+        await wait(14);
+      }
+      ev('mouseUp', gx, gy);
+      ev('mouseMove', gx + 300, gy + 200);
+    } else if (kind === 'put-down') {
+      ev('mouseDown', p.x, p.y);
+      await wait(440); // just past the hold: picked up, then let go at once
+      ev('mouseUp', p.x, p.y);
+      ev('mouseMove', p.x - 400, p.y);
+    } else if (kind === 'slow-click') {
+      ev('mouseDown', p.x, p.y);
+      await wait(380); // too long for a click, too short to pick him up: a poke
+      ev('mouseUp', p.x, p.y);
+      ev('mouseMove', p.x - 400, p.y);
+    } else {
+      // The page asks for the work area and gives it back at once (a pickup that landed at once).
+      await qjs('window.desktop.buddyLift(true); window.desktop.buddyLift(false); true');
+    }
+    await settle17();
+    if (i === 5) {
+      // The prompt box changes under him (three lines typed, then cleared).
+      desk.windows[0].promptText = 'one\ntwo\nthree';
+      desk.caret?.();
+      await wait(600);
+      desk.windows[0].promptText = '';
+      desk.caret?.();
+      await wait(600);
+    }
+    if (i % 4 === 3) await sleepByVoice(); // ...and "go to sleep"
+  }
+  lagOff();
+  out(`  ${kinds.length} rounds: ${kinds.join(', ')}`);
+  await sleepByVoice();
+  await expectState('after all that: asleep, still', { state: 'asleep', air: false }, 25_000);
+  await wait(2500); // (perfectly still now: only the heartbeat can tell Orbit where he is)
+  let q17 = await at17();
+  fakeCursor = { x: q17.x - 500, y: q17.y };
+  check(await waitFor(() => ignoreCalls.at(-1) === true, 2000), 'the cursor away from him: clicks go through');
+  fakeCursor = { x: q17.x, y: q17.y };
+  check(await waitFor(() => ignoreCalls.at(-1) === false, 4000), 'the cursor on him (no forwarded moves): his window still takes the mouse');
+  check((await qjs('window.__qubit.press')) === null, 'no press left over from all that');
+  const n17 = fake.conns.length;
+  ev('mouseDown', q17.x, q17.y);
+  await wait(60);
+  ev('mouseUp', q17.x, q17.y);
+  check(await waitFor(() => fake.conns.length > n17 && fake.conns.at(-1).configured > 0, 10_000), 'a click on him still wakes Orbit');
+  await sleepByVoice();
+  await expectState('asleep again', { state: 'asleep', air: false }, 25_000);
+  q17 = await at17();
+  ev('mouseMove', q17.x, q17.y);
+  await wait(200);
+  ev('mouseDown', q17.x, q17.y);
+  let gx17 = q17.x;
+  for (let k = 0; k < 12; k++) {
+    gx17 -= 9;
+    ev('mouseMove', gx17, q17.y - k * 8, true);
+    await wait(16);
+  }
+  check(await waitFor(() => qjs('window.__qubit.throw.held'), 2000), 'and he can still be picked up');
+  ev('mouseUp', gx17, q17.y - 96);
+  ev('mouseMove', gx17 - 400, q17.y);
+  await settle17();
+  check(await waitFor(() => ignoreCalls.at(-1) === true, 4000), 'and let go, clicks go through again');
+  const hoverLines = (() => { try { return fs.readFileSync(path.join(getConfigDir(), 'logs', 'orbit.log'), 'utf8'); } catch { return ''; } })();
+  check(/hover polling started/.test(hoverLines) && /its window (takes the mouse|lets clicks through)/.test(hoverLines), 'the log says when hover polling starts and the mouse mode changes');
   fakeCursor = null;
 
   out('17b. Show the orb (Settings -> Avatar)');

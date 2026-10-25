@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createHoverPoller } from '../electron/avatar-hover.js';
+import { HIT_STALE_MS, createHoverPoller, rateLimitedLog } from '../electron/avatar-hover.js';
 
 function rig({ bounds = { x: -4200, y: 680, width: 1200, height: 240 } } = {}) {
   const calls = [];
@@ -96,3 +96,69 @@ test('hover: only changes are sent to the window (no churn every poll)', () => {
   r.p.reset();
   assert.equal(r.calls.length, n + 1, 'after a reset the state is sent again');
 });
+
+test('hover: a rect not heard again is forgotten, and the heartbeat puts it right (the stuck-after-a-while bug)', () => {
+  // The live bug (after 3f3d55a): a lift and drop the page didn't follow wiped the rect, and a Qubit
+  // standing still never sent it again, so he couldn't be clicked or picked up. Now the page sends it
+  // every half second and Orbit forgets one it hasn't heard for a while.
+  let t = 1000;
+  const calls = [];
+  const modes = [];
+  let cursor = { x: -4200 + 920, y: 680 + 120 }; // on him
+  const ticks = [];
+  const p = createHoverPoller({
+    getCursor: () => cursor,
+    getBounds: () => ({ x: -4200, y: 680, width: 1200, height: 240 }),
+    setIgnore: (i) => calls.push(i),
+    onMode: (m) => modes.push(m),
+    now: () => t,
+    setTimer: (fn) => (ticks.push(fn), 1),
+    clearTimer: () => ticks.splice(0),
+  });
+  const tick = () => ticks.forEach((fn) => fn());
+  p.start();
+  p.setHit({ x: 900, y: 100, w: 44, h: 44 });
+  assert.equal(calls.at(-1), false, 'on him: takes the mouse');
+  // The page goes quiet (a page that stopped, or a rect wiped): forgotten after HIT_STALE_MS.
+  t += HIT_STALE_MS + 1;
+  tick();
+  assert.equal(calls.at(-1), true, 'an old rect is never trusted: clicks go through');
+  assert.equal(p.state.hit, false);
+  // The next heartbeat (the same rect, unchanged) and he's clickable again at once.
+  p.setHit({ x: 900, y: 100, w: 44, h: 44 });
+  assert.equal(calls.at(-1), false, 'the heartbeat restores it');
+  // A long run of heartbeats keeps it, however long he stands still.
+  for (let i = 0; i < 200; i++) {
+    t += 500;
+    p.setHit({ x: 900, y: 100, w: 44, h: 44 });
+    tick();
+  }
+  assert.equal(calls.at(-1), false);
+  assert.deepEqual(modes, [false, true, false, true], 'the first mode and each change reported once (for the log)');
+  // A press the page stopped mentioning doesn't hold the mouse for ever either.
+  cursor = { x: -4200 + 100, y: 680 + 10 }; // off him
+  p.setHeld(true);
+  assert.equal(calls.at(-1), false);
+  t += 6000;
+  p.setHit({ x: 900, y: 100, w: 44, h: 44 });
+  assert.equal(calls.at(-1), true, 'a stale press lets go');
+  // The page's own hover guess never holds the window (a stale one could block the app underneath).
+  p.setPageHover(true, { held: false });
+  assert.equal(calls.at(-1), true);
+});
+
+test('hover: the log lines are rate-limited and carry no text', () => {
+  let t = 0;
+  const lines = [];
+  const log = rateLimitedLog((m) => lines.push(m), { everyMs: 10_000, now: () => t });
+  assert.equal(log('mode', 'qubit: its window lets clicks through'), true);
+  for (let i = 0; i < 20; i++) {
+    t += 100;
+    log('mode', 'qubit: its window takes the mouse');
+  }
+  log('poll', 'qubit: hover polling started');
+  t += 10_000;
+  log('mode', 'qubit: its window lets clicks through');
+  assert.deepEqual(lines, ['qubit: its window lets clicks through', 'qubit: hover polling started', 'qubit: its window lets clicks through (and 20 more like it before)']);
+});
+

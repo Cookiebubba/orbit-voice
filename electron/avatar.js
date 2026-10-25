@@ -41,7 +41,7 @@ import { BrowserWindow, screen } from 'electron';
 
 import { BUDDY_HEIGHT, boxInStrip, buddyBoundsFor, freeStripFor, liftRectFor, sendAtOffset, sendInStrip, sendOffsetFor, usableBox } from './buddy-geometry.js';
 import { isAvatarAction } from '../src/avatar-commands.js';
-import { createHoverPoller } from './avatar-hover.js';
+import { createHoverPoller, rateLimitedLog } from './avatar-hover.js';
 import { cueName } from '../src/emote-cues.js';
 
 export { BUDDY_HEIGHT };
@@ -78,8 +78,12 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   let lifted = null; // { area, strip } (DIPs) while the window covers the work area
   let liftTimer = null;
   // Whether the window takes the mouse: the real cursor over the avatar (polled here, see
-  // avatar-hover.js), or the page saying so. Never only forwarded mouse moves.
+  // avatar-hover.js), or a press under way. Never only forwarded mouse moves. Logged when the polling
+  // starts or stops and when the mouse mode changes (rate-limited; no text).
+  const hoverLog = rateLimitedLog((m) => info_(m), { everyMs: 10_000 });
   const hover = createHoverPoller({
+    onRunning: (on) => hoverLog(on ? 'poll-on' : 'poll-off', `${kind}: hover polling ${on ? 'started' : 'stopped'}`),
+    onMode: (take) => hoverLog('mode', `${kind}: its window ${take ? 'takes the mouse (the cursor is on it, or it is held)' : 'lets clicks through'}`),
     getCursor: () => {
       try {
         return screen.getCursorScreenPoint();
@@ -271,8 +275,9 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     const strip = lifted.strip;
     lifted = null;
     if (!win || win.isDestroyed()) return;
-    hover.setHit(null); // (the page sends his rect again, in the strip's px)
-    hover.setPageHover(false);
+    // (His rect stays: the page sends it again within half a second in the strip's px. Wiping it here
+    // left a Qubit standing still unclickable when the page didn't follow the lift.)
+    hover.setHeld(false);
     win.setBounds(strip);
     layer = null;
     if (quiet) return;

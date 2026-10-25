@@ -203,17 +203,29 @@ function setHover(on) {
   desktop?.buddyHover?.(on, held);
 }
 let hitSent = '';
-/** His rect in this window's px, for Orbit's own hover check (only when it changed). */
-function sendHit() {
+let hitSentAt = 0;
+let hoverSentAt = 0;
+/**
+ * His rect in this window's px, for Orbit's own hover check: when it changes, and every half second
+ * anyway (Orbit forgets a rect it hasn't heard for 3 s, so nothing it was told can go stale). The
+ * press state rides the same heartbeat.
+ */
+function sendHit(now = performance.now()) {
   if (!q || gone) return;
   const r = q.side * 0.62;
   const x = q._rx ?? q.cx;
   const y = q._ry ?? q.ground - q.cy;
   const rect = { x: Math.round(x - r), y: Math.round(y - r), w: Math.round(2 * r), h: Math.round(2 * r) };
   const key = `${rect.x},${rect.y},${rect.w},${frame}`;
-  if (key === hitSent) return;
-  hitSent = key;
-  desktop?.buddyHit?.(rect);
+  if (key !== hitSent || now - hitSentAt > 500) {
+    hitSent = key;
+    hitSentAt = now;
+    desktop?.buddyHit?.(rect);
+  }
+  if (now - hoverSentAt > 500) {
+    hoverSentAt = now;
+    desktop?.buddyHover?.(hovering, !!press);
+  }
 }
 const frameOrigin = () => (frame === 'area' && liftedAt ? liftedAt.area : st.bounds || { x: screenX, y: screenY });
 const toStage = (p) => {
@@ -248,6 +260,8 @@ let keepAliveAt = 0;
 let returning = false; // landed away from his strip: on his way back
 
 addEventListener('pointerdown', (e) => {
+  // A press left over from a pointerup that never came: gone (a new press means the button was up).
+  if (press && e.pointerId === press.id) press = null;
   // (On his way back to his strip too: a click still talks, and a press picks him up again.)
   if (e.button !== 0 || !q || gone || press) return;
   if (!dir.hit(e.clientX, e.clientY) && !th.flying) return;
@@ -264,6 +278,12 @@ addEventListener('pointerdown', (e) => {
 });
 addEventListener('pointermove', (e) => {
   if (!press || e.pointerId !== press.id) return;
+  // The button is up but its pointerup never came (it can get lost when the window changes under
+  // the press): end the press as if it had, so it can't block every click after it.
+  if (e.buttons === 0 && e.pointerType === 'mouse') {
+    endPress(e, press);
+    return;
+  }
   for (const c of e.getCoalescedEvents?.() || [e]) pushSample(press.samples, { x: c.screenX, y: c.screenY, t: c.timeStamp });
   pointer = { x: e.screenX, y: e.screenY };
   if (!press.dragging && canThrow() && pressKind({ dx: e.screenX - press.x, dy: e.screenY - press.y, ms: e.timeStamp - press.t }) === 'drag') pickUp();
@@ -271,7 +291,9 @@ addEventListener('pointermove', (e) => {
 });
 addEventListener('pointerup', (e) => {
   if (!press || e.pointerId !== press.id) return;
-  const p = press;
+  endPress(e, press);
+});
+function endPress(e, p) {
   press = null;
   try {
     document.documentElement.releasePointerCapture(e.pointerId);
@@ -289,7 +311,7 @@ addEventListener('pointerup', (e) => {
   }
   hoverNow();
   cursor();
-});
+}
 addEventListener('pointercancel', (e) => {
   if (!press || e.pointerId !== press.id) return;
   const p = press;
@@ -363,8 +385,19 @@ function hoverNow() {
   setHover(!!s && !gone && !!q && dir.hit(s.x, s.y));
 }
 
+let stuckSince = 0; // a throw or walk back that never ends (it can't: it's ended here after 25 s)
 function frameTick(dt, now) {
-  sendHit();
+  sendHit(now);
+  if ((th.active || returning) && !press) {
+    stuckSince ||= now;
+    if (now - stuckSince > 25_000) {
+      stuckSince = 0;
+      if (th.held) th.release({ x: 0, y: 0 });
+      returning = false;
+      dir.homeAgain();
+      lift(false);
+    }
+  } else stuckSince = 0;
   // Held still a moment: picked up. (Event and frame times share one clock.)
   if (press && !press.dragging && canThrow() && pressKind({ ms: Math.max(0, now - press.t) }) === 'hold') pickUp();
   if (press?.dragging) th.move(heldTarget());
