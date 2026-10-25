@@ -63,6 +63,8 @@ public enum BridgeReply: Sendable {
    * cancelled if the client goes away first (Node's res 'close'); its answer is sent if it's still there.
    */
   case deferred(@Sendable () async -> BridgeResponse)
+  /** Accept the WebSocket upgrade (the request was checked): `open` gets the socket, before it reads. */
+  case webSocket(open: @Sendable (BridgeWebSocket) -> Void)
 }
 
 public final class BridgeServer: @unchecked Sendable {
@@ -134,6 +136,8 @@ public final class BridgeServer: @unchecked Sendable {
     /** A deferred answer being worked on, and whether a read is waiting on the client meanwhile. */
     var work: Task<Void, Never>?
     var watching = false
+    /** A WebSocket this connection became (it holds it until it ends). */
+    var webSocket: BridgeWebSocket?
     var clientGone = false
 
     init(conn: NWConnection, server: BridgeServer, maxBody: Int) {
@@ -262,6 +266,19 @@ public final class BridgeServer: @unchecked Sendable {
             self.work = nil
             self.answer(req, .response(r), eof: eof)
           }
+        }
+      case .webSocket(let open):
+        let key = req.header("sec-websocket-key") ?? ""
+        let keyOK = (Data(base64Encoded: key)?.count ?? 0) == 16
+        guard req.isWebSocketUpgrade, keyOK, req.header("sec-websocket-version") == "13" else {
+          return send(BridgePolicy.plain(400).serialize(keepAlive: false)) { self.finish() }
+        }
+        let head = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: \(WSCodec.accept(key: key))\r\n\r\n"
+        let ws = BridgeWebSocket(conn: conn, queue: queue, isClient: false, maxPayload: 1 << 20, initial: parser.takeRest())
+        webSocket = ws
+        send(Data(head.utf8)) {
+          open(ws)
+          ws.start()
         }
       case .passThrough(let port, let head, let body):
         let rest = parser.takeRest()
