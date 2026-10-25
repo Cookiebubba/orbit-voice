@@ -33,7 +33,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, safeStorage, screen, session, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, safeStorage, screen, session, shell } from 'electron';
 import { createFakeGrok } from '../test/e2e/fake-grok.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -139,11 +139,42 @@ app.whenReady().then(() => {
 
 // Whether the avatar's window takes the mouse (only while the cursor is on him).
 const ignoreCalls = [];
+const ignoreTimes = []; // [when, ignore], for the flapping checks
 const origIgnore = BrowserWindow.prototype.setIgnoreMouseEvents;
 BrowserWindow.prototype.setIgnoreMouseEvents = function (ignore, o) {
-  if (isAvatar(this)) ignoreCalls.push(!!ignore);
+  if (isAvatar(this)) {
+    ignoreCalls.push(!!ignore);
+    ignoreTimes.push([Date.now(), !!ignore]);
+  }
   return origIgnore.call(this, ignore, o);
 };
+/** Changes of the mouse mode closer together than `ms` since `from` (an index into ignoreTimes). */
+const fastFlaps = (from, ms = 150) => {
+  const c = ignoreTimes.slice(from);
+  let n = 0;
+  for (let i = 1; i < c.length; i++) if (c[i][1] !== c[i - 1][1] && c[i][0] - c[i - 1][0] < ms) n++;
+  return n;
+};
+// What his page sends Orbit, counted per channel; and (17g) a page whose timer is throttled: its
+// heartbeat (a rect the same as the last one) never arrives. A rect that changed (he moved, so frames
+// ran) still does.
+const fromAvatar = {};
+let heartbeatsMuted = false;
+const lastSaid = {};
+const ipcOn = ipcMain.on.bind(ipcMain);
+ipcMain.on = (channel, fn) =>
+  ipcOn(channel, (e, ...a) => {
+    if (/\/(qubit|buddy)\.html/.test(e.sender?.getURL?.() || '')) {
+      fromAvatar[channel] = (fromAvatar[channel] || 0) + 1;
+      if (channel === 'buddy:hit' || channel === 'buddy:hover') {
+        // (Its press state rides the same heartbeat; a press starting or ending still says so at once.)
+        const key = JSON.stringify(a);
+        if (heartbeatsMuted && key === lastSaid[channel]) return;
+        lastSaid[channel] = key;
+      }
+    }
+    return fn(e, ...a);
+  });
 
 // ---------- a throwaway profile ----------
 const KEY = `xai-avatar${'k'.repeat(40)}`;
@@ -1373,6 +1404,112 @@ async function run() {
   check(misses.length === 0, `every press on a Tiny Qubit picked him up (${tries.length} tries: fast drags, hold-then-drag, a stray buttonless move mid-press)`, JSON.stringify(misses));
   const log17 = (() => { try { return fs.readFileSync(path.join(getConfigDir(), 'logs', 'orbit.log'), 'utf8'); } catch { return ''; } })();
   check(/a press on it: pickup/.test(log17), 'the log says what each press came to');
+  fakeCursor = null;
+
+  out('17g. A throttled page: frozen by Chromium, then its timers silent, on a Tiny Qubit');
+  // The live report (0edbf9b): after the overlay sat quiet a while, a press on him went to the app
+  // underneath. A rect Orbit hadn't heard for 3 s was dropped, and a page's timers can be slowed or
+  // stopped (Chromium throttles and freezes pages; a busy renderer misses beats) while he stands
+  // still. Now the last rect stands until the page or the window says otherwise, and the mode can't
+  // flap faster than 150 ms at his edge.
+  await tinySettle();
+  // (a) Frozen for real: Chromium's own page freeze (timers, frames, everything), for 8 s.
+  // (Orbit turns background throttling off for his window, and Chromium won't freeze a page then:
+  // it's forced back on for this.)
+  const dbg = qwin.webContents.debugger;
+  const g0 = await tinyAt();
+  os17('mouseMove', g0.x - 300, g0.y);
+  await wait(300);
+  let froze = false;
+  try {
+    qwin.webContents.setBackgroundThrottling(true);
+    if (!dbg.isAttached()) dbg.attach('1.3');
+    await dbg.sendCommand('Page.enable');
+    await dbg.sendCommand('Page.setWebLifecycleState', { state: 'frozen' });
+    froze = true;
+  } catch (err) {
+    out(`  (could not freeze the page: ${err?.message || err})`);
+  }
+  await wait(200);
+  const fz0 = ignoreTimes.length;
+  const said0 = (fromAvatar['buddy:hit'] || 0) + (fromAvatar['buddy:hover'] || 0);
+  await wait(8000);
+  const said = (fromAvatar['buddy:hit'] || 0) + (fromAvatar['buddy:hover'] || 0) - said0;
+  check(froze && said === 0, `his page was frozen by Chromium for 8 s (${said} words from it meanwhile)`);
+  check(ignoreTimes.length === fz0, 'meanwhile the mouse mode never changed (no flapping, nothing dropped)');
+  for (let k = 6; k >= 0; k--) {
+    os17('mouseMove', g0.x - k * 12, g0.y + 2);
+    await wait(16);
+  }
+  check(await waitFor(() => ign17() === false, 1500), 'onto him while his page is still frozen: his window takes the mouse (Orbit kept his rect)');
+  try {
+    await dbg.sendCommand('Page.setWebLifecycleState', { state: 'active' });
+    dbg.detach();
+  } catch {}
+  qwin.webContents.setBackgroundThrottling(false);
+  await wait(60);
+  const took17g = os17('mouseDown', g0.x, g0.y);
+  for (let k = 1; k <= 8; k++) {
+    os17('mouseMove', g0.x - k * 14, g0.y - k * 9);
+    await wait(12);
+  }
+  check(took17g && (await waitFor(() => qjs('window.__qubit.throw.held'), 2000)), 'and a fast press-and-drag right after picks him up');
+  os17('mouseUp', g0.x - 112, g0.y - 72);
+  os17('mouseMove', g0.x - 500, g0.y);
+  await tinySettle();
+  // (b) His page's timer throttled for 10 s at a time (intensive throttling: a beat a minute or
+  // none): no heartbeat arrives, only a rect that changed. Input still reaches the page, as it would.
+  heartbeatsMuted = true;
+  const g1 = await tinyAt();
+  const fl0 = ignoreTimes.length;
+  await wait(10_000);
+  const tries17g = [];
+  await qjs(`(() => { window.__downs17g = 0; addEventListener('pointerdown', () => window.__downs17g++, true); return true; })()`);
+  const clicks17g = () => qjs('window.__downs17g');
+  for (const how of ['fast press-and-drag', 'press, hold, drag', 'click']) {
+    Object.assign(g1, await tinyAt()); // (where he is now: changed rects still reach Orbit)
+    const c0 = await clicks17g();
+    for (let k = 6; k >= 0; k--) {
+      os17('mouseMove', g1.x - k * 12, g1.y + 2);
+      await wait(16);
+    }
+    await wait(90);
+    const took = os17('mouseDown', g1.x, g1.y);
+    if (how === 'press, hold, drag') await wait(PRESS_HOLD + 60);
+    if (how === 'click') {
+      await wait(60);
+      os17('mouseUp', g1.x, g1.y);
+      tries17g.push([how, took, (await waitFor(async () => (await clicks17g()) > c0, 1500)) && (await waitFor(async () => (await qjs('window.__qubit.press')) === null, 1500))]); // (reached his page, and ended as a click)
+      break;
+    }
+    for (let k = 1; k <= 8; k++) {
+      os17('mouseMove', g1.x - k * 14, g1.y - k * 9);
+      await wait(12);
+    }
+    tries17g.push([how, took, await waitFor(() => qjs('window.__qubit.throw.held'), 1500)]);
+    os17('mouseUp', g1.x - 112, g1.y - 72);
+    os17('mouseMove', g1.x - 500, g1.y);
+    await tinySettle();
+    await wait(4000); // (longer than the 3 s after which Orbit used to drop a rect)
+  }
+  heartbeatsMuted = false;
+  check(tries17g.every((t) => t[1] && t[2]), `with his page's timers silent, every press still reached him (${tries17g.map((t) => t[0]).join(', ')})`, JSON.stringify(tries17g));
+  check(fastFlaps(fl0) === 0, 'and the mouse mode never changed faster than 150 ms');
+  // (c) A hand at his edge: the cursor wobbles in and out by a few px every 40 ms for 2 s.
+  await tinySettle();
+  const g2 = await tinyAt();
+  const side17 = await qjs('window.__qubit.q.side');
+  const edge = g2.x + Math.max(side17 * 0.62, 18);
+  const wb0 = ignoreTimes.length;
+  for (let i = 0; i < 50; i++) {
+    os17('mouseMove', edge + (i % 2 ? 4 : -3), g2.y);
+    await wait(40);
+  }
+  os17('mouseMove', g2.x - 500, g2.y);
+  await wait(400);
+  check(fastFlaps(wb0) === 0, `the cursor wobbling at his edge never flaps the mode faster than 150 ms (${ignoreTimes.length - wb0} changes in 2 s)`);
+  const log17g = fs.readFileSync(path.join(getConfigDir(), 'logs', 'orbit.log'), 'utf8');
+  check(/no word from its page for \d+ s .*keeping where it last was/.test(log17g), 'the log says when his page went quiet (and that Orbit kept his place)');
   fakeCursor = null;
 
   out('17b. Show the orb (Settings -> Avatar)');

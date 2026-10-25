@@ -88,7 +88,8 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   const pageErrLog = rateLimitedLog((m) => log(m), { everyMs: 30_000 });
   const hover = createHoverPoller({
     onRunning: (on) => hoverLog(on ? 'poll-on' : 'poll-off', `${kind}: hover polling ${on ? 'started' : 'stopped'}`),
-    onStale: () => hoverLog('stale', `${kind}: no word of where it is from its page for a while: clicks go through over it`),
+    // (Only logged: the last rect stands, since a page's timers can be slowed while he hasn't moved.)
+    onQuiet: (ms) => hoverLog('quiet', `${kind}: no word from its page for ${Math.round(ms / 1000)} s (its timers slowed or stalled): keeping where it last was`),
     onMode: (take) => hoverLog('mode', `${kind}: its window ${take ? 'takes the mouse (the cursor is on it, or it is held)' : 'lets clicks through'}`),
     getCursor: () => {
       try {
@@ -129,7 +130,11 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     win.webContents.on('console-message', (ev) => {
       if (ev?.level === 'error') pageErrLog('err', `${kind}: its page had an error: ${String(ev.message || '').replace(/\s+/g, ' ').slice(0, 160)}`);
     });
-    win.webContents.on('render-process-gone', (_ev, d) => info_(`${kind}: its page stopped (${String(d?.reason || 'unknown').slice(0, 40)})`));
+    win.webContents.on('render-process-gone', (_ev, d) => {
+      info_(`${kind}: its page stopped (${String(d?.reason || 'unknown').slice(0, 40)})`);
+      hover.reset(); // nothing to hit until a page says where he is again
+    });
+    win.webContents.on('did-start-loading', () => hover.reset());
     openWindows++;
     const where = free ? 'along the screen' : boxless ? 'on another window' : 'on the Claude window';
     info_(`${kind}: avatar window opened ${where} (${openWindows} open)`);
