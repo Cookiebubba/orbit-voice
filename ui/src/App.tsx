@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import History from "./components/History";
 import SessionSwitcher from "./components/SessionSwitcher";
 import { desktop, isMac } from "./desktop";
+import { MacPermissionsBanner } from "./MacPermissions";
 import { PULSE_DEFAULT } from "./orbLook";
 import AvatarHero from "./hero/AvatarHero";
 import Settings from "./Settings";
@@ -174,6 +175,7 @@ export default function App() {
         </div>
       </div>
 
+      {desktop && isMac && view === "main" && <MacPermissionsBanner />}
       {view === "settings" ? (
         <Settings config={app.config} update={app.updateSettings} onClose={() => setView("main")} />
       ) : view === "history" ? (

@@ -17,7 +17,7 @@ import { createClaudeWindowTracker } from './claude-window.js';
 import { helperRectToDip } from './buddy-geometry.js';
 import { DEFAULT_ANCHOR, anchorFor, isAnchor, orbPositionFor } from './orb-stick.js';
 import { getDesktopInfo, onPromptBoxWork, setDesktopDriver, setDesktopTestPid, setFrontWindowHint } from '../src/desktop.js';
-import { hasHelper as hasMacHelper } from '../src/platform/mac/helper.js';
+import { hasHelper as hasMacHelper, runHelperOnce } from '../src/platform/mac/helper.js';
 import { getLogDir, logError, logInfo, logWarn } from '../src/log.js';
 import { authUrl, hotkeyLabel, startServer, stopBackgroundWork } from '../src/server.js';
 import { createUpdater } from './updater.js';
@@ -68,6 +68,9 @@ if (!app.isPackaged && process.env.GVB_FAKE_MIC) {
 }
 if (process.platform === 'win32') app.setAppUserModelId('dev.orbit.voice'); // Windows taskbar and notifications only
 app.setPath('userData', path.join(app.getPath('appData'), 'Orbit'));
+// Developer testing only (never in the installed app): a settings folder of its own, so a test run
+// never touches your real Orbit settings, keys or logs.
+if (!app.isPackaged && process.env.ORBIT_USER_DATA) app.setPath('userData', path.resolve(process.env.ORBIT_USER_DATA));
 
 let main = null;
 let orb = null;
@@ -586,6 +589,52 @@ async function ensureMicAccess() {
   return status;
 }
 
+// ---------- macOS permissions ----------
+// What Orbit needs from System Settings → Privacy & Security: Accessibility (the Claude app and
+// Orbit anywhere, through its helper, which macOS counts as Orbit), Microphone, and Screen Recording
+// (only for looking at a window). Settings and a banner on the main screen show them; "Turn on"
+// asks with macOS's own prompt where there is one, else opens the right pane.
+const PRIVACY_PANES = {
+  accessibility: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
+  microphone: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
+  screen: 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',
+};
+function macPermissions() {
+  if (!IS_MAC) return { platform: process.platform };
+  const media = (k) => {
+    try {
+      return systemPreferences.getMediaAccessStatus(k);
+    } catch {
+      return 'unknown';
+    }
+  };
+  let accessibility = false;
+  try {
+    accessibility = systemPreferences.isTrustedAccessibilityClient(false);
+  } catch {}
+  return { platform: 'darwin', accessibility, microphone: media('microphone'), screen: media('screen'), helper: hasMacHelper() };
+}
+const askedOnce = new Set(); // macOS shows each prompt once; after that, the pane in System Settings
+async function requestMacPermission(kind) {
+  if (!IS_MAC || !PRIVACY_PANES[kind]) return macPermissions();
+  const now = macPermissions();
+  const open = () => shell.openExternal(PRIVACY_PANES[kind]).catch(() => {});
+  if (kind === 'accessibility' && !now.accessibility) {
+    if (askedOnce.has(kind)) open();
+    else systemPreferences.isTrustedAccessibilityClient(true); // macOS's prompt (it offers to open the pane)
+  } else if (kind === 'microphone' && now.microphone !== 'granted') {
+    if (now.microphone === 'not-determined') await systemPreferences.askForMediaAccess('microphone').catch(() => false);
+    else open();
+  } else if (kind === 'screen' && now.screen !== 'granted') {
+    // No Electron call asks for it: Orbit's helper does (CGRequestScreenCaptureAccess, as Orbit).
+    if (askedOnce.has(kind) || now.screen === 'denied') open();
+    else await runHelperOnce(['perms', '--prompt-screen'], { timeoutMs: 5000 });
+  }
+  askedOnce.add(kind);
+  logInfo('permissions', `asked for ${kind}`);
+  return macPermissions();
+}
+
 // ---------- global hotkey ----------
 // Works from any app: starts Grok if it's off, otherwise puts it to sleep / wakes it.
 let activeHotkey = null; // the accelerator we currently hold, or null
@@ -640,6 +689,8 @@ handle('hotkey:suspend', (suspended) => {
 handle('app:get-login', () => loginEnabled());
 handle('app:set-login', (enabled) => setLogin(enabled));
 handle('app:open-logs', () => getLogDir() && shell.openPath(getLogDir()));
+handle('perms:get', () => macPermissions());
+handle('perms:request', (kind) => requestMacPermission(String(kind)));
 handle('update:get', () => updater?.state() ?? { status: 'idle' });
 handle('update:check', () => updater?.check());
 handle('update:install', () => updater?.install());

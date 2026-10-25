@@ -23,6 +23,7 @@ import { execFile } from 'node:child_process';
 import WebSocket from 'ws';
 import { getSetting } from '../config.js';
 import { keeperForWindow, pageSession } from './keeper.js';
+import { runHelperOnce } from '../platform/mac/helper.js';
 
 export const CDP_LIMITS = Object.freeze({ connectMs: 2000, callMs: 3000, treeMs: 2500 });
 
@@ -33,9 +34,10 @@ export function portFromCommandLine(cmd) {
   return n > 0 && n < 65536 ? n : 0;
 }
 
-/** The command line of a process (Windows), or '' if it can't be read. */
+/** The command line of a process (Windows; macOS through Orbit's helper), or '' if it can't be read. */
 export function commandLineOf(pid, { exec = execFile } = {}) {
   const id = Math.floor(Number(pid)) || 0;
+  if (id && process.platform === 'darwin') return runHelperOnce(['proc', '--pid', String(id)], { timeoutMs: 5000 }).then((j) => (j?.ok ? [j.exe, ...(j.args || [])].join(' ') : ''));
   if (!id || process.platform !== 'win32') return Promise.resolve('');
   return new Promise((resolve) => {
     exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-CimInstance Win32_Process -Filter "ProcessId=${id}").CommandLine`], { windowsHide: true, timeout: 5000 }, (err, out) => resolve(err ? '' : String(out || '').trim()));

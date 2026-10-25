@@ -6,6 +6,7 @@
 //   orbit-helper focus           --parent-pid N   the window in front (focus.ps1's protocol; Focus.swift)
 //   orbit-helper claude-window   --parent-pid N   Claude's windows and prompt box (claude-window.ps1's; ClaudeWindow.swift)
 //   orbit-helper capture --window ID --out PATH [--max-width N] [--no-ocr]   one picture + OCR (Capture.swift)
+//   orbit-helper proc --pid N                     one process's program and arguments (Proc.swift)
 //   orbit-helper perms [--prompt]                 {"ax":bool,"screen":bool}; --prompt asks for Accessibility
 //   orbit-helper version | selftest
 //
@@ -47,6 +48,8 @@ case "claude-window":
   runForever()
 case "capture":
   Capture.run(flags)
+case "proc":
+  Proc.run(flags)
 case "perms":
   if flags.has("prompt") {
     let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary

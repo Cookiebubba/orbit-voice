@@ -33,6 +33,8 @@
     "e2e:audio": "electron scripts/audio-e2e.mjs",
     "e2e:anywhere": "electron scripts/anywhere-e2e.mjs",
     "e2e:mouse": "electron scripts/mouse-e2e.mjs",
+    "e2e:mac": "electron scripts/mac-e2e.mjs",
+    "check:voice": "node scripts/voice-stack-check.mjs",
     "fuzz:e2e": "electron scripts/fuzz-e2e.mjs",
     "latency:claude-voice": "node scripts/claude-voice-latency.mjs",
     "eval:intent": "node scripts/intent-eval.mjs",

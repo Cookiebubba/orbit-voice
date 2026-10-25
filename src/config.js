@@ -17,7 +17,7 @@ export const DEFAULTS = Object.freeze({
   voice: 'eve',
   speed: 1,
   voiceVolume: 0.75, // how loud Orbit's voice plays (0–1; squared into the gain, see ui/src/playback.js)
-  wakeHotkey: 'Control+Alt+G',
+  wakeHotkey: process.platform === 'darwin' ? 'Command+Alt+G' : 'Control+Alt+G', // ⌘⌥G on a Mac, Ctrl+Alt+G on Windows
   listenMode: 'always', // 'always' = until you say "go to sleep"; 'tap' = one question per hotkey press
   halfDuplex: false, // true = ignore the mic while Grok is talking (for speakers without headphones)
   wakeWord: false, // "Hey Orbit" / "Hey Grok" via the offline Vosk model, only while Grok is off or asleep

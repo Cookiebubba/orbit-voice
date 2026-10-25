@@ -82,6 +82,11 @@ contextBridge.exposeInMainWorld('desktop', {
     return () => ipcRenderer.removeListener('mouse:state', fn);
   },
   openLogs: () => ipcRenderer.invoke('app:open-logs'),
+  // macOS privacy permissions (Accessibility, Microphone, Screen Recording): read, and ask for one.
+  permissions: {
+    get: () => ipcRenderer.invoke('perms:get'),
+    request: (kind) => ipcRenderer.invoke('perms:request', String(kind)),
+  },
   startWithWindows: {
     get: () => ipcRenderer.invoke('app:get-login'),
     set: (enabled) => ipcRenderer.invoke('app:set-login', !!enabled),
