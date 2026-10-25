@@ -244,6 +244,9 @@ function sanitize(input) {
   return out;
 }
 
+// (For Orbit Native's engine, which keeps settings by the same rules: its tests compare against this.)
+export { sanitize as sanitizeSettings };
+
 /**
  * Load settings. Call once at startup (the desktop app passes its own folder and key store).
  * Order: defaults → .env overrides in the project folder → settings.json in the config folder.
@@ -274,14 +277,37 @@ export function initConfig({ dir, secrets, brainSecrets } = {}) {
 export const getSettings = () => ({ ...settings });
 export const getSetting = (k) => settings[k];
 
+// A desktop shell that keeps settings.json itself (Orbit Native): it is told what changed here
+// instead of this module writing the file.
+let settingsWriter = null;
+export function setSettingsWriter(fn) {
+  settingsWriter = typeof fn === 'function' ? fn : null;
+}
+
 /** Merge and save. Returns the keys that actually changed. */
 export function updateSettings(patch) {
   const clean = sanitize(patch);
   const changed = Object.keys(clean).filter((k) => JSON.stringify(clean[k]) !== JSON.stringify(settings[k]));
   if (!changed.length) return [];
   settings = { ...settings, ...clean };
-  const toSave = Object.fromEntries(Object.entries(settings).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(DEFAULTS[k])));
-  fs.writeFileSync(path.join(configDir, 'settings.json'), JSON.stringify(toSave, null, 2));
+  if (settingsWriter) settingsWriter(Object.fromEntries(changed.map((k) => [k, settings[k]])));
+  else {
+    const toSave = Object.fromEntries(Object.entries(settings).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(DEFAULTS[k])));
+    fs.writeFileSync(path.join(configDir, 'settings.json'), JSON.stringify(toSave, null, 2));
+  }
+  for (const fn of listeners) fn(changed, getSettings());
+  return changed;
+}
+
+/**
+ * The shell's settings (it keeps and saves them): all of them, applied here in memory, and the
+ * listeners told what changed, as for updateSettings. Returns the keys that changed.
+ */
+export function applyShellSettings(all) {
+  const next = { ...DEFAULTS, ...sanitize(all) };
+  const changed = Object.keys(next).filter((k) => JSON.stringify(next[k]) !== JSON.stringify(settings[k]));
+  if (!changed.length) return [];
+  settings = next;
   for (const fn of listeners) fn(changed, getSettings());
   return changed;
 }

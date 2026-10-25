@@ -160,6 +160,13 @@ async function main() {
   const keeper = await core('src/anywhere/keeper.js');
   const platform = await core('src/platform/index.js');
   const config = await core('src/config.js');
+  const log = await core('src/log.js');
+
+  // Orbit Native's engine (Swift) keeps the settings, the keys and the log file: the core's log
+  // entries go to it, and so do settings the core changes itself (a voice tool, an app okayed for
+  // Orbit anywhere); it sends back every settings change (`settings`), applied here in memory.
+  log.setLogSink((entry) => send({ t: 'logEntry', entry }));
+  config.setSettingsWriter((patch) => send({ t: 'settingsChanged', patch }));
 
   // Developer testing only: the JS stand-in for the Claude desktop driver (and its focus/UIA doubles).
   let fake = null;
@@ -274,12 +281,11 @@ async function main() {
     tracker?.stop();
     platform.stopUia();
   };
-  // The settings the shell owns (the page can't set them through POST /api/settings): the hotkey once
-  // it's registered, the orb's place. electron/main.js calls updateSettings for these in-process.
-  on('shellSettings', (m) => {
-    const patch = Object.fromEntries(Object.entries(m.patch || {}).filter(([k]) => ['wakeHotkey', 'orbPosition', 'orbStickAnchor'].includes(k)));
-    if (Object.keys(patch).length) config.updateSettings(patch);
-  });
+  // The engine's settings (all of them, after any change there), a new xAI key saved there, and
+  // POST /api/settings answered there: what the core does along with those (server.js).
+  on('settings', (m) => m.all && typeof m.all === 'object' && config.applyShellSettings(m.all));
+  on('keyChanged', () => server.keyChanged());
+  on('prewarm', () => server.prewarm());
   on('quit', () => shutdown(0));
   const auth = Object.fromEntries(['main', 'orb', 'qubit', 'buddy', 'mouse'].map((v) => [v, server.authUrl(v)]));
   send({ t: 'ready', base, auth, version: config.DEFAULTS ? JSON.parse(fs.readFileSync(path.join(CORE, 'package.json'), 'utf8')).version : '' });

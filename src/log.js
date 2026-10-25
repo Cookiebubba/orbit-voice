@@ -11,6 +11,11 @@ const MAX_MEMORY = 300;
 const MAX_FILE_BYTES = 1024 * 1024;
 const entries = [];
 let logDir = null;
+// A desktop shell that keeps the log file itself (Orbit Native): each entry goes to it instead.
+let sink = null;
+export function setLogSink(fn) {
+  sink = typeof fn === 'function' ? fn : null;
+}
 
 export function initLog(dir) {
   logDir = path.join(dir, 'logs');
@@ -38,6 +43,12 @@ function write(level, source, message, detail) {
   entries.push(entry);
   if (entries.length > MAX_MEMORY) entries.shift();
   if (level === 'error') console.error(`[${source}] ${entry.message}${entry.detail ? ` (${entry.detail})` : ''}`);
+  if (sink) {
+    try {
+      sink(entry);
+    } catch {}
+    return entry;
+  }
   if (!logDir) return entry;
   try {
     const file = path.join(logDir, 'orbit.log');

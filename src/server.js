@@ -116,6 +116,17 @@ const FALLBACK_VOICES = [
   { id: 'leo', name: 'Leo', gender: 'male' },
 ];
 let voiceCache = null; // { at, voices }
+
+// A desktop shell that answers some of the bridge's API itself (Orbit Native, moving the engine to
+// Swift): what this server would have done along with those answers.
+let prewarmHook = () => {};
+/** The shell answered POST /api/settings: warm Claude voice up, as that route does here. */
+export const prewarm = () => prewarmHook();
+/** The shell saved a new xAI key: drop what was made for the old one, as POST /api/key does here. */
+export function keyChanged() {
+  voiceCache = null;
+  continuity.reset();
+}
 // Claude voice's voices (Kitten TTS has eight; they're told apart by ear, with the preview).
 const CLAUDE_VOICES = Array.from({ length: 8 }, (_, i) => ({ id: String(i), name: `Voice ${i + 1}`, gender: 'other' }));
 
@@ -294,6 +305,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     const { instructions: text, tools } = agentContext();
     keepSpare({ exe: claude.path, prompt: systemPrompt({ instructions: text, tools }), model: getSetting('claudeVoiceModel'), effort: getSetting('claudeVoiceEffort') });
   };
+  prewarmHook = prewarmClaudeVoice;
   const claudeVoiceMetrics = (m) => {
     if (!m.endedAt) return;
     const s = (a, b) => (a && b ? `${((a - b) / 1000).toFixed(2)}s` : '–');
