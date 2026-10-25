@@ -65,6 +65,25 @@ export function loadCases(dir = path.join(HERE, 'cases')) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** `seconds` of silence as a 24 kHz mono 16-bit WAV. */
+export function silentWav(seconds) {
+  const n = Math.round(24000 * seconds);
+  const b = Buffer.alloc(44 + n * 2);
+  b.write('RIFF', 0);
+  b.writeUInt32LE(36 + n * 2, 4);
+  b.write('WAVEfmt ', 8);
+  b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(24000, 24);
+  b.writeUInt32LE(48000, 28);
+  b.writeUInt16LE(2, 32);
+  b.writeUInt16LE(16, 34);
+  b.write('data', 36);
+  b.writeUInt32LE(n * 2, 40);
+  return b;
+}
+
 function readRecord(records, name) {
   const f = path.join(records, { 'fake-desktop': 'fake-desktop.json', 'fake-grok': 'fake-grok.json', 'fake-claude': 'fake-claude.jsonl' }[name] || name);
   if (!fs.existsSync(f)) return name === 'fake-claude' ? { turns: [], starts: [], interrupts: 0 } : null;
@@ -85,7 +104,10 @@ async function prepare(c, which) {
   const dirs = { run, profile: path.join(run, 'profile'), records: path.join(run, 'records'), logs: path.join(run, 'logs'), bin: path.join(run, 'bin') };
   for (const d of Object.values(dirs)) fs.mkdirSync(d, { recursive: true });
   const vars = { repo: REPO, records: dirs.records, profile: dirs.profile, run, app: which, audio: paths.audio };
-  const env = { PARITY_RECORD_DIR: dirs.records, ...interpolate(c.env || {}, vars) };
+  // The microphone is always the fake one in tests (silence until a case plays a clip into it).
+  const silence = path.join(run, 'silence.wav');
+  fs.writeFileSync(silence, silentWav(0.2));
+  const env = { PARITY_RECORD_DIR: dirs.records, ORBIT_FAKE_MIC: silence, ...interpolate(c.env || {}, vars) };
   const settings = { ...(c.profile?.settings || {}) };
   const fx = c.fixtures || {};
   const stops = [];

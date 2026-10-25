@@ -77,6 +77,8 @@ done
 echo "== Info.plist"
 PARITY=""
 [ "$TEST" = 1 ] && PARITY="  <key>OrbitParityAllowed</key><true/>"
+# A test build also carries the parity suite's page probes (avatar.eval).
+[ "$TEST" = 1 ] && mkdir -p "$APP/Contents/Resources/parity-probes" && cp "$ROOT"/parity/probes/*.js "$APP/Contents/Resources/parity-probes/"
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

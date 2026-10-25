@@ -212,6 +212,19 @@ public final class ParityRunner: @unchecked Sendable {
     }
   }
 
+  /** `seconds` of silence as a 24 kHz mono 16-bit WAV. */
+  public static func silentWav(seconds: Double) -> Data {
+    let n = Int((24000 * seconds).rounded())
+    var d = Data()
+    func u32(_ v: UInt32) { withUnsafeBytes(of: v.littleEndian) { d.append(contentsOf: $0) } }
+    func u16(_ v: UInt16) { withUnsafeBytes(of: v.littleEndian) { d.append(contentsOf: $0) } }
+    d.append(contentsOf: Array("RIFF".utf8)); u32(UInt32(36 + n * 2)); d.append(contentsOf: Array("WAVEfmt ".utf8))
+    u32(16); u16(1); u16(1); u32(24000); u32(48000); u16(2); u16(16)
+    d.append(contentsOf: Array("data".utf8)); u32(UInt32(n * 2))
+    d.append(Data(count: n * 2))
+    return d
+  }
+
   /** Numbers and + - * / ( ) only, evaluated with the usual precedence. */
   public static func arithmetic(_ s: String) -> Double? {
     guard s.range(of: "^[-+*/(). 0-9eE]+$", options: .regularExpression) != nil else { return nil }
@@ -253,7 +266,10 @@ public final class ParityRunner: @unchecked Sendable {
     let profile = run.appendingPathComponent("profile"), records = run.appendingPathComponent("records"), logs = run.appendingPathComponent("logs"), bin = run.appendingPathComponent("bin")
     for d in [profile, records, logs, bin] { try fm.createDirectory(at: d, withIntermediateDirectories: true) }
     var vars: [String: JSONValue] = ["repo": .string(paths.repo.path), "records": .string(records.path), "profile": .string(profile.path), "run": .string(run.path), "app": .string(which), "audio": .string(paths.audio.path)]
-    var env: [String: String] = ["PARITY_RECORD_DIR": records.path]
+    // The microphone is always the fake one in tests (silence until a case plays a clip into it).
+    let silence = run.appendingPathComponent("silence.wav")
+    try Self.silentWav(seconds: 0.2).write(to: silence)
+    var env: [String: String] = ["PARITY_RECORD_DIR": records.path, "ORBIT_FAKE_MIC": silence.path]
     for (k, v) in ParityMatch.interpolate(c.raw["env"] ?? .object([:]), .object(vars)).objectValue ?? [:] { env[k] = v.stringValue ?? v.text }
     var settings = c.raw.at(path: "profile.settings")?.objectValue ?? [:]
     let fx = c.raw["fixtures"] ?? .object([:])

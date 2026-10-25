@@ -2,6 +2,8 @@
 // on the main actor where the windows live.
 import AppKit
 import OrbitKit
+import OrbitOverlays
+import OrbitVoice
 
 final class ParityBridge: ParityDriverDelegate, @unchecked Sendable {
   weak var shell: AppDelegate?
@@ -35,8 +37,9 @@ extension AppDelegate {
   /** What this build implements (a case needing anything else is "unsupported"). */
   var features: [String] {
     var f = ["settings", "onboarding", "login"]
-    if !(hotkeys is UnregisteredHotkey) { f.append("hotkey") }
-    if !(voice is IdleVoice) { f.append("voice") }
+    if shellHotkey != nil { f.append("hotkey") }
+    if voiceController != nil { f.append("voice") }
+    if overlays != nil { f += ["avatar", "mouse", "window"] }
     return f
   }
 
@@ -49,9 +52,17 @@ extension AppDelegate {
     }
     let h = hotkeys.info()
     st.hotkey = ParityHotkey(accelerator: h.accelerator, label: h.label, registered: h.registered)
-    st.voice.phase = voice.phase
-    st.voice.asleep = voice.asleep
-    st.voice.muted = voice.muted
+    if let v = voiceController { st.voice = v.parityVoice() } else {
+      st.voice.phase = voice.phase
+      st.voice.asleep = voice.asleep
+      st.voice.muted = voice.muted
+    }
+    if let o = overlays {
+      st.avatars = o.parityAvatars()
+      st.mouse = o.parityMouse()
+      st.windows["orb"] = o.parityOrb()
+      st.claude = o.parityClaude()
+    }
     st.events = events.recentEvents
     st.sounds = events.recentSounds
     return st
@@ -62,6 +73,44 @@ extension AppDelegate {
     case "quit":
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { NSApp.terminate(nil) }
       return ["ok": true]
+    case "voice.hotkey":
+      guard let hk = shellHotkey else { return ["ok": false, "error": "no hotkey"] }
+      return hk.press() ? ["ok": true] : ["ok": false, "error": "The hotkey is not registered."]
+    case "voice.sleep":
+      voiceController?.sleep()
+      return ["ok": .bool(voiceController != nil)]
+    case "voice.wake":
+      voiceController?.wake()
+      return ["ok": .bool(voiceController != nil)]
+    case "voice.hangup":
+      voiceController?.hangup()
+      return ["ok": .bool(voiceController != nil)]
+    case "voice.type":
+      guard let v = voiceController, let t = args["text"]?.stringValue else { return ["ok": false, "error": "no text"] }
+      v.type(t)
+      return ["ok": true]
+    case "mic.play":
+      guard let v = voiceController, let p = args["wav"]?.stringValue, p.hasPrefix("/") else { return ["ok": false, "error": "wav must be an absolute path"] }
+      return v.playIntoMic(wav: URL(fileURLWithPath: p), gapMs: args["gapMs"]?.doubleValue ?? 0) ? ["ok": true] : ["ok": false, "error": "the fake microphone is off (ORBIT_FAKE_MIC)"]
+    case "cursor.set":
+      guard let o = overlays else { return ["ok": false, "error": "no overlays"] }
+      if let x = args["x"]?.doubleValue, let y = args["y"]?.doubleValue { o.setTestCursor(ScreenPoint(x: x, y: y)) } else { o.setTestCursor(nil) }
+      return ["ok": true]
+    case "pointer":
+      guard let o = overlays, let id = args["avatar"]?.stringValue, let type = args["type"]?.stringValue, let x = args["x"]?.doubleValue, let y = args["y"]?.doubleValue else { return ["ok": false, "error": "bad pointer"] }
+      return o.pointer(avatar: id, type: type, x: x, y: y) ? ["ok": true] : ["ok": false, "error": "no such avatar"]
+    case "avatar.eval":
+      guard let o = overlays, let id = args["avatar"]?.stringValue, let name = args["probe"]?.stringValue,
+            name.range(of: "^[a-z0-9-]+[.]js$", options: .regularExpression) != nil else { return ["ok": false, "error": "bad probe"] }
+      guard let dir = Bundle.main.resourceURL?.appendingPathComponent("parity-probes"), let script = try? String(contentsOf: dir.appendingPathComponent(name), encoding: .utf8) else { return ["ok": false, "error": .string("no probe \(name)")] }
+      let v = await o.eval(avatar: id, script: script)
+      if let e = v["error"]?.stringValue, v.objectValue?.count == 1 { return ["ok": false, "error": .string(e)] }
+      return ["ok": true, "value": v]
+    case "avatar.command":
+      guard let o = overlays else { return ["ok": false, "error": "no overlays"] }
+      var cmd: [String: JSONValue] = ["action": args["action"] ?? .null]
+      if let d = args["dir"] { cmd["dir"] = d }
+      return o.command(.object(cmd))
     case "settings.ui":
       guard let ui, let key = args["key"]?.stringValue else { return ["ok": false, "error": "no key"] }
       return await ui.settingsUISet(key: key, value: args["value"] ?? .null)

@@ -4,7 +4,9 @@
 // build launched with ORBIT_PARITY_PORT it also serves the parity driver.
 import AppKit
 import OrbitKit
+import OrbitOverlays
 import OrbitUI
+import OrbitVoice
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -20,6 +22,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   var ui: OrbitUI?
   var voice: any VoiceUI = IdleVoice()
   var hotkeys: any HotkeyControl = UnregisteredHotkey()
+  var voiceController: VoiceController?
+  var shellHotkey: ShellHotkey?
+  var overlays: Overlays?
+  var wakeWord: WakeWord?
   var quitting = false
   let startedAt = Date()
 
@@ -67,7 +73,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     endpoints = e
     log.info("app", "Core ready on \(e.base.absoluteString) in \(Int(Date().timeIntervalSince(startedAt) * 1000)) ms")
     events.add("core.ready")
+    startVoiceAndOverlays(e)
     startWindows(e)
+    wireBridgeEvents()
     startDriverIfAsked()
   }
 
@@ -86,7 +94,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     let u = OrbitUI(bridge: BridgeClient(endpoints: e), voice: voice, hotkey: hotkeys, options: options)
     u.onQuit = { NSApp.terminate(nil) }
-    u.onMinimize = { [weak self] in self?.events.add("window.minimize") }
+    u.onMinimize = { [weak self] in
+      self?.events.add("window.minimize")
+      self?.overlays?.showOrb() // minimizing turns into the orb
+    }
     u.onHotkeyChanged = { [weak self] accel in self?.sidecar?.send(["t": "shellSettings", "patch": ["wakeHotkey": .string(accel)]]) }
     ui = u
     u.start()
@@ -105,6 +116,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       NSPasteboard.general.setString(m["text"]?.stringValue ?? "", forType: .string)
     case "openExternal":
       if let s = m["url"]?.stringValue, let u = URL(string: s), u.scheme == "https" { NSWorkspace.shared.open(u) }
+    case "avatar.cmd", "mouse.glide", "mouse.press", "mouse.hide", "contexts", "focus", "wins", "promptBoxWork":
+      overlays?.sidecarMessage(m)
     default:
       break
     }
@@ -148,6 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   // MARK: windows (filled in by the launcher and overlays)
 
   func showMain() {
+    overlays?.hideOrb()
     if let ui { ui.showMain() } else { NSApp.activate(ignoringOtherApps: true) }
   }
 
@@ -158,6 +172,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationWillTerminate(_ notification: Notification) {
     quitting = true
+    overlays?.stop()
+    voiceController?.hangup()
     ui?.stop()
     driver?.stop()
     sidecar?.stop()
