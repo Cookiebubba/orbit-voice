@@ -19,6 +19,7 @@ import { brainFixtures } from './brain.mjs';
 import { voiceFixtures } from './voice.mjs';
 import { toolsFixtures } from './tools.mjs';
 import { claudeVoiceFixtures } from './claudevoice.mjs';
+import { relayFixtures } from './relay.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const FIXTURES = path.join(HERE, 'fixtures');
@@ -126,6 +127,8 @@ export async function build() {
     ...(process.platform === 'darwin' ? { tools: { platform: 'darwin', ...toolsFixtures(rng) } } : {}),
     // Claude voice's realtime stand-in on scripted turns (made on a Mac, as Orbit Native runs it).
     ...(process.platform === 'darwin' ? { claudevoice: { platform: 'darwin', ...claudeVoiceFixtures() } } : {}),
+    // The voice session's relay on scripted calls (made on a Mac, as Orbit Native runs it).
+    ...(process.platform === 'darwin' ? { relay: { platform: 'darwin', ...relayFixtures() } } : {}),
   };
 }
 

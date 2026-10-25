@@ -66,6 +66,8 @@ public final class Continuity: @unchecked Sendable {
     public let at: Double
     public let readyAt: Double
     public var spoken = false
+    /** A call took it on to pass it on (the bridge's own mark; cleared if the call ends first). */
+    public var claimed = false
     public let text: String?
     public let sessionTitle: String?
     public let sessionId: String?

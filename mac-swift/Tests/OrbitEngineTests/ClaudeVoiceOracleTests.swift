@@ -10,33 +10,42 @@ import XCTest
 
 /** A loop for tests: a virtual clock, macrotasks run when pumped, timers fired by tick. */
 final class VirtualLoop: VoiceLoop, @unchecked Sendable {
-  var now: Double
+  private let lock = NSRecursiveLock()
+  private var clock: Double
   private var tasks: [@Sendable () -> Void] = []
   private var microtasks: [@Sendable () -> Void] = []
   private var timers: [(token: Int, at: Double, seq: Int, f: @Sendable () -> Void)] = []
   private var nextToken = 1
   private var seq = 0
 
-  init(now: Double) { self.now = now }
+  init(now: Double) { clock = now }
 
-  func run(_ f: @escaping @Sendable () -> Void) { tasks.append(f) }
-  func micro(_ f: @escaping @Sendable () -> Void) { microtasks.append(f) }
+  var now: Double { lock.withLock { clock } }
+  func run(_ f: @escaping @Sendable () -> Void) { lock.withLock { tasks.append(f) } }
+  func micro(_ f: @escaping @Sendable () -> Void) { lock.withLock { microtasks.append(f) } }
   func after(_ ms: Double, _ f: @escaping @Sendable () -> Void) -> Int {
-    let t = nextToken
-    nextToken += 1
-    seq += 1
-    timers.append((t, now + max(1, ms), seq, f))
-    return t
+    lock.withLock {
+      let t = nextToken
+      nextToken += 1
+      seq += 1
+      timers.append((t, clock + max(1, ms), seq, f))
+      return t
+    }
   }
-  func cancel(_ token: Int) { timers.removeAll { $0.token == token } }
+  func cancel(_ token: Int) { lock.withLock { timers.removeAll { $0.token == token } } }
 
-  private func drain() { while !microtasks.isEmpty { microtasks.removeFirst()() } }
+  /** Tasks queued but not run yet (for settling). */
+  var idle: Bool { lock.withLock { tasks.isEmpty && microtasks.isEmpty } }
+
+  private func drain() {
+    while let f = lock.withLock({ microtasks.isEmpty ? nil : microtasks.removeFirst() }) { f() }
+  }
 
   /** Runs every queued macrotask (and what they queue), each followed by its microtasks. */
   func pump() {
     drain()
-    while !tasks.isEmpty {
-      tasks.removeFirst()()
+    while let f = lock.withLock({ tasks.isEmpty ? nil : tasks.removeFirst() }) {
+      f()
       drain()
     }
   }
@@ -44,9 +53,12 @@ final class VirtualLoop: VoiceLoop, @unchecked Sendable {
   /** Moves the clock on, firing due timers in order (as node's mock timers tick does). */
   func tick(_ ms: Double) {
     // (node's mock timers: the clock goes to the end first, then the due timers fire in order)
-    now += ms
-    while let next = timers.filter({ $0.at <= now }).min(by: { ($0.at, $0.seq) < ($1.at, $1.seq) }) {
-      timers.removeAll { $0.token == next.token }
+    lock.withLock { clock += ms }
+    while let next = lock.withLock({ () -> (token: Int, at: Double, seq: Int, f: @Sendable () -> Void)? in
+      guard let n = timers.filter({ $0.at <= clock }).min(by: { ($0.at, $0.seq) < ($1.at, $1.seq) }) else { return nil }
+      timers.removeAll { $0.token == n.token }
+      return n
+    }) {
       next.f()
       drain()
       pump()

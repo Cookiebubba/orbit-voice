@@ -122,6 +122,13 @@ let voiceCache = null; // { at, voices }
 let prewarmHook = () => {};
 /** The shell answered POST /api/settings: warm Claude voice up, as that route does here. */
 export const prewarm = () => prewarmHook();
+// Everything broadcast to the page's event stream, for a listener in this process (the engine
+// oracle, parity/oracle/relay.mjs, which has no HTTP client to read the stream with).
+const broadcastTaps = new Set();
+export function tapBroadcast(fn) {
+  broadcastTaps.add(fn);
+  return () => broadcastTaps.delete(fn);
+}
 let sttReadyHook = () => {};
 /** The shell downloaded a speech-to-text model: a live Claude voice call switches to it now, as here. */
 export const sttDownloaded = () => sttReadyHook();
@@ -353,6 +360,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
   const broadcast = (evt) => {
     const line = `data: ${JSON.stringify(evt)}\n\n`;
     for (const res of eventClients) res.write(line);
+    for (const fn of broadcastTaps) fn(evt);
   };
 
   // "Claude finished" events not yet spoken by Grok, for an announce wake to pick up (newest last).
