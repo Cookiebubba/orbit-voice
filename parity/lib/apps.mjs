@@ -159,7 +159,10 @@ export async function startApp(which, { paths, profileDir, logDir, bridgePort, d
       try {
         await driver.act('quit', {}, 3000);
       } catch {}
-      return ensureGone(hello.pid, 6000);
+      const gone = await ensureGone(hello.pid, 6000);
+      // A copy that relaunched itself (Orbit Native's core recovery) has another pid, same profile.
+      for (const pid of pidsWithEnv(`ORBIT_PROFILE_DIR=${profileDir}`)) await ensureGone(pid, 3000);
+      return gone;
     },
   };
 }

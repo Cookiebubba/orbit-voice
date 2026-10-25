@@ -1,0 +1,85 @@
+{
+ "area": "shell",
+ "about": "What the app does by itself, outside any one screen: here, getting its core back when the core process dies. Only Orbit Native has a separate core process (the Node sidecar); Electron's core runs inside the app, so these cases need the sidecar feature.",
+ "cases": [
+  {
+   "id": "shell.core-recovers",
+   "title": "The core process dies: Orbit relaunches itself quietly, with the same settings, and works again",
+   "needs": [
+    "sidecar"
+   ],
+   "steps": [
+    {
+     "do": "http",
+     "method": "POST",
+     "path": "/api/settings",
+     "body": {
+      "speed": 1.2
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "do": "save",
+     "from": "hello",
+     "path": "pid",
+     "as": "oldPid"
+    },
+    {
+     "do": "save",
+     "from": "hello",
+     "path": "corePid",
+     "as": "oldCore"
+    },
+    {
+     "do": "act",
+     "action": "core.kill",
+     "expect": {
+      "ok": true
+     }
+    },
+    {
+     "do": "until",
+     "probe": "hello",
+     "timeoutMs": 45000,
+     "expect": {
+      "ready": true,
+      "pid": {
+       "$not": "${oldPid}"
+      },
+      "corePid": {
+       "$not": "${oldCore}"
+      }
+     }
+    },
+    {
+     "do": "until",
+     "probe": "state",
+     "timeoutMs": 10000,
+     "expect": {
+      "events": {
+       "$some": {
+        "type": "core.ready"
+       }
+      },
+      "windows.main.visible": false
+     }
+    },
+    {
+     "do": "signin"
+    },
+    {
+     "do": "http",
+     "method": "GET",
+     "path": "/api/config",
+     "expect": {
+      "status": 200,
+      "body.settings.speed": 1.2
+     }
+    }
+   ],
+   "about": "The relaunched copy starts as the orb (as after login), not with the launcher in your face, and keeps the profile's settings. Each launch has a new sign-in link, so the test signs in again."
+  }
+ ]
+}

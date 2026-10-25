@@ -14,7 +14,7 @@ public final class ParityDriver: @unchecked Sendable {
   public static let actions: Set<String> = [
     "voice.hotkey", "voice.sleep", "voice.wake", "voice.type", "voice.hangup", "mic.play", "cursor.set", "pointer",
     "avatar.eval", "avatar.command", "settings.ui", "settings.read", "window.show", "window.minimize", "perms.set",
-    "onboarding.next", "key.saved", "quit",
+    "onboarding.next", "key.saved", "core.kill", "quit",
   ]
 
   private let token: String

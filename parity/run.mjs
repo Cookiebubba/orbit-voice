@@ -162,6 +162,8 @@ async function step(s, ctx) {
     switch (p.probe || p.do) {
       case 'state':
         return (await ctx.app.driver.state()).body;
+      case 'hello':
+        return (await ctx.app.driver.hello()).body;
       case 'http':
         return ctx.bridge.http({ method: p.method, path: p.path, body: p.body });
       case 'fake':
@@ -227,6 +229,13 @@ async function step(s, ctx) {
       if (!Number.isFinite(v)) throw new Error(`calc ${x.as}: ${expr} is not a number`);
       ctx.vars[x.as] = v;
       return v;
+    }
+    case 'signin': {
+      // After the app relaunched itself: its bridge has a new sign-in link (one per launch).
+      const h = (await ctx.app.driver.hello()).body;
+      if (!h?.bridge?.authUrl) throw new Error('signin: no bridge in hello');
+      ctx.bridge = bridgeClient(h.bridge.base, await signIn(h.bridge.authUrl), REPO);
+      return h;
     }
     case 'sleep':
       await sleep(x.ms || 0);

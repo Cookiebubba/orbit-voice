@@ -114,6 +114,7 @@ the sounds the shell played (name and time only). Event types (both builds use e
 | `perms.set` | as `ORBIT_FAKE_PERMS` | Change the fake permission state; the shell re-checks as it would after the user returns from System Settings. |
 | `onboarding.next` | | Press the onboarding's (or the permissions banner's) primary button for the current step. |
 | `key.saved` | | What the app does once its key screen has saved an xAI key (the runner saves it through the bridge first): the app now knows it has one. |
+| `core.kill` | | Test builds with a separate core process only (`sidecar` feature): kill it as a crash would (SIGKILL). |
 | `quit` | | Quit cleanly. |
 
 ## Cases
@@ -145,7 +146,8 @@ Step kinds:
 - `ws`: open `/voice` and exchange messages: `{ "do": "ws", "send": [...], "expect": [...], "timeoutMs": n }`.
 - `act`: a driver action (above). `expect` matches its reply.
 - `state`: `GET /parity/state` once, matched against `expect`.
-- `until`: repeat a probe (`state`, `http` with `path`, `fake` with `name`, `standin`, or `act` with `action`/`args`) until `expect` matches or the timeout.
+- `until`: repeat a probe (`state`, `hello`, `http` with `path`, `fake` with `name`, `standin`, or `act` with `action`/`args`) until `expect` matches or the timeout.
+- `signin`: sign in to the bridge again from the app's current `hello` (after the app relaunched itself: each launch has a new sign-in link).
 - `fake`: read a test double's record (`fake-claude`, `fake-desktop`, `stand-in`), e.g. the tool calls seen.
 - `save`: keep a value for later steps as `${name}`.
 - `check`: a saved or computed value against `expect`: `{ "do": "check", "value": "${gap}", "expect": { "$lte": 4 } }`.

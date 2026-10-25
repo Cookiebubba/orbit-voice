@@ -110,6 +110,7 @@ const ACTIONS = {
   'perms.set': (a) => (parsePerms(a, {}) ? { perms: a } : 'mic: granted|denied|not-determined|restricted, ax and screen: booleans'),
   'onboarding.next': none,
   'key.saved': none,
+  'core.kill': none,
   quit: none,
 };
 export const PARITY_ACTIONS = Object.freeze(Object.keys(ACTIONS));

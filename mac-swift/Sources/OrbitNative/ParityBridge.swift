@@ -17,6 +17,8 @@ final class ParityBridge: ParityDriverDelegate, @unchecked Sendable {
         "app": "swift",
         "version": .string(OrbitKit.version),
         "pid": .number(Double(getpid())),
+        // Orbit's core runs in its own process here (Electron's runs inside the app).
+        "corePid": .number(Double(s.sidecar?.pid ?? 0)),
         "ready": .bool(s.endpoints != nil && s.ui != nil),
         // Who hears and speaks for Claude voice: this app (phase 2) or the core.
         "speech": .string(s.voiceController?.localSpeech != nil ? "local" : "core"),
@@ -41,7 +43,7 @@ final class ParityBridge: ParityDriverDelegate, @unchecked Sendable {
 extension AppDelegate {
   /** What this build implements (a case needing anything else is "unsupported"). */
   var features: [String] {
-    var f = ["settings", "onboarding", "login"]
+    var f = ["settings", "onboarding", "login", "sidecar"]
     if shellHotkey != nil { f.append("hotkey") }
     if voiceController != nil { f.append("voice") }
     if overlays != nil { f += ["avatar", "mouse", "window"] }
@@ -78,6 +80,10 @@ extension AppDelegate {
     case "quit":
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { NSApp.terminate(nil) }
       return ["ok": true]
+    case "core.kill":
+      // As if the core crashed: SIGKILL, no goodbye (the shell's recovery takes it from there).
+      guard let pid = sidecar?.pid, pid > 0 else { return ["ok": false, "error": "no core process"] }
+      return kill(pid, SIGKILL) == 0 ? ["ok": true, "pid": .number(Double(pid))] : ["ok": false, "error": "kill failed"]
     case "key.saved":
       guard let ui else { return ["ok": false, "error": "not ready"] }
       ui.settings.markHasKey()

@@ -457,6 +457,7 @@ export function startParityDriver(ctx) {
     },
     'onboarding.next': () => ({ ok: false, error: 'Electron has no onboarding screen.' }),
     'key.saved': () => pageCall('(a.keySaved(), { ok: true })'),
+    'core.kill': () => ({ ok: false, error: 'The Electron build has no separate core process (it runs inside the app).' }),
     quit: () => {
       setTimeout(() => app.quit(), 100);
       return { ok: true };

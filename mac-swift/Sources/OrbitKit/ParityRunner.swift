@@ -145,6 +145,7 @@ public final class ParityRunner: @unchecked Sendable {
     func probe(_ p: JSONValue) async throws -> JSONValue {
       switch p["probe"]?.stringValue ?? p["do"]?.stringValue {
       case "state": return try await c.app.driver("GET", "/parity/state")["body"] ?? .null
+      case "hello": return try await c.app.driver("GET", "/parity/hello")["body"] ?? .null
       case "http": return try await c.bridge.request(method: p["method"]?.stringValue ?? "GET", path: p["path"]?.stringValue ?? "/", body: p["body"])
       case "fake": return Self.readRecord(c.records, p["name"]?.stringValue ?? "")
       case "standin":
@@ -207,6 +208,12 @@ public final class ParityRunner: @unchecked Sendable {
       guard let v = Self.arithmetic(expr) else { throw RunnerError("calc \(x["as"]?.stringValue ?? ""): not plain arithmetic: \(expr)") }
       ctx.vars[x["as"]?.stringValue ?? "_"] = .number(v)
       return .number(v)
+    case "signin":
+      // After the app relaunched itself: its bridge has a new sign-in link (one per launch).
+      let h = try await ctx.app.driver("GET", "/parity/hello")["body"] ?? .null
+      guard let base = h.at(path: "bridge.base")?.stringValue, let auth = h.at(path: "bridge.authUrl")?.stringValue, let url = URL(string: auth) else { throw RunnerError("signin: no bridge in hello") }
+      ctx.bridge = try await BridgeHTTP.signIn(base: base, authURL: url)
+      return h
     case "sleep":
       try await Task.sleep(nanoseconds: UInt64((x["ms"]?.doubleValue ?? 0) * 1e6))
       return ctx.last

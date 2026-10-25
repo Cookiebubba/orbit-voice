@@ -31,7 +31,7 @@ test('every protocol action is known, and only those', () => {
   const protocol = fs.readFileSync(path.join(ROOT, 'parity', 'PROTOCOL.md'), 'utf8');
   const table = protocol.slice(protocol.indexOf('### `POST /parity/act`'), protocol.indexOf('## Cases'));
   const named = [...table.matchAll(/^\| `([a-z.]+)`(?:, `([a-z.]+)`)? \|/gm)].flatMap((m) => [m[1], m[2]].filter(Boolean));
-  assert.equal(named.length, 18);
+  assert.equal(named.length, 19);
   assert.deepEqual([...PARITY_ACTIONS].sort(), [...new Set(named)].sort());
   assert.deepEqual(validateAct({ action: 'rm -rf' }).ok, false);
   assert.deepEqual(validateAct({ action: '__proto__' }).ok, false);

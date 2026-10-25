@@ -149,8 +149,11 @@ public final class AppHandle: @unchecked Sendable {
   let token: String
   public var pid: Int32 { Int32(hello["pid"]?.intValue ?? 0) }
 
-  init(which: String, hello: JSONValue, driverPort: Int, token: String) {
-    self.which = which; self.hello = hello; self.driverPort = driverPort; self.token = token
+  /** The run's profile: every process started with it is this app (a relaunch included). */
+  let profile: URL?
+
+  init(which: String, hello: JSONValue, driverPort: Int, token: String, profile: URL? = nil) {
+    self.which = which; self.hello = hello; self.driverPort = driverPort; self.token = token; self.profile = profile
   }
 
   public func driver(_ method: String, _ path: String, _ body: JSONValue? = nil, timeout: Double = 15000) async throws -> JSONValue {
@@ -189,7 +192,7 @@ public final class AppHandle: @unchecked Sendable {
     let end = Date().addingTimeInterval(which == "electron" ? 45 : 30)
     while Date() < end {
       if let r = try? await probe.driver("GET", "/parity/hello", timeout: 2000), r["status"]?.intValue == 200, let h = r["body"], h.at(path: "bridge.base")?.stringValue?.isEmpty == false, h["ready"] != .bool(false) {
-        return AppHandle(which: which, hello: h, driverPort: driverPort, token: token)
+        return AppHandle(which: which, hello: h, driverPort: driverPort, token: token, profile: profile)
       }
       try await Task.sleep(nanoseconds: 100_000_000)
     }
@@ -199,10 +202,13 @@ public final class AppHandle: @unchecked Sendable {
     throw RunnerError("\(which) did not come up: \(err.isEmpty ? "(no output)" : err)")
   }
 
-  /** Quit through the driver, then make sure. */
+  /** Quit through the driver, then make sure (of a copy that relaunched itself too). */
   public func stop() async {
     _ = try? await driver("POST", "/parity/act", ["action": "quit"], timeout: 3000)
     await ChildProcess.waitGone(pid, within: 6)
+    if let profile {
+      for p in ChildProcess.pids(withEnv: "ORBIT_PROFILE_DIR=\(profile.path)") { await ChildProcess.waitGone(p, within: 3) }
+    }
   }
 }
 
