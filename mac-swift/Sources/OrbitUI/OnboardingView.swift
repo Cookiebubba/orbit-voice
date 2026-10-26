@@ -52,6 +52,10 @@ struct OnboardingView: View {
         if let url = s.settingsURL, s.action != .openSettings(url) {
           HoverText(action: { model.probe.open(url) }) { Text("Open System Settings").font(Theme.font(12.5)).padding(.vertical, 6) }
         }
+        if s.step != .done {
+          HoverText(action: { model.skipAll() }, color: Theme.faint) { Text("Skip setup").font(Theme.font(12.5)).padding(.vertical, 6).padding(.leading, 10) }
+            .help("Skip the rest of the setup. Settings → Mac permissions has it any time.")
+        }
       }
       .padding(.top, 8).padding(.bottom, 16)
     }

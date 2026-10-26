@@ -4,6 +4,7 @@
 //   ... UIDemo --shots <dir>       snapshots: ours and the bridge's own page at 360x580, side by side
 //   ... UIDemo --roundtrip         every Settings key both ways (Settings -> bridge, bridge -> Settings)
 //   ... UIDemo --menu              prints the menu bar's items
+//   ... UIDemo --voice-shots <dir> the onboarding's voice step, Claude then Grok (sets no key)
 //
 // It never prints keys or the sign-in link. Exit code 0 = all checks passed.
 import AppKit
@@ -47,7 +48,8 @@ final class Demo: NSObject, NSApplicationDelegate {
     if e["ORBIT_FAKE_PERMS"] == nil { e["ORBIT_FAKE_PERMS"] = #"{"mic":"granted","ax":true,"screen":true}"# }
     e["ORBIT_FAKE_LOGIN"] = "1"
     // Checks start from a first launch (the onboarding hasn't been through yet).
-    if Cfg.args.contains("--checks") { try? FileManager.default.removeItem(at: Cfg.profile.appendingPathComponent("onboarding.json")) }
+    if Cfg.args.contains("--checks") || voiceShots { try? FileManager.default.removeItem(at: Cfg.profile.appendingPathComponent("onboarding.json")) }
+    if voiceShots { e["ORBIT_VOICE_SETUP"] = "1" }
     var o = OrbitUIOptions(profileDir: Cfg.profile, assetsDir: Cfg.repo.appendingPathComponent("assets"), heroRoot: Cfg.repo.appendingPathComponent("ui/src"),
                            version: "dev", testBuild: true, environment: e, heroSeed: Int(Cfg.env["HERO_SEED"] ?? "") ?? 7)
     o.snapshotMode = Cfg.args.contains("--shots")
@@ -56,6 +58,10 @@ final class Demo: NSObject, NSApplicationDelegate {
     ui.onMinimize = { say("minimize -> orb") }
     // The bridge needs some xAI key to show the launcher: an obviously fake one, never printed.
     Task {
+      if voiceShots {
+        ui.start()
+        return await voiceStepShots()
+      }
       if let c = try? await bridge.config(), !c.hasKey { try? await bridge.setXaiKey("xai-FAKE-KEY-FOR-UI-DEMO-000000000000") }
       ui.start()
       if Cfg.args.contains("--shots") { await shots() }
@@ -65,6 +71,27 @@ final class Demo: NSObject, NSApplicationDelegate {
   }
 
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { ui.handleReopen(); return false }
+
+  var voiceShots: Bool { Cfg.args.contains("--voice-shots") }
+
+  /** The voice step as a new install sees it: Claude chosen, then Grok. */
+  func voiceStepShots() async {
+    let dir = URL(fileURLWithPath: Cfg.args[(Cfg.args.firstIndex(of: "--voice-shots") ?? 0) + 1])
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    await waitLoaded()
+    ui.window.setContentSize(NSSize(width: 360, height: 580))
+    ui.show(view: "onboarding")
+    await ui.settings.set("voiceEngine", .string("claude"))
+    try? await Task.sleep(for: .seconds(3))
+    png(await ui.snapshotLauncher(), dir.appendingPathComponent("voice-claude.png"))
+    await ui.settings.set("voiceEngine", .string("grok"))
+    try? await Task.sleep(for: .seconds(1.5))
+    png(await ui.snapshotLauncher(), dir.appendingPathComponent("voice-grok.png"))
+    ui.window.setContentSize(NSSize(width: 320, height: 480))
+    try? await Task.sleep(for: .seconds(1))
+    png(await ui.snapshotLauncher(), dir.appendingPathComponent("voice-grok-small.png"))
+    NSApp.terminate(nil)
+  }
 
   func waitLoaded() async {
     for _ in 0..<100 where !ui.settings.loaded { try? await Task.sleep(for: .milliseconds(100)) }

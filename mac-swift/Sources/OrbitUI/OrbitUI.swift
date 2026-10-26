@@ -73,7 +73,9 @@ public final class OrbitUI: NSObject, NSWindowDelegate {
     let app = AppStateModel(settings: settings)
     let env = options.environment
     let probe: PermissionProbe = options.testBuild ? OnboardingModel.probe(environment: env, real: SystemPermissionProbe()) : SystemPermissionProbe()
-    let onboarding = OnboardingModel(probe: probe, store: FileOnboardingStore(directory: options.profileDir))
+    // The voice step (choose Claude voice or Grok voice) on a real Mac; ORBIT_VOICE_SETUP=1 shows it with faked permissions too (UIDemo).
+    let offerVoice = !(probe is FakePermissionProbe) || env["ORBIT_VOICE_SETUP"] == "1"
+    let onboarding = OnboardingModel(probe: probe, store: FileOnboardingStore(directory: options.profileDir), offerVoice: offerVoice)
     let updates = UpdateChecker(currentVersion: options.version, isPackaged: options.isPackaged, downloadsDir: options.profileDir)
     // ORBIT_FAKE_LOGIN=1 (test builds): the login item lives in memory, never registered with macOS.
     let login: any LoginItemControl = options.testBuild && env["ORBIT_FAKE_LOGIN"] == "1" ? MemoryLoginItem() : MainAppLoginItem()

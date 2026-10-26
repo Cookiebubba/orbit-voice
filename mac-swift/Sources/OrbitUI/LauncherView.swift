@@ -55,7 +55,8 @@ struct LauncherView: View {
           ctx.screen = .main
         }
       case .history: HistoryView(items: ctx.voice.captions) { ctx.screen = .main }
-      case .onboarding: OnboardingView(model: ctx.onboarding) { ctx.screen = .main }
+      case .onboarding:
+        if ctx.onboarding.voicePending { VoiceSetupView(ctx: ctx) } else { OnboardingView(model: ctx.onboarding) { ctx.screen = .main } }
       case .main:
         if ctx.settings.failed {
           Centered("Orbit isn't signed in to its local bridge. Close this and open Orbit again.")

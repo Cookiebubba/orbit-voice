@@ -8,6 +8,10 @@
 // Mac build's (ui/src/MacPermissions.tsx, electron/main.js "macOS permissions"). One difference: the
 // Electron build shows a banner and Settings rows only; this one also walks through them in order.
 //
+// Before them, on a real Mac (not with faked permissions, so parity never sees it), the voice step:
+// choose Claude voice or Grok voice and set it up (Claude Code and its sign-in, or the xAI key). It
+// shows once, until finished or skipped (onboarding.json "voice").
+//
 // The steps run in that order; a granted one is passed by itself. The onboarding shows on the first
 // launch and again whenever a required permission is missing, and the shell re-checks each time Orbit
 // becomes active again (the user comes back from System Settings). "Not now" on a required step
@@ -109,22 +113,33 @@ public final class FakePermissionProbe: PermissionProbe {
 /** Whether the onboarding has been through once (a file in the profile folder; memory in tests). */
 public protocol OnboardingStore: AnyObject {
   var completed: Bool { get set }
+  /** The voice step was finished or skipped. */
+  var voiceDone: Bool { get set }
 }
 
 public final class MemoryOnboardingStore: OnboardingStore {
   public var completed: Bool
-  public init(completed: Bool = false) { self.completed = completed }
+  public var voiceDone: Bool
+  public init(completed: Bool = false, voiceDone: Bool = false) { self.completed = completed; self.voiceDone = voiceDone }
 }
 
 public final class FileOnboardingStore: OnboardingStore {
   private let file: URL
   public init(directory: URL) { file = directory.appendingPathComponent("onboarding.json") }
+  private func read() -> [String: JSONValue] { ((try? Data(contentsOf: file)).flatMap { try? JSONValue.parse($0) })?.objectValue ?? [:] }
+  private func write(_ key: String, _ value: Bool) {
+    var o = read()
+    o[key] = .bool(value)
+    try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try? JSONValue.object(o).data().write(to: file, options: .atomic)
+  }
   public var completed: Bool {
-    get { ((try? Data(contentsOf: file)).flatMap { try? JSONValue.parse($0) })?["completed"]?.boolValue ?? false }
-    set {
-      try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-      try? JSONValue.object(["completed": .bool(newValue)]).data().write(to: file, options: .atomic)
-    }
+    get { read()["completed"]?.boolValue ?? false }
+    set { write("completed", newValue) }
+  }
+  public var voiceDone: Bool {
+    get { read()["voice"]?.boolValue ?? false }
+    set { write("voice", newValue) }
   }
 }
 
@@ -139,17 +154,23 @@ public final class OnboardingModel {
   /** Something to tell the user on the current screen (e.g. after a refusal). */
   public private(set) var note: String?
   public private(set) var completedOnce: Bool
+  /** The voice step is still to do (shown before the permissions). */
+  public private(set) var voicePending: Bool
 
   @ObservationIgnored public private(set) var probe: PermissionProbe
   @ObservationIgnored private let store: OnboardingStore
   /** Called when the onboarding should show or hide (the launcher switches its view). */
   @ObservationIgnored public var onNeededChange: ((Bool) -> Void)?
 
-  public init(probe: PermissionProbe, store: OnboardingStore) {
+  /** `offerVoice`: show the voice step until it's done (a real Mac; parity's faked permissions don't). */
+  public init(probe: PermissionProbe, store: OnboardingStore, offerVoice: Bool = false) {
     self.probe = probe
     self.store = store
     state = probe.current()
     completedOnce = store.completed
+    let offered = offerVoice && !store.voiceDone
+    voicePending = offered
+    voiceOffered = offered
   }
 
   /** The probe ORBIT_FAKE_PERMS asks for, else `real`. */
@@ -173,9 +194,28 @@ public final class OnboardingModel {
   public var requiredMissing: Bool { (state.mic != .granted && state.mic != .restricted) || !state.ax }
 
   /** Should the onboarding be on screen? First launch, or a required permission missing, and a step left. */
-  public var needed: Bool { step != .done && (!completedOnce || requiredMissing) }
+  public var needed: Bool { voicePending || (step != .done && (!completedOnce || requiredMissing)) }
 
-  public var screen: OnboardingScreen { Self.screen(for: step, state: state, asked: askedOnce) }
+  /** The voice step's "Continue" or "Set up later": the permissions follow, if any are left. */
+  public func finishVoice() {
+    guard voicePending else { return }
+    let was = needed
+    voicePending = false
+    store.voiceDone = true
+    if needed != was { onNeededChange?(needed) }
+  }
+
+  /** "Step 2 of 3 · Microphone": counted with the voice step when it's offered this time. */
+  public var stepCount: Int { voiceOffered ? 3 : 2 }
+  @ObservationIgnored private let voiceOffered: Bool
+
+  public var screen: OnboardingScreen {
+    var s = Self.screen(for: step, state: state, asked: askedOnce)
+    let n = stepCount, first = n - 1
+    if step == .mic { s.eyebrow = s.eyebrow.replacingOccurrences(of: "Step 1 of 3", with: "Step \(first) of \(n)") }
+    if step == .ax { s.eyebrow = s.eyebrow.replacingOccurrences(of: "Step 2 of 3", with: "Step \(n) of \(n)") }
+    return s
+  }
 
   /**
    * The permissions as the Electron Mac build lists them (ui/src/MacPermissions.tsx ITEMS): the same
@@ -311,6 +351,22 @@ public final class OnboardingModel {
     let was = needed
     guard step != .done else { return }
     skipped.insert(step)
+    note = nil
+    finishIfDone()
+    if needed != was { onNeededChange?(needed) }
+  }
+
+  /**
+   * "Skip setup": the whole onboarding, for this launch (the voice step for good). A required
+   * permission still missing brings it back next launch, and the main screen's banner offers it.
+   */
+  public func skipAll() {
+    let was = needed
+    if voicePending {
+      voicePending = false
+      store.voiceDone = true
+    }
+    skipped.formUnion([.mic, .ax])
     note = nil
     finishIfDone()
     if needed != was { onNeededChange?(needed) }

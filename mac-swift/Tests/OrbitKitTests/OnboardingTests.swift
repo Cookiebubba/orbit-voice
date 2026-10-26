@@ -107,5 +107,64 @@ final class OnboardingTests: XCTestCase {
     XCTAssertFalse(s.completed)
     s.completed = true
     XCTAssertTrue(FileOnboardingStore(directory: dir).completed)
+    // The voice step's flag sits beside it; neither overwrites the other.
+    XCTAssertFalse(s.voiceDone)
+    s.voiceDone = true
+    let again = FileOnboardingStore(directory: dir)
+    XCTAssertTrue(again.completed)
+    XCTAssertTrue(again.voiceDone)
+  }
+
+  func testTheVoiceStepComesFirstThenThePermissions() {
+    let store = MemoryOnboardingStore()
+    let m = OnboardingModel(probe: FakePermissionProbe(PermissionState(mic: .notDetermined, ax: false, screen: false)), store: store, offerVoice: true)
+    var shows: [Bool] = []
+    m.onNeededChange = { shows.append($0) }
+    XCTAssertTrue(m.voicePending)
+    XCTAssertTrue(m.needed)
+    XCTAssertEqual(m.stepCount, 3)
+    m.finishVoice()
+    XCTAssertFalse(m.voicePending)
+    XCTAssertTrue(store.voiceDone)
+    XCTAssertTrue(m.needed, "the permissions follow")
+    XCTAssertEqual(m.step, .mic)
+    XCTAssertEqual(m.screen.eyebrow, "Step 2 of 3 · Microphone")
+    XCTAssertEqual(shows, [])
+    // Shown once: not again on the next launch.
+    XCTAssertFalse(OnboardingModel(probe: FakePermissionProbe(.allGranted), store: store, offerVoice: true).voicePending)
+  }
+
+  func testTheVoiceStepAloneShowsForAnExistingInstall() {
+    let m = OnboardingModel(probe: FakePermissionProbe(.allGranted), store: MemoryOnboardingStore(completed: true), offerVoice: true)
+    var shows: [Bool] = []
+    m.onNeededChange = { shows.append($0) }
+    XCTAssertTrue(m.needed)
+    m.finishVoice()
+    XCTAssertFalse(m.needed)
+    XCTAssertEqual(shows, [false])
+  }
+
+  func testNotOfferedWithoutAVoiceStepTheCountIsTwo() {
+    let (m, _, _) = model(PermissionState(mic: .notDetermined, ax: false, screen: false))
+    XCTAssertFalse(m.voicePending)
+    XCTAssertEqual(m.screen.eyebrow, "Step 1 of 2 · Microphone")
+  }
+
+  func testSkipSetupSkipsTheWholeOnboarding() {
+    let store = MemoryOnboardingStore()
+    let m = OnboardingModel(probe: FakePermissionProbe(PermissionState(mic: .notDetermined, ax: false, screen: false)), store: store, offerVoice: true)
+    var shows: [Bool] = []
+    m.onNeededChange = { shows.append($0) }
+    m.skipAll()
+    XCTAssertFalse(m.needed)
+    XCTAssertEqual(m.step, .done)
+    XCTAssertTrue(store.voiceDone)
+    XCTAssertEqual(shows, [false])
+    XCTAssertNotNil(m.bannerText, "the main screen still offers what's missing")
+    // From a permission step too.
+    let (m2, _, _) = model(PermissionState(mic: .granted, ax: false, screen: false))
+    XCTAssertEqual(m2.step, .ax)
+    m2.skipAll()
+    XCTAssertFalse(m2.needed)
   }
 }
