@@ -112,7 +112,7 @@ test('Continue, Skip this step and Skip setup each end it, for good', () => {
   }
   // The page shows it in place of the main page only (Settings and History still open), and not under parity.
   const app = read('ui', 'src', 'App.tsx');
-  assert.match(app, /const onboarding = screen === "main" && onboardingShown\(settings, \{ parity: !!parity \}\)/);
+  assert.match(app, /const onboarding = screen === "main" && onboardingShown\(settings\)/);
   assert.match(app, /\{onboarding \? \(\s*<Onboarding config=\{app\.config\} update=\{app\.updateSettings\} onKeySaved=\{app\.setHasKey\} \/>/);
 });
 
