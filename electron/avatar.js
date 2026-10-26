@@ -87,11 +87,15 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   const PRESS_WHY = new Set(['talk', 'poke', 'throw-off', 'too-long-for-a-click', 'drag', 'hold', 'leaving', 'press-already', 'not-on-him']);
   const pressLog = rateLimitedLog((m) => info_(m), { everyMs: 5_000 });
   const pageErrLog = rateLimitedLog((m) => log(m), { everyMs: 30_000 });
+  const modeListeners = new Set(); // the parity driver's avatar.mode (onMouseMode)
   const hover = createHoverPoller({
     onRunning: (on) => hoverLog(on ? 'poll-on' : 'poll-off', `${kind}: hover polling ${on ? 'started' : 'stopped'}`),
     // (Only logged: the last rect stands, since a page's timers can be slowed while he hasn't moved.)
     onQuiet: (ms) => hoverLog('quiet', `${kind}: no word from its page for ${Math.round(ms / 1000)} s (its timers slowed or stalled): keeping where it last was`),
-    onMode: (take) => hoverLog('mode', `${kind}: its window ${take ? 'takes the mouse (the cursor is on it, or it is held)' : 'lets clicks through'}`),
+    onMode: (take) => {
+      hoverLog('mode', `${kind}: its window ${take ? 'takes the mouse (the cursor is on it, or it is held)' : 'lets clicks through'}`);
+      for (const fn of modeListeners) fn(take);
+    },
     getCursor: () => {
       try {
         return screen.getCursorScreenPoint();
@@ -542,6 +546,11 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     /** Floating along the bottom of the screen (no Claude window to live on). */
     get free() {
       return free;
+    },
+    /** For the parity driver: each change of whether its window takes the mouse. Returns an unsubscribe. */
+    onMouseMode(fn) {
+      modeListeners.add(fn);
+      return () => modeListeners.delete(fn);
     },
     /**
      * For the parity driver (electron/parity-driver.js): what this avatar's window is doing, read-only.

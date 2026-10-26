@@ -83,9 +83,10 @@ public final class Engine: @unchecked Sendable {
 
   /** Loads the settings (before the core starts, so both read the same file the same way). */
   public func loadSettings(env: [String: String] = ProcessInfo.processInfo.environment) {
-    config.load(env: env, dotEnv: paths.core.appendingPathComponent(".env"))
     // First run on a machine that used the dev version: bring the key over (initConfig does too).
     if xaiKey.get().isEmpty, let k = env["XAI_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines), !k.isEmpty { try? xaiKey.set(k) }
+    // (A key saved means an install from before Claude voice was the default: it stays on Grok.)
+    config.load(env: env, dotEnv: paths.core.appendingPathComponent(".env"), hasKey: !xaiKey.get().isEmpty)
     config.onChange { [weak self] changed, all in
       guard let self else { return }
       var visible = all

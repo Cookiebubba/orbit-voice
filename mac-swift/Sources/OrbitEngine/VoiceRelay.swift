@@ -96,6 +96,8 @@ public final class VoiceHub: @unchecked Sendable {
     public var broadcast: @Sendable (JSONValue) -> Void
     /** Claude voice's speech models are on disk. */
     public var claudeModelsReady: @Sendable () -> Bool
+    /** Their download's percent while it's under way, else nil. */
+    public var claudeModelsDownloading: @Sendable () -> Int?
     /** findClaude (the configured path, PATH, the login shell's cached PATH, the usual folders): its path. */
     public var findClaude: @Sendable (String) -> String?
     /** Grok's socket (the realtime API's URL, the key's header). */
@@ -108,7 +110,8 @@ public final class VoiceHub: @unchecked Sendable {
                 tools: ToolServices, sessions: Sessions, desktop: ToolDesktop, watcher: VoiceWatcher, anywhere: VoiceAnywhere, broadcast: @escaping @Sendable (JSONValue) -> Void,
                 claudeModelsReady: @escaping @Sendable () -> Bool, findClaude: @escaping @Sendable (String) -> String?,
                 grok: @escaping @Sendable (String, String) -> VoiceUpstream, claude: @escaping @Sendable (ClaudeRealtime.Options, @escaping @Sendable (String, String) -> String?) -> VoiceUpstream,
-                realtimeURL: String? = nil) {
+                realtimeURL: String? = nil, claudeModelsDownloading: @escaping @Sendable () -> Int? = { nil }) {
+      self.claudeModelsDownloading = claudeModelsDownloading
       self.loop = loop
       self.config = config
       self.xaiKey = xaiKey
@@ -549,14 +552,17 @@ final class VoiceCall: @unchecked Sendable {
 
   func begin() {
     let apiKey = hub.s.xaiKey()
+    // Claude voice runs on the user's own Claude Code sign-in: it never needs an xAI key. Only Grok does.
     if useClaude && !hub.s.claudeModelsReady() {
       hub.s.log?.warn("voice", "Could not start Claude voice: speech models not downloaded")
-      toBrowser(["type": "bridge.error", "message": "Claude voice's speech models aren't downloaded yet. Download them in Settings → Voice engine."])
+      let downloading = hub.s.claudeModelsDownloading()
+      toBrowser(["type": "bridge.error", "message": .string(downloading.map { "Claude voice is still getting ready: downloading its speech models (\($0)%)." }
+          ?? "Claude voice's speech models aren't downloaded yet. Download them in Settings → Voice engine.")])
       return page.close()
     }
     if !useClaude && apiKey.isEmpty {
       hub.s.log?.warn("xai", "Could not start Grok: no xAI API key saved")
-      toBrowser(["type": "bridge.error", "message": "No xAI API key yet. Add it on the setup screen."])
+      toBrowser(["type": "bridge.error", "message": "Grok voice needs an xAI key. Add one in Settings, or switch to Claude voice."])
       return page.close()
     }
     // A spoken update that isn't allowed, has nothing to say, or comes too soon never reaches xAI.

@@ -167,6 +167,8 @@ final class SettingsModelTests: XCTestCase {
     m.apply(event: ["type": "settings.changed", "changed": ["avatar"], "settings": ["avatar": "qubit", "wakeHotkey": "Command+Shift+O"]])
     XCTAssertEqual(m.string("avatar"), "qubit")
     XCTAssertEqual(m.hotkeyLabel, "⇧⌘O")
+    XCTAssertEqual(m.assistantName, "Orbit", "Claude voice by default")
+    m.apply(event: ["type": "settings.changed", "settings": ["voiceEngine": "grok"]])
     XCTAssertEqual(m.assistantName, "Grok")
     m.apply(event: ["type": "settings.changed", "settings": ["voiceEngine": "claude"]])
     XCTAssertEqual(m.assistantName, "Orbit")

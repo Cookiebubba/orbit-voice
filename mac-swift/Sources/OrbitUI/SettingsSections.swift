@@ -32,6 +32,7 @@ struct VoiceEngineSection: View {
       Segmented(value: engine, options: [.init(value: "grok", label: "Grok"), .init(value: "claude", label: "Claude (beta)")]) { choose($0) }
       if engine == "grok" {
         Hint(text: "Grok's realtime voice, billed by xAI per minute.").padding(.top, 8)
+        XaiKeyField(ctx: ctx)
       } else {
         Hint(text: "Claude through your own Claude Code sign-in, with speech recognized and spoken on \(thisComputer). No xAI cost. Replies take a moment longer than Grok's.").padding(.top, 8)
         FieldLabel(text: "Brain")
@@ -73,7 +74,10 @@ struct VoiceEngineSection: View {
   @ViewBuilder private var modelsStatus: some View {
     if let status {
       VStack(alignment: .leading, spacing: 0) {
-        if !status.claudeFound { Hint(text: "Claude Code wasn't found. Set it up under Second brain below.", color: Theme.amber700).padding(.bottom, 8) }
+        if !status.claudeFound {
+          Hint(text: Talk.claudeCodeMissing, color: Theme.amber700).padding(.bottom, 8)
+          InstallClaudeCodeView(onCheck: { Task { await refresh() } }).padding(.bottom, 12)
+        }
         switch status.models.state {
         case "ready": Hint(text: "Speech models ready.")
         case "downloading":
@@ -323,6 +327,14 @@ struct SecondBrainSection: View {
           Task { await s.set("brainConnection", .string(v)); await refresh() }
         }
         Hint(text: s.string("brainConnection") == "claude-code" ? "Uses your Claude Code sign-in, so questions count toward your Claude plan. No setup if you use Claude Code." : "Questions are billed to your Anthropic API account. The key is encrypted on \(thisComputer).").padding(.top, 8)
+        if s.string("brainConnection") == "claude-code", let st = status, !st.found {
+          VStack(alignment: .leading, spacing: 8) {
+            Text("Claude Code isn't on \(thisComputer) yet. Copy the install command into Terminal, run it, then press Check again.")
+              .font(Theme.font(12.5)).foregroundStyle(Theme.amber700).snug(12.5).fixedSize(horizontal: false, vertical: true)
+            InstallClaudeCodeView(onCheck: { Task { await refresh() } })
+          }
+          .padding(.top, 8)
+        }
         if s.string("brainConnection") == "claude-code", let st = status, st.found, let signed = st.signedIn {
           HStack(spacing: 12) {
             Text(signed ? "Signed in to Claude Code ✓" : signingIn?.error ?? (signingIn != nil ? "Finish signing in in the window and browser that opened…" : "Claude Code isn't signed in (or its sign-in expired)."))
@@ -625,62 +637,89 @@ struct UpdatesSection: View {
 
 // MARK: - About
 
-struct AboutSection: View {
+func keyStorageLabel(_ kind: String) -> String {
+  ["windows-dpapi": "encrypted with your Windows account", "macos-keychain": "encrypted with a key in your macOS Keychain", "env-file": "in the .env file (developer mode)"][kind] ?? "not available"
+}
+
+/** Grok voice's xAI key: add one (or replace it). Only Grok needs it; Claude voice never does. */
+struct XaiKeyField: View {
   @Bindable var ctx: UIContext
-  @State private var replacing = false
+  @State private var open = false
   @State private var key = ""
   @State private var msg = ""
   @FocusState private var focused: Bool
   var body: some View {
     let s = ctx.settings
-    let storage = ["windows-dpapi": "encrypted with your Windows account", "macos-keychain": "encrypted with a key in your macOS Keychain", "env-file": "in the .env file (developer mode)"][s.keyStorage] ?? "not available"
+    VStack(alignment: .leading, spacing: 0) {
+      if s.hasKey {
+        HStack(spacing: 12) {
+          Text("xAI key saved, \(keyStorageLabel(s.keyStorage)).").font(Theme.font(12)).foregroundStyle(Theme.muted).frame(maxWidth: .infinity, alignment: .leading)
+          Button("Replace") { open.toggle() }.buttonStyle(PillButtonStyle(kind: .soft, size: 12, hPad: 10, vPad: 4, radius: 8))
+        }
+      } else {
+        (Text("Grok voice needs an xAI API key. Get one at ") + Text("[console.x.ai](https://console.x.ai)").underline()
+          + Text(" → API Keys. It's stored encrypted, only on \(thisComputer)."))
+          .font(Theme.font(12)).foregroundStyle(Theme.ink).snug(12).tint(Theme.fg).fixedSize(horizontal: false, vertical: true)
+      }
+      if open || !s.hasKey {
+        HStack(spacing: 8) {
+          SecureField("", text: $key, prompt: Text("xai-…").foregroundStyle(Theme.faint))
+            .focused($focused).modifier(FieldStyle(height: 36, focused: focused))
+            .accessibilityLabel("xAI API key")
+            .onSubmit(save)
+          Button("Save", action: save).buttonStyle(PillButtonStyle(kind: .dark, size: 13, height: 36, radius: 8)).disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        .padding(.top, 8)
+      }
+      if !msg.isEmpty { Text(msg).font(Theme.font(12)).foregroundStyle(Theme.muted).padding(.top, 8) }
+    }
+    .padding(.top, 12)
+    // Opened from the main page's "needs an xAI key" notice: the field takes the focus.
+    .onAppear { if ctx.focusKey { focused = true } }
+  }
+
+  private func save() {
+    let k = key.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !k.isEmpty else { return }
+    Task {
+      do {
+        try await ctx.bridge.setXaiKey(k)
+        msg = "Saved. New conversations use this key."
+        key = ""
+        open = false
+        ctx.focusKey = false
+        ctx.settings.markHasKey()
+      } catch {
+        msg = (error as? BridgeError)?.message ?? "Couldn't save it."
+      }
+    }
+  }
+}
+
+struct AboutSection: View {
+  @Bindable var ctx: UIContext
+  var body: some View {
+    let s = ctx.settings
     SettingsSection(title: "About") {
       VStack(alignment: .leading, spacing: 4) {
         Text("Orbit \(s.version) · open source (MIT)")
-        Text("xAI key: \(s.hasKey ? "saved, \(storage)" : "not set")")
+        Text("xAI key (Grok voice only): \(s.hasKey ? "saved, \(keyStorageLabel(s.keyStorage))" : "not set")")
         Text("Not affiliated with xAI or Anthropic. Grok is a trademark of xAI; Claude is a trademark of Anthropic.")
           .font(Theme.font(11.5)).foregroundStyle(Theme.faint).snug(11.5).fixedSize(horizontal: false, vertical: true).padding(.top, 4)
       }
       .font(Theme.font(12.5)).foregroundStyle(Theme.muted)
       HStack(spacing: 8) {
         Button("Source & help") { openExternal(repoURL) }.buttonStyle(PillButtonStyle(kind: .soft))
-        Button("Replace xAI key") { replacing.toggle() }.buttonStyle(PillButtonStyle(kind: .soft))
         Button("Open log folder") { openLogs() }.buttonStyle(PillButtonStyle(kind: .soft))
       }
       .padding(.top, 12)
       Hint(text: "Errors are logged (without keys or prompt text) so you can attach them to a bug report. Grok can read recent ones too. Just ask \"what went wrong?\"", size: 11.5, color: Theme.faint).padding(.top, 8)
-      if replacing {
-        HStack(spacing: 8) {
-          SecureField("", text: $key, prompt: Text("xai-…").foregroundStyle(Theme.faint))
-            .focused($focused).modifier(FieldStyle(height: 36, focused: focused))
-            .onSubmit(saveKey)
-          Button("Save", action: saveKey).buttonStyle(PillButtonStyle(kind: .dark, size: 13, height: 36, radius: 8)).disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
-        }
-        .padding(.top, 12)
-      }
-      if !msg.isEmpty { Text(msg).font(Theme.font(12)).foregroundStyle(Theme.muted).padding(.top, 8) }
     }
   }
 
   private func openLogs() {
     Task {
       if let dir = try? await ctx.bridge.logs().dir { NSWorkspace.shared.open(URL(fileURLWithPath: dir, isDirectory: true)) }
-    }
-  }
-
-  private func saveKey() {
-    let k = key.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !k.isEmpty else { return }
-    Task {
-      do {
-        try await ctx.bridge.setXaiKey(k)
-        msg = "Saved. New conversations use the new key."
-        key = ""
-        replacing = false
-        ctx.settings.markHasKey()
-      } catch {
-        msg = (error as? BridgeError)?.message ?? "Couldn't save it."
-      }
     }
   }
 }

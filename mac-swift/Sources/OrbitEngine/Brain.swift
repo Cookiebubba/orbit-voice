@@ -411,7 +411,7 @@ public struct BrainRunner: Sendable {
     let limit = timeout ?? Brain.models[model]?.timeout ?? 60
     var exe = claudePath ?? ""
     if exe.isEmpty { exe = await findClaude("")?.path ?? "" }
-    if exe.isEmpty { return ["ok": false, "error": "Claude Code is not installed (or not found), so the second brain is unavailable. Set it up in Orbit Settings."] }
+    if exe.isEmpty { return ["ok": false, "error": "Claude Code is not installed (or not found), so the second brain is unavailable. Orbit Settings → Second brain has its one-line install command."] }
     var explore = explore
     if explore && !(cwd.map { !$0.isEmpty && FileManager.default.fileExists(atPath: $0) } ?? false) { explore = false }
     let env = await env(apiKey: apiKey)
@@ -454,7 +454,7 @@ public struct BrainRunner: Sendable {
   public func search(query: JSONValue?, claudePath: String? = nil, apiKey: String = "", timeout: Double = Brain.searchTimeout) async -> JSONValue {
     var exe = claudePath ?? ""
     if exe.isEmpty { exe = await findClaude("")?.path ?? "" }
-    if exe.isEmpty { return ["ok": false, "error": "Claude Code is not installed (or not found), so web search is unavailable."] }
+    if exe.isEmpty { return ["ok": false, "error": "Claude Code is not installed (or not found), so web search is unavailable. Orbit Settings → Second brain has its one-line install command."] }
     let env = await env(apiKey: apiKey)
     let started = now()
     let day = ISO8601DateFormatter().string(from: now()).prefix(10)

@@ -10,7 +10,7 @@ public struct VoiceSettings: Equatable, Sendable {
   public var announce = "speak" // speak | chime | off
   public var avatarThrow = true
   public var avatarThrowSound = true
-  public var voiceEngine = "grok" // grok | claude
+  public var voiceEngine = "claude" // claude | grok (config.js's default: new installs start on Claude voice)
   public var wakeHotkey = HotkeyAccelerator.defaultAccelerator
   public init() {}
 

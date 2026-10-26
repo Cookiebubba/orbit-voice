@@ -64,10 +64,12 @@ export const claudeNames = (platform = process.platform) => (platform === 'win32
  * Folders Claude Code is commonly installed in that a Mac app started from Finder or the Dock does
  * not see on its PATH (it gets only /usr/bin:/bin:/usr/sbin:/sbin, not the login shell's PATH).
  * In order: the native installer, the old local install, Homebrew (Apple silicon, then Intel), and
- * npm's user prefix. Linux gets the same minus Homebrew's macOS paths.
+ * npm's user prefix. Linux gets the same minus Homebrew's macOS paths. Windows: the native
+ * installer's folder (it adds it to the user's PATH, which a running Orbit doesn't see until it
+ * restarts, so a Claude Code installed while Orbit runs is found at once).
  */
 export function wellKnownBinDirs({ platform, homedir } = here()) {
-  if (platform === 'win32') return [];
+  if (platform === 'win32') return [path.win32.join(homedir, '.local', 'bin')];
   const p = pathFor(platform);
   return [
     p.join(homedir, '.local', 'bin'),
@@ -195,7 +197,7 @@ export function resetLoginShellPath() {
 export function searchDirs({ platform, env, homedir, shellPath } = here()) {
   const sep = platform === 'win32' ? ';' : ':';
   const own = String(env.PATH || env.Path || '').split(sep).filter(Boolean);
-  if (platform === 'win32') return own;
+  if (platform === 'win32') return [...new Set([...own, ...wellKnownBinDirs({ platform, homedir })])];
   const shell = platform === 'darwin' ? (shellPath ?? loginShellPath({ platform, env })) : [];
   return [...new Set([...own, ...shell, ...wellKnownBinDirs({ platform, homedir })])];
 }

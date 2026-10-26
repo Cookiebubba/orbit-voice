@@ -119,7 +119,7 @@ final class EngineBridgeTests: XCTestCase {
     XCTAssertEqual(changes.get(), [["voice", "speed"]])
     XCTAssertEqual(prewarms.get(), 1)
     let saved = try JSONValue.parse(Data(contentsOf: root.appendingPathComponent("profile/settings.json")))
-    XCTAssertEqual(saved.objectValue, ["voice": "rex", "speed": 1.23], "only what differs from the defaults")
+    XCTAssertEqual(saved.objectValue, ["voice": "rex", "speed": 1.23, "voiceEngine": "claude"], "only what differs from the defaults, and the engine (always)")
     // The same again changes nothing.
     _ = try await send("POST", "/api/settings", body: Data(#"{"speed":1.23}"#.utf8))
     XCTAssertEqual(changes.get().count, 1)

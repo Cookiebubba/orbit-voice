@@ -311,6 +311,8 @@ public final class ParityRunner: @unchecked Sendable {
       }
     }
     if fx["grok"] != nil {
+      // Grok is the engine here (a new install starts on Claude voice; the case's own choice wins).
+      if settings["voiceEngine"] == nil { settings["voiceEngine"] = "grok" }
       let p = try ChildProcess.start(paths.node, [paths.repo.appendingPathComponent("parity/fixtures/fake-grok-server.mjs").path, String(Self.grokPort), String(fx.at(path: "grok.seed")?.intValue ?? 1), records.path])
       stops.append { p.stop() }
       guard await p.waitForOutput("ready", timeout: 10) else { throw RunnerError("fake Grok did not start") }

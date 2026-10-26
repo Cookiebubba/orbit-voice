@@ -60,7 +60,26 @@ public struct ParityWindow: Codable, Equatable, Sendable {
   public var visible: Bool
   public var frame: Rect?
   public var view: String?
-  public init(visible: Bool, frame: Rect?, view: String? = nil) { self.visible = visible; self.frame = frame; self.view = view }
+  /** The main page's notice (a try to talk that couldn't start), with its buttons. */
+  public var notice: ParityNotice?
+  /** Settings was opened from that notice with the xAI key field focused. */
+  public var focusKey: Bool?
+  public init(visible: Bool, frame: Rect?, view: String? = nil, notice: ParityNotice? = nil, focusKey: Bool? = nil) {
+    self.visible = visible; self.frame = frame; self.view = view; self.notice = notice; self.focusKey = focusKey
+  }
+}
+
+public struct ParityNotice: Codable, Equatable, Sendable {
+  public var kind: String
+  public var text: String
+  public var buttons: [String]
+  public init(kind: String, text: String, buttons: [String]) { self.kind = kind; self.text = text; self.buttons = buttons }
+
+  /** The buttons the main page shows for it (App.tsx's notice). */
+  public static func buttons(for kind: String) -> [String] {
+    kind == "claude-models" ? [] : kind == "claude-missing" ? ["Copy install command", "Install guide", "Check again"]
+      : ["Open Settings"] + (kind == "grok-key" ? ["Use Claude voice"] : []) + (kind == "claude-models-error" ? ["Try again"] : [])
+  }
 }
 
 public struct ParityClaude: Codable, Equatable, Sendable {

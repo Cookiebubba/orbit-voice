@@ -42,7 +42,7 @@ final class EngineStateTests: XCTestCase {
     XCTAssertEqual(c.update(["voice": "leo"]), [])
     XCTAssertEqual(c.update(["orbPosition": [10.4, 20.6], "anywhereUnderOrbit": ["Discord.exe", "discord.exe"]]), ["orbPosition", "anywhereUnderOrbit"])
     let saved = try JSONValue.parse(Data(contentsOf: dir.appendingPathComponent("settings.json")))
-    XCTAssertEqual(saved.objectValue, ["voice": "leo", "orbPosition": [10, 21], "anywhereUnderOrbit": ["discord.exe"]])
+    XCTAssertEqual(saved.objectValue, ["voice": "leo", "orbPosition": [10, 21], "anywhereUnderOrbit": ["discord.exe"], "voiceEngine": "claude"], "and the engine, always")
     XCTAssertEqual(c.update(["voice": "eve"]), ["voice"])
     XCTAssertNil(try JSONValue.parse(Data(contentsOf: dir.appendingPathComponent("settings.json")))["voice"], "back to the default: not saved")
     stop()

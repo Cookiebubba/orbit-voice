@@ -92,7 +92,7 @@ public enum SettingsSchema {
     SettingSpec("brainConnection", .choice(["claude-code", "api-key"]), "claude-code", .secondBrain, "Connection"),
     SettingSpec("brainClaudePath", .claudePath, "", .secondBrain, "Claude Code location"),
     SettingSpec("webSearch", .bool, true, .secondBrain, "Let Grok search the web"),
-    SettingSpec("voiceEngine", .choice(["grok", "claude"]), "grok", .voiceEngine, "Voice engine"),
+    SettingSpec("voiceEngine", .choice(["grok", "claude"]), "claude", .voiceEngine, "Voice engine"),
     SettingSpec("claudeVoice", .integer(min: 0, max: 7), 0, .voice, "Voice"),
     SettingSpec("claudeVoiceModel", .choice(["haiku", "sonnet", "opus", "fable"]), "haiku", .voiceEngine, "Brain"),
     SettingSpec("claudeVoiceEffort", .choice(["low", "medium", "high"]), "low", .voiceEngine, "Effort"),

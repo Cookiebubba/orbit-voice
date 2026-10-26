@@ -1,0 +1,69 @@
+{
+  "area": "no-key",
+  "about": "Opening Orbit never needs an xAI key (main 04098cc): new installs start on Claude voice on the main page; Grok without a key says so inline, with Open Settings (the key field focused) and Use Claude voice.",
+  "cases": [
+    { "id": "nokey.first-launch", "title": "First launch with no key: the main page, on Claude voice, nothing asked for",
+      "steps": [
+        { "do": "until", "probe": "state", "timeoutMs": 15000, "expect": { "windows.main": { "visible": true, "view": "main", "notice": { "$not": { "$type": "object" } } } } },
+        { "do": "http", "method": "GET", "path": "/api/config", "expect": { "status": 200, "body": { "hasKey": false, "settings.voiceEngine": "claude" } } }
+      ] },
+    { "id": "nokey.grok-notice", "title": "Grok without a key: Start says why on the main page, with both ways out",
+      "needs": ["voice"],
+      "profile": { "settings": { "voiceEngine": "grok", "wakeWord": true } },
+      "steps": [
+        { "do": "until", "probe": "state", "timeoutMs": 15000, "expect": { "windows.main": { "visible": true, "view": "main" } } },
+        { "do": "state", "expect": { "voice.wakeWord": "off", "windows.main.notice": { "$not": { "$type": "object" } } } },
+        { "do": "act", "action": "main.start" },
+        { "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "windows.main.notice": {
+          "kind": "grok-key", "text": "Grok voice needs an xAI key. Add one in Settings, or switch to Claude voice.", "buttons": ["Open Settings", "Use Claude voice"] } } },
+        { "do": "sleep", "ms": 1500 },
+        { "do": "state", "expect": { "voice.phase": "off", "voice.connected": false } },
+        { "do": "act", "action": "main.notice", "args": { "button": "Open Settings" } },
+        { "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "windows.main": { "view": "settings", "focusKey": true } } },
+        { "do": "act", "action": "window.show", "args": { "name": "main" } },
+        { "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "windows.main": { "view": "main", "notice.kind": "grok-key" } } }
+      ] },
+    { "id": "nokey.hotkey-grok", "title": "Grok without a key: the hotkey doesn't connect either, and says why",
+      "needs": ["voice", "hotkey"],
+      "profile": { "settings": { "voiceEngine": "grok" } },
+      "steps": [
+        { "do": "until", "probe": "state", "timeoutMs": 15000, "expect": { "windows.main.visible": true, "hotkey.registered": true } },
+        { "do": "act", "action": "voice.hotkey" },
+        { "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "windows.main.notice.kind": "grok-key" } },
+        { "do": "sleep", "ms": 1500 },
+        { "do": "state", "expect": { "voice.phase": "off", "voice.connected": false } }
+      ] },
+    { "id": "nokey.use-claude", "title": "Grok without a key, then Use Claude voice: it switches and the call starts",
+      "needs": ["voice"],
+      "fixtures": { "fakeDesktop": true, "claudeVoice": { "rules": { "rules": [], "fallback": "Okay." }, "settings": { "voiceEngine": "grok" } } },
+      "steps": [
+        { "do": "until", "probe": "state", "timeoutMs": 15000, "expect": { "windows.main": { "visible": true, "view": "main" } } },
+        { "do": "act", "action": "main.start" },
+        { "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "windows.main.notice.kind": "grok-key" } },
+        { "do": "act", "action": "main.notice", "args": { "button": "Use Claude voice" } },
+        { "do": "until", "probe": "state", "timeoutMs": 25000, "expect": { "voice.phase": "listening", "voice.connected": true, "windows.main.notice": { "$not": { "$type": "object" } } } },
+        { "do": "http", "method": "GET", "path": "/api/config", "expect": { "status": 200, "body": { "hasKey": false, "settings.voiceEngine": "claude" } } }
+      ] },
+    { "id": "nokey.claude-code-missing", "title": "Claude voice without Claude Code: Start says how to install it, with the command to copy",
+      "needs": ["voice"],
+      "profile": { "settings": { "voiceEngine": "claude", "brainClaudePath": "/tmp/orbit-parity-no-claude-here/claude" } },
+      "steps": [
+        { "do": "until", "probe": "state", "timeoutMs": 15000, "expect": { "windows.main": { "visible": true, "view": "main" } } },
+        { "do": "http", "method": "GET", "path": "/api/claude-voice", "expect": { "status": 200, "body": { "claudeFound": false } } },
+        { "do": "act", "action": "main.start" },
+        { "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "windows.main.notice": {
+          "kind": "claude-missing",
+          "text": "Claude voice needs Claude Code (it runs on your Claude plan). Copy the install command, paste it into Terminal and press Return, then press Check again.",
+          "buttons": ["Copy install command", "Install guide", "Check again"] } } },
+        { "do": "act", "action": "main.notice", "args": { "button": "Copy install command" }, "expect": { "ok": true, "copied": "curl -fsSL https://claude.ai/install.sh | bash" } },
+        { "do": "act", "action": "main.notice", "args": { "button": "Install guide" }, "expect": { "ok": true, "url": "https://code.claude.com/docs/en/setup" } },
+        { "do": "act", "action": "main.notice", "args": { "button": "Check again" }, "expect": { "ok": true } },
+        { "do": "sleep", "ms": 1500 },
+        { "do": "state", "expect": { "voice.phase": "off", "voice.connected": false, "windows.main.notice.kind": "claude-missing" } }
+      ] },
+    { "id": "nokey.wake-word-claude", "title": "Claude voice with no key: \"Hey Orbit\" listens",
+      "needs": ["voice"],
+      "fixtures": { "fakeDesktop": true, "claudeVoice": { "rules": { "rules": [] }, "settings": { "wakeWord": true } } },
+      "steps": [{ "do": "until", "probe": "state", "timeoutMs": 30000, "expect": { "voice.wakeWord": "listening" } }] }
+  ]
+}

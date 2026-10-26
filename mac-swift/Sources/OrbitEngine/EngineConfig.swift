@@ -29,23 +29,40 @@ public final class EngineConfig: @unchecked Sendable {
 
   /**
    * Load: defaults, then the environment's overrides (and a .env next to the core, as in dev), then
-   * settings.json. Settings saved before the avatar choice: `buddy: false` means no avatar.
+   * settings.json. Settings saved before the avatar choice: `buddy: false` means no avatar. The voice
+   * engine: a saved choice wins; else a new install starts on Claude voice (and says so in its file
+   * at once), and an install from before (a settings file, or `hasKey`: an xAI key saved) on Grok.
    */
   @discardableResult
-  public func load(env: [String: String] = ProcessInfo.processInfo.environment, dotEnv: URL? = nil) -> Settings {
+  public func load(env: [String: String] = ProcessInfo.processInfo.environment, dotEnv: URL? = nil, hasKey: Bool = false) -> Settings {
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     var e = dotEnv.map { Self.readDotEnv($0) } ?? [:]
     for (k, v) in env { e[k] = v }
     var fromEnv: [String: JSONValue] = [:]
     for (name, key) in Self.envOverrides { if let v = e[name] { fromEnv[key] = .string(v) } }
+    let hadFile = FileManager.default.fileExists(atPath: file.path)
     var fromFile: [String: JSONValue] = [:]
     if let data = try? Data(contentsOf: file), let v = try? JSONValue.parse(data), case .object(let o) = v { fromFile = o }
     if fromFile["avatar"] == nil, fromFile["buddy"] == .bool(false) { fromFile["avatar"] = "none" }
     var next = Self.defaults
     for (k, v) in Self.sanitize(fromEnv) { next[k] = v }
-    for (k, v) in Self.sanitize(fromFile) { next[k] = v }
+    let saved = Self.sanitize(fromFile)
+    for (k, v) in saved { next[k] = v }
+    let engine = Self.engineFor(saved: saved["voiceEngine"]?.stringValue, hadFile: hadFile, hasKey: hasKey)
+    next["voiceEngine"] = .string(engine)
+    // A brand-new install says so in its file straight away, so adding an xAI key later (without
+    // changing anything else) never reads as an install from before Claude was the default.
+    if saved["voiceEngine"] == nil, !hadFile, engine == "claude" {
+      try? JSONValue.object(["voiceEngine": "claude"]).data(pretty: true).write(to: file, options: .atomic)
+    }
     lock.withLock { settings = next }
     return next
+  }
+
+  /** config.js engineFor: which voice engine to start on. */
+  public static func engineFor(saved: String?, hadFile: Bool, hasKey: Bool) -> String {
+    if saved == "grok" || saved == "claude" { return saved! }
+    return hadFile || hasKey ? "grok" : "claude"
   }
 
   public var all: Settings { lock.withLock { settings } }
@@ -73,7 +90,9 @@ public final class EngineConfig: @unchecked Sendable {
 
   private func save(_ s: Settings) {
     var toSave: [String: JSONValue] = [:]
-    for k in Self.keys where s[k] != Self.defaults[k] { toSave[k] = s[k] }
+    // The voice engine is always written out, even at its default, so the file says it was chosen
+    // (an older file without it was a Grok install: see engineFor).
+    for k in Self.keys where k == "voiceEngine" || s[k] != Self.defaults[k] { toSave[k] = s[k] }
     let data = JSONValue.object(toSave).data(pretty: true)
     try? data.write(to: file, options: .atomic)
   }

@@ -28,8 +28,14 @@ public final class VoiceController: ObservableObject {
   @Published public private(set) var draft: VoiceDraft?
   @Published public private(set) var sessionTitle: String?
   @Published public private(set) var settings = VoiceSettings()
-  /** An xAI key is saved: what "Hey Orbit", the avatar's click and spoken updates need (as App.tsx's config.hasKey). */
+  /** An xAI key is saved (Grok voice needs one; Claude voice never does). */
   @Published public private(set) var hasKey = false
+  /** The main page's notice after a try to talk that couldn't start (ui/src/talk.js talkNotice), or nil. */
+  @Published public private(set) var talkNotice: TalkNotice?
+  private var blocked: TalkBlocked? { didSet { refreshNotice() } }
+  private var claudeStatus: JSONValue? { didSet { refreshNotice() } }
+  private var claudeReady = false // checked once per run: then calls start straight away
+  private var modelsPoll: Timer?
 
   /** The orb / avatar sync message, on every change (levels ~20 fps while a call is on). */
   public var onState: (OrbSync) -> Void = { _ in }
@@ -87,30 +93,109 @@ public final class VoiceController: ObservableObject {
 
   // MARK: - the facade
 
-  /** The global hotkey, the orb, "Hey Orbit": start / sleep / wake (and end a spoken update). */
+  /**
+   * The global hotkey, the orb, "Hey Orbit": hung up, it starts a call (if one can start: see
+   * tryTalk); in a call, it sleeps / wakes as before (and ends a spoken update).
+   */
   public func hotkey() {
     onEvent("hotkey", [:])
-    session.hotkey()
+    if state.phase == .off { tryTalk { [weak self] in self?.session.hotkey() } } else { session.hotkey() }
+  }
+
+  /** Claude voice, or Grok voice with a key: what the wake word, spoken updates and starting need. */
+  public var canTalk: Bool { Talk.canTalk(engine: settings.voiceEngine, hasKey: hasKey) }
+
+  /**
+   * Start a call by `go`, if it can start (App.tsx tryTalk): Grok without a key, or Claude voice not
+   * ready yet (Claude Code missing, speech models not here), shows the main page's notice instead
+   * (and the models' download starts). `engine` overrides the saved one (just switched to Claude).
+   */
+  public func tryTalk(engine: String? = nil, _ go: @escaping () -> Void) {
+    let engine = engine ?? settings.voiceEngine
+    if engine != "claude" {
+      if !Talk.canTalk(engine: engine, hasKey: hasKey) { blocked = .grokKey; return }
+      blocked = nil
+      return go()
+    }
+    if claudeReady {
+      blocked = nil
+      return go()
+    }
+    Task { [weak self] in
+      guard let self else { return }
+      var st = try? await self.link.getJSON("api/claude-voice")
+      if let s = st, s["claudeFound"]?.boolValue == true, s["models"]?["state"]?.stringValue == "ready" {
+        self.claudeReady = true
+        self.blocked = nil
+        return go()
+      }
+      guard var s = st else {
+        self.blocked = nil
+        return go() // couldn't check: the bridge says what's wrong, if anything
+      }
+      if Talk.needsModelDownload(s), let r = try? await self.link.postJSON("api/claude-voice/download"), let m = r["models"], case .object(var o) = s {
+        o["models"] = m
+        s = .object(o)
+      }
+      st = s
+      self.claudeStatus = st
+      self.blocked = .claude
+    }
+  }
+
+  /** The notice's "Use Claude voice": switch to it and start. */
+  public func useClaudeVoice() {
+    blocked = nil
+    Task { [weak self] in
+      guard let self else { return }
+      _ = try? await self.link.postJSON("api/settings", ["voiceEngine": "claude"])
+      self.apply(settings: ["voiceEngine": "claude"])
+      self.tryTalk(engine: "claude") { [weak self] in self?.session.hotkey() }
+    }
+  }
+
+  private func refreshNotice() {
+    let n = Talk.notice(blocked, engine: settings.voiceEngine, hasKey: hasKey, status: claudeStatus)
+    if n != talkNotice { talkNotice = n }
+    // While the speech models download, follow their progress (the notice goes when they're ready).
+    if n?.kind == "claude-models", modelsPoll == nil {
+      modelsPoll = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          Task {
+            guard let st = try? await self.link.getJSON("api/claude-voice") else { return }
+            if st["claudeFound"]?.boolValue == true, st["models"]?["state"]?.stringValue == "ready" { self.claudeReady = true }
+            self.claudeStatus = st
+          }
+        }
+      }
+    } else if n?.kind != "claude-models", let t = modelsPoll {
+      t.invalidate()
+      modelsPoll = nil
+    }
   }
 
   public func sleep() { session.sleep() }
   public func wake() { session.wake() }
   /** Claude finished while Orbit is off: connect just to say so (the bridge decides; orbit.wake). */
-  public func announce() { if hasKey { session.announceUpdate() } }
+  public func announce() { if canTalk { session.announceUpdate() } }
   /** A spoken update is on: end it now. False if none. */
   @discardableResult public func endWake() -> Bool { session.endWake() }
   /** Type a message into the conversation. */
   public func type(_ text: String) { session.type(text) }
-  /** Ask in text, connecting first if needed (the session switcher). */
-  public func ask(_ text: String) { session.ask(text) }
+  /** Ask in text, connecting first if needed and if a call can start (the session switcher). */
+  public func ask(_ text: String) {
+    if state.phase != .off { return session.ask(text) }
+    tryTalk { [weak self] in self?.session.ask(text) }
+  }
   public func mute(_ on: Bool) { session.setMuted(on) }
   public func toggleMute() { session.toggleMute() }
   public func hangup() { session.hangup(.user) }
   public func note(_ text: String) { session.note(text) }
 
-  /** The avatar was clicked to talk: the wake word's own path, only when Orbit is off or asleep. */
+  /** The avatar was clicked to talk: the wake word's own path (Orbit off or asleep). Grok without a key: the notice says why. */
   public func avatarTalk() {
-    if hasKey && (state.phase == .off || state.asleep) { hotkey() }
+    if state.phase == .off || state.asleep { hotkey() }
   }
 
   /**
@@ -165,10 +250,11 @@ public final class VoiceController: ObservableObject {
     updateWakeWord()
   }
 
-  /** The key screen saved a key (the page's setHasKey). */
+  /** Settings saved a key (the page's setHasKey). */
   public func keySaved() {
     hasKey = true
     updateWakeWord()
+    refreshNotice()
   }
 
   /** New settings (the whole object or a changed part). */
@@ -178,11 +264,13 @@ public final class VoiceController: ObservableObject {
     settings = next
     session.setOptions(next.options)
     updateWakeWord()
+    refreshNotice()
   }
 
   public func setHasKey(_ v: Bool) {
     hasKey = v
     updateWakeWord()
+    refreshNotice()
   }
 
   /**
@@ -215,14 +303,14 @@ public final class VoiceController: ObservableObject {
 
   // MARK: - "Hey Orbit"
 
-  /** The wake word listens only while the call is off or asleep, the setting is on and there's a key (App.tsx). */
+  /** The wake word listens only while the call is off or asleep, the setting is on and a call can start (App.tsx). */
   public func attach(wakeWord w: any WakeListening) {
     wakeWord = w
     w.onWake = { [weak self] in self?.hotkey() }
     updateWakeWord()
   }
 
-  public var wakeWordShouldRun: Bool { settings.wakeWord && hasKey && (state.phase == .off || state.asleep) }
+  public var wakeWordShouldRun: Bool { settings.wakeWord && canTalk && (state.phase == .off || state.asleep) }
 
   private func updateWakeWord() { wakeWord?.setActive(wakeWordShouldRun) }
 

@@ -1186,7 +1186,7 @@ export function createToolRunner({
       const apiKey = useKey ? getBrainKey() : '';
       if (useKey && !apiKey) return { error: 'The second brain is set to use an Anthropic API key, but none is saved. Add it in Orbit Settings.' };
       const claude = findClaude(getSetting('brainClaudePath'));
-      if (!claude) return { error: 'Claude Code was not found, so the second brain is unavailable. Install Claude Code or set its path in Orbit Settings.' };
+      if (!claude) return { error: 'Claude Code was not found, so the second brain is unavailable. Orbit Settings → Second brain has its one-line install command (or set its path there).' };
 
       // The project and recent conversation of the Claude session that's open (or the one named).
       // Explore only ever reads the project of the session open in Claude: not a folder Grok
@@ -1273,7 +1273,7 @@ export function createToolRunner({
       const useKey = getSetting('brainConnection') === 'api-key';
       const apiKey = useKey ? getBrainKey() : '';
       const claude = findClaude(getSetting('brainClaudePath'));
-      if (!claude) return { error: 'Claude Code was not found, so web search is unavailable. Install Claude Code or set its path in Orbit Settings.' };
+      if (!claude) return { error: 'Claude Code was not found, so web search is unavailable. Orbit Settings → Second brain has its one-line install command (or set its path there).' };
       searchRuns++;
       lastSearchAt = Date.now();
       const controller = new AbortController();

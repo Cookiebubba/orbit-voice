@@ -9,6 +9,8 @@ dist/
 # local secrets and per-user state (never commit)
 .env
 settings.json
+# (the engine oracle's settings cases: made by parity/oracle/gen.mjs, no secrets in them)
+!parity/oracle/fixtures/settings.json
 usage.json
 xai-key.bin
 logs/

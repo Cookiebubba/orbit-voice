@@ -681,7 +681,12 @@
   },
   {
    "id": "bridge.ws.no-key",
-   "title": "With no xAI key the voice socket says so and closes",
+   "title": "Grok with no xAI key: the voice socket says so and closes (only Grok needs one)",
+   "profile": {
+    "settings": {
+     "voiceEngine": "grok"
+    }
+   },
    "steps": [
     {
      "do": "ws",
@@ -690,9 +695,7 @@
       "messages": {
        "$some": {
         "type": "bridge.error",
-        "message": {
-         "$match": "xAI API key"
-        }
+        "message": "Grok voice needs an xAI key. Add one in Settings, or switch to Claude voice."
        }
       }
      }

@@ -258,6 +258,9 @@ export function startParityDriver(ctx) {
       const { id } = a;
       note('avatar.created', { id, kind: a.avatar.kind, role: a.role });
       win.once('closed', () => note('avatar.closed', { id }));
+      // Each change of whether its window takes the mouse (the case for no flapping counts them).
+      const off = a.avatar.onMouseMode?.((take) => note('avatar.mode', { id, takes: !!take }));
+      if (off) win.once('closed', off);
       tapSend(win, (channel, args) => {
         if (channel !== 'buddy:command' || !args[0] || typeof args[0] !== 'object') return;
         note('avatar.command', { id, action: String(args[0].action), dir: args[0].dir || null });
@@ -316,7 +319,7 @@ export function startParityDriver(ctx) {
   async function state() {
     const main = ctx.main();
     const orb = ctx.orb();
-    const page = alive(main) ? await js(main.webContents, '(() => { const p = window.__orbitParity; return p ? { voice: p.voice ? { ...p.voice(), wakeWord: p.app ? p.app.wakeWord : null } : null, view: p.app ? p.app.view : null } : null; })()') : null;
+    const page = alive(main) ? await js(main.webContents, '(() => { const p = window.__orbitParity; return p ? { voice: p.voice ? { ...p.voice(), wakeWord: p.app ? p.app.wakeWord : null } : null, view: p.app ? p.app.view : null, notice: p.app ? p.app.notice || null : null, focusKey: !!(p.app && p.app.focusKey) } : null; })()') : null;
     const pg = page && !page.__error ? page : null;
     const c = ctx.claude();
     const home = ctx.avatar();
@@ -327,7 +330,7 @@ export function startParityDriver(ctx) {
     const accel = getSetting('wakeHotkey');
     return shapeState({
       windows: {
-        main: { visible: alive(main) && main.isVisible(), frame: alive(main) ? rect(main.getBounds()) : null, view: pg?.view || 'main' },
+        main: { visible: alive(main) && main.isVisible(), frame: alive(main) ? rect(main.getBounds()) : null, view: pg?.view || 'main', notice: pg?.notice || null, focusKey: !!pg?.focusKey },
         orb: { visible: alive(orb) && orb.isVisible(), frame: alive(orb) ? rect(orb.getBounds()) : null },
       },
       claude: {
@@ -445,6 +448,12 @@ export function startParityDriver(ctx) {
       ctx.showOrb();
       return { ok: true };
     },
+    // The main page's Start talking button, and its notice's buttons (a try to talk that couldn't start).
+    'main.start': async () => {
+      ctx.showMain();
+      return pageCall('(a.start(), { ok: true })');
+    },
+    'main.notice': ({ button }) => pageCall(`a.press(${JSON.stringify(button)})`),
     'perms.set': ({ perms: next }) => {
       perms = parsePerms(next, perms || permState());
       if (perms) {

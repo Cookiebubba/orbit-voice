@@ -13,7 +13,8 @@ import { createThrowSound } from "./throwSound.js";
 import { hotkeyLabel, postJson, useAppState, type Finished } from "./useAppState";
 import { useVoice, type Phase } from "./useVoice";
 import { useWakeWord } from "./useWakeWord";
-import { canTalk, needsModelDownload, screenFor, talkNotice, type ClaudeVoiceReady, type TalkBlocked } from "./talk.js";
+import { CLAUDE_CODE_GUIDE, canTalk, claudeInstallCommand, needsModelDownload, screenFor, talkNotice, type ClaudeVoiceReady, type TalkBlocked } from "./talk.js";
+import { InstallClaudeCode } from "./InstallClaudeCode";
 
 const PHASE_LABEL: Record<Phase, string> = {
   off: "Sleeping", // hung up: nothing is billed until you start again
@@ -46,7 +47,9 @@ export default function App() {
   const [blocked, setBlocked] = useState<TalkBlocked>(null);
   const [claudeStatus, setClaudeStatus] = useState<ClaudeVoiceReady | null>(null);
   const claudeReady = useRef(false); // checked once per run: then calls start straight away
-  const notice = talkNotice(blocked, app.config, claudeStatus);
+  // (The terminal the install words name: PowerShell on Windows, Terminal on a Mac.)
+  const platform = desktop?.platform || (isMac ? "darwin" : "other");
+  const notice = talkNotice(blocked, app.config, claudeStatus, platform);
   const [typing, setTyping] = useState(false);
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -237,6 +240,27 @@ export default function App() {
     await app.updateSettings({ voiceEngine: "claude" });
     void tryTalk(() => v.start(), "claude");
   };
+  // (Parity only, as above: the notice as shown, with its buttons, and the main page's own buttons.)
+  if (parity?.app) {
+    const shown = notice && !on ? notice : null;
+    const buttons = !shown || shown.kind === "claude-models" ? [] : shown.kind === "claude-missing" ? ["Copy install command", "Install guide", "Check again"]
+      : ["Open Settings", ...(shown.kind === "grok-key" ? ["Use Claude voice"] : []), ...(shown.kind === "claude-models-error" ? ["Try again"] : [])];
+    Object.assign(parity.app, {
+      notice: shown ? { kind: shown.kind, text: shown.text, buttons } : null,
+      focusKey: screen === "settings" && focusKey,
+      start: () => (!on ? startTalk() : undefined),
+      press: async (label: string) => {
+        if (!buttons.includes(label)) return { ok: false, error: `No "${label}" button on the main page now.` };
+        if (label === "Open Settings") openSettings();
+        else if (label === "Use Claude voice") void switchToClaude();
+        // (What it copies: a test leaves the computer's clipboard alone.)
+        else if (label === "Copy install command") return { ok: true, copied: claudeInstallCommand(platform) };
+        else if (label === "Install guide") return { ok: true, url: CLAUDE_CODE_GUIDE }; // (the driver never opens a browser)
+        else startTalk();
+        return { ok: true };
+      },
+    });
+  }
   const recent = v.captions.filter((c) => c.who !== "note" || c === v.captions[v.captions.length - 1]).slice(-3);
   // Connected but not listening: Grok is finishing its goodbye before hanging up, or ("one
   // question" mode) answering / holding a draft that waits for your yes.
@@ -316,7 +340,9 @@ export default function App() {
             {notice && !on && (
               <div role="status" className="mt-2 flex max-w-[320px] flex-col items-center gap-2 text-center">
                 <p className={cn("text-[12.5px] leading-snug", notice.kind === "claude-models" ? "text-ink" : "text-amber-700")}>{notice.text}</p>
-                {notice.kind !== "claude-models" && (
+                {notice.kind === "claude-missing" ? (
+                  <InstallClaudeCode platform={platform} onCheck={startTalk} center />
+                ) : notice.kind !== "claude-models" && (
                   <div className="flex flex-wrap justify-center gap-2">
                     <NoticeButton onClick={openSettings}>Open Settings</NoticeButton>
                     {notice.kind === "grok-key" && <NoticeButton onClick={switchToClaude}>Use Claude voice</NoticeButton>}

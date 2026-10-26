@@ -134,6 +134,8 @@ export async function prepare(c, which) {
     for (const f of fs.readdirSync(paths.voiceModels)) fs.symlinkSync(path.join(paths.voiceModels, f), path.join(models, f));
   }
   if (fx.grok) {
+    // Grok is the engine here (a new install starts on Claude voice; the case's own choice wins).
+    if (!('voiceEngine' in settings)) settings.voiceEngine = 'grok';
     const g = await startFakeGrok({ paths, port: PORTS.grok, recordDir: dirs.records, seed: fx.grok.seed || 1 });
     stops.push(() => g.stop());
     env.XAI_REALTIME_URL = g.url;

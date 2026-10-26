@@ -50,6 +50,15 @@ public protocol VoiceUI: AnyObject, Observable {
   func type(_ text: String)
   /** Ask about something out loud (the session switcher's "Ask"), starting if needed. */
   func ask(_ text: String)
+  /** Why the last try to talk couldn't start (Grok without a key, Claude voice not ready), or nil. */
+  var talkNotice: TalkNotice? { get }
+  /** The notice's "Use Claude voice": switch to it and start. */
+  func useClaudeVoice()
+}
+
+public extension VoiceUI {
+  var talkNotice: TalkNotice? { nil }
+  func useClaudeVoice() {}
 }
 
 /** The launcher's caption logic: the last three, notes only when newest (App.tsx `recent`). */
@@ -188,6 +197,7 @@ public final class FakeVoiceUI: VoiceUI {
   public var draft: VoiceDraft?
   public var sending = false
   public var sessionTitle: String?
+  public var talkNotice: TalkNotice?
   /** What was asked of it, in order (tests). */
   public private(set) var calls: [String] = []
 
@@ -209,6 +219,11 @@ public final class FakeVoiceUI: VoiceUI {
     calls.append("ask")
     if phase == .off { phase = .listening }
     captions.append(VoiceCaption(id: "ask-\(captions.count)", who: .you, text: text))
+  }
+  public func useClaudeVoice() {
+    calls.append("useClaudeVoice")
+    talkNotice = nil
+    start()
   }
 }
 

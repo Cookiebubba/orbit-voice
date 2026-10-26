@@ -9,6 +9,11 @@ import PillScroll from "./components/PillScroll";
 import Reveal from "./components/Reveal";
 import { PULSE_MAX, PULSE_MIN } from "./orbLook";
 import { ARROW_PATH, PREVIEW, css } from "./mouse/shape.js";
+import { claudeCodeMissing } from "./talk.js";
+import { InstallClaudeCode } from "./InstallClaudeCode";
+
+// (The terminal the install words name: PowerShell on Windows, Terminal on a Mac.)
+const platform = desktop?.platform || (isMac ? "darwin" : "other");
 
 export const REPO_URL = "https://github.com/Cookiebubba/orbit-voice";
 
@@ -571,7 +576,10 @@ function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: Se
         {status && (
           <div className="mt-3 text-[12px] leading-snug">
             <Reveal show={!status.claudeFound}>
-              <p className="mb-2 text-amber-700">Claude Code wasn't found. Set it up under Second brain below.</p>
+              <div className="mb-3">
+                <p className="mb-2 text-amber-700">{claudeCodeMissing(platform)}</p>
+                <InstallClaudeCode platform={platform} onCheck={refresh} />
+              </div>
             </Reveal>
             <Reveal show={m?.state === "ready"}>
               <p className="text-muted">Speech models ready.</p>
@@ -723,6 +731,13 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
               ? "Uses your Claude Code sign-in, so questions count toward your Claude plan. No setup if you use Claude Code."
               : `Questions are billed to your Anthropic API account. The key is encrypted on ${thisComputer}.`}
           </p>
+
+          <Reveal show={s.brainConnection === "claude-code" && !!status && !status.found}>
+            <div className="mt-2 text-[12.5px] leading-snug">
+              <p className="mb-2 text-amber-700">Claude Code isn't on {thisComputer} yet. Copy the install command into {platform === "win32" ? "PowerShell" : "Terminal"}, run it, then press Check again.</p>
+              <InstallClaudeCode platform={platform} onCheck={refresh} />
+            </div>
+          </Reveal>
 
           <Reveal show={s.brainConnection === "claude-code" && !!status?.found && status.signedIn !== null}>
             {status && <div className="mt-2 flex items-center justify-between gap-3 text-[12.5px]">

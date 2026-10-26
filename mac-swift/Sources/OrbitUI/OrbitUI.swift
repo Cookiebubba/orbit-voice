@@ -247,7 +247,32 @@ public final class OrbitUI: NSObject, NSWindowDelegate {
   }
 
   public func parityWindows() -> [String: ParityWindow] {
-    ["main": ParityWindow(visible: window.isVisible && !window.isMiniaturized, frame: Self.topLeft(window.frame), view: context.screen.rawValue)]
+    let shown = context.voice.phase == .off ? context.voice.talkNotice : nil
+    return ["main": ParityWindow(visible: window.isVisible && !window.isMiniaturized, frame: Self.topLeft(window.frame), view: context.screen.rawValue,
+                                 notice: shown.map { ParityNotice(kind: $0.kind, text: $0.text, buttons: ParityNotice.buttons(for: $0.kind)) },
+                                 focusKey: context.screen == .settings && context.focusKey)]
+  }
+
+  /** The main page's Start talking button (parity main.start). */
+  public func parityStart() {
+    if context.voice.phase == .off { context.voice.start() }
+  }
+
+  /**
+   * Press a button of the main page's notice (parity main.notice): nil if it isn't showing, else its
+   * answer. Copy install command: the command it copies (a test leaves the Mac's clipboard alone);
+   * Install guide: its link (opened nowhere in a test).
+   */
+  public func parityPressNotice(_ label: String) -> JSONValue? {
+    guard context.voice.phase == .off, let n = context.voice.talkNotice, ParityNotice.buttons(for: n.kind).contains(label) else { return nil }
+    switch label {
+    case "Open Settings": context.openSettings(focusKey: n.kind == "grok-key")
+    case "Use Claude voice": context.voice.useClaudeVoice()
+    case "Copy install command": return ["ok": true, "copied": .string(Talk.claudeInstallCommand)]
+    case "Install guide": return ["ok": true, "url": .string(Talk.claudeCodeGuide.absoluteString)]
+    default: context.voice.start()
+    }
+    return ["ok": true]
   }
 
   public func parityOnboarding() -> ParityOnboarding {

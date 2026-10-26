@@ -52,7 +52,13 @@ A snapshot of everything the cases look at. Frames are screen points, top-left o
 ```json
 {
   "windows": {
-    "main":   { "visible": true, "frame": {...}, "view": "main" | "settings" | "history" | "onboarding" },
+    "main":   { "visible": true, "frame": {...}, "view": "main" | "settings" | "history" | "onboarding",
+                // A try to talk that couldn't start (Grok without a key, Claude voice not ready), as the
+                // main page shows it; and Settings opened from it with the xAI key field focused.
+                "notice": null | { "kind": "grok-key" | "claude-missing" | "claude-models" | "claude-models-error",
+                                   "text": "...", "buttons": ["Open Settings", "Use Claude voice"] },
+                // (claude-missing: ["Copy install command", "Install guide", "Check again"])
+                "focusKey": false },
     "orb":    { "visible": false, "frame": {...} }
   },
   "claude": { "found": true, "pid": 456, "frame": {...}, "box": {...} | null, "send": {...} | null },
@@ -88,6 +94,7 @@ the sounds the shell played (name and time only). Event types (both builds use e
 | `avatar.lift` | `{id, on}` | picked up (`on: true`) or put back |
 | `avatar.sound` | `{id, name}` | the avatar asked for a sound (`throw`: "Wheee!") |
 | `avatar.command` | `{id, action, dir}` | a command reached the avatar's page |
+| `avatar.mode` | `{id, takes}` | the avatar's window started (`true`) or stopped taking the mouse (its hover poll) |
 | `voice.phase` | `{phase, asleep}` | the voice phase changed |
 | `hotkey` | `{}` | the global hotkey fired (or `voice.hotkey`) |
 | `core.ready` | `{}` | the bridge is up |
@@ -111,6 +118,8 @@ the sounds the shell played (name and time only). Event types (both builds use e
 | `settings.read` | `key` | What the app's Settings screen shows for a key: `{ ok: true, value }`. |
 | `window.show` | `name` (`main`/`settings`) | Show a window/view. |
 | `window.minimize` | | Minimize the main window (turns into the orb). |
+| `main.start` | | Press the main page's Start talking button (it starts a call only if one can: see `windows.main.notice`). |
+| `main.notice` | `button` (`Open Settings`, `Use Claude voice`, `Try again`, `Copy install command`, `Install guide`, `Check again`) | Press that button of the main page's notice; an error if it isn't showing. `Copy install command` answers `{ ok, copied }` (the command it copies; a test leaves the computer's clipboard alone); `Install guide` answers `{ ok, url }` and opens nothing (no browser in tests). |
 | `perms.set` | as `ORBIT_FAKE_PERMS` | Change the fake permission state; the shell re-checks as it would after the user returns from System Settings. |
 | `onboarding.next` | | Press the onboarding's (or the permissions banner's) primary button for the current step. |
 | `key.saved` | | What the app does once its key screen has saved an xAI key (the runner saves it through the bridge first): the app now knows it has one. |

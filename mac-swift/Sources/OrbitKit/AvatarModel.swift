@@ -111,11 +111,14 @@ public protocol AvatarEnvironment: AnyObject {
   /** Its window opened (the page is loading) / closed (after its fade-out, or switched off). */
   func windowOpened()
   func windowClosed()
+  /** Its window started (true) or stopped taking the mouse (the parity driver's avatar.mode). */
+  func mouseMode(takes: Bool)
 }
 
 extension AvatarEnvironment {
   public func windowOpened() {}
   public func windowClosed() {}
+  public func mouseMode(takes: Bool) {}
 }
 
 /** What the host and the facade need of an avatar (AvatarModel; a stand-in in the tests). */
@@ -166,6 +169,8 @@ public final class AvatarModel: AvatarHandle {
   private var lifted: (strip: Rect, area: Rect)?
   private var liftTimer: OverlayTimer?
   private lazy var hoverLog = RateLimitedLog(everyMs: 10_000, now: { [weak self] in self?.clock.now ?? 0 }) { [weak self] m in self?.env.info(m) }
+  private lazy var pressLog = RateLimitedLog(everyMs: 5_000, now: { [weak self] in self?.clock.now ?? 0 }) { [weak self] m in self?.env.info(m) }
+  private lazy var pageErrLog = RateLimitedLog(everyMs: 30_000, now: { [weak self] in self?.clock.now ?? 0 }) { [weak self] m in self?.env.warn(m) }
   private lazy var hover: HoverPoller = makeHover()
   private var shownAt: Double = 0
 
@@ -185,8 +190,13 @@ public final class AvatarModel: AvatarHandle {
       setIgnore: { [weak self] ignore in self?.win?.setIgnoresMouse(ignore) },
       isLive: { [weak self] in guard let self, let w = self.win else { return false }; return w.isVisible && !self.leaving },
       onCursor: { [weak self] c in self?.win?.send("buddy:cursor", c.map { ["x": .number($0.x), "y": .number($0.y)] } ?? .null) },
-      onMode: { [weak self] take in self?.hoverLog("mode", "\(k): its window \(take ? "takes the mouse (the cursor is on it, or it is held)" : "lets clicks through")") },
-      onRunning: { [weak self] on in self?.hoverLog(on ? "poll-on" : "poll-off", "\(k): hover polling \(on ? "started" : "stopped")") }
+      onMode: { [weak self] take in
+        self?.hoverLog("mode", "\(k): its window \(take ? "takes the mouse (the cursor is on it, or it is held)" : "lets clicks through")")
+        self?.env.mouseMode(takes: take)
+      },
+      onRunning: { [weak self] on in self?.hoverLog(on ? "poll-on" : "poll-off", "\(k): hover polling \(on ? "started" : "stopped")") },
+      // (Only logged: the last rect stands, since a page's timers can be slowed while he hasn't moved.)
+      onQuiet: { [weak self] ms in self?.hoverLog("quiet", "\(k): no word from its page for \(Int((ms / 1000).rounded())) s (its timers slowed or stalled): keeping where it last was") }
     )
   }
 
@@ -536,6 +546,27 @@ public final class AvatarModel: AvatarHandle {
 
   /** The page: where the avatar is drawn (window px), so the window takes the mouse over it. */
   public func pageHit(_ rect: Rect?) { hover.setHit(rect) }
+
+  static let pressOutcomes: Set<String> = ["click", "pickup", "ignored"]
+  static let pressWhy: Set<String> = ["talk", "poke", "throw-off", "too-long-for-a-click", "drag", "hold", "leaving", "press-already", "not-on-him"]
+
+  /** The page: what a press on it came to (logged, rate-limited, fixed words only). */
+  public func pressed(_ outcome: String, why: String) {
+    guard Self.pressOutcomes.contains(outcome) else { return }
+    let reason = Self.pressWhy.contains(why) ? why : ""
+    pressLog("press-\(outcome)-\(reason)", "\(kind.rawValue): a press on it: \(outcome)\(reason.isEmpty ? "" : " (\(reason))")")
+  }
+
+  /** The page had an error (its message only, never anything anyone said). */
+  public func pageError(_ message: String) {
+    pageErrLog("err", "\(kind.rawValue): its page had an error: \(String(message.prefix(160)))")
+  }
+
+  /** Its page is loading again, or its process went: nothing to hit until the page says where he is. */
+  public func pageReset(stopped: String?) {
+    if let stopped { env.info("\(kind.rawValue): its page stopped (\(String(stopped.prefix(40))))") }
+    hover.reset()
+  }
 
   public var takingMouse: Bool { hover.isTaking }
   public var isEnabled: Bool { enabled }

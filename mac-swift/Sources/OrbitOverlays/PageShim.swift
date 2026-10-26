@@ -45,6 +45,8 @@ enum PageShim {
         // The avatar (the pixel buddy or Qubit).
         buddyHover: (over, held) => post('buddy:hover', !!over, !!held),
         buddyHit: (r) => post('buddy:hit', rect(r)),
+        // A press on the avatar and what came of it ('click' | 'pickup' | 'ignored', and why), for the log.
+        buddyPress: (outcome, why) => post('buddy:press', String(outcome), String(why || '')),
         onBuddyCursor: on('buddy:cursor'),
         buddyTalk: () => post('buddy:talk'),
         buddyLift: (v) => post('buddy:lift', !!v),
@@ -67,6 +69,10 @@ enum PageShim {
     });
     // No context menu (the orb's own right-click handler still runs: this only stops the menu).
     addEventListener('contextmenu', (e) => e.preventDefault(), true);
+    // Errors on the page (their message only: the code's own words), so a stuck avatar explains itself.
+    const err = (m) => post('page:error', String(m || '').replace(/\s+/g, ' ').slice(0, 160));
+    addEventListener('error', (e) => err(e && e.message));
+    addEventListener('unhandledrejection', (e) => err(e && e.reason && (e.reason.message || e.reason)));
   })();
   """#
 }
@@ -91,6 +97,8 @@ public final class OverlayPage: NSObject, WKNavigationDelegate, WKUIDelegate {
   var onMessage: (String, [JSONValue]) -> Void = { _, _ in }
   /** The page finished loading (each time). */
   var onLoad: () -> Void = {}
+  /** The page started loading again, or its process went (`why`: nil, or what WebKit says): what it said about itself no longer holds. */
+  var onReset: (_ stopped: String?) -> Void = { _ in }
   /** Where the page's plumbing reports trouble (a refused message, a failed emit); no page content. */
   static var log: (String) -> Void = { _ in }
   private var refusedLogged = 0
@@ -247,10 +255,16 @@ public final class OverlayPage: NSObject, WKNavigationDelegate, WKUIDelegate {
     onLoad()
   }
 
+  public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+    guard !destroyed else { return }
+    onReset(nil)
+  }
+
   public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
     // The page's process went (memory pressure, a crash): load it again.
     guard !destroyed else { return }
     loaded = false
+    onReset("process ended")
     load()
   }
 

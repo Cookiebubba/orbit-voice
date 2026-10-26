@@ -17,6 +17,8 @@ final class AvatarWindow: AvatarWindowPort {
     panel.contentView = page.webView
     page.onMessage = onMessage
     page.onLoad = loaded
+    // Reloading or gone: nothing to hit until its page says where he is again (as a "page:reset" message).
+    page.onReset = { stopped in onMessage("page:reset", stopped.map { [.string($0)] } ?? []) }
     page.load()
   }
 

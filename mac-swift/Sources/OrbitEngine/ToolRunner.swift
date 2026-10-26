@@ -891,7 +891,7 @@ public actor ToolRunner {
     let useKey = str("brainConnection") == "api-key"
     let apiKey = useKey ? s.brainKey() : ""
     if useKey && apiKey.isEmpty { return ["error": "The second brain is set to use an Anthropic API key, but none is saved. Add it in Orbit Settings."] }
-    guard let claude = await s.findClaude(str("brainClaudePath")) else { return ["error": "Claude Code was not found, so the second brain is unavailable. Install Claude Code or set its path in Orbit Settings."] }
+    guard let claude = await s.findClaude(str("brainClaudePath")) else { return ["error": "Claude Code was not found, so the second brain is unavailable. Orbit Settings → Second brain has its one-line install command (or set its path there)."] }
 
     let wantExplore = on("brainExplore") && a["mode"]?.stringValue == "explore"
     let sessionArgGiven = JSTruthy.of(a["session"])
@@ -953,7 +953,7 @@ public actor ToolRunner {
     if searchRuns >= ToolRunner.maxSearchRuns { return ["error": .string("The web was searched \(ToolRunner.maxSearchRuns) times in this conversation, which is the limit. Starting a new conversation resets it.")] }
     let useKey = str("brainConnection") == "api-key"
     let apiKey = useKey ? s.brainKey() : ""
-    guard let claude = await s.findClaude(str("brainClaudePath")) else { return ["error": "Claude Code was not found, so web search is unavailable. Install Claude Code or set its path in Orbit Settings."] }
+    guard let claude = await s.findClaude(str("brainClaudePath")) else { return ["error": "Claude Code was not found, so web search is unavailable. Orbit Settings → Second brain has its one-line install command (or set its path there)."] }
     searchRuns += 1
     lastSearchAt = now
     let search = s.search

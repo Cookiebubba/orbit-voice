@@ -58,6 +58,35 @@ final class OracleTests: XCTestCase {
     XCTAssertEqual(wrong, 0, "cases that differ")
   }
 
+  /** Starting up on what an install may have: the voice engine it starts on and what its file says (main 04098cc). */
+  func testStartingUpChoosesTheVoiceEngineAsConfigJsDoes() throws {
+    let f = try Oracle.fixture("settings")
+    for c in f["engineFor"]?.arrayValue ?? [] {
+      XCTAssertEqual(EngineConfig.engineFor(saved: c["saved"]?.stringValue, hadFile: c["hadFile"] == .bool(true), hasKey: c["hasKey"] == .bool(true)), c["output"]?.stringValue, c.text)
+    }
+    let loads = f["loads"]?.arrayValue ?? []
+    XCTAssertGreaterThan(loads.count, 8)
+    // (The file's text is the engine's own JSON: compared as JSON, or both absent.)
+    let asJSON = { (v: JSONValue?) -> JSONValue in v?.stringValue.map { (try? JSONValue.parse($0)) ?? .string($0) } ?? .null }
+    for s in loads {
+      let name = s["name"]?.stringValue ?? "?"
+      let dir = FileManager.default.temporaryDirectory.appendingPathComponent("orbit-load-\(UUID().uuidString)")
+      try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let file = dir.appendingPathComponent("settings.json")
+      if let raw = s["raw"]?.stringValue { try Data(raw.utf8).write(to: file) } else if let o = s["file"], !o.isNull { try Data(JSONText.of(o).utf8).write(to: file) }
+      let read = { () -> JSONValue in (try? String(contentsOf: file, encoding: .utf8)).map { .string($0) } ?? .null }
+      let config = EngineConfig(dir: dir)
+      let loaded = config.load(env: [:], hasKey: !(s["key"]?.stringValue ?? "").isEmpty)
+      XCTAssertEqual(JSONValue.object(loaded), s["settings"], "\(name): the settings")
+      XCTAssertEqual(asJSON(read()), asJSON(s["afterLoad"]), "\(name): the file after starting")
+      config.update(["speed": 1.3])
+      XCTAssertEqual(asJSON(read()), asJSON(s["afterChange"]), "\(name): the file after a change")
+      config.update(["voiceEngine": EngineConfig.defaults["voiceEngine"]!])
+      XCTAssertEqual(asJSON(read()), asJSON(s["afterDefaultEngine"]), "\(name): the file with the default engine")
+    }
+  }
+
   func testTheLogIsScrubbedExactlyAsLogJsDoes() throws {
     for c in try Oracle.cases("scrub") {
       XCTAssertEqual(EngineLog.scrub(c.input.stringValue ?? ""), c.output.stringValue, "scrub(\(c.input.text.prefix(80)))")

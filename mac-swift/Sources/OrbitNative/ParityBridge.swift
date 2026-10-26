@@ -140,6 +140,14 @@ extension AppDelegate {
     case "window.minimize":
       ui?.minimizeToOrb()
       return ["ok": .bool(ui != nil)]
+    case "main.start":
+      guard let ui else { return ["ok": false, "error": "not ready"] }
+      ui.show(view: "main")
+      ui.parityStart()
+      return ["ok": true]
+    case "main.notice":
+      guard let ui, let label = args["button"]?.stringValue else { return ["ok": false, "error": "button: a notice button"] }
+      return ui.parityPressNotice(label) ?? ["ok": false, "error": .string("No \"\(label)\" button on the main page now.")]
     case "perms.set":
       ui?.setFakePerms(args)
       return ["ok": .bool(ui != nil)]

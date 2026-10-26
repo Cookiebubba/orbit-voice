@@ -60,6 +60,16 @@ public final class BridgeLink: NSObject, URLSessionTaskDelegate, @unchecked Send
     return try JSONValue.parse(d)
   }
 
+  /** POST a JSON body; the reply's JSON (any status: the bridge says what went wrong in it). */
+  public func postJSON(_ path: String, _ body: JSONValue = [:]) async throws -> JSONValue {
+    var req = try await request(path)
+    req.httpMethod = "POST"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.httpBody = Data(body.text.utf8)
+    let (d, _) = try await session.data(for: req)
+    return try JSONValue.parse(d)
+  }
+
   public func getData(_ path: String) async throws -> Data {
     let (d, r) = try await session.data(for: try await request(path))
     guard (r as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }

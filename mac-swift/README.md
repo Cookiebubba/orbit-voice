@@ -93,7 +93,7 @@ The oracle (`parity/oracle`, `node parity/oracle/gen.mjs` on a Mac):
 
 | Area | Cases |
 | --- | --- |
-| Settings | 5133 |
+| Settings | 5133, and 11 start-ups (the voice engine an install starts on) |
 | Log scrub | 321 |
 | Hotkeys | 15 |
 | Text checks (22 functions) | 2562 |
@@ -242,6 +242,23 @@ Native (Swift):
 - The launcher (white, Qubit's unchanged engine as the hero, the avatar carousel, icon-only buttons),
   Settings with every setting, History, the permissions onboarding (Microphone and Accessibility;
   Screen Recording optional, in Settings), as the Electron Mac build has them.
+- No xAI key needed to start (main 04098cc):
+  - New installs start on Claude voice. A saved choice wins, and installs from before stay on Grok.
+  - There is no key screen. Trying to talk to Grok without a key shows a notice on the main page,
+    with Open Settings (the key field focused) and Use Claude voice.
+  - The key field is in Settings → Voice engine → Grok.
+  - The hotkey, the wake word, the orb, Qubit's click and spoken updates all go through the same
+    "can talk" check.
+- Claude Code not installed: the main page and Settings (Voice engine, Second brain) show
+  Anthropic's one-line installer to copy (`curl -fsSL https://claude.ai/install.sh | bash`; Orbit
+  never runs it), a link to their install guide, and Check again. On Windows the core also looks in
+  the installer's own folder, so a fresh install is found without restarting Orbit.
+- Picking Qubit up (main 0edbf9b, 346a5bc):
+  - His last rect stands however quiet or frozen his page is. A page reload or crash forgets it.
+  - The mouse mode lets go only 150 ms after the cursor leaves him (6 px slack), so it can't flap.
+  - Press outcomes and page errors are logged, rate-limited, with fixed words only.
+  - The overlay pages' timers aren't throttled when occluded (WebKit's own switches, as before),
+    and the hover check doesn't depend on them.
 - The overlays: Qubit / the pixel buddy on the Claude window (pages unchanged in WKWebViews),
   click-through except over him, click to talk, pick up and throw inside his window, "Wheee!" on a
   real throw, guests on other apps' windows, the orb, Orbit's mouse; the Claude window tracker runs

@@ -294,6 +294,8 @@ final class AvatarModelTests: XCTestCase {
     XCTAssertEqual(w.last("buddy:cursor"), ["x": .number(w.frame.x + 520), "y": .number(w.frame.y + 170)], "his eye follows the cursor")
     env.cursorAt = ScreenPoint(x: w.frame.x + 20, y: w.frame.y + 20)
     env.manual.advance(HoverPoller.pollMs)
+    XCTAssertEqual(w.ignores.last, false, "just off him: a moment more (no flapping)")
+    env.manual.advance(HoverPoller.leaveMs + 40)
     XCTAssertEqual(w.ignores.last, true)
     // The snapshot: his figure on screen, standing on the floor (feet 3 px above the strip's bottom).
     let side = 36.0, r = side * 0.62

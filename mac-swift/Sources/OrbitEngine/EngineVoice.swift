@@ -209,7 +209,11 @@ public final class EngineVoice: @unchecked Sendable {
         rt.onWarn = { m, d in log.warn("voice", m, d) }
         return ClaudeSocket(rt)
       },
-      realtimeURL: realtimeURL
+      realtimeURL: realtimeURL,
+      claudeModelsDownloading: {
+        let st = voiceModels.status()
+        return st["state"]?.stringValue == "downloading" ? Int(st["percent"]?.doubleValue ?? 0) : nil
+      }
     ))
   }
 

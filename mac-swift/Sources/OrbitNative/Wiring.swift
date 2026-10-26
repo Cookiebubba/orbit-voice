@@ -86,6 +86,7 @@ final class VoiceUIAdapter: VoiceUI {
   var draft: VoiceDraft?
   var sending = false
   var sessionTitle: String?
+  var talkNotice: TalkNotice?
   @ObservationIgnored private let voice: VoiceController
   @ObservationIgnored private var subs: Set<AnyCancellable> = []
 
@@ -101,7 +102,10 @@ final class VoiceUIAdapter: VoiceUI {
     }.store(in: &subs)
     voice.$draft.sink { [weak self] d in self?.draft = d }.store(in: &subs)
     voice.$sessionTitle.sink { [weak self] t in self?.sessionTitle = t }.store(in: &subs)
+    voice.$talkNotice.sink { [weak self] n in self?.talkNotice = n }.store(in: &subs)
   }
+
+  func useClaudeVoice() { voice.useClaudeVoice() }
 
   func hotkey() { voice.hotkey() }
   func start() { if voice.state.phase == .off { voice.hotkey() } }

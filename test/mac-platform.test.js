@@ -72,7 +72,8 @@ test('the sessions reader finds a Mac layout on disk', () => {
 
 test('Mac: the usual install folders an app opened from Finder does not have on its PATH', () => {
   assert.deepEqual(wellKnownBinDirs(MAC), ['/Users/ada/.local/bin', '/Users/ada/.claude/local', '/opt/homebrew/bin', '/usr/local/bin', '/Users/ada/.npm-global/bin']);
-  assert.deepEqual(wellKnownBinDirs({ platform: 'win32', homedir: 'C:\\Users\\ada' }), []);
+  // Windows: the native installer's folder (a running Orbit doesn't see the PATH it adds until it restarts).
+  assert.deepEqual(wellKnownBinDirs({ platform: 'win32', homedir: 'C:\\Users\\ada' }), ['C:\\Users\\ada\\.local\\bin']);
 });
 
 test('Mac: findClaude looks on PATH, then the login shell PATH, then the usual folders, in that order', () => {
@@ -187,7 +188,8 @@ test('Mac: children get the widened PATH (an npm-installed Claude Code needs its
   assert.equal(new Set(dirs).size, dirs.length, 'no duplicates');
   const win = { PATH: 'C:\\Windows', Path: 'x' };
   assert.deepEqual(childEnv(win, { platform: 'win32' }), win);
-  assert.deepEqual(searchDirs({ platform: 'win32', env: { Path: 'C:\\a;C:\\b' }, homedir: 'C:\\Users\\ada' }), ['C:\\a', 'C:\\b']);
+  assert.deepEqual(searchDirs({ platform: 'win32', env: { Path: 'C:\\a;C:\\b' }, homedir: 'C:\\Users\\ada' }), ['C:\\a', 'C:\\b', 'C:\\Users\\ada\\.local\\bin']);
+  assert.deepEqual(searchDirs({ platform: 'win32', env: { Path: 'C:\\Users\\ada\\.local\\bin;C:\\a' }, homedir: 'C:\\Users\\ada' }), ['C:\\Users\\ada\\.local\\bin', 'C:\\a'], 'once');
 });
 
 // ---- ending a process and everything it started -------------------------------------------------

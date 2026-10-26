@@ -10,6 +10,7 @@
 // Fixtures marked `platform: "darwin"` depend on the platform (Orbit Native's): they're made and
 // checked on a Mac only.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { intentFixtures } from './intent.mjs';
@@ -70,6 +71,51 @@ export function settingsCases(sanitize, DEFAULTS) {
   return inputs.map((i) => plain(i)).map((input) => ({ input, output: plain(sanitize(input)) }));
 }
 
+/**
+ * Starting up (initConfig) on what an install may have: which voice engine it starts on (new
+ * installs on Claude voice; installs from before, with a settings file or a key, on Grok; a saved
+ * choice always wins), what the file says after, and after a change (the engine is always written).
+ */
+export function loadCases(config) {
+  const mem = (value) => ({ kind: 'memory', get: () => value, set: (v) => (value = String(v)) });
+  const KEY = 'xai-oracle-key-0000000000000000';
+  const scenarios = [
+    { name: 'a new install', file: null, key: '' },
+    { name: 'a new install with a key already (from the dev version)', file: null, key: KEY },
+    { name: 'an older install (a file without the choice)', file: { voice: 'eve', speed: 1.2 }, key: '' },
+    { name: 'an older install, an empty file', file: {}, key: '' },
+    { name: 'an older install with a key', file: { avatar: 'qubit' }, key: KEY },
+    { name: 'Claude chosen', file: { voiceEngine: 'claude' }, key: KEY },
+    { name: 'Grok chosen', file: { voiceEngine: 'grok' }, key: '' },
+    { name: 'a junk choice', file: { voiceEngine: 'gpt' }, key: '' },
+    { name: 'a junk choice, no key', raw: '{"voiceEngine": 5}', key: '' },
+    { name: 'an unreadable file', raw: '{nope', key: '' },
+    { name: 'the buddy switch off (before the avatar choice)', file: { buddy: false }, key: '' },
+  ];
+  const out = [];
+  for (const s of scenarios) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-oracle-load-'));
+    try {
+      const file = path.join(dir, 'settings.json');
+      if (s.raw !== undefined) fs.writeFileSync(file, s.raw);
+      else if (s.file) fs.writeFileSync(file, JSON.stringify(s.file));
+      const read = () => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null);
+      const loaded = config.initConfig({ dir, secrets: mem(s.key), brainSecrets: mem('') });
+      const afterLoad = read();
+      config.updateSettings({ speed: 1.3 });
+      const afterChange = read();
+      config.updateSettings({ voiceEngine: config.DEFAULTS.voiceEngine });
+      out.push({ ...s, settings: plain(loaded), afterLoad, afterChange, afterDefaultEngine: read() });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  const engineFor = [];
+  for (const saved of [undefined, 'grok', 'claude', 'gpt', ''])
+    for (const hadFile of [false, true]) for (const hasKey of [false, true]) engineFor.push({ saved: saved ?? null, hadFile, hasKey, output: config.engineFor({ saved, hadFile, hasKey }) });
+  return { loads: out, engineFor };
+}
+
 // ---------------------------------------------------------------- log scrub
 
 export function scrubCases(scrub) {
@@ -106,7 +152,7 @@ export async function build() {
   const system = await load('src', 'platform', 'system.js');
   return {
     // brainClaudePath's rules and the hotkey default are a Mac's here.
-    settings: { platform: 'darwin', defaults: plain(config.DEFAULTS), cases: settingsCases(config.sanitizeSettings, config.DEFAULTS) },
+    settings: { platform: 'darwin', defaults: plain(config.DEFAULTS), cases: settingsCases(config.sanitizeSettings, config.DEFAULTS), ...loadCases(config) },
     scrub: { platform: 'any', cases: scrubCases(log.scrub) },
     hotkey: { platform: 'any', cases: hotkeyCases(system.hotkeyLabel) },
     // The pure text modules (consent, send intent, offers, commands, cues, the avatar, prompts, continuity)...

@@ -259,6 +259,12 @@ public final class Overlays {
       let r = Rect(json: args.first)
       let ok = r.map { [$0.x, $0.y, $0.w, $0.h].allSatisfy { abs($0) < 100_000 } } ?? false
       m.pageHit(ok ? r : nil)
+    case "buddy:press":
+      m.pressed(args.first?.stringValue ?? "", why: args.count > 1 ? args[1].stringValue ?? "" : "")
+    case "page:error":
+      m.pageError(args.first?.stringValue ?? "")
+    case "page:reset":
+      m.pageReset(stopped: args.first?.stringValue)
     case "buddy:talk":
       // A quick click on the avatar: start talking, as "Hey Orbit" with its window in front.
       guard prefs.clickTalk else { return }
@@ -473,6 +479,7 @@ final class AvatarEnv: AvatarEnvironment {
   init(owner: Overlays, id: String, kind: AvatarKind, role: String) { (self.owner, self.id, self.kind, self.role) = (owner, id, kind, role) }
   func windowOpened() { owner?.emit("avatar.created", ["id": .string(id), "kind": .string(kind.rawValue), "role": .string(role)]) }
   func windowClosed() { owner?.emit("avatar.closed", ["id": .string(id)]) }
+  func mouseMode(takes: Bool) { owner?.emit("avatar.mode", ["id": .string(id), "takes": .bool(takes)]) }
 
   var clock: OverlayClock { MainClock.shared }
   func makeAvatarWindow(kind: AvatarKind, loaded: @escaping @MainActor () -> Void) -> AvatarWindowPort {

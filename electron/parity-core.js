@@ -10,7 +10,7 @@ import path from 'node:path';
 export const PARITY_FEATURES = Object.freeze(['avatar', 'mouse', 'voice', 'settings', 'window', 'hotkey', 'login', 'updater']);
 export const EVENTS_MAX = 200;
 /** The events ring's types (PROTOCOL.md), and nothing else. */
-export const PARITY_EVENTS = Object.freeze(['avatar.created', 'avatar.closed', 'avatar.talk', 'avatar.lift', 'avatar.sound', 'avatar.command', 'voice.phase', 'hotkey', 'core.ready']);
+export const PARITY_EVENTS = Object.freeze(['avatar.created', 'avatar.closed', 'avatar.talk', 'avatar.lift', 'avatar.sound', 'avatar.command', 'avatar.mode', 'voice.phase', 'hotkey', 'core.ready']);
 export const SOUNDS_MAX = 50;
 
 // Electron's accelerator grammar (modifiers, then one key), so the driver's stand-in hotkey refuses
@@ -68,6 +68,9 @@ const str = (v, max = 200) => typeof v === 'string' && v.length > 0 && v.length 
 const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e6;
 const none = () => ({});
 
+/** The buttons of the main page's notice after a try to talk that couldn't start (ui/src/App.tsx). */
+export const NOTICE_BUTTONS = Object.freeze(['Open Settings', 'Use Claude voice', 'Try again', 'Copy install command', 'Install guide', 'Check again']);
+
 /** Each action and what it may be given (returns the clean args, or a string saying what's wrong). */
 const ACTIONS = {
   'voice.hotkey': none,
@@ -107,6 +110,8 @@ const ACTIONS = {
   'settings.read': (a) => (typeof a.key === 'string' && /^[A-Za-z][A-Za-z0-9]{0,40}$/.test(a.key) ? { key: a.key } : 'key: a setting name'),
   'window.show': (a) => (['main', 'settings', 'history'].includes(a.name) ? { name: a.name } : 'name: main, settings or history'),
   'window.minimize': none,
+  'main.start': none,
+  'main.notice': (a) => (NOTICE_BUTTONS.includes(a.button) ? { button: a.button } : `button: ${NOTICE_BUTTONS.join(', ')}`),
   'perms.set': (a) => (parsePerms(a, {}) ? { perms: a } : 'mic: granted|denied|not-determined|restricted, ax and screen: booleans'),
   'onboarding.next': none,
   'key.saved': none,

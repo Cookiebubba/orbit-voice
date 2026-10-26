@@ -256,7 +256,7 @@ export function askBrain({ question, model = 'sonnet', explore = false, cwd, con
   timeoutMs ??= BRAIN_MODELS[model]?.timeoutMs ?? 60_000;
   return new Promise((resolve) => {
     const exe = claudePath || findClaude()?.path;
-    if (!exe) return resolve({ ok: false, error: 'Claude Code is not installed (or not found), so the second brain is unavailable. Set it up in Orbit Settings.' });
+    if (!exe) return resolve({ ok: false, error: 'Claude Code is not installed (or not found), so the second brain is unavailable. Orbit Settings → Second brain has its one-line install command.' });
     if (explore && !(cwd && fs.existsSync(cwd))) explore = false;
 
     // Claude login by default; an API key only when the user chose that connection.
@@ -395,7 +395,7 @@ export function readSearch(value) {
 export function searchWeb({ query, claudePath, apiKey, signal, spawnImpl = spawn, timeoutMs = SEARCH_LIMITS.timeoutMs }) {
   return new Promise((resolve) => {
     const exe = claudePath || findClaude()?.path;
-    if (!exe) return resolve({ ok: false, error: 'Claude Code is not installed (or not found), so web search is unavailable.' });
+    if (!exe) return resolve({ ok: false, error: 'Claude Code is not installed (or not found), so web search is unavailable. Orbit Settings → Second brain has its one-line install command.' });
     const env = childEnv(process.env);
     delete env.ANTHROPIC_API_KEY;
     delete env.ELECTRON_RUN_AS_NODE;

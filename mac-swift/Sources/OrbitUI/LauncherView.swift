@@ -22,6 +22,8 @@ public final class UIContext {
   @ObservationIgnored public let login: any LoginItemControl
   public var screen: LauncherScreen = .main
   public var typing = false
+  /** Settings was opened from the "needs an xAI key" notice: its key field takes the focus. */
+  public var focusKey = false
   /** The orbit-helper (the Claude app's driver) is present; false shows Settings' note. nil: unknown. */
   public var helperPresent: Bool?
   /** Bumped whenever the shell changes the login item or hotkey elsewhere (the menu), so views re-read. */
@@ -48,7 +50,10 @@ struct LauncherView: View {
         PermissionsBanner(text: banner.text) { Task { await ctx.onboarding.request(banner.missing[0].step) } }
       }
       switch ctx.screen {
-      case .settings: SettingsView(ctx: ctx) { ctx.screen = .main }
+      case .settings: SettingsView(ctx: ctx) {
+          ctx.focusKey = false
+          ctx.screen = .main
+        }
       case .history: HistoryView(items: ctx.voice.captions) { ctx.screen = .main }
       case .onboarding: OnboardingView(model: ctx.onboarding) { ctx.screen = .main }
       case .main:
@@ -56,9 +61,8 @@ struct LauncherView: View {
           Centered("Orbit isn't signed in to its local bridge. Close this and open Orbit again.")
         } else if !ctx.settings.loaded {
           Centered("Loading…")
-        } else if !ctx.settings.hasKey {
-          KeySetupView(ctx: ctx)
         } else {
+          // (Never a key screen: the main page shows with or without an xAI key; see Talk.)
           MainContent(ctx: ctx)
         }
       }
@@ -139,8 +143,13 @@ struct MainContent: View {
                        onActivate: { if !on { v.start() } else if v.asleep { v.wake() } })
         // CSS line boxes: 16px text in a 24px line, 11px mono "snug" in ~15px.
         Text(status).font(Theme.font(16, .semibold)).tracking(-0.32).foregroundStyle(Theme.fg).frame(minHeight: 24).padding(.top, 20)
-        if let hint {
+        let notice = on ? nil : v.talkNotice
+        if let hint, notice == nil {
           Text(hint).font(Theme.mono(11)).foregroundStyle(Theme.muted).multilineTextAlignment(.center).frame(minHeight: 15).padding(.top, 6)
+        }
+        if let notice {
+          TalkNoticeView(notice: notice, openSettings: { ctx.openSettings(focusKey: notice.kind == "grok-key") },
+                         useClaude: { v.useClaudeVoice() }, tryAgain: { v.start() })
         }
         if !working.isEmpty {
           HStack(spacing: 6) {
@@ -170,7 +179,7 @@ struct MainContent: View {
 
       if ctx.typing && on {
         HStack(spacing: 0) {
-          TextField("", text: $text, prompt: Text("Type to Grok…").foregroundStyle(Theme.faint))
+          TextField("", text: $text, prompt: Text(s.string("voiceEngine") == "claude" ? "Type to Orbit…" : "Type to Grok…").foregroundStyle(Theme.faint))
             .textFieldStyle(.plain).font(Theme.font(13)).foregroundStyle(Theme.fg)
             .focused($focused)
             .onSubmit(send)
@@ -246,46 +255,76 @@ struct PermissionsBanner: View {
   }
 }
 
-// MARK: - Key setup (no xAI key yet)
+// MARK: - The notice after a try to talk that couldn't start (no key screen)
 
-struct KeySetupView: View {
-  let ctx: UIContext
-  @State private var key = ""
-  @State private var error = ""
-  @FocusState private var focused: Bool
+extension UIContext {
+  /** Settings, with its xAI key field focused when the notice was about the key. */
+  public func openSettings(focusKey: Bool = false) {
+    self.focusKey = focusKey
+    screen = .settings
+  }
+}
+
+/** Grok without a key, or Claude voice not ready: what to do, in a line, with a way out (App.tsx). */
+struct TalkNoticeView: View {
+  let notice: TalkNotice
+  var openSettings: () -> Void
+  var useClaude: () -> Void
+  var tryAgain: () -> Void
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Wordmark(size: 40)
-      Text("Welcome").eyebrow()
-      (Text("Orbit uses Grok Voice from xAI. Paste your xAI API key to start. Get one at ")
-        + Text("[console.x.ai](https://console.x.ai)").underline()
-        + Text(" → API Keys. It's stored encrypted, only on this computer."))
-        .font(Theme.font(13)).foregroundStyle(Theme.ink).relaxed(13).tint(Theme.fg)
-        .fixedSize(horizontal: false, vertical: true)
-      SecureField("", text: $key, prompt: Text("xai-…").foregroundStyle(Theme.faint))
-        .focused($focused)
-        .modifier(FieldStyle(height: 40, radius: 12, focused: focused))
-        .onSubmit(save)
-      if !error.isEmpty { Text(error).font(Theme.font(12)).foregroundStyle(Theme.amber700) }
-      Button("Save key", action: save)
-        .buttonStyle(PillButtonStyle(kind: .dark, size: 14, height: 44, fullWidth: true))
-        .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
+    VStack(spacing: 8) {
+      Text(notice.text).font(Theme.font(12.5)).foregroundStyle(notice.kind == "claude-models" ? Theme.ink : Theme.amber700)
+        .multilineTextAlignment(.center).snug(12.5).fixedSize(horizontal: false, vertical: true)
+      if notice.kind == "claude-missing" {
+        InstallClaudeCodeView(onCheck: tryAgain, center: true)
+      } else if notice.kind != "claude-models" {
+        HStack(spacing: 8) {
+          Button("Open Settings", action: openSettings).buttonStyle(PillButtonStyle(kind: .soft))
+          if notice.kind == "grok-key" { Button("Use Claude voice", action: useClaude).buttonStyle(PillButtonStyle(kind: .soft)) }
+          if notice.kind == "claude-models-error" { Button("Try again", action: tryAgain).buttonStyle(PillButtonStyle(kind: .soft)) }
+        }
+      }
     }
-    .padding(.horizontal, 24)
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .frame(maxWidth: 320)
+    .padding(.top, 8)
+    .accessibilityElement(children: .contain)
+    .accessibilityAddTraits(.updatesFrequently)
+  }
+}
+
+/**
+ * Claude Code isn't on this Mac: Anthropic's one-line installer to copy (Orbit never runs it
+ * itself), their install guide, and a check again. The main page's notice and Settings use it.
+ */
+struct InstallClaudeCodeView: View {
+  var onCheck: () -> Void
+  var center = false
+  @State private var copied = false
+
+  /** Puts the install command on the clipboard. */
+  @MainActor static func copyCommand() -> String {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(Talk.claudeInstallCommand, forType: .string)
+    return Talk.claudeInstallCommand
   }
 
-  private func save() {
-    let k = key.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !k.isEmpty else { return }
-    error = ""
-    Task {
-      do {
-        try await ctx.bridge.setXaiKey(k)
-        key = ""
-        ctx.settings.markHasKey()
-      } catch {
-        self.error = (error as? BridgeError)?.message ?? "Could not save the key."
+  var body: some View {
+    VStack(alignment: center ? .center : .leading, spacing: 8) {
+      Text(Talk.claudeInstallCommand).font(Theme.mono(11.5)).foregroundStyle(Theme.ink).textSelection(.enabled)
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.soft))
+      HStack(spacing: 8) {
+        Button(copied ? "Copied" : "Copy install command") {
+          _ = Self.copyCommand()
+          copied = true
+          Task {
+            try? await Task.sleep(for: .seconds(2))
+            copied = false
+          }
+        }
+        .buttonStyle(PillButtonStyle(kind: .soft))
+        Button("Install guide") { openExternal(Talk.claudeCodeGuide) }.buttonStyle(PillButtonStyle(kind: .soft))
+        Button("Check again", action: onCheck).buttonStyle(PillButtonStyle(kind: .soft))
       }
     }
   }
