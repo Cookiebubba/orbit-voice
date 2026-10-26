@@ -10,6 +10,7 @@ import { createFocusGuard } from '../src/anywhere/focus-guard.js';
 import { createWinFocusTracker } from '../src/platform/win/focus.js';
 import { canRunApps, startFakeApp, userIdleMs } from './e2e/fake-app.mjs';
 import { lockDesktop } from './e2e/desktop-lock.mjs';
+import { realDesktopSkip } from './e2e/real-desktop.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const W = (hwnd, extra = {}) => ({ hwnd, owner: 0, pid: hwnd + 1, exe: `app${hwnd}.exe`, title: `w${hwnd}`, cls: 'X', kind: 'app', min: false, max: false, cloaked: false, elevated: false, x: 0, y: 0, w: 10, h: 10, dpi: 96, ...extra });
@@ -87,7 +88,7 @@ test('never a tug of war: at most 6 restores a minute', async () => {
 });
 
 const idle = process.env.ORBIT_TEST_FOCUS === '1' || (canRunApps() && userIdleMs() > 60_000);
-const skipReal = !canRunApps() ? 'needs Windows with .NET Framework 4 (csc.exe)' : !idle && 'someone is using this PC (set ORBIT_TEST_FOCUS=1 to run it anyway)';
+const skipReal = realDesktopSkip || (!canRunApps() ? 'needs Windows with .NET Framework 4 (csc.exe)' : !idle && 'someone is using this PC (set ORBIT_TEST_FOCUS=1 to run it anyway)');
 // The desktop lock is taken here, not inside the test: waiting for the other real-desktop files
 // (desktop-uia alone takes over a minute) must not count against the test's own timeout.
 if (!skipReal && process.platform === 'win32') await lockDesktop();

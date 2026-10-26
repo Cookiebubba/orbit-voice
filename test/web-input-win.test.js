@@ -19,8 +19,9 @@ import { createToolRunner } from '../src/tools.js';
 import { startWebInputApp } from './e2e/web-input.mjs';
 import { canRunApps, startFakeApp, userIdleMs } from './e2e/fake-app.mjs';
 import { lockDesktop } from './e2e/desktop-lock.mjs';
+import { realDesktopSkip } from './e2e/real-desktop.mjs';
 
-const skip = process.platform !== 'win32' && 'needs Windows';
+const skip = realDesktopSkip || (process.platform !== 'win32' && 'needs Windows');
 if (!skip) await lockDesktop(); // one real-desktop test file at a time
 initConfig({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-web-input-')) });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

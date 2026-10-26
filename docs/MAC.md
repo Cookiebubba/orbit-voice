@@ -13,6 +13,22 @@ macOS accessibility API (AXUIElement), the window server (CGWindowList), ScreenC
 Vision. Orbit starts it as its own child process, so macOS counts it as Orbit: the switches you turn
 on for Orbit in System Settings cover it.
 
+## Requirements
+
+- Claude Code, signed in. If the Claude app's copy isn't there and `claude` isn't installed, install it
+  in Terminal:
+
+  ```bash
+  curl -fsSL https://claude.ai/install.sh | bash
+  ```
+
+  (or `brew install --cask claude-code`, or `npm install -g @anthropic-ai/claude-code` with Node.js 22
+  or later), then run `claude` once and sign in with your Claude account. See Anthropic's
+  [setup guide](https://code.claude.com/docs/en/setup). Orbit shows the same command, with Copy and
+  Check again, when it can't find Claude Code. It never runs the installer itself.
+- Only for Grok voice: an xAI API key.
+
+
 ## What works
 
 | On a Mac | |

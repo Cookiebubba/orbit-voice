@@ -259,16 +259,16 @@ public final class OrbitUI: NSObject, NSWindowDelegate {
 
   /**
    * Press a button of the main page's notice (parity main.notice): nil if it isn't showing, else its
-   * answer. Copy install command: the command it copies (a test leaves the Mac's clipboard alone);
-   * Install guide: its link (opened nowhere in a test).
+   * answer. Copy: the install command it copies (a test leaves the Mac's clipboard alone); Setup
+   * guide: its link (opened nowhere in a test).
    */
   public func parityPressNotice(_ label: String) -> JSONValue? {
     guard context.voice.phase == .off, let n = context.voice.talkNotice, ParityNotice.buttons(for: n.kind).contains(label) else { return nil }
     switch label {
     case "Open Settings": context.openSettings(focusKey: n.kind == "grok-key")
     case "Use Claude voice": context.voice.useClaudeVoice()
-    case "Copy install command": return ["ok": true, "copied": .string(Talk.claudeInstallCommand)]
-    case "Install guide": return ["ok": true, "url": .string(Talk.claudeCodeGuide.absoluteString)]
+    case "Copy": return ["ok": true, "copied": .string(Talk.claudeInstallCommand)]
+    case "Setup guide": return ["ok": true, "url": .string(Talk.claudeCodeGuide.absoluteString)]
     default: context.voice.start()
     }
     return ["ok": true]

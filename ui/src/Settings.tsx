@@ -7,14 +7,10 @@ import { postJson, type AppConfig, type Settings as SettingsT } from "./useAppSt
 import VoiceSettings, { prefetchVoices } from "./VoiceSettings";
 import PillScroll from "./components/PillScroll";
 import Reveal from "./components/Reveal";
+import { InstallCommand, NotSignedInLine, SetupGuideLink, SignInStep } from "./components/ClaudeSetup";
 import { PULSE_MAX, PULSE_MIN } from "./orbLook";
 import { ARROW_PATH, PREVIEW, css } from "./mouse/shape.js";
 import { MacPermissionsSection } from "./MacPermissions";
-import { claudeCodeMissing } from "./talk.js";
-import { InstallClaudeCode } from "./InstallClaudeCode";
-
-// (The terminal the install words name: PowerShell on Windows, Terminal on a Mac.)
-const platform = desktop?.platform || (isMac ? "darwin" : "other");
 
 export const REPO_URL = "https://github.com/Cookiebubba/orbit-voice";
 
@@ -468,7 +464,9 @@ const STT: { value: SttId; label: string; hint: string }[] = [
 type SttState = { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string; mb: number };
 
 // ---------- second brain ----------
-type ClaudeVoiceStatus = { models: { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string }; mb: number; claudeFound: boolean; stt?: Record<SttId, SttState> };
+type ClaudeVoiceStatus = { models: { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string }; mb: number; claudeFound: boolean; signedIn?: boolean | null; stt?: Record<SttId, SttState> };
+/** Second brain's "Check again" tells the Claude voice section to look again too. */
+const CLAUDE_CHECK_EVENT = "orbit:claude-check";
 
 /** Claude through your own Claude Code with speech models on this PC, or Grok (with an xAI key). */
 function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: SettingsT; update: Update; config: AppConfig; onKeySaved: () => void; focusKey: boolean }) {
@@ -481,6 +479,10 @@ function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: Se
   useEffect(() => {
     refresh();
   }, [s.voiceEngine]);
+  useEffect(() => {
+    window.addEventListener(CLAUDE_CHECK_EVENT, refresh);
+    return () => window.removeEventListener(CLAUDE_CHECK_EVENT, refresh);
+  }, []);
   // While the models download, check progress every second.
   const sttDownloading = !!status?.stt && Object.values(status.stt).some((x) => x.state === "downloading");
   useEffect(() => {
@@ -579,10 +581,10 @@ function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: Se
         {status && (
           <div className="mt-3 text-[12px] leading-snug">
             <Reveal show={!status.claudeFound}>
-              <div className="mb-3">
-                <p className="mb-2 text-amber-700">{claudeCodeMissing(platform)}</p>
-                <InstallClaudeCode platform={platform} onCheck={refresh} />
-              </div>
+              <p className="mb-2 text-amber-700">Claude Code wasn't found. How to install it is under Second brain below.</p>
+            </Reveal>
+            <Reveal show={status.claudeFound && status.signedIn === false}>
+              <NotSignedInLine className="mb-2 text-[12px]" />
             </Reveal>
             <Reveal show={m?.state === "ready"}>
               <p className="text-muted">Speech models ready.</p>
@@ -628,6 +630,17 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
   useEffect(() => {
     refresh();
   }, [s.brainClaudePath, s.brainConnection]);
+  // "Check again" under the install command: look for Claude Code again (here and in Claude voice).
+  const [checking, setChecking] = useState<"idle" | "checking" | "still">("idle");
+  const checkAgain = async () => {
+    setChecking("checking");
+    window.dispatchEvent(new Event(CLAUDE_CHECK_EVENT));
+    const st: BrainStatus | null = await fetch("/api/brain")
+      .then((r) => r.json())
+      .catch(() => null);
+    if (st) setStatus(st);
+    setChecking(st && !st.found ? "still" : "idle");
+  };
 
   // After "Sign in": re-check every 3 s (for up to 3 minutes) until Claude Code reports signed in.
   const [signingIn, setSigningIn] = useState<{ since: number; error?: string } | null>(null);
@@ -691,6 +704,24 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
             : `For current facts (the latest versions, news, docs), ${name} looks them up instead of guessing, with xAI's own web and X search. What pages say is never taken as an instruction.`
         }
       />
+      <Reveal show={!!status && !status.found && (s.voiceEngine === "claude" || s.brainConnection === "claude-code")}>
+        <div className="mt-4">
+          <p className="text-[12.5px] leading-snug text-amber-700">Claude Code isn't on {thisComputer} yet. To install it, paste this into a terminal:</p>
+          <InstallCommand className="mt-2" />
+          <SignInStep className="mt-2" />
+          <div className="mt-2.5 flex items-center gap-2">
+            <button
+              onClick={checkAgain}
+              disabled={checking === "checking"}
+              className="h-8 shrink-0 rounded-lg px-3 text-[12.5px] bg-soft text-ink transition-colors hover:bg-black/[0.08] hover:text-fg disabled:opacity-50"
+            >
+              {checking === "checking" ? "Checking…" : "Check again"}
+            </button>
+            <SetupGuideLink className="h-8 shrink-0 rounded-lg px-3 text-[12.5px] leading-8 text-ink transition-colors hover:bg-soft hover:text-fg" />
+            {checking === "still" && <span className="min-w-0 text-[12px] leading-snug text-muted">Still not found.</span>}
+          </div>
+        </div>
+      </Reveal>
       <Reveal show={s.brainEnabled}>
         <>
           <div className="mt-4 mb-1.5 text-[12.5px] text-ink">Model</div>
@@ -735,12 +766,6 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
               : `Questions are billed to your Anthropic API account. The key is encrypted on ${thisComputer}.`}
           </p>
 
-          <Reveal show={s.brainConnection === "claude-code" && !!status && !status.found}>
-            <div className="mt-2 text-[12.5px] leading-snug">
-              <p className="mb-2 text-amber-700">Claude Code isn't on {thisComputer} yet. Copy the install command into {platform === "win32" ? "PowerShell" : "Terminal"}, run it, then press Check again.</p>
-              <InstallClaudeCode platform={platform} onCheck={refresh} />
-            </div>
-          </Reveal>
 
           <Reveal show={s.brainConnection === "claude-code" && !!status?.found && status.signedIn !== null}>
             {status && <div className="mt-2 flex items-center justify-between gap-3 text-[12.5px]">
@@ -751,7 +776,7 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
                     ? signingIn.error
                     : signingIn
                       ? "Finish signing in in the window and browser that opened…"
-                      : "Claude Code isn't signed in (or its sign-in expired)."}
+                      : "Claude Code isn't signed in. Sign in here, or run claude once in a terminal."}
               </span>
               {!status.signedIn && (
                 <button

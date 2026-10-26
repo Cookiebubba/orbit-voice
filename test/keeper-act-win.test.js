@@ -23,9 +23,10 @@ import { keepers, pageSession, setKeeperLauncher } from '../src/anywhere/keeper.
 import { createToolRunner } from '../src/tools.js';
 import { startSlateApp } from './e2e/slate-input.mjs';
 import { lockDesktop } from './e2e/desktop-lock.mjs';
+import { realDesktopSkip } from './e2e/real-desktop.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const skip = process.platform !== 'win32' && 'needs Windows';
+const skip = realDesktopSkip || (process.platform !== 'win32' && 'needs Windows');
 if (!skip) await lockDesktop(); // one real-desktop test file at a time
 initConfig({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-keeper-act-')) });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

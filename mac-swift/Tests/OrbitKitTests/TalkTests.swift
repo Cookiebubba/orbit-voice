@@ -26,6 +26,11 @@ final class TalkTests: XCTestCase {
       ["claudeFound": .bool(found), "models": ["state": .string(state), "percent": .number(percent), "error": .string(error)]]
     }
     XCTAssertEqual(Talk.notice(.claude, engine: "claude", hasKey: false, status: st(false, "ready")), TalkNotice(kind: "claude-missing", text: Talk.claudeCodeMissing))
+    // Found but signed out: its own line. Unknown (null) never blocks.
+    let signedOut: JSONValue = ["claudeFound": .bool(true), "signedIn": .bool(false), "models": ["state": .string("ready")]]
+    XCTAssertEqual(Talk.notice(.claude, engine: "claude", hasKey: false, status: signedOut), TalkNotice(kind: "claude-signed-out", text: Talk.claudeNotSignedIn))
+    let unknown: JSONValue = ["claudeFound": .bool(true), "signedIn": .null, "models": ["state": .string("ready")]]
+    XCTAssertNil(Talk.notice(.claude, engine: "claude", hasKey: false, status: unknown))
     XCTAssertEqual(Talk.notice(.claude, engine: "claude", hasKey: false, status: st(true, "downloading", 42))?.kind, "claude-models")
     XCTAssertTrue(Talk.notice(.claude, engine: "claude", hasKey: false, status: st(true, "downloading", 42))?.text.contains("42%") == true)
     XCTAssertEqual(Talk.notice(.claude, engine: "claude", hasKey: false, status: st(true, "idle"))?.kind, "claude-models")
@@ -46,8 +51,10 @@ final class TalkTests: XCTestCase {
     // Anthropic's own one-line installer and guide (code.claude.com/docs/en/setup), as ui/src/talk.js has them for a Mac.
     XCTAssertEqual(Talk.claudeInstallCommand, "curl -fsSL https://claude.ai/install.sh | bash")
     XCTAssertEqual(Talk.claudeCodeGuide.absoluteString, "https://code.claude.com/docs/en/setup")
-    XCTAssertEqual(Talk.claudeCodeMissing, "Claude voice needs Claude Code (it runs on your Claude plan). Copy the install command, paste it into Terminal and press Return, then press Check again.")
-    XCTAssertEqual(ParityNotice.buttons(for: "claude-missing"), ["Copy install command", "Install guide", "Check again"])
+    XCTAssertEqual(Talk.claudeCodeMissing, "Claude voice needs Claude Code on this computer. To install it, paste this into a terminal:")
+    XCTAssertEqual(Talk.claudeNotSignedIn, "Claude Code isn't signed in. Run claude once in a terminal and sign in with your Claude account.")
+    XCTAssertEqual(ParityNotice.buttons(for: "claude-missing"), ["Copy", "Check again", "Setup guide", "Open Settings"])
+    XCTAssertEqual(ParityNotice.buttons(for: "claude-signed-out"), ["Check again", "Open Settings"])
     XCTAssertEqual(ParityNotice.buttons(for: "grok-key"), ["Open Settings", "Use Claude voice"])
     XCTAssertEqual(ParityNotice.buttons(for: "claude-models-error"), ["Open Settings", "Try again"])
     XCTAssertEqual(ParityNotice.buttons(for: "claude-models"), [])

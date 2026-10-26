@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CLAUDE_CODE_GUIDE, CLAUDE_CODE_MISSING, GROK_NEEDS_KEY, canTalk, claudeInstallCommand, needsModelDownload, screenFor, talkNotice } from '../ui/src/talk.js';
+import { CLAUDE_CODE_MISSING, GROK_NEEDS_KEY, canTalk, needsModelDownload, screenFor, talkNotice } from '../ui/src/talk.js';
 import { DEFAULTS, engineFor, getSetting, initConfig, updateSettings } from '../src/config.js';
 
 // A developer's own .env key (brought over at first run in dev mode) mustn't make this a "has a key" machine.
@@ -68,19 +68,7 @@ test('Claude voice not ready: Claude Code missing, models downloading or failed'
   const st = (claudeFound, state, percent = 0, error = '') => ({ claudeFound, models: { state, percent, error } });
   const c = cfg(false, 'claude');
   assert.deepEqual(talkNotice('claude', c, st(false, 'ready')), { kind: 'claude-missing', text: CLAUDE_CODE_MISSING });
-  // How to install it, in this system's own terms (Anthropic's one-line installer, code.claude.com/docs/en/setup).
-  assert.match(CLAUDE_CODE_MISSING, /Copy the install command, paste it into Terminal and press Return, then press Check again\./);
-  assert.match(talkNotice('claude', c, st(false, 'ready'), 'win32').text, /paste it into PowerShell and press Enter/);
-  assert.equal(claudeInstallCommand('darwin'), 'curl -fsSL https://claude.ai/install.sh | bash');
-  assert.equal(claudeInstallCommand('win32'), 'irm https://claude.ai/install.ps1 | iex');
-  assert.equal(CLAUDE_CODE_GUIDE, 'https://code.claude.com/docs/en/setup');
-  const app = fs.readFileSync(path.join(ROOT, 'ui', 'src', 'App.tsx'), 'utf8');
-  assert.match(app, /notice\.kind === "claude-missing" \? \(\s*<InstallClaudeCode platform=\{platform\} onCheck=\{startTalk\}/);
-  const install = fs.readFileSync(path.join(ROOT, 'ui', 'src', 'InstallClaudeCode.tsx'), 'utf8');
-  assert.match(install, /Copy install command/);
-  assert.match(install, /Install guide/);
-  assert.match(install, /Check again/);
-  assert.doesNotMatch(install, /child_process|exec\(|spawn/, 'Orbit never runs the installer itself');
+  // (How to install it, the command and Check again: test/claude-setup.test.js.)
   assert.equal(talkNotice('claude', c, st(true, 'downloading', 42)).kind, 'claude-models');
   assert.match(talkNotice('claude', c, st(true, 'downloading', 42)).text, /42%/);
   assert.equal(talkNotice('claude', c, st(true, 'idle')).kind, 'claude-models');

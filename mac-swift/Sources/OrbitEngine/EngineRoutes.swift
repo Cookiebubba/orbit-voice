@@ -31,9 +31,11 @@ extension Engine {
   func voiceRoute(_ r: BridgeRequest) async -> BridgeReply? {
     switch "\(r.method) \(r.path)" {
     case "GET /api/claude-voice":
-      // For Settings: the speech models' state, and whether Claude Code is here.
-      let found = await brain.findClaude(config.string("brainClaudePath")) != nil
-      return json(200, ["models": voiceModels.status(), "mb": .number(Double(VoiceModels.mb)), "claudeFound": .bool(found), "stt": voiceModels.sttStatus()])
+      // For Settings and the main page: the speech models' state, whether Claude Code is here, and
+      // whether it's signed in (null when that couldn't be checked).
+      let claude = await brain.findClaude(config.string("brainClaudePath"))
+      let signedIn = claude == nil ? JSONValue.null : await claudeSignedIn(claude!.path)
+      return json(200, ["models": voiceModels.status(), "mb": .number(Double(VoiceModels.mb)), "claudeFound": .bool(claude != nil), "signedIn": signedIn, "stt": voiceModels.sttStatus()])
 
     case "POST /api/claude-voice/stt-download":
       // One speech-to-text model (pinned checksum), when it's chosen; Settings polls GET for progress.
@@ -168,6 +170,15 @@ extension Engine {
 
   // MARK: the second brain
 
+  /** Is this Claude Code signed in? true / false, or null when it couldn't tell (never blocks). Checked at most every 5 s. */
+  func claudeSignedIn(_ path: String) async -> JSONValue {
+    if let c = authCache.get(), Date().timeIntervalSince(c.at) <= 5, c.path == path { return c.signedIn }
+    let st = await brain.authStatus(claudePath: path)
+    let signedIn = st["ok"] == .bool(true) ? (st["signedIn"] ?? .null) : .null
+    authCache.set((Date(), path, signedIn))
+    return signedIn
+  }
+
   func brainRoute(_ r: BridgeRequest) async -> BridgeReply? {
     switch "\(r.method) \(r.path)" {
     case "GET /api/brain":
@@ -175,15 +186,7 @@ extension Engine {
       // (null when not checked: an API-key connection, or not found).
       let claude = await brain.findClaude(config.string("brainClaudePath"))
       var signedIn: JSONValue = .null
-      if let claude, config.string("brainConnection") != "api-key" {
-        if let c = authCache.get(), Date().timeIntervalSince(c.at) <= 5, c.path == claude.path {
-          signedIn = c.signedIn
-        } else {
-          let st = await brain.authStatus(claudePath: claude.path)
-          signedIn = st["ok"] == .bool(true) ? (st["signedIn"] ?? .null) : .null
-          authCache.set((Date(), claude.path, signedIn))
-        }
-      }
+      if let claude, config.string("brainConnection") != "api-key" { signedIn = await claudeSignedIn(claude.path) }
       return json(200, ["found": .bool(claude != nil), "path": claude.map { .string($0.path) } ?? .null, "source": claude.map { .string($0.source) } ?? .null,
                         "hasKey": .bool(!brainKey.get().isEmpty), "signedIn": signedIn])
 

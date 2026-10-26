@@ -13,10 +13,11 @@ import { createUiaHost } from '../src/platform/win/uia.js';
 import { createToolRunner } from '../src/tools.js';
 import { canRunApps, startFakeApp } from './e2e/fake-app.mjs';
 import { lockDesktop } from './e2e/desktop-lock.mjs';
+import { realDesktopSkip } from './e2e/real-desktop.mjs';
 
-if (process.platform === 'win32') await lockDesktop(); // one real-desktop test file at a time
+if (process.platform === 'win32' && !realDesktopSkip) await lockDesktop(); // one real-desktop test file at a time
 
-const skip = !canRunApps() && 'needs Windows with .NET Framework 4 (csc.exe)';
+const skip = realDesktopSkip || (!canRunApps() && 'needs Windows with .NET Framework 4 (csc.exe)');
 initConfig({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-act-win-')) });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

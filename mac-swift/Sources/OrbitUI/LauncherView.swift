@@ -277,13 +277,18 @@ struct TalkNoticeView: View {
   var useClaude: () -> Void
   var tryAgain: () -> Void
   var body: some View {
+    let missing = notice.kind == "claude-missing", setup = missing || notice.kind == "claude-signed-out"
     VStack(spacing: 8) {
       Text(notice.text).font(Theme.font(12.5)).foregroundStyle(notice.kind == "claude-models" ? Theme.ink : Theme.amber700)
         .multilineTextAlignment(.center).snug(12.5).fixedSize(horizontal: false, vertical: true)
-      if notice.kind == "claude-missing" {
-        InstallClaudeCodeView(onCheck: tryAgain, center: true)
-      } else if notice.kind != "claude-models" {
+      if missing {
+        InstallCommandBox()
+        SignInStepText().frame(maxWidth: .infinity, alignment: .leading)
+      }
+      if notice.kind != "claude-models" {
         HStack(spacing: 8) {
+          if setup { Button("Check again", action: tryAgain).buttonStyle(PillButtonStyle(kind: .soft)) }
+          if missing { Button("Setup guide") { openExternal(Talk.claudeCodeGuide) }.buttonStyle(PillButtonStyle(kind: .soft)) }
           Button("Open Settings", action: openSettings).buttonStyle(PillButtonStyle(kind: .soft))
           if notice.kind == "grok-key" { Button("Use Claude voice", action: useClaude).buttonStyle(PillButtonStyle(kind: .soft)) }
           if notice.kind == "claude-models-error" { Button("Try again", action: tryAgain).buttonStyle(PillButtonStyle(kind: .soft)) }
@@ -297,13 +302,8 @@ struct TalkNoticeView: View {
   }
 }
 
-/**
- * Claude Code isn't on this Mac: Anthropic's one-line installer to copy (Orbit never runs it
- * itself), their install guide, and a check again. The main page's notice and Settings use it.
- */
-struct InstallClaudeCodeView: View {
-  var onCheck: () -> Void
-  var center = false
+/** Claude Code's install command for this Mac in a code box, with Copy (ui/src/components/ClaudeSetup.tsx InstallCommand). */
+struct InstallCommandBox: View {
   @State private var copied = false
 
   /** Puts the install command on the clipboard. */
@@ -314,22 +314,53 @@ struct InstallClaudeCodeView: View {
   }
 
   var body: some View {
-    VStack(alignment: center ? .center : .leading, spacing: 8) {
-      Text(Talk.claudeInstallCommand).font(Theme.mono(11.5)).foregroundStyle(Theme.ink).textSelection(.enabled)
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.soft))
-      HStack(spacing: 8) {
-        Button(copied ? "Copied" : "Copy install command") {
+    VStack(alignment: .leading, spacing: 4) {
+      Text("In Terminal:").font(Theme.font(11.5)).foregroundStyle(Theme.muted)
+      HStack(spacing: 4) {
+        Text(Talk.claudeInstallCommand).font(Theme.mono(11.5)).foregroundStyle(Theme.fg).textSelection(.enabled)
+          .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+        Button {
           _ = Self.copyCommand()
           copied = true
           Task {
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(1.8))
             copied = false
           }
+        } label: {
+          Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc").font(Theme.font(12)).labelStyle(.titleAndIcon)
         }
-        .buttonStyle(PillButtonStyle(kind: .soft))
-        Button("Install guide") { openExternal(Talk.claudeCodeGuide) }.buttonStyle(PillButtonStyle(kind: .soft))
+        .buttonStyle(PillButtonStyle(kind: .soft, size: 12, height: 28, hPad: 8, radius: 6))
+        .accessibilityLabel("Copy the install command")
+      }
+      .padding(.leading, 10).padding(.trailing, 4).padding(.vertical, 4)
+      .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.soft))
+      .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+/** "Then run claude once…" (ClaudeSetup.tsx SignInStep). */
+struct SignInStepText: View {
+  var body: some View {
+    (Text("Then run ") + Text("claude").font(Theme.mono(11.5)).foregroundColor(Theme.ink) + Text(" once in a terminal and sign in with your Claude account."))
+      .font(Theme.font(12)).foregroundStyle(Theme.muted).snug(12).fixedSize(horizontal: false, vertical: true)
+  }
+}
+
+/**
+ * Claude Code isn't on this Mac: Anthropic's install command to copy (Orbit never runs it itself),
+ * the sign-in step, Check again and Anthropic's setup guide. Settings and the voice setup use it.
+ */
+struct InstallClaudeCodeView: View {
+  var onCheck: () -> Void
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      InstallCommandBox()
+      SignInStepText()
+      HStack(spacing: 8) {
         Button("Check again", action: onCheck).buttonStyle(PillButtonStyle(kind: .soft))
+        Button("Setup guide") { openExternal(Talk.claudeCodeGuide) }.buttonStyle(PillButtonStyle(kind: .soft))
       }
     }
   }

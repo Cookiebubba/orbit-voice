@@ -53,10 +53,10 @@
         { "do": "act", "action": "main.start" },
         { "do": "until", "probe": "state", "timeoutMs": 5000, "expect": { "windows.main.notice": {
           "kind": "claude-missing",
-          "text": "Claude voice needs Claude Code (it runs on your Claude plan). Copy the install command, paste it into Terminal and press Return, then press Check again.",
-          "buttons": ["Copy install command", "Install guide", "Check again"] } } },
-        { "do": "act", "action": "main.notice", "args": { "button": "Copy install command" }, "expect": { "ok": true, "copied": "curl -fsSL https://claude.ai/install.sh | bash" } },
-        { "do": "act", "action": "main.notice", "args": { "button": "Install guide" }, "expect": { "ok": true, "url": "https://code.claude.com/docs/en/setup" } },
+          "text": "Claude voice needs Claude Code on this computer. To install it, paste this into a terminal:",
+          "buttons": ["Copy", "Check again", "Setup guide", "Open Settings"] } } },
+        { "do": "act", "action": "main.notice", "args": { "button": "Copy" }, "expect": { "ok": true, "copied": "curl -fsSL https://claude.ai/install.sh | bash" } },
+        { "do": "act", "action": "main.notice", "args": { "button": "Setup guide" }, "expect": { "ok": true, "url": "https://code.claude.com/docs/en/setup" } },
         { "do": "act", "action": "main.notice", "args": { "button": "Check again" }, "expect": { "ok": true } },
         { "do": "sleep", "ms": 1500 },
         { "do": "state", "expect": { "voice.phase": "off", "voice.connected": false, "windows.main.notice.kind": "claude-missing" } }

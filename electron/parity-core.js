@@ -69,7 +69,7 @@ const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 
 const none = () => ({});
 
 /** The buttons of the main page's notice after a try to talk that couldn't start (ui/src/App.tsx). */
-export const NOTICE_BUTTONS = Object.freeze(['Open Settings', 'Use Claude voice', 'Try again', 'Copy install command', 'Install guide', 'Check again']);
+export const NOTICE_BUTTONS = Object.freeze(['Open Settings', 'Use Claude voice', 'Try again', 'Copy', 'Setup guide', 'Check again']);
 
 /** Each action and what it may be given (returns the clean args, or a string saying what's wrong). */
 const ACTIONS = {

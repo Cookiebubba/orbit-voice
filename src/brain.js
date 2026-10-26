@@ -79,7 +79,8 @@ You can look at the user's project with read-only tools (Read, Glob, Grep); you 
  * claude.cmd shim to the real claude.exe), then the copy bundled with the Claude desktop app.
  * On macOS "PATH" also means the login shell's PATH and the usual install folders (~/.local/bin,
  * ~/.claude/local, Homebrew, /usr/local/bin, ~/.npm-global/bin), since an app opened from Finder
- * doesn't inherit the terminal's PATH (see src/platform/system.js). Returns { path, source } or null.
+ * doesn't inherit the terminal's PATH (see src/platform/system.js); on Windows, last, the native
+ * installer's ~/.local/bin. Returns { path, source } or null.
  * `opts` ({ platform, homedir, shellPath }) is for tests.
  */
 export function findClaude(configured = '', env = process.env, opts = {}) {
@@ -103,6 +104,13 @@ export function findClaude(configured = '', env = process.env, opts = {}) {
   }
   for (const file of desktopClaudeCandidates({ platform, env, homedir })) {
     if (exists(file)) return { path: file, source: 'claude-desktop' };
+  }
+  // Claude Code's own Windows installer puts claude.exe in ~/.local/bin and adds that to the user's
+  // PATH, but an Orbit already running keeps the PATH it started with: look there too, so a
+  // "Check again" right after installing finds it. (macOS/Linux search ~/.local/bin already.)
+  if (platform === 'win32') {
+    const file = p.join(homedir, '.local', 'bin', 'claude.exe');
+    if (exists(file)) return { path: file, source: 'path' };
   }
   return null;
 }

@@ -55,7 +55,14 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 - [Claude desktop app](https://claude.ai/download) with Claude Code sessions
 - No key to start. Orbit starts on Claude voice, which runs through your own Claude Code sign-in (your Claude plan), with speech heard and spoken on your PC. Its speech models (about 175 MB) download the first time you talk.
 - Only for Grok voice: an [xAI API key](https://console.x.ai), added in Settings → Voice engine → Grok. Grok voice is billed by xAI per minute connected (about $0.08/min at the time of writing). Orbit shows an estimate in Settings → Usage. Saying "go to sleep" hangs up, so sleeping costs nothing (unless you turn on "Wake Grok to say it": each spoken update bills a few seconds).
-- For the second brain: Claude Code, signed in. The Claude desktop app already includes it, and Orbit finds it automatically. Questions count toward your Claude plan, or toward an Anthropic API key if you set one in Settings.
+- Claude Code, signed in: Claude voice, the second brain and web search run through it. The Claude desktop app may already include it, and Orbit finds it automatically. If it isn't on your PC, install it from PowerShell:
+
+  ```powershell
+  irm https://claude.ai/install.ps1 | iex
+  ```
+
+  (or `npm install -g @anthropic-ai/claude-code`, with Node.js 22 or later), then run `claude` once in a terminal and sign in with your Claude account. Anthropic's [setup guide](https://code.claude.com/docs/en/setup) has the details. When Orbit can't find Claude Code, the main page and Settings → Second brain show the same command with **Copy** and **Check again**; Orbit never runs the installer itself.
+- For the second brain: questions count toward your Claude plan, or toward an Anthropic API key if you set one in Settings.
   - Claude Code keeps its own sign-in, separate from the Claude desktop app's, and it can expire even while the desktop app still works. Orbit checks it (Settings → Second brain shows "Signed in ✓" or a **Sign in** button). If a question fails because the sign-in expired, Grok tells you and offers to open the sign-in: say yes, and Claude Code's own sign-in opens in a small window and your browser.
 
 ## Install

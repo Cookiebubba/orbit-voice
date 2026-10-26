@@ -1,9 +1,10 @@
 name: Release
 
-# Builds the Windows installer when a version tag (v1.2.3) is pushed, and attaches it to a
-# draft GitHub release with its SHA-256 checksum, plus latest.yml and the blockmap that the in-app
-# updater reads. Publish the draft by hand after checking it: installed copies only see published
-# releases.
+# Builds the Windows installer when a version tag (v1.2.3, or a prerelease like v1.3.0-beta.3) is
+# pushed, and attaches it to a draft GitHub release with its SHA-256 checksum, plus latest.yml and
+# the blockmap that the in-app updater reads. A tag with a hyphen is marked as a prerelease. Publish
+# the draft by hand after checking it: installed copies only see published releases. If a release
+# for the tag already exists (one published by hand first), only the files it lacks are added.
 #
 # Two jobs, so build code never holds a token that can write releases: the build job (which runs
 # every npm package's install and build scripts) only has read access and keeps no credentials;
@@ -23,11 +24,11 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: npm
@@ -44,6 +45,10 @@ jobs:
           npm --prefix ui audit --omit=dev --audit-level=high
 
       - name: Test
+        # Real-window tests (test/*-win.test.js, desktop-uia, focus-guard's "for real") skip
+        # themselves when CI is set: a hosted runner has no interactive desktop they can rely on.
+        env:
+          CI: 'true'
         run: npm test
 
       - name: Build UI and installer
@@ -59,7 +64,7 @@ jobs:
           "Installer SHA-256: $hash"
           Copy-Item RELEASE_NOTES.md dist/RELEASE_NOTES.md
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: orbit-installer
           if-no-files-found: error
@@ -77,7 +82,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: orbit-installer
           path: dist
@@ -88,6 +93,29 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }} # passed as data, never pasted into the script
         run: |
-          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Not a release tag: $TAG"; exit 1; }
-          gh release create "$TAG" dist/Orbit-Setup-*.exe dist/Orbit-Setup-*.exe.sha256 dist/Orbit-Setup-*.exe.blockmap dist/latest.yml \
-            --draft --title "Orbit $TAG" --notes-file dist/RELEASE_NOTES.md
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Not a release tag: $TAG"; exit 1; }
+          files=(dist/Orbit-Setup-*.exe dist/Orbit-Setup-*.exe.sha256 dist/Orbit-Setup-*.exe.blockmap dist/latest.yml)
+          for f in "${files[@]}"; do [[ -f "$f" ]] || { echo "Missing from the build: $f"; exit 1; }; done
+          prerelease=()
+          if [[ "$TAG" == *-* ]]; then prerelease=(--prerelease); fi
+
+          if view_err="$(gh release view "$TAG" --json assets --jq '.assets[].name' 2>&1 >"$RUNNER_TEMP/existing.txt")"; then
+            echo "A release for $TAG already exists; adding only the files it doesn't have."
+            missing=()
+            for f in "${files[@]}"; do
+              name="$(basename "$f")"
+              if grep -Fxq -- "$name" "$RUNNER_TEMP/existing.txt"; then echo "Already attached, left as is: $name"; else missing+=("$f"); fi
+            done
+            if (( ${#missing[@]} )); then
+              gh release upload "$TAG" "${missing[@]}" # no --clobber: never replaces a file already there
+            else
+              echo "Nothing to add: the release for $TAG already has every file."
+            fi
+          elif [[ "$view_err" == *"release not found"* ]]; then
+            gh release create "$TAG" "${files[@]}" --draft "${prerelease[@]}" \
+              --title "Orbit $TAG" --notes-file dist/RELEASE_NOTES.md
+          else
+            echo "Could not check for an existing release for $TAG: $view_err"
+            exit 1
+          fi

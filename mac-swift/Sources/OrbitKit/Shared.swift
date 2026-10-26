@@ -75,10 +75,12 @@ public struct ParityNotice: Codable, Equatable, Sendable {
   public var buttons: [String]
   public init(kind: String, text: String, buttons: [String]) { self.kind = kind; self.text = text; self.buttons = buttons }
 
-  /** The buttons the main page shows for it (App.tsx's notice). */
+  /** The buttons the main page shows for it (App.tsx's notice; Copy sits in the install command's box). */
   public static func buttons(for kind: String) -> [String] {
-    kind == "claude-models" ? [] : kind == "claude-missing" ? ["Copy install command", "Install guide", "Check again"]
-      : ["Open Settings"] + (kind == "grok-key" ? ["Use Claude voice"] : []) + (kind == "claude-models-error" ? ["Try again"] : [])
+    if kind == "claude-models" { return [] }
+    let missing = kind == "claude-missing", setup = missing || kind == "claude-signed-out"
+    return (missing ? ["Copy"] : []) + (setup ? ["Check again"] : []) + (missing ? ["Setup guide"] : []) + ["Open Settings"]
+      + (kind == "grok-key" ? ["Use Claude voice"] : []) + (kind == "claude-models-error" ? ["Try again"] : [])
   }
 }
 

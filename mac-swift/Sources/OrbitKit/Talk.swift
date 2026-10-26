@@ -8,7 +8,7 @@ import Foundation
 /** Why a try to talk couldn't start: Grok without a key, or Claude voice not ready. */
 public enum TalkBlocked: String, Sendable { case grokKey = "grok-key", claude }
 
-/** The inline notice on the main page. kind: grok-key, claude-missing, claude-models, claude-models-error. */
+/** The inline notice on the main page. kind: grok-key, claude-missing, claude-signed-out, claude-models, claude-models-error. */
 public struct TalkNotice: Equatable, Sendable {
   public var kind: String
   public var text: String
@@ -26,8 +26,12 @@ public enum Talk {
   public static let claudeCodeGuide = URL(string: "https://code.claude.com/docs/en/setup")!
   /** The native installer's command (Terminal on a Mac; Orbit never runs it itself). */
   public static let claudeInstallCommand = "curl -fsSL https://claude.ai/install.sh | bash"
-  /** Claude Code isn't here: what to do, in a Mac's own terms. */
-  public static let claudeCodeMissing = "Claude voice needs Claude Code (it runs on your Claude plan). Copy the install command, paste it into Terminal and press Return, then press Check again."
+  /** Claude Code isn't here (the install command follows it, then the sign-in step). */
+  public static let claudeCodeMissing = "Claude voice needs Claude Code on this computer. To install it, paste this into a terminal:"
+  /** Found but not signed in. */
+  public static let claudeNotSignedIn = "Claude Code isn't signed in. Run claude once in a terminal and sign in with your Claude account."
+  /** The line under the install command: Claude Code runs on the user's own Claude sign-in. */
+  public static let claudeSignInStep = "Then run claude once in a terminal and sign in with your Claude account."
 
   /** Claude voice, or Grok voice with a key saved. */
   public static func canTalk(engine: String?, hasKey: Bool) -> Bool {
@@ -37,13 +41,15 @@ public enum Talk {
 
   /**
    * The notice after a try to talk that couldn't start, or nil. `status`: GET /api/claude-voice
-   * ({claudeFound, models: {state, percent, error}}). It clears by itself once the reason is gone
+   * ({claudeFound, signedIn, models: {state, percent, error}}; signedIn null when it couldn't be checked,
+   * which never blocks). It clears by itself once the reason is gone
    * (a key saved, Claude chosen, the models ready).
    */
   public static func notice(_ blocked: TalkBlocked?, engine: String?, hasKey: Bool, status: JSONValue?) -> TalkNotice? {
     if blocked == .grokKey { return canTalk(engine: engine, hasKey: hasKey) ? nil : TalkNotice(kind: "grok-key", text: grokNeedsKey) }
     guard blocked == .claude, engine == "claude", let status, !status.isNull else { return nil }
     if status["claudeFound"]?.boolValue != true { return TalkNotice(kind: "claude-missing", text: claudeCodeMissing) }
+    if status["signedIn"]?.boolValue == false { return TalkNotice(kind: "claude-signed-out", text: claudeNotSignedIn) }
     let m = status["models"]
     let state = m?["state"]?.stringValue
     if state == "ready" { return nil }

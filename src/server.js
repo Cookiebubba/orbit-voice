@@ -350,6 +350,14 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
   const watcher = injectedWatcher || createSessionWatcher();
   let brainTest = null; // AbortController of the Settings connection test in progress
   let authCache = null; // { at, path, signedIn }: Claude Code's sign-in, re-checked at most every 5 s
+  /** Is this Claude Code signed in? true / false, or null when it couldn't tell (never blocks). */
+  const claudeSignedIn = async (claude) => {
+    if (!authCache || Date.now() - authCache.at > 5000 || authCache.path !== claude.path) {
+      const st = await claudeAuthStatus({ claudePath: claude.path });
+      authCache = { at: Date.now(), path: claude.path, signedIn: st.ok ? st.signedIn : null };
+    }
+    return authCache.signedIn;
+  };
   let lastSignInOpenedAt = 0;
   const eventClients = new Set(); // SSE responses
   const liveSessions = new Set(); // per-connection hooks
@@ -648,9 +656,13 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           return sendJson(res, 200, publicSettings());
         }
 
-        case 'GET /api/claude-voice':
-          // Claude voice (beta) for Settings: the speech models' state, and whether Claude Code is here.
-          return sendJson(res, 200, { models: downloadStatus(voiceModelsDir), mb: VOICE_MODELS_MB, claudeFound: !!findClaude(getSetting('brainClaudePath')), stt: sttStatus(voiceModelsDir) });
+        case 'GET /api/claude-voice': {
+          // Claude voice (beta) for Settings and the main page: the speech models' state, whether
+          // Claude Code is here, and whether it's signed in (null when that couldn't be checked).
+          const claude = findClaude(getSetting('brainClaudePath'));
+          const signedIn = claude ? await claudeSignedIn(claude) : null;
+          return sendJson(res, 200, { models: downloadStatus(voiceModelsDir), mb: VOICE_MODELS_MB, claudeFound: !!claude, signedIn, stt: sttStatus(voiceModelsDir) });
+        }
 
         case 'POST /api/claude-voice/stt-download': {
           // One speech-to-text model (pinned checksum), when it's chosen; Settings polls GET for progress.
@@ -737,14 +749,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           // Second brain status for Settings: is Claude Code found, and how it connects.
           // signedIn: Claude Code's own sign-in (null when not checked: API-key connection or not found).
           const claude = findClaude(getSetting('brainClaudePath'));
-          let signedIn = null;
-          if (claude && getSetting('brainConnection') !== 'api-key') {
-            if (!authCache || Date.now() - authCache.at > 5000 || authCache.path !== claude.path) {
-              const st = await claudeAuthStatus({ claudePath: claude.path });
-              authCache = { at: Date.now(), path: claude.path, signedIn: st.ok ? st.signedIn : null };
-            }
-            signedIn = authCache.signedIn;
-          }
+          const signedIn = claude && getSetting('brainConnection') !== 'api-key' ? await claudeSignedIn(claude) : null;
           return sendJson(res, 200, { found: !!claude, path: claude?.path ?? null, source: claude?.source ?? null, hasKey: !!getBrainKey(), signedIn });
         }
 
