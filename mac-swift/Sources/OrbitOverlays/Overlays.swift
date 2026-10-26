@@ -25,7 +25,8 @@
 //
 // What it sends the sidecar (`send`): {"t":"avatarState","kind","onScreen"} (when either changes),
 // {"t":"wake","win":{...}} (avatar clicked to talk, with the window it lives on), {"t":"homeWindow",
-// "id"} and {"t":"frontHint","id"} (the Claude window Orbit lives on), {"t":"screens","displays":
+// "id"} and {"t":"frontHint","id"} (the Claude window Orbit lives on), {"t":"watch","hwnds":[...]} (the
+// other windows Qubit is in, whose moves come back as "wins"), {"t":"screens","displays":
 // [{x,y,w,h,scale}]} (visible frames in points: the mouse's glide space on macOS).
 //
 // For the parity driver: parityAvatars(), parityMouse(), parityOrb(), parityClaude(), pointer(...),
@@ -67,6 +68,8 @@ public final class Overlays {
   private lazy var host = AvatarHostModel(
     makeAvatar: { [unowned self] kind, id in self.makeAvatar(kind: kind, boxless: true, id: id) },
     home: { [weak self] in self?.home },
+    // The windows Qubit is in: the sidecar's focus helper watches them and sends "wins" back.
+    watch: { [weak self] hwnds in self?.sendToSidecar(["t": "watch", "hwnds": .array(hwnds.map { .number(Double($0)) })]) },
     current: { [weak self] in self?.front },
     log: { [weak self] m in self?.log(m) },
     now: { MainClock.shared.now }

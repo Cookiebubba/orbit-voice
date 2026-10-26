@@ -201,6 +201,7 @@ public final class AvatarHostModel {
     let visible = shown()
     for w in wins {
       for g in all where g.hwnd == w.hwnd {
+        if g.bounds == nil { log("avatar: the window \(kind?.rawValue ?? "it") joined is at \(Int(w.rect.w))×\(Int(w.rect.h))\(w.cloaked ? " (hidden)" : w.min ? " (minimized)" : "")") }
         g.bounds = w
         if visible.contains(g.id) { place(g) }
       }

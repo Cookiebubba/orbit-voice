@@ -236,11 +236,19 @@ async function main() {
 
   // The window in front, in any app (Settings -> Orbit anywhere), as electron/main.js setFocusTracking.
   let tracker = null;
+  // The windows Qubit is in beside Claude's (Swift's avatar host asks, as electron/main.js's does):
+  // the focus helper reports where they are, so the overlays can place him on them.
+  let watched = [];
+  on('watch', (m) => {
+    watched = (Array.isArray(m.hwnds) ? m.hwnds : []).map((h) => Math.floor(Number(h))).filter((h) => h > 0);
+    tracker?.watch(watched);
+  });
   const cacheDir = path.join(profile, 'cache');
   const setFocusTracking = () => {
     const want = config.getSetting('anywhere') !== false && (!fake || !!fake.focusHelper);
     if (want && !tracker) {
       tracker = platform.startFocusTracking({ spawnHelper: fake?.focusHelper || null, onError: (m) => send({ t: 'log', level: 'warn', scope: 'focus', message: m }), onWins: (wins) => send({ t: 'wins', wins }) });
+      if (tracker && watched.length) tracker.watch(watched);
       if (!fake || fake.uiaHelper) platform.startUia({ spawnHelper: fake?.uiaHelper || null, cacheDir, onError: (m) => send({ t: 'log', level: 'warn', scope: 'uia', message: m }) });
     } else if (!want && tracker) {
       tracker.stop();

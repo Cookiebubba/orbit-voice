@@ -10,7 +10,7 @@ import path from 'node:path';
 import { initConfig } from '../src/config.js';
 import { focus, setFocusBackend, setUiaHost } from '../src/platform/index.js';
 import { createToolRunner } from '../src/tools.js';
-import { canDo, findControl, isOutward, plan, sameBreathSend } from '../src/anywhere/hands.js';
+import { actionFor, canDo, findControl, isOutward, ownerFor, plan, sameBreathSend } from '../src/anywhere/hands.js';
 
 initConfig({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-act-tools-')) });
 
@@ -79,6 +79,34 @@ test('finding and classifying controls', () => {
   assert.equal(isOutward({ node: scan.nodes[2], action: 'type', text: 'hi' }), false, 'typing a draft');
   assert.equal(isOutward({ node: scan.nodes[2], action: 'type', text: 'hi\n' }), true, 'Enter in a chat box sends');
   assert.equal(isOutward({ node: { n: 'Bold', pat: 'I' }, action: 'press' }), false);
+});
+
+test('a label stands for the row it is in: the "Wi-Fi" in the System Settings sidebar', () => {
+  // macOS: Outline > Row (selectable, no press) > Cell > Text "Wi-Fi" and an Image; a named group
+  // above them all. (UI Automation's ListItem > Text looks the same.)
+  const nodes = [
+    N(0, -1, 'Window', { n: 'System Settings', r: [0, 0, 700, 500] }),
+    N(1, 0, 'Tree', { n: 'Sidebar', r: [0, 40, 200, 460] }),
+    N(2, 1, 'TreeItem', { r: [0, 80, 200, 28], pat: 'SE' }),
+    N(3, 2, 'DataItem', { r: [0, 80, 200, 28] }),
+    N(4, 3, 'Text', { n: 'Wi‑Fi', r: [30, 84, 60, 20] }),
+    N(5, 3, 'Image', { n: 'Wi‑Fi', r: [6, 84, 20, 20] }),
+    N(6, 1, 'TreeItem', { r: [0, 110, 200, 28], pat: 'SE' }),
+    N(7, 6, 'Text', { n: 'Bluetooth', r: [30, 114, 60, 20] }),
+    N(8, 0, 'Group', { n: 'Network', r: [200, 40, 500, 460], pat: 'I' }),
+    N(9, 8, 'Text', { n: 'Firewall', r: [220, 80, 80, 20] }),
+  ];
+  const scan = { nodes };
+  for (const action of ['select', 'press']) {
+    const f = findControl(scan, 'wi-fi', { action });
+    assert.equal(f.node?.i, 2, `${action}: the row, not its text (${JSON.stringify(f)})`);
+    assert.equal(f.node.n, 'Wi‑Fi', 'it carries the label for "did"');
+  }
+  assert.equal(actionFor(nodes[2], 'press'), 'select', 'a row that can only be picked: a press picks it');
+  assert.equal(actionFor({ pat: 'I' }, 'press'), 'press');
+  assert.equal(findControl(scan, 'bluetooth', { action: 'select' }).node.i, 6);
+  assert.equal(ownerFor(nodes, nodes[9], 'press'), null, 'never a group with a name of its own');
+  assert.equal(ownerFor(nodes, nodes[4], 'type'), null, 'nothing up there takes text');
 });
 
 test('same breath: only what they dictated, only to a Send button, only "and send it"', () => {

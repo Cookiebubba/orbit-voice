@@ -79,7 +79,11 @@ export function findControl(scan, query, { role = '', profile = null, action = '
   const partial = (n) => !!norm(n.n) && (norm(n.n).includes(q) || q.includes(norm(n.n)));
   const pool = exact.length ? exact : nodes.filter((n) => usable(n) && q.length >= 3 && partial(n));
   // Those that can do what's asked (or anything at all), then those whose name starts with the words.
-  const actionable = pool.filter((n) => (action ? canDo(n, action) : /[VITSE]/.test(n.pat || '')));
+  // A label that can't do it stands for the control it's in (a sidebar row's text): that control.
+  const can = (n) => canDo(n, actionFor(n, action));
+  const seen = new Set();
+  const actionable = (action ? pool.map((n) => (can(n) ? n : ownerFor(nodes, n, action))) : pool.filter((n) => /[VITSE]/.test(n.pat || '')))
+    .filter((n) => n && !seen.has(n.i) && seen.add(n.i));
   let hits = actionable.length ? actionable : pool;
   if (hits.length > 1) {
     const starts = hits.filter((n) => norm(n.n).startsWith(q));
@@ -92,6 +96,35 @@ export function findControl(scan, query, { role = '', profile = null, action = '
     return { node: null, ambiguous: hits.slice(0, 6).map((n) => `${n.t}: ${n.n || n.a}`) };
   }
   return hits[0] ? { node: hits[0], by: exact.length ? 'name' : 'partial' } : { node: null };
+}
+
+/**
+ * The action as this node takes it: a press on something that can only be picked (a sidebar row, a
+ * list entry, a tab) picks it, as a click on it would.
+ */
+export function actionFor(node, action) {
+  return action === 'press' && !canDo(node, 'press') && canDo(node, 'select') ? 'select' : action;
+}
+
+/**
+ * The control a label is part of: a text or image that can't do `action` itself (System Settings'
+ * "Wi-Fi" is a text inside its sidebar row), up to three levels up, when that control can and has no
+ * other name of its own. It carries the label's name. null if there's none.
+ */
+export function ownerFor(nodes, node, action) {
+  const label = norm(node?.n);
+  if (!label || !Array.isArray(nodes)) return null;
+  const byI = new Map(nodes.map((n) => [n.i, n]));
+  let cur = node;
+  for (let k = 0; k < 3; k++) {
+    const up = byI.get(cur.p);
+    if (!up || up.i === 0 || up.i === cur.i || up.pw) return null;
+    const own = norm(up.n);
+    if (own && own !== label && !own.includes(label)) return null; // a group with a name of its own
+    if (canDo(up, actionFor(up, action))) return { ...up, n: up.n || node.n };
+    cur = up;
+  }
+  return null;
 }
 
 /** Which pattern an action needs on a node (null if it can't). */
@@ -349,7 +382,8 @@ export async function plan({ win, control: query, role = '', action, text = '' }
   if (!f.node) return { ok: false, error: `There's no "${windowText(String(query), 60)}" in ${label(win)}.`, controls: profile?.controls?.slice(0, 20).map((c) => c.key) };
   if (f.node.pw) return { ok: false, error: failure({ error: 'password' }) };
   if (!f.node.en) return { ok: false, error: failure({ error: 'disabled' }) };
-  if (!canDo(f.node, action)) return { ok: false, error: `"${windowText(f.node.n || f.node.a || query, 60)}" can't be used to ${action.replace('_', ' ')}.` };
-  const outward = isOutward({ node: f.node, action, text, control: f.control, profile });
-  return { ok: true, plan: { win, node: f.node, action, text, control: f.control || null, profile, scan, outward } };
+  const how = actionFor(f.node, action);
+  if (!canDo(f.node, how)) return { ok: false, error: `"${windowText(f.node.n || f.node.a || query, 60)}" can't be used to ${action.replace('_', ' ')}.` };
+  const outward = isOutward({ node: f.node, action: how, text, control: f.control, profile });
+  return { ok: true, plan: { win, node: f.node, action: how, text, control: f.control || null, profile, scan, outward } };
 }

@@ -64,6 +64,23 @@ final class AvatarHostTests: XCTestCase {
 
   func wins(_ ids: [Int]) -> [GuestBounds] { ids.enumerated().map { GuestBounds(hwnd: $0.element, rect: Rect(x: Double($0.offset) * 900, y: 0, w: 800, h: 600)) } }
 
+  /** A window Qubit joins is watched (its place comes back as wins); he shows there only once it does. */
+  func testAJoinedWindowIsWatchedAndHeShowsOnceItsPlaceIsKnown() {
+    let w = World()
+    let home = w.mk(.qubit, home: true)
+    var watched: [[Int]] = []
+    let host = AvatarHostModel(makeAvatar: { k, _ in w.mk(k) }, home: { home }, watch: { watched.append($0) }, now: { w.clock.now })
+    host.setKind(.qubit, size: 2)
+    host.sync(ContextsSnapshot(activeId: "w20", contexts: [GuestContext(id: "home", hwnd: 0, home: true), GuestContext(id: "w20", hwnd: 20, lastActiveAt: 1)]))
+    XCTAssertEqual(watched.last, [20], "System Settings' window is watched")
+    let guest = w.all.first { !$0.home }!
+    XCTAssertFalse(guest.showing, "not before its place is known")
+    host.onWins(wins([20]))
+    XCTAssertTrue(guest.showing, "on it once the helper says where it is")
+    host.sync(ContextsSnapshot(activeId: "home", contexts: [GuestContext(id: "home", hwnd: 0, home: true)]))
+    XCTAssertEqual(watched.last, [], "left: no longer watched")
+  }
+
   func testKindsSwitchedQuicklyNeverShowTwoInOneWindow() {
     let w = World()
     let home = w.mk(.qubit, home: true)
