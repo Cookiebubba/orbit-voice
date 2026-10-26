@@ -29,7 +29,7 @@ const SPEAK_EDGE = [
 const SPEAK_PARTS = ['```', 'code', '`', 'http://', 'https://', 'evil.example/x', '.', '!', '?', ' ', '  ', '\n', '\t', '- ', '* ', '1. ', '2) ', '•', '**', '_', '#', '>', '|', '~', 'Yes', 'It is in src/a.js', 'See', 'sentence', '\u200b', '\u2028', '\u0007', 'é', '😀', ')', ',', ';', ':', 'x'.repeat(50), 'The answer is 42', 'Done'];
 
 function speakCorpus(root, r) {
-  const lits = literalsFrom(fs.readFileSync(path.join(root, 'test', 'brain.test.js'), 'utf8'));
+  const lits = literalsFrom(fs.readFileSync(path.join(root, 'test', 'brain.test.js'), 'utf8').replace(/\r\n/g, '\n')); // (CRLF on disk: the same corpus)
   const out = [...SPEAK_EDGE, ...lits];
   for (let i = 0; i < 300; i++) {
     let s = '';
