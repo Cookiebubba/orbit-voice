@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 import History from "./components/History";
 import SessionSwitcher from "./components/SessionSwitcher";
 import { desktop, isMac } from "./desktop";
-import { MacPermissionsBanner } from "./MacPermissions";
 import { PULSE_DEFAULT } from "./orbLook";
 import AvatarHero from "./hero/AvatarHero";
 import Settings from "./Settings";
@@ -178,7 +177,6 @@ export default function App() {
   };
   useEffect(() => desktop?.onOrbAction((a) => a === "toggle-sleep" && hotkeyRef.current()), []);
   useEffect(() => desktop?.onHotkey(() => hotkeyRef.current()), []);
-  useEffect(() => desktop?.onShowSettings?.(() => setView("settings")), []);
   // A click on the avatar: the wake word's own path (Orbit off or asleep). Already awake, the
   // avatar's little nod is all. Grok without a key: the notice on the main page says why.
   const talkRef = useRef(() => {});
@@ -305,7 +303,7 @@ export default function App() {
     <div className="flex h-screen flex-col overflow-hidden bg-white text-fg select-none">
       {wakeFrame}
       {/* title bar: draggable in the desktop app (on a Mac the traffic lights sit at its left) */}
-      <div className={cn("flex h-11 shrink-0 items-center gap-1.5 pr-1.5 [-webkit-app-region:drag]", desktop && isMac ? "pl-[78px]" : "pl-4")}>
+      <div className={cn("flex h-11 shrink-0 items-center gap-1.5 pr-1.5 [-webkit-app-region:drag]", "pl-4")}>
         <span className="wordmark mr-1 text-[19px]">Orbit</span>
         <SessionSwitcher
           current={v.sessionTitle}
@@ -325,7 +323,7 @@ export default function App() {
           <TitleButton label="Settings" active={view === "settings"} onClick={() => setView((x) => (x === "settings" ? "main" : "settings"))}>
             <SettingsIcon size={15} />
           </TitleButton>
-          {desktop && !isMac && (
+          {desktop && (
             <>
               <TitleButton label="Shrink to orb" onClick={() => desktop?.minimize()}>
                 <Minus size={16} />
@@ -338,7 +336,6 @@ export default function App() {
         </div>
       </div>
 
-      {desktop && isMac && screen === "main" && <MacPermissionsBanner />}
       {screen === "settings" ? (
         <Settings
           config={app.config}

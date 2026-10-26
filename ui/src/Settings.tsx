@@ -10,7 +10,6 @@ import Reveal from "./components/Reveal";
 import { InstallCommand, NotSignedInLine, SetupGuideLink, SignInStep } from "./components/ClaudeSetup";
 import { PULSE_MAX, PULSE_MIN } from "./orbLook";
 import { ARROW_PATH, PREVIEW, css } from "./mouse/shape.js";
-import { MacPermissionsSection } from "./MacPermissions";
 
 export const REPO_URL = "https://github.com/Cookiebubba/orbit-voice";
 
@@ -116,12 +115,6 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
         <Reveal show gap={GAP}>
           <SecondBrainSection s={s} update={update} name={name} />
         </Reveal>
-
-        {desktop && isMac && (
-          <Reveal show gap={GAP}>
-            <MacPermissionsSection />
-          </Reveal>
-        )}
 
         {desktop && (
           <Reveal show gap={GAP}>

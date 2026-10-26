@@ -66,13 +66,11 @@ export function createOrbitMouse({ url, webPreferences = {}, lockDown = () => {}
   let stopped = false;
 
   /**
-   * A display's work area in the helpers' coordinates: physical pixels on Windows; on macOS points,
-   * which are Electron's DIPs there (Orbit's macOS helper reports control rects in points);
-   * elsewhere DIPs times its scaling.
+   * A display's work area in the helpers' coordinates: physical pixels on Windows; elsewhere DIPs
+   * times its scaling.
    */
   const physArea = (d) => {
     const wa = d.workArea;
-    if (process.platform === 'darwin') return { x: wa.x, y: wa.y, w: wa.width, h: wa.height };
     try {
       if (typeof screen.dipToScreenRect === 'function' && process.platform === 'win32') {
         const r = screen.dipToScreenRect(null, wa);
@@ -135,19 +133,11 @@ export function createOrbitMouse({ url, webPreferences = {}, lockDown = () => {}
       alwaysOnTop: true,
       show: false,
       title: 'Orbit mouse',
-      // macOS: a non-activating panel, so it can float over other apps' full-screen windows too.
-      ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
       webPreferences,
     });
     lockDown(win);
     win.setIgnoreMouseEvents(true); // clicks go through to whatever is under it
     win.setAlwaysOnTop(true, 'screen-saver');
-    if (process.platform === 'darwin') {
-      // On every Space and over full-screen apps; the Dock icon stays (skipTransformProcessType).
-      try {
-        win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
-      } catch {}
-    }
     pg = { win, display: d, area, box, ready: false, shown: false };
     pages.set(d.id, pg);
     win.webContents.on('did-finish-load', () => {

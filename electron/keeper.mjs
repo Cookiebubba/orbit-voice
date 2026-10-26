@@ -6,7 +6,6 @@ import { readKeeperConfig, runKeeper } from '../src/anywhere/keeper-core.js';
 
 app.disableHardwareAcceleration();
 app.on('window-all-closed', () => {}); // it never has windows
-if (process.platform === 'darwin') app.dock?.hide();
 
 try {
   const cfg = await readKeeperConfig();
