@@ -1,12 +1,14 @@
 import { marked } from "https://cdn.jsdelivr.net/npm/marked@12.0.2/lib/marked.esm.js";
 import DOMPurify from "https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.es.mjs";
-import { startQubit } from "./qubit.js?v=13";
+import { startQubit } from "./qubit.js?v=14";
 
 /* --------------------------------- config --------------------------------- */
 const REPO = "Cookiebubba/orbit-voice";
 const X_HANDLE = "brandynships";
-// The main button downloads this beta; the line under it, the latest stable release.
-const BETA_TAG = "v1.3.0-beta.4";
+// The main button downloads the newest published release that has an installer for this system
+// (betas included); the line under it, the latest stable release. This tag is only what the page's
+// own links name until the release list arrives (or if it can't).
+const KNOWN_TAG = "v1.3.0-beta.4";
 
 // Which installer the button offers: the visitor's own system. (An iPad asks for the desktop site
 // as a Mac: a Mac with a touch screen is an iPad, and gets the releases page.)
@@ -86,8 +88,8 @@ function renderHome() {
   if (!release) loadRelease();
 }
 
-// One call for both: the beta by its tag, and the newest published release that isn't a prerelease,
-// each with its installer for Windows and for Mac (when it has one).
+// One call: per system, the newest published release with its installer (newest first, betas too),
+// and the newest stable one.
 async function loadRelease() {
   try {
     const res = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=20`, { headers: { Accept: "application/vnd.github+json" } });
@@ -97,11 +99,12 @@ async function loadRelease() {
       const file = r && (r.assets || []).find(a => SYSTEMS[os].asset.test(a.name));
       return file && { url: file.browser_download_url, version: r.tag_name, mb: Math.round(file.size / 1048576) };
     };
-    const beta = list.find(r => r.tag_name === BETA_TAG && !r.draft);
-    const stable = list.find(r => !r.draft && !r.prerelease);
+    const published = list.filter(r => !r.draft);
+    const newest = os => published.map(r => pick(r, os)).find(Boolean);
+    const stable = os => published.filter(r => !r.prerelease).map(r => pick(r, os)).find(Boolean);
     release = {
-      beta: { windows: pick(beta, "windows"), mac: pick(beta, "mac") },
-      stable: { windows: pick(stable, "windows"), mac: pick(stable, "mac") },
+      beta: { windows: newest("windows"), mac: newest("mac") },
+      stable: { windows: stable("windows"), mac: stable("mac") },
     };
     showRelease();
   } catch { /* offline or rate-limited: the links in the page still point at the installers */ }
@@ -116,13 +119,13 @@ function showRelease() {
     // Linux, a phone, a tablet: Orbit runs on Windows and Mac, so the releases page says which to get.
     btn.href = RELEASES;
     label.textContent = "Get Orbit for Windows or Mac";
-    meta.textContent = `${BETA_TAG} · Windows 10/11 · macOS 14+ (Apple silicon)`;
+    meta.textContent = `${release?.beta?.windows?.version || KNOWN_TAG} · Windows 10/11 · macOS 14+ (Apple silicon)`;
     otherLine.hidden = true;
   } else {
     const otherOS = OS === "mac" ? "windows" : "mac";
     const beta = release?.beta?.[OS], alt = release?.beta?.[otherOS];
     label.textContent = SYSTEMS[OS].label;
-    meta.textContent = `${BETA_TAG} · with Qubit · ${SYSTEMS[OS].needs}`;
+    meta.textContent = `${beta?.version || KNOWN_TAG} · with Qubit · ${SYSTEMS[OS].needs}`;
     // Before the release list arrives (or if it can't), the files' own links, by their names.
     btn.href = beta?.url || fileUrl(OS);
     btn.title = beta ? `Orbit ${beta.version} · ${beta.mb} MB` : "";
@@ -130,19 +133,21 @@ function showRelease() {
     other.href = alt?.url || fileUrl(otherOS);
     otherLine.hidden = false;
   }
-  // The latest stable release: Windows only so far (Orbit for Mac is a beta).
+  // The latest stable release, when it isn't the one the button gives already: Windows only so far
+  // (Orbit for Mac is a beta).
   const st = release?.stable?.[OS === "mac" ? "mac" : "windows"];
-  stableLine.hidden = OS === "mac" && !st;
+  const same = st && st.url === release?.beta?.[OS === "mac" ? "mac" : "windows"]?.url;
+  stableLine.hidden = (OS === "mac" && !st) || !!same;
   if (st) {
     stable.href = st.url;
     stable.title = `Orbit ${st.version} · ${st.mb} MB`;
   }
 }
 
-/** The beta's installer for `os`, by the name the release workflow and package.sh give it. */
+/** KNOWN_TAG's installer for `os`, by the name the release workflow and package.sh give it. */
 function fileUrl(os) {
-  const v = BETA_TAG.slice(1);
-  return `${RELEASES}/download/${BETA_TAG}/${os === "mac" ? `Orbit-Native-${v}-arm64.dmg` : `Orbit-Setup-${v}.exe`}`;
+  const v = KNOWN_TAG.slice(1);
+  return `${RELEASES}/download/${KNOWN_TAG}/${os === "mac" ? `Orbit-Native-${v}-arm64.dmg` : `Orbit-Setup-${v}.exe`}`;
 }
 
 /* ---------------------------------- about --------------------------------- */
