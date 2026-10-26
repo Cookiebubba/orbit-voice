@@ -42,7 +42,7 @@ export function profileFor(win) {
 // ---------------------------------------------------------------- one Orbit, many windows
 
 /** The Claude desktop app's windows are home (whichever one the orb docks on). */
-export const isHomeWindow = (w) => /^claude\.exe$/i.test(String(w?.exe || '')) && /^Chrome_WidgetWin/.test(String(w?.cls || ''));
+export const isHomeWindow = (w) => (/^claude\.exe$/i.test(String(w?.exe || '')) && /^Chrome_WidgetWin/.test(String(w?.cls || ''))) || w?.bundle === 'com.anthropic.claudefordesktop';
 
 /** Orbit's contexts (src/anywhere/contexts.js), fed by the focus store. */
 export const contexts = createContexts({ focusStore: focus, isHomeWindow });

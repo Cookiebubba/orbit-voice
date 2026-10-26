@@ -84,6 +84,11 @@ contextBridge.exposeInMainWorld('desktop', {
     return () => ipcRenderer.removeListener('mouse:state', fn);
   },
   openLogs: () => ipcRenderer.invoke('app:open-logs'),
+  // macOS privacy permissions (Accessibility, Microphone, Screen Recording): read, and ask for one.
+  permissions: {
+    get: () => ipcRenderer.invoke('perms:get'),
+    request: (kind) => ipcRenderer.invoke('perms:request', String(kind)),
+  },
   startWithWindows: {
     get: () => ipcRenderer.invoke('app:get-login'),
     set: (enabled) => ipcRenderer.invoke('app:set-login', !!enabled),
@@ -102,6 +107,12 @@ contextBridge.exposeInMainWorld('desktop', {
       ipcRenderer.on('update:state', fn);
       return () => ipcRenderer.removeListener('update:state', fn);
     },
+  },
+  // macOS: Orbit → Settings… (⌘,) in the menu bar.
+  onShowSettings: (cb) => {
+    const fn = () => cb();
+    ipcRenderer.on('app:settings', fn);
+    return () => ipcRenderer.removeListener('app:settings', fn);
   },
   onHotkey: (cb) => {
     const fn = () => cb();

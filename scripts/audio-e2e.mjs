@@ -111,7 +111,7 @@ async function run() {
   const click = (text) => js(`(() => { const b = [...document.querySelectorAll('button')].find((x) => (x.getAttribute('aria-label') || x.textContent || '').includes(${JSON.stringify(text)})); if (b) b.click(); return !!b; })()`);
   await js(TAP);
   check(await click('Start talking'), 'started a call');
-  for (let i = 0; i < 40 && !grok; i++) await wait(100);
+  for (let i = 0; i < 150 && !grok; i++) await wait(100); // (a first start on a Mac can take several seconds)
   check(!!grok, 'the fake Grok is connected');
   await wait(1500);
   /** Peak and RMS of what reached the speakers between these context times (0 = from the start). */

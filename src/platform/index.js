@@ -1,7 +1,7 @@
 // "Orbit anywhere": the one interface between Orbit's shared core and the native layer that reads
 // and acts on other apps' windows. The core (tools, contexts, helpers) only calls what's exported
-// here; Windows backs it with PowerShell/C# helpers in platform/win/, and a Mac helper can slot in
-// behind the same calls later.
+// here; Windows backs it with PowerShell/C# helpers in platform/win/, macOS with Orbit's Swift
+// helper (platform/mac/, native/mac/OrbitHelper), which speaks the same protocols.
 //
 // What's in src/platform/: system.js (paths, PATH and process trees: what differs between Windows
 // and macOS for Claude Code), this file and focus.js (the window layer), and win/ (the Windows
@@ -22,17 +22,22 @@ import { fileURLToPath } from 'node:url';
 import { POWERSHELL, createWinFocusTracker } from './win/focus.js';
 import { createUiaHost } from './win/uia.js';
 import { focus, setFocusBackend } from './focus.js';
+import { hasHelper, macAxHost, runHelperOnce, spawnHelper as spawnMacHelper, stopMacAxHost } from './mac/helper.js';
 
 const CAPTURE_SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'win', 'capture.ps1').replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
 
 export { appName, cleanWindow, createFocusStore, describeWindow, focus, focusBackend, listWindows, setFocusBackend, switchToWindow } from './focus.js';
 
+/** macOS with Orbit's helper in place (the Swift helper stands in for the PowerShell ones). */
+const onMac = () => process.platform === 'darwin' && hasHelper();
+
 /**
  * Start following the window in front (the desktop shell calls this). Returns the tracker
- * ({ stop, describe, list, watch }) or null where there's no native helper (macOS for now, unless a test
- * passes `spawnHelper`).
+ * ({ stop, describe, list, watch }) or null where there's no native helper (unless a test passes
+ * `spawnHelper`).
  */
 export function startFocusTracking({ spawnHelper = null, onError = () => {}, onWins = () => {}, parentPid = process.pid, store = focus } = {}) {
+  if (!spawnHelper && onMac()) spawnHelper = () => spawnMacHelper('focus', [], { parentPid });
   if (process.platform !== 'win32' && !spawnHelper) return null;
   const tracker = createWinFocusTracker({
     onFocus: (w) => store.update(w),
@@ -62,14 +67,17 @@ let uiaHost = null;
  * there's no native helper.
  */
 export function startUia({ spawnHelper = null, cacheDir = '', onError = () => {}, parentPid = process.pid } = {}) {
-  uiaHost?.stop();
+  if (uiaHost !== macAxHost()) uiaHost?.stop();
   uiaHost = null;
+  // macOS: the helper's "ax" mode, shared with the Claude desktop driver (src/desktop.js).
+  if (!spawnHelper && onMac()) return (uiaHost = macAxHost({ onError }));
   if (process.platform !== 'win32' && !spawnHelper) return null;
   uiaHost = createUiaHost({ spawnHelper, cacheDir, onError, parentPid });
   return uiaHost;
 }
 export function stopUia() {
-  uiaHost?.stop();
+  if (uiaHost && uiaHost === macAxHost()) stopMacAxHost();
+  else uiaHost?.stop();
   uiaHost = null;
 }
 /** Tests: use this host (or null). */
@@ -79,7 +87,7 @@ export function setUiaHost(host) {
 
 /** One request to the UI Automation helper ({ ok: false, error: 'unavailable' } without one). */
 export function uiaRequest(op, args = {}, opts = {}) {
-  if (!uiaHost) return Promise.resolve({ ok: false, error: 'unavailable', message: 'Reading other apps works only on Windows for now.' });
+  if (!uiaHost) return Promise.resolve({ ok: false, error: 'unavailable', message: 'Reading other apps needs Orbit anywhere turned on (and, on a Mac, Orbit’s helper).' });
   return uiaHost.request(op, args, opts);
 }
 
@@ -96,14 +104,21 @@ export function setCaptureImpl(fn) {
 }
 
 /**
- * A picture of one window (PrintWindow: works while it's covered), saved as a PNG in the temp
- * folder, with its text read by Windows' own OCR. Resolves { ok, path, w, h, lit, ocr } or
- * { ok: false, error }. The caller deletes the picture when done with it.
+ * A picture of one window (Windows: PrintWindow; macOS: ScreenCaptureKit; both work while it's
+ * covered), saved as a PNG in the temp folder, with its text read by the system's own on-device OCR
+ * (Windows.Media.Ocr / Vision). Resolves { ok, path, w, h, lit, ocr } or { ok: false, error }. The
+ * caller deletes the picture when done with it.
  */
 export function captureWindow(hwnd, { ocr = true, maxWidth = 1600, timeoutMs = 25_000 } = {}) {
   if (captureImpl) return Promise.resolve(captureImpl(hwnd, { ocr, maxWidth }));
-  if (process.platform !== 'win32') return Promise.resolve({ ok: false, error: 'unavailable', message: 'Looking at windows works only on Windows for now.' });
   const out = path.join(os.tmpdir(), `orbit-look-${crypto.randomBytes(8).toString('hex')}.png`);
+  if (onMac()) {
+    return runHelperOnce(['capture', '--window', String(Math.floor(Number(hwnd)) || 0), '--out', out, '--max-width', String(maxWidth), ...(ocr ? [] : ['--no-ocr'])], { timeoutMs }).then((j) => {
+      if (!j?.ok) fs.rm(out, { force: true }, () => {});
+      return j?.ok ? j : { ok: false, error: j?.error || 'capture_failed', message: j?.message || 'Orbit could not take a picture of that window.' };
+    });
+  }
+  if (process.platform !== 'win32') return Promise.resolve({ ok: false, error: 'unavailable', message: 'Looking at windows works only on Windows and macOS.' });
   return new Promise((resolve) => {
     execFile(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', CAPTURE_SCRIPT, '-Hwnd', String(Math.floor(Number(hwnd)) || 0), '-Out', out, '-MaxWidth', String(maxWidth), ...(ocr ? [] : ['-NoOcr'])], { windowsHide: true, timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
       let j = null;

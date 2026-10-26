@@ -1,7 +1,17 @@
 // Geometry for the avatar's window (see avatar.js): the pixel buddy's and Qubit's strip along the
 // bottom of the Claude window. Pure functions, in DIPs, so they're tested without Electron.
 
-export const BUDDY_HEIGHT = 240; // DIPs: room above Claude's prompt box to jump
+export const BUDDY_HEIGHT = 240;
+
+/**
+ * A window rect from a window helper ({ x, y, w, h }) in DIPs: Windows' helpers report real screen
+ * pixels (converted by Electron), macOS's report points, which already are Electron's DIPs there.
+ */
+export function helperRectToDip(screen, r, platform = process.platform) {
+  const rect = { x: r.x, y: r.y, width: r.w, height: r.h };
+  if (platform === 'win32' || typeof screen?.screenToDipRect === 'function' && platform !== 'darwin') return screen.screenToDipRect(null, rect);
+  return rect;
+} // DIPs: room above Claude's prompt box to jump
 
 /** The strip for a Claude window rect in DIPs: its bottom BUDDY_HEIGHT (at most 60% of it), full width. */
 export function buddyBoundsFor(win, height = BUDDY_HEIGHT) {
@@ -13,7 +23,7 @@ export function buddyBoundsFor(win, height = BUDDY_HEIGHT) {
 export const FREE_STRIP_MAX_WIDTH = 900;
 
 /**
- * The free-floating strip (no Claude window to live on, e.g. macOS for now): along the bottom of a
+ * The free-floating strip (no Claude window to live on, e.g. no window helper): along the bottom of a
  * display's work area (so just above the Dock or taskbar), centred, at most FREE_STRIP_MAX_WIDTH
  * wide with a margin each side.
  */

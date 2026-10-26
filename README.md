@@ -51,7 +51,7 @@ Ask what Claude is doing, hear when it finishes, switch sessions, and dictate pr
 
 ## Requirements
 
-- Windows 10 or 11 (x64)
+- Windows 10 or 11 (x64), or macOS 12+ on Apple silicon or Intel (beta: see [docs/MAC.md](docs/MAC.md) for building, the permissions it asks for, and signing)
 - [Claude desktop app](https://claude.ai/download) with Claude Code sessions
 - No key to start. Orbit starts on Claude voice, which runs through your own Claude Code sign-in (your Claude plan), with speech heard and spoken on your PC. Its speech models (about 175 MB) download the first time you talk.
 - Only for Grok voice: an [xAI API key](https://console.x.ai), added in Settings → Voice engine → Grok. Grok voice is billed by xAI per minute connected (about $0.08/min at the time of writing). Orbit shows an estimate in Settings → Usage. Saying "go to sleep" hangs up, so sleeping costs nothing (unless you turn on "Wake Grok to say it": each spoken update bills a few seconds).
@@ -148,7 +148,7 @@ flowchart LR
 
 ## Build from source
 
-Requires Node.js 20+ on Windows.
+Requires Node.js 20+ on Windows. On a Mac: `bash scripts/mac-setup.sh` (also builds Orbit's Swift helper), then `npm run app`; `npm run dist:mac` builds the dmg and zip ([docs/MAC.md](docs/MAC.md)).
 
 ```bash
 npm ci

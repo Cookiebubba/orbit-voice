@@ -15,7 +15,7 @@
 //     full looks the Send button keeps its place from the box's right end and bottom (it sits on the
 //     box's row), so it moves with the box.
 //
-// Free-floating (`free`, macOS for now, where there's no Claude window tracker yet): the strip
+// Free-floating (`free`: no Claude window tracker, e.g. a Mac copy without its helper): the strip
 // lives along the bottom of the screen the cursor is on, just above the Dock, always on top and on
 // every Space. There's no prompt box or Send button to stand on there, so the avatar has the
 // floor (the top of the Dock) to itself; it moves when the screen layout changes.
@@ -39,7 +39,7 @@
 
 import { BrowserWindow, screen } from 'electron';
 
-import { BUDDY_HEIGHT, boxInStrip, buddyBoundsFor, freeStripFor, liftRectFor, sendAtOffset, sendInStrip, sendOffsetFor, usableBox } from './buddy-geometry.js';
+import { BUDDY_HEIGHT, boxInStrip, buddyBoundsFor, freeStripFor, helperRectToDip, liftRectFor, sendAtOffset, sendInStrip, sendOffsetFor, usableBox } from './buddy-geometry.js';
 import { isAvatarAction } from '../src/avatar-commands.js';
 import { createHoverPoller, rateLimitedLog } from './avatar-hover.js';
 import { cueName } from '../src/emote-cues.js';
@@ -325,7 +325,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     }
     if (!enabled || !claude?.found || claude.min) return hide();
     ensure();
-    claudeDip = screen.screenToDipRect(null, { x: claude.x, y: claude.y, width: claude.w, height: claude.h });
+    claudeDip = helperRectToDip(screen, claude);
     const b = buddyBoundsFor(claudeDip);
     if (lifted) {
       // Held or flying: the window covers the host window (its live rect); the page learns where it

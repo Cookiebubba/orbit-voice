@@ -36,7 +36,9 @@ const chunk = (i) => {
   for (let n = 0; n < 2400; n++) b.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * (i * 2400 + n)) / 24000) * 8000), n * 2);
   return b.toString('base64');
 };
+let connections = 0;
 fake.on('connection', (sock) => {
+  connections++;
   sock.on('message', async (m) => {
     if (JSON.parse(String(m)).type !== 'response.create') return;
     const send = (e) => sock.readyState === 1 && sock.send(JSON.stringify(e));
@@ -73,7 +75,9 @@ const click = (text) => js(`(() => { const b = [...document.querySelectorAll('bu
 const ended = () => recentLog({ limit: 100, minLevel: 'info' }).filter((e) => /Grok session ended/.test(e.message));
 // 1. An ordinary call of a few seconds, hung up with the Sleep button.
 out(`start talking: ${await click('Start talking')}`);
-await wait(6000);
+// (Chromium's fake microphone on a Mac takes ~10 s to open with echo cancellation; a real one doesn't.)
+for (let i = 0; i < 150 && !connections; i++) await wait(100);
+await wait(4000);
 out(`go to sleep: ${await click('Go to sleep')}`);
 for (let i = 0; i < 60 && ended().length < 1; i++) await wait(250);
 await wait(1500);

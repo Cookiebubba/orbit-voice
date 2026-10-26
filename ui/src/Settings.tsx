@@ -9,6 +9,7 @@ import PillScroll from "./components/PillScroll";
 import Reveal from "./components/Reveal";
 import { PULSE_MAX, PULSE_MIN } from "./orbLook";
 import { ARROW_PATH, PREVIEW, css } from "./mouse/shape.js";
+import { MacPermissionsSection } from "./MacPermissions";
 import { claudeCodeMissing } from "./talk.js";
 import { InstallClaudeCode } from "./InstallClaudeCode";
 
@@ -120,7 +121,13 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
           <SecondBrainSection s={s} update={update} name={name} />
         </Reveal>
 
-        {desktop && !isMac && (
+        {desktop && isMac && (
+          <Reveal show gap={GAP}>
+            <MacPermissionsSection />
+          </Reveal>
+        )}
+
+        {desktop && (
           <Reveal show gap={GAP}>
             <AnywhereSection s={s} update={update} name={name} />
           </Reveal>
@@ -141,11 +148,7 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
                 checked={s.orbStick}
                 onChange={(orbStick) => update({ orbStick })}
                 label="Stick to Claude Code"
-                hint={
-                  isMac
-                    ? "Not on Mac yet: the orb floats freely wherever you drag it. (On Windows it rides on the Claude window.)"
-                    : "The orb rides on the Claude window: it follows it around, stays on top of it, and hides while Claude is minimized. Drag the orb to choose its spot on the window."
-                }
+                hint="The orb rides on the Claude window: it follows it around, stays on top of it, and hides while Claude is minimized. Drag the orb to choose its spot on the window." 
               />
               <Toggle
                 className="mt-4"
@@ -209,7 +212,7 @@ function AnywhereSection({ s, update, name }: { s: SettingsT; update: Update; na
           checked={s.anywhereVision}
           onChange={(anywhereVision) => update({ anywhereVision })}
           label="Let Claude see windows"
-          hint={`When you ask ${name} to look at a window (a picture, a chart), a picture of that one window goes to Claude through your Claude Code. Off: looking stays on this PC, reading only the text in it.`}
+          hint={`When you ask ${name} to look at a window (a picture, a chart), a picture of that one window goes to Claude through your Claude Code. Off: looking stays on ${thisComputer}, reading only the text in it.`}
         />
         <Toggle
           className="mt-4"
@@ -352,16 +355,16 @@ function AvatarSection({ s, update, name }: { s: SettingsT; update: Update; name
       />
       <Reveal show={avatar === "buddy"}>
         <p className="mt-2 text-[12px] leading-snug text-muted">
-          A little pixel character lives along the bottom of your {isMac ? "screen" : "Claude window"}. It naps while {name} sleeps, listens and talks with it, hops onto the prompt box, carries your drafts in and stomps Send. Click it, or pick it up and drop it.
+          A little pixel character lives along the bottom of your Claude window. It naps while {name} sleeps, listens and talks with it, hops onto the prompt box, carries your drafts in and stomps Send. Click it, or pick it up and drop it.
         </p>
       </Reveal>
       <Reveal show={avatar === "qubit"}>
         <p className="mt-2 text-[12px] leading-snug text-muted">
-          A square with one eye lives on your {isMac ? "screen, just above the Dock" : "Claude window"}. He sleeps while {name} sleeps, wakes when you call, his eye stretches as you talk and opens with {name}'s voice. He waits by Send for your yes, stomps it, watches Claude work and celebrates when it's done. His colour shows what's going on.
+          A square with one eye lives on your Claude window. He sleeps while {name} sleeps, wakes when you call, his eye stretches as you talk and opens with {name}'s voice. He waits by Send for your yes, stomps it, watches Claude work and celebrates when it's done. His colour shows what's going on.
         </p>
       </Reveal>
       <Reveal show={avatar === "none"}>
-        <p className="mt-2 text-[12px] leading-snug text-muted">Nothing on your {isMac ? "screen" : "Claude window"}.</p>
+        <p className="mt-2 text-[12px] leading-snug text-muted">Nothing on your Claude window.</p>
       </Reveal>
       <Reveal show={avatar !== "none"}>
         <div className="mt-3 mb-1.5 text-[12px] text-muted">Size</div>

@@ -6,6 +6,9 @@
 //     Orbit, 2 GB per process, 64 processes) at low integrity, with its own writable folder under
 //     LocalLow (npm's and uv's caches and temp files go there). A server that can't run that way
 //     isn't run (the user can choose Docker).
+//   - on macOS: Apple's sandbox (sandbox-exec with a profile of Orbit's own, see macProfile): it may
+//     write only to its own folder (~/Library/Application Support/Orbit/mcp/<id>), never to your
+//     files, and can't read your keys (Keychains, ~/.ssh, Orbit's own settings).
 // Remote (HTTP) servers run nothing here: preferred when there's a choice.
 
 import { spawn, spawnSync } from 'node:child_process';
@@ -42,6 +45,32 @@ export function lowFolder(id, { home = os.homedir() } = {}) {
   const dir = path.join(home, 'AppData', 'LocalLow', 'Orbit', 'mcp', String(id).replace(/[^\w.-]/g, '_'));
   fs.mkdirSync(path.join(dir, 'tmp'), { recursive: true });
   return dir;
+}
+
+/** The server's own folder on macOS (the one place its sandbox lets it write). */
+export function macFolder(id, { home = os.homedir() } = {}) {
+  const dir = path.posix.join(home, 'Library', 'Application Support', 'Orbit', 'mcp', String(id).replace(/[^\w.-]/g, '_'));
+  fs.mkdirSync(path.join(dir, 'tmp'), { recursive: true });
+  return dir;
+}
+
+/**
+ * The macOS sandbox profile (Seatbelt) for one local server: everything an ordinary command line
+ * tool does (network, reading programs and libraries), but writing only to its own folder and the
+ * terminal devices, and no reading of your keys or Orbit's settings. In SBPL the last matching rule
+ * wins, so the narrow allows come after the broad deny.
+ */
+export function macProfile({ dir, home }) {
+  const q = (p) => JSON.stringify(String(p)); // a quoted SBPL string (the same escapes as JSON's)
+  return [
+    '(version 1)',
+    '(allow default)',
+    '(deny file-write*)',
+    `(allow file-write* (subpath ${q(dir)}) (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty") (regex #"^/dev/fd/") (regex #"^/dev/ttys"))`,
+    `(deny file-read* (subpath ${q(path.posix.join(home, 'Library', 'Keychains'))}) (subpath ${q(path.posix.join(home, '.ssh'))}) (subpath ${q(path.posix.join(home, '.gnupg'))}) (subpath ${q(path.posix.join(home, '.aws'))}) (subpath ${q(path.posix.join(home, 'Library', 'Application Support', 'Orbit'))}))`,
+    `(allow file-read* (subpath ${q(dir)}))`,
+    '(deny process-exec (literal "/usr/bin/osascript") (literal "/usr/bin/security"))',
+  ].join('\n');
 }
 
 /** A program on PATH (Windows: with .exe), or ''. */
@@ -105,13 +134,22 @@ export function dockerAvailable({ spawnSyncImpl = spawnSync } = {}) {
  * --mcp-config). `source`: { kind: 'package', registryType, identifier, version } or
  * { kind: 'command', command, args } (tests, local tools the user pointed at).
  */
-export function boxedCommand(source, { id, cacheDir, env = process.env, medium = false, docker = dockerAvailable, home } = {}) {
+export function boxedCommand(source, { id, cacheDir, env = process.env, medium = false, docker = dockerAvailable, home, platform = process.platform } = {}) {
   const plain = source.kind === 'package' ? packageCommand(source, { env }) : { command: source.command, args: source.args || [] };
   if (plain.docker) {
     if (!docker()) throw new Error('This server comes as a Docker image, and Docker is not running here.');
     return { command: 'docker', args: ['run', '-i', '--rm', '--cpus', '1', '--memory', '2g', '--pids-limit', '256', '--security-opt', 'no-new-privileges', '--read-only', '--tmpfs', '/tmp', plain.image], env: { ...env } };
   }
-  if (process.platform !== 'win32') throw new Error('Local servers are boxed only on Windows for now.');
+  if (platform === 'darwin') {
+    const dir = macFolder(id, home ? { home } : undefined);
+    const tmp = path.posix.join(dir, 'tmp');
+    return {
+      command: '/usr/bin/sandbox-exec',
+      args: ['-p', macProfile({ dir, home: home || os.homedir() }), plain.command, ...plain.args],
+      env: { ...env, TMPDIR: `${tmp}/`, npm_config_cache: path.posix.join(dir, 'npm-cache'), npm_config_update_notifier: 'false', UV_CACHE_DIR: path.posix.join(dir, 'uv-cache'), UV_TOOL_DIR: path.posix.join(dir, 'uv-tools'), ORBIT_MCP_HOME: dir },
+    };
+  }
+  if (platform !== 'win32') throw new Error('Local servers are boxed only on Windows and macOS.');
   const jail = buildJail(cacheDir);
   const dir = lowFolder(id, home ? { home } : undefined);
   const tmp = path.join(dir, 'tmp');

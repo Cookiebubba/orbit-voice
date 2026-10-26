@@ -17,6 +17,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { getConfigDir, getSetting, onSettingsChange, updateSettings } from '../config.js';
 import { cleanArgs } from './keeper-core.js';
+import { runHelperOnce } from '../platform/mac/helper.js';
 
 export const KEEPER_TIMING = Object.freeze({ startMs: 20_000, connectMs: 3000, callMs: 4000, closeMs: 5000 });
 
@@ -115,9 +116,11 @@ export function revokeApp(id) {
   updateSettings({ anywhereUnderOrbit: approvedApps().filter((a) => a !== k) });
 }
 
-// ---- processes (Windows: read-only process info; closing an app the user approved restarting) ----
+// ---- processes (read-only process info; closing an app the user approved restarting) ----
 function processInfo(pid, { exec = execFile } = {}) {
   const id = Math.floor(Number(pid)) || 0;
+  // macOS: Orbit's helper reads the program and its exact arguments (proc_pidpath, KERN_PROCARGS2).
+  if (id && process.platform === 'darwin') return runHelperOnce(['proc', '--pid', String(id)], { timeoutMs: 5000 }).then((j) => (j?.ok ? { exe: j.exe, args: j.args, parent: j.parent, bundle: j.bundle } : null));
   if (!id || process.platform !== 'win32') return Promise.resolve(null);
   const ps = `$p=Get-CimInstance Win32_Process -Filter "ProcessId=${id}"; if($p){[pscustomobject]@{exe=$p.ExecutablePath;cmd=$p.CommandLine;parent=$p.ParentProcessId}|ConvertTo-Json -Compress}`;
   return new Promise((resolve) => exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 8000 }, (err, out) => {
@@ -142,7 +145,29 @@ export function argsAfterProgram(cmd) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function taskkill(pid, force) {
+  if (process.platform !== 'win32') {
+    // macOS: the app is asked to quit (SIGTERM: Chromium and Electron apps close cleanly), then made to.
+    try {
+      process.kill(Math.floor(Number(pid)), force ? 'SIGKILL' : 'SIGTERM');
+    } catch {}
+    return Promise.resolve();
+  }
   return new Promise((resolve) => execFile('taskkill', ['/PID', String(pid), '/T', ...(force ? ['/F'] : [])], { windowsHide: true, timeout: 8000 }, () => resolve()));
+}
+
+/**
+ * Start an app the normal way (outside Orbit): on macOS through Launch Services (open -a), so it is
+ * its own app again (its Dock icon, its own privacy permissions), not a child of Orbit.
+ */
+export function launchNormally(exe, args = [], { spawnImpl = spawn, platform = process.platform } = {}) {
+  const bundle = platform === 'darwin' ? (String(exe).match(/^(.*?\.app)\/Contents\/MacOS\//) || [])[1] : '';
+  try {
+    if (bundle) spawnImpl('/usr/bin/open', ['-n', '-a', bundle, ...(args.length ? ['--args', ...args] : [])], { detached: true, stdio: 'ignore' }).unref();
+    else spawnImpl(exe, args, { detached: true, stdio: 'ignore', cwd: path.dirname(exe) }).unref();
+    return true;
+  } catch {
+    return false;
+  }
 }
 /** Close an app (its whole process tree): gently, then for sure. Resolves once it's gone. */
 async function closeApp(pid) {
@@ -190,16 +215,14 @@ export async function restartUnderOrbit(win, deps = {}) {
   if (keeperForWindow(win)) return { ok: true, state: keeperForWindow(win), already: true };
   const info = await (deps.processInfo || processInfo)(win.pid);
   if (!info?.exe) return { ok: false, error: 'Orbit couldn\x27t tell which program that window belongs to.' };
-  const args = argsAfterProgram(info.cmd);
+  const args = Array.isArray(info.args) ? info.args.map(String) : argsAfterProgram(info.cmd);
   if (!(await (deps.closeApp || closeApp)(win.pid))) return { ok: false, error: 'The app didn\x27t close, so it wasn\x27t restarted.' };
   try {
     const state = await startUnderKeeper({ exe: info.exe, args, cwd: path.dirname(info.exe), app: path.basename(info.exe) }, deps);
     return { ok: true, state };
   } catch (e) {
     // Never leave the user without the app: start it the normal way again.
-    try {
-      spawn(info.exe, args, { detached: true, stdio: 'ignore', cwd: path.dirname(info.exe) }).unref();
-    } catch {}
+    launchNormally(info.exe, args);
     return { ok: false, error: String(e?.message || e).slice(0, 160) };
   }
 }
@@ -210,9 +233,7 @@ export async function releaseFromOrbit(appId) {
   const k = keepers().find((s) => appIdOf(s.exe) === id);
   if (!k) return { ok: true, running: false };
   await closeApp(k.appPid);
-  try {
-    spawn(k.exe, Array.isArray(k.args) ? k.args : [], { detached: true, stdio: 'ignore', cwd: path.dirname(k.exe) }).unref();
-  } catch {}
+  launchNormally(k.exe, Array.isArray(k.args) ? k.args : []);
   return { ok: true, running: true };
 }
 

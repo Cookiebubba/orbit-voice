@@ -18,9 +18,20 @@ export type HotkeyInfo = {
   error?: string;
 };
 
+/** One of macOS's privacy permissions Orbit uses. */
+export type MacPermission = "accessibility" | "microphone" | "screen";
+export type MediaAccess = "granted" | "denied" | "not-determined" | "restricted" | "unknown";
+/** What macOS lets Orbit do now (electron/main.js "macOS permissions"). */
+export type MacPermissions = { platform: string; accessibility?: boolean; microphone?: MediaAccess; screen?: MediaAccess; helper?: boolean };
+
 type DesktopApi = {
   /** process.platform of the desktop app ('win32', 'darwin', ...). */
   platform?: string;
+  /** macOS: the privacy permissions, and asking for one (its prompt, or the right System Settings pane). */
+  permissions?: {
+    get(): Promise<MacPermissions>;
+    request(kind: MacPermission): Promise<MacPermissions>;
+  };
   hotkey: {
     get(): Promise<HotkeyInfo>;
     set(accelerator: string): Promise<HotkeyInfo>;
@@ -49,6 +60,8 @@ type DesktopApi = {
   openLogs(): Promise<void>;
   startWithWindows: { get(): Promise<boolean>; set(enabled: boolean): Promise<boolean> };
   onHotkey(cb: () => void): () => void;
+  /** macOS: Orbit → Settings… (⌘,) was chosen in the menu bar. */
+  onShowSettings?(cb: () => void): () => void;
   updates: {
     get(): Promise<UpdateState>;
     check(): Promise<UpdateState>;

@@ -64,7 +64,10 @@ test('mac build: hardened runtime, entitlements file exists and parses, with wha
   assert.equal(mac.gatekeeperAssess, false);
   assert.equal(mac.entitlements, 'build/entitlements.mac.plist');
   assert.equal(mac.entitlementsInherit, 'build/entitlements.mac.plist');
-  const ent = readEntitlements(fs.readFileSync(path.join(ROOT, mac.entitlements), 'utf8'));
+  const xml = fs.readFileSync(path.join(ROOT, mac.entitlements), 'utf8');
+  // codesign's entitlements parser (AMFIUnserializeXML) refuses XML comments: none in the file.
+  assert.ok(!xml.includes('<!--'), 'no XML comments (codesign: "Failed to parse entitlements")');
+  const ent = readEntitlements(xml);
   assert.deepEqual(ent, {
     'com.apple.security.cs.allow-jit': true,
     'com.apple.security.cs.allow-unsigned-executable-memory': true,
@@ -102,6 +105,14 @@ test('mac build: sherpa-onnx native packages for both Macs are unpacked from app
     assert.match(p.integrity, /^sha512-/);
     assert.ok(sherpa.optionalDependencies[p.name], `${p.name} is sherpa-onnx-node's optional dependency`);
   }
+});
+
+test('mac build: the native helper ships in Contents/Resources/mac, built before packaging', () => {
+  assert.deepEqual(mac.extraResources, [{ from: 'resources/mac', to: 'mac', filter: ['orbit-helper'] }]);
+  assert.match(pkg.scripts['dist:mac'], /scripts\/build-mac-helper\.mjs && node scripts\/mac-native\.mjs/);
+  assert.equal(pkg.scripts['mac:helper'], 'node scripts/build-mac-helper.mjs');
+  assert.ok(fs.existsSync(path.join(ROOT, 'native', 'mac', 'OrbitHelper', 'main.swift')));
+  assert.equal(mac.extendInfo.LSMinimumSystemVersion, '12.0');
 });
 
 test('mac build: GitHub publishing (so electron-builder writes latest-mac.yml next to the zips)', () => {

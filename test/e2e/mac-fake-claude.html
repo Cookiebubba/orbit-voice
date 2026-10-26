@@ -1,0 +1,168 @@
+<!doctype html>
+<!--
+  A stand-in for the Claude desktop app's page, for Orbit's macOS end-to-end test (scripts/mac-e2e.mjs):
+  the parts Orbit finds by their accessible names and classes, laid out as Claude lays them out (a
+  sidebar landmark named "Sidebar" with session rows and their "More options for <title>" buttons,
+  the page titled "<title> - Claude Code", a ProseMirror-like prompt box named "Prompt" with Send /
+  Stop on its row, permission and question cards, the model picker's menu). Its editor keeps its own
+  model and changes it only from what happens in the page (as ProseMirror does), so a test can tell
+  whether Orbit's text really reached the app. window.fake has its state and a few test controls.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<title>Claude</title>
+<style>
+  body { margin: 0; font: 14px -apple-system, sans-serif; display: flex; height: 100vh; }
+  aside { width: 240px; background: #f4f4f5; padding: 8px; overflow: auto; }
+  main { flex: 1; display: flex; flex-direction: column; padding: 12px; }
+  .row { display: flex; align-items: center; gap: 4px; }
+  .row > button:first-child { flex: 1; text-align: left; }
+  #chat { flex: 1; overflow: auto; }
+  #composer { border: 1px solid #ccc; border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  #prompt { min-height: 22px; outline: none; }
+  .box { display: flex; align-items: flex-end; gap: 6px; }
+  .box > #prompt { flex: 1; }
+  .card { border: 1px solid #d97757; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+  [role=menu] { border: 1px solid #ccc; background: #fff; padding: 4px; }
+</style>
+</head>
+<body>
+<aside aria-label="Sidebar" role="complementary" id="sidebar"></aside>
+<main>
+  <div id="header"></div>
+  <div id="chat"><div aria-label="Chat messages" role="application"><article aria-label="Message 1"><p>An earlier message.</p></article></div></div>
+  <div id="dock"></div>
+  <div id="composer">
+    <div class="box">
+      <div id="prompt" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Prompt" class="tiptap ProseMirror"><p><br></p></div>
+      <span id="sendSlot"></span>
+    </div>
+    <div class="row"><button id="model" aria-haspopup="menu" aria-expanded="false"></button><button aria-haspopup="menu" aria-expanded="false">Bypass permissions</button><span id="folderSlot"></span></div>
+    <div id="menuSlot"></div>
+  </div>
+</main>
+<script>
+  const s = {
+    sessions: ['Fix the login bug', 'Write the release notes', 'Plan viewer alpha'],
+    open: 'Fix the login bug',
+    folder: null,
+    model: '', // the editor's own text: changed only by input in the page
+    sent: [],
+    working: false,
+    card: null,
+    answer: null,
+    llm: 'Opus 5.5 High',
+    menu: false,
+  };
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, attrs = {}, kids = []) => {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'text') e.textContent = v;
+      else if (k === 'onclick') e.addEventListener('click', v);
+      else e.setAttribute(k, v);
+    }
+    for (const k of kids) e.append(k);
+    return e;
+  };
+
+  // The editor: ProseMirror-like. Its model follows the page (input events and the page's own
+  // changes, as ProseMirror's DOM observer does), never a value set from outside it.
+  const prompt = $('prompt');
+  const readDom = () => prompt.innerText.replace(/\n+$/, '').replace(/ /g, ' ');
+  const sync = () => {
+    s.model = readDom();
+    render();
+  };
+  new MutationObserver(sync).observe(prompt, { childList: true, characterData: true, subtree: true });
+  prompt.addEventListener('input', sync);
+  const clearEditor = () => {
+    prompt.innerHTML = '<p><br></p>';
+    s.model = '';
+  };
+
+  // Each part of the page is rebuilt only when what it shows changed (as React keeps its elements),
+  // so a control Orbit found a moment ago is still the same element when it presses it.
+  const keys = {};
+  const region = (id, key, build) => {
+    const k = JSON.stringify(key);
+    if (keys[id] === k) return;
+    keys[id] = k;
+    $(id).replaceChildren(...build());
+  };
+  function render() {
+    region('sidebar', [s.sessions], () => [
+      el('button', { 'aria-label': 'Hide sidebar' }),
+      el('div', { role: 'radiogroup', 'aria-label': 'Mode' }, [el('button', { role: 'radio', 'aria-checked': 'false', text: 'Claude' }), el('button', { role: 'radio', 'aria-checked': 'true', text: 'Code' })]),
+      el('div', { class: 'dframe-nav-scroll' }, [
+        el('button', { text: 'New', onclick: () => { s.open = null; s.folder = 'orbit-voice'; clearEditor(); render(); } }),
+        el('div', { class: 'group/labelrow' }, [el('h3', { text: 'ladder 6' }), el('button', { 'aria-label': 'New session in Fire, added to ladder 6', onclick: () => { s.open = null; s.folder = 'Fire'; render(); } })]),
+        ...s.sessions.map((t) =>
+          el('div', { class: 'relative df-drag-shiftable' }, [
+            el('div', { class: 'group hit-row row' }, [
+              el('button', { onclick: () => { s.open = t; render(); } }, [el('span', { text: t }), el('span', { text: ' Cloud' })]),
+              el('div', { class: 'absolute end-0' }, [el('button', { 'aria-label': `More options for ${t}`, 'aria-haspopup': 'menu' })]),
+            ]),
+          ]),
+        ),
+      ]),
+    ]);
+    region('header', [s.open], () => [
+      ...(s.open
+        ? [el('div', { role: 'toolbar', 'aria-label': 'Session tools' }, [el('h2', { 'aria-label': s.open }, [el('button', { 'aria-label': `${s.open}, rename session`, text: s.open })]), el('button', { 'aria-label': `More options for ${s.open}`, 'aria-haspopup': 'menu' })])]
+        : [el('h1', { text: 'New session' })]),
+    ]);
+    document.title = s.open ? `${s.open} - Claude Code` : 'Claude';
+    const cards = [];
+    if (s.card?.kind === 'permission') {
+      cards.push(
+        el('div', { class: 'epitaxy-approval-card card' }, [
+          el('p', { text: s.card.title }),
+          el('div', { role: 'region', 'aria-label': 'The command Claude wants to run' }, [el('code', { text: s.card.command })]),
+          el('div', { class: 'row' }, ['Allow once', 'Always allow', 'Deny'].map((b) => el('button', { text: b, onclick: () => { s.answer = b; s.card = null; render(); } }))),
+        ]),
+      );
+    } else if (s.card?.kind === 'question') {
+      cards.push(
+        el('div', { class: 'epitaxy-approval-card epitaxy-question-card card', role: 'group', 'aria-label': s.card.question }, [
+          ...s.card.options.map((o, k) => el('button', { class: 'epitaxy-answer-option', 'aria-pressed': String(s.card.picked === k), onclick: () => { s.card.picked = k; render(); } }, [el('span', { class: 'epitaxy-radio-mark' }), el('span', { text: o })])),
+          el('button', { text: 'Skip', onclick: () => { s.answer = 'skip'; s.card = null; render(); } }),
+          el('button', { text: 'Submit', ...(s.card.picked === undefined ? { disabled: '' } : {}), onclick: () => { s.answer = s.card.options[s.card.picked]; s.card = null; render(); } }),
+        ]),
+      );
+    }
+    region('dock', [s.card], () => cards);
+    region('sendSlot', [s.working, !!s.model.trim()], () => [
+      s.working
+        ? el('button', { 'aria-label': 'Stop', text: '■', onclick: () => { s.working = false; render(); } })
+        : el('button', { 'aria-label': 'Send', text: '↑', ...(s.model.trim() ? {} : { disabled: '' }), onclick: () => send() }),
+    ]);
+    const m = $('model');
+    m.setAttribute('aria-label', `Model: ${s.llm}`);
+    m.textContent = s.llm;
+    m.setAttribute('aria-expanded', String(s.menu));
+    m.onclick = () => { s.menu = !s.menu; render(); };
+    region('folderSlot', [s.open, s.folder], () => (s.open ? [] : [el('button', { 'aria-label': `Folder: ${s.folder || 'orbit-voice'}`, text: s.folder || 'orbit-voice' })]));
+    region('menuSlot', [s.menu], () => (s.menu ? [el('div', { role: 'menu' }, ['Opus 5.5', 'Opus 5.5 High', 'Sonnet 5.5', 'Haiku 5.5'].map((x) => el('div', { role: 'menuitem', tabindex: '-1', text: x, onclick: () => { s.llm = x; s.menu = false; render(); } })))] : []));
+  }
+  function send() {
+    if (!s.model.trim()) return;
+    s.sent.push(s.model);
+    if (!s.open) {
+      s.open = s.model.slice(0, 30);
+      s.sessions.unshift(s.open);
+    }
+    clearEditor();
+    s.working = true;
+    render();
+  }
+  window.fake = {
+    state: () => JSON.parse(JSON.stringify(s)),
+    set: (patch) => { Object.assign(s, patch); render(); return true; },
+    typeAsUser: (t) => { prompt.focus(); document.execCommand('insertText', false, t); return s.model; },
+  };
+  render();
+</script>
+</body>
+</html>

@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import History from "./components/History";
 import SessionSwitcher from "./components/SessionSwitcher";
 import { desktop, isMac } from "./desktop";
+import { MacPermissionsBanner } from "./MacPermissions";
 import { PULSE_DEFAULT } from "./orbLook";
 import AvatarHero from "./hero/AvatarHero";
 import Settings from "./Settings";
@@ -161,6 +162,7 @@ export default function App() {
   };
   useEffect(() => desktop?.onOrbAction((a) => a === "toggle-sleep" && hotkeyRef.current()), []);
   useEffect(() => desktop?.onHotkey(() => hotkeyRef.current()), []);
+  useEffect(() => desktop?.onShowSettings?.(() => setView("settings")), []);
   // A click on the avatar: the wake word's own path (Orbit off or asleep). Already awake, the
   // avatar's little nod is all. Grok without a key: the notice on the main page says why.
   const talkRef = useRef(() => {});
@@ -311,6 +313,7 @@ export default function App() {
         </div>
       </div>
 
+      {desktop && isMac && view === "main" && <MacPermissionsBanner />}
       {screen === "settings" ? (
         <Settings
           config={app.config}

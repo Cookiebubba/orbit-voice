@@ -251,9 +251,9 @@ test('hotkey labels: ⌃⌥G on a Mac, Ctrl+Alt+G on Windows', () => {
   assert.equal(hotkeyLabel('Super+Alt+G', 'win32'), 'Win+Alt+G');
 });
 
-test('the Claude app tools say plainly that typing into Claude is not on Mac yet', () => {
+test('without its helper, the Claude app tools say plainly what Orbit cannot do on this Mac', () => {
   const m = desktopUnsupportedMessage('darwin');
-  assert.match(m, /Typing into Claude isn't on Mac yet/);
+  assert.match(m, /helper is missing/);
   assert.match(m, /send/i);
   assert.match(m, /Stop/);
   assert.match(desktopUnsupportedMessage('linux'), /only implemented for Windows/);

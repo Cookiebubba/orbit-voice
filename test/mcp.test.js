@@ -424,3 +424,20 @@ test('a helper\x27s call to a connected write tool comes back to the user (Claud
   assert.equal((await call({ tool_name: 'mcp__notion__create_page', input: {} })).behavior, 'deny');
   assert.equal((await call({ tool_name: 'Bash', input: { command: 'rm -rf /' } })).behavior, 'deny', 'only tools this task was given');
 });
+
+test('macOS: a local server runs in Apple\u2019s sandbox, writing only to its own folder, never reading your keys', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-mac-home-')).split(path.sep).join('/');
+  const c = boxedCommand({ kind: 'command', command: '/usr/local/bin/node', args: ['server.js'] }, { id: 'srv/1', cacheDir: tmp(), home, platform: 'darwin' });
+  assert.equal(c.command, '/usr/bin/sandbox-exec');
+  assert.equal(c.args[0], '-p');
+  const profile = c.args[1];
+  assert.deepEqual(c.args.slice(2), ['/usr/local/bin/node', 'server.js']);
+  const dir = `${home}/Library/Application Support/Orbit/mcp/srv_1`;
+  assert.equal(c.env.ORBIT_MCP_HOME, dir);
+  assert.equal(c.env.TMPDIR, `${dir}/tmp/`);
+  const lines = profile.split('\n');
+  assert.ok(lines.indexOf('(deny file-write*)') < lines.findIndex((l) => l.startsWith('(allow file-write*')), 'the narrow allow comes after the broad deny');
+  assert.ok(profile.includes(`(allow file-write* (subpath ${JSON.stringify(dir)})`), 'its own folder is writable');
+  for (const secret of ['Library/Keychains', '.ssh', 'Library/Application Support/Orbit"']) assert.ok(profile.includes(`${home}/${secret}`), secret);
+  assert.throws(() => boxedCommand({ kind: 'command', command: 'x' }, { id: 'a', cacheDir: tmp(), platform: 'linux' }), /only on Windows and macOS/);
+});

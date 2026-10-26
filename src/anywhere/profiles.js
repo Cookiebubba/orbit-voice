@@ -11,7 +11,7 @@
 //             before using them, every time (phase 5); unknown counts as outward there anyway
 //   surfaces  walkable top edges for Qubit (wide input boxes and toolbars), relative to the window
 //   quirks    what's odd about the app (a Chromium tree that wakes late, rich editors, classic EDITs)
-//   platform  'win' now; a Mac profile has its own (AX roles and identifiers differ)
+//   platform  'win' or 'mac' (a Mac profile has its own: AX roles and identifiers differ)
 //
 // Locator ladder, tried in order: automation id -> type + name -> landmark path -> anchor (a labelled
 // neighbour) -> position box. A locator that only finds its control by a later rung "heals" once:
@@ -41,8 +41,11 @@ const clean = (s, max = 80) =>
         .slice(0, max)
     : '';
 
-/** The profile key for a window's app: "win-notepad", "win-discord". */
-export function appKey(win, platform = 'win') {
+/** This computer's kind of profile: 'mac' on macOS, else 'win'. */
+export const PROFILE_PLATFORM = process.platform === 'darwin' ? 'mac' : 'win';
+
+/** The profile key for a window's app: "win-notepad", "win-discord", "mac-discord". */
+export function appKey(win, platform = PROFILE_PLATFORM) {
   const exe = String(win?.exe || '')
     .toLowerCase()
     .replace(/\.exe$/, '')
@@ -185,7 +188,7 @@ export const isOutwardLabel = (label) => OUTWARD_WORDS.test(String(label || ''))
  * The profile for one app window from one scan (see the top). `win`: the focus helper's window
  * report ({ exe, ... }); `scan`: uia.ps1's answer ({ fw, nodes }).
  */
-export function buildProfile(win, scan, { platform = 'win', now = Date.now() } = {}) {
+export function buildProfile(win, scan, { platform = PROFILE_PLATFORM, now = Date.now() } = {}) {
   const sk = skeleton(scan);
   const framework = frameworkOf(scan);
   const regions = regionsOf(sk);
@@ -354,7 +357,7 @@ export function createProfileStore({ dir }) {
  * The profile for this window's app: the saved one if it's recent and from this version, else a
  * fresh one from `scan` (saved). `scan` is a function so a saved profile costs no scan at all.
  */
-export async function ensureProfile(win, { store, scan, platform = 'win', maxAgeMs = PROFILE_MAX_AGE_MS, now = Date.now() } = {}) {
+export async function ensureProfile(win, { store, scan, platform = PROFILE_PLATFORM, maxAgeMs = PROFILE_MAX_AGE_MS, now = Date.now() } = {}) {
   const key = appKey(win, platform);
   if (!key || !store) return null;
   const saved = store.get(key);
