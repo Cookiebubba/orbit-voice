@@ -11,10 +11,11 @@ import { initConfig } from '../src/config.js';
 import { connectKeeper, keeperForWindow, keepers, pageSession, setKeeperLauncher, startUnderKeeper } from '../src/anywhere/keeper.js';
 import { cdpClick, cdpElementRect, cdpEnter, cdpScreenshot, cdpType } from '../src/anywhere/cdp.js';
 import { SLATE_MAIN, electronPath } from './e2e/slate-input.mjs';
+import { realDesktopSkip } from './e2e/real-desktop.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const skip = process.platform !== 'win32' && 'Windows only';
+const skip = realDesktopSkip || (process.platform !== 'win32' && 'Windows only');
 
 /** Query the page through the pipe (DOM only, never running code in it). */
 async function count(win, selector) {

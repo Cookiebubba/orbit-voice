@@ -6,10 +6,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { canRun, psWithPid, startFakeWindow } from './e2e/fake-window.mjs';
 import { lockDesktop } from './e2e/desktop-lock.mjs';
+import { realDesktopSkip } from './e2e/real-desktop.mjs';
 
-if (process.platform === 'win32') await lockDesktop(); // one real-desktop test file at a time
+if (process.platform === 'win32' && !realDesktopSkip) await lockDesktop(); // one real-desktop test file at a time
 
-const skip = !canRun() && 'needs Windows with .NET Framework 4 (csc.exe)';
+const skip = realDesktopSkip || (!canRun() && 'needs Windows with .NET Framework 4 (csc.exe)');
 
 test('Stop: pressed only while Claude works, and never a background task\x27s "Stop this task"', { skip, timeout: 120_000 }, async () => {
   const w = await startFakeWindow('Fake session');

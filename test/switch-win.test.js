@@ -7,12 +7,13 @@ import assert from 'node:assert/strict';
 import { createWinFocusTracker } from '../src/platform/win/focus.js';
 import { canRunApps, startFakeApp, userIdleMs } from './e2e/fake-app.mjs';
 import { lockDesktop } from './e2e/desktop-lock.mjs';
+import { realDesktopSkip } from './e2e/real-desktop.mjs';
 
-if (process.platform === 'win32') await lockDesktop(); // one real-desktop test file at a time
+if (process.platform === 'win32' && !realDesktopSkip) await lockDesktop(); // one real-desktop test file at a time
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const idle = process.env.ORBIT_TEST_FOCUS === '1' || (canRunApps() && userIdleMs() > 60_000);
-const skip = !canRunApps() ? 'needs Windows with .NET Framework 4 (csc.exe)' : !idle && 'someone is using this PC (set ORBIT_TEST_FOCUS=1 to run it anyway)';
+const skip = realDesktopSkip || (!canRunApps() ? 'needs Windows with .NET Framework 4 (csc.exe)' : !idle && 'someone is using this PC (set ORBIT_TEST_FOCUS=1 to run it anyway)');
 
 test('switch: a minimized window and a window behind others both come to the front', { skip, timeout: 120_000 }, async () => {
   const app = await startFakeApp('winforms', `ORBIT-SWITCH-${process.pid}`);
