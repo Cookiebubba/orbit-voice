@@ -95,7 +95,18 @@ export const DEFAULTS = Object.freeze({
   // Background helpers (Orbit anywhere): the engine they run on. 'claude-code' (the user's Claude
   // sign-in) for now; 'codex' is planned.
   helperEngine: 'claude-code',
+  // The first-run onboarding ("How should Orbit talk?") has been through: finished or skipped. A
+  // brand-new install starts with false (FIRST_RUN_SETTINGS); any install from before reads as done.
+  onboarded: true,
 });
+
+/**
+ * What a brand-new install of the desktop app starts with on top of DEFAULTS (as Orbit Native's
+ * Engine.firstRunSettings): Qubit, no floating orb (the window minimizes to the taskbar like any
+ * app's) and the onboarding still to do. Written to its settings file at once, so they read as
+ * chosen. An install with a settings file, or with an xAI key saved, keeps what it has.
+ */
+export const FIRST_RUN_SETTINGS = Object.freeze({ avatar: 'qubit', showOrb: false, onboarded: false });
 
 export const AVATARS = Object.freeze(['buddy', 'qubit', 'none']);
 
@@ -208,6 +219,7 @@ function sanitize(input) {
       case 'avatarClickTalk':
       case 'avatarThrow':
       case 'avatarThrowSound':
+      case 'onboarded':
         // Only a real yes or no (true/false, or their strings): anything else is ignored.
         if (typeof v === 'boolean' || v === 'true' || v === 'false') out[k] = val;
         break;
@@ -252,8 +264,9 @@ export { sanitize as sanitizeSettings };
 /**
  * Load settings. Call once at startup (the desktop app passes its own folder and key store).
  * Order: defaults → .env overrides in the project folder → settings.json in the config folder.
+ * `firstRun`: settings a brand-new install starts with (the desktop app passes FIRST_RUN_SETTINGS).
  */
-export function initConfig({ dir, secrets, brainSecrets } = {}) {
+export function initConfig({ dir, secrets, brainSecrets, firstRun = {} } = {}) {
   configDir = dir || PROJECT_ROOT;
   fs.mkdirSync(configDir, { recursive: true });
   secretStore = secrets || envSecretStore(configDir);
@@ -277,12 +290,22 @@ export function initConfig({ dir, secrets, brainSecrets } = {}) {
   if (!secretStore.get() && env.XAI_API_KEY) secretStore.set(env.XAI_API_KEY.trim());
 
   const saved = sanitize(fromFile).voiceEngine;
-  settings.voiceEngine = engineFor({ saved, hadFile, hasKey: !!secretStore.get() });
+  const hasKey = !!secretStore.get();
+  settings.voiceEngine = engineFor({ saved, hadFile, hasKey });
   // A brand-new install says so in its file straight away, so adding an xAI key later (without
-  // changing anything else) never reads as an install from before Claude was the default.
-  if (!saved && !hadFile && settings.voiceEngine === 'claude') {
+  // changing anything else) never reads as an install from before Claude was the default. Its
+  // first-run settings go in with it. (No file but a key saved is an install from before.)
+  const first = {};
+  if (!saved && !hadFile && settings.voiceEngine === 'claude') first.voiceEngine = 'claude';
+  if (!hadFile && !hasKey) {
+    const extra = sanitize(firstRun);
+    delete extra.voiceEngine;
+    Object.assign(settings, extra);
+    Object.assign(first, extra);
+  }
+  if (Object.keys(first).length) {
     try {
-      fs.writeFileSync(settingsFile, JSON.stringify({ voiceEngine: 'claude' }, null, 2));
+      fs.writeFileSync(settingsFile, JSON.stringify(first, null, 2));
     } catch {}
   }
   return settings;

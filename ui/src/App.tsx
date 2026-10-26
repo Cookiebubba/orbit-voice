@@ -8,6 +8,8 @@ import { MacPermissionsBanner } from "./MacPermissions";
 import { PULSE_DEFAULT } from "./orbLook";
 import AvatarHero from "./hero/AvatarHero";
 import Settings from "./Settings";
+import Onboarding from "./Onboarding";
+import { onboardingShown } from "./onboarding-model.js";
 import { playChime } from "./sounds";
 import { DEFAULT_VOLUME, volumeGain } from "./playback.js";
 import { createThrowSound } from "./throwSound.js";
@@ -248,6 +250,11 @@ export default function App() {
 
   const on = v.phase !== "off";
   const screen = screenFor(view); // never a key screen: the main page shows with or without a key
+  // The first-run onboarding ("How should Orbit talk?") stands in for the main page until it's done
+  // or skipped (Settings and History still open from the title bar).
+  const onboarding = screen === "main" && onboardingShown(settings, { parity: !!parity });
+  // No floating orb (Settings -> Avatar): the title bar's button minimizes to the taskbar.
+  const orbOff = settings?.showOrb === false && settings?.avatar !== "none";
   const startTalk = () => void tryTalk(() => v.start());
   const openSettings = () => {
     setFocusKey(notice?.kind === "grok-key");
@@ -299,6 +306,8 @@ export default function App() {
   // Orbit's state for the hero (his colour and eye follow it while Orbit is live).
   const heroVoice = { phase: v.phase, asleep: v.asleep, hearing: v.hearing, input: v.levels.input, output: v.levels.output, muted: v.muted, draft: draftWaiting, sending: v.sending, claudeWorking };
   const heroLabel = !on ? "Start talking" : v.asleep ? "Wake up" : "Voice is on";
+  // Claude voice's speech models loading and warming up (a call started now waits for them).
+  const warming = !!app.config.voiceWarming && settings?.voiceEngine === "claude" && !(notice && !on) && (!on || v.phase === "connecting");
   const status = v.asleep && on ? asleepLabel : v.muted && on && v.phase === "listening" ? "Muted" : PHASE_LABEL[v.phase];
 
   return (
@@ -327,7 +336,7 @@ export default function App() {
           </TitleButton>
           {desktop && !isMac && (
             <>
-              <TitleButton label="Shrink to orb" onClick={() => desktop?.minimize()}>
+              <TitleButton label={orbOff ? "Minimize" : "Shrink to orb"} onClick={() => desktop?.minimize()}>
                 <Minus size={16} />
               </TitleButton>
               <TitleButton label="Quit" onClick={() => desktop?.close()} danger>
@@ -338,8 +347,10 @@ export default function App() {
         </div>
       </div>
 
-      {desktop && isMac && screen === "main" && <MacPermissionsBanner />}
-      {screen === "settings" ? (
+      {desktop && isMac && screen === "main" && !onboarding && <MacPermissionsBanner />}
+      {onboarding ? (
+        <Onboarding config={app.config} update={app.updateSettings} onKeySaved={app.setHasKey} />
+      ) : screen === "settings" ? (
         <Settings
           config={app.config}
           update={app.updateSettings}
@@ -364,7 +375,11 @@ export default function App() {
               onActivate={() => (!on ? startTalk() : v.endWake() || (v.asleep && v.wake()))}
             />
             <div className="mt-5 text-[16px] font-semibold tracking-[-0.02em]">{status}</div>
-            {desktop && hint && !notice && <div className="mt-1.5 text-center font-mono text-[11px] leading-snug text-muted">{hint}</div>}
+            {warming ? (
+              <div className="mt-1.5 text-center font-mono text-[11px] leading-snug text-muted">Getting Orbit's voice ready…</div>
+            ) : (
+              desktop && hint && !notice && <div className="mt-1.5 text-center font-mono text-[11px] leading-snug text-muted">{hint}</div>
+            )}
             {notice && !on && (
               <div role="status" className="mt-2 flex max-w-[320px] flex-col items-center gap-2 text-center">
                 {notice.kind === "claude-signed-out" ? (

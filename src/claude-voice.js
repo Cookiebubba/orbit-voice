@@ -331,7 +331,14 @@ function loadSherpa(platform = process.platform, arch = process.arch) {
   }
 }
 
-/** Loads the speech models once; later calls share them. Rejects if they can't be loaded. */
+/** The speech models from `root` are loaded and warmed up (loadSpeech has finished). */
+export const speechLoaded = (root) => !!speechJob && speechJob.root === root && !!speechJob.done;
+
+/**
+ * Loads the speech models once; later calls share them. Rejects if they can't be loaded. They are
+ * warmed up with one short sentence (thrown away) first, so the first words of a call come at full
+ * speed (as Orbit Native's own speech does at launch).
+ */
 export function loadSpeech(root, { threads = CLAUDE_VOICE.threads } = {}) {
   if (speechJob && speechJob.root === root) return speechJob.promise;
   const promise = (async () => {
@@ -344,6 +351,9 @@ export function loadSpeech(root, { threads = CLAUDE_VOICE.threads } = {}) {
       }),
       sherpa.OfflineTts.createAsync({ model: { kitten: p.tts, numThreads: threads, provider: 'cpu' }, maxNumSentences: 1 }),
     ]);
+    try {
+      await tts.generateAsync({ text: 'Okay.', sid: CLAUDE_VOICE.sid, speed: 1, enableExternalBuffer: false });
+    } catch {} // only a warm-up: a real sentence says what's wrong, if anything
     return {
       newVad: () => new sherpa.Vad({ sileroVad: { model: p.vad, threshold: 0.5, minSpeechDuration: 0.25, minSilenceDuration: CLAUDE_VOICE.endOfTurnS, windowSize: WINDOW, maxSpeechDuration: 30 }, sampleRate: VAD_RATE, numThreads: 1, provider: 'cpu' }, 60),
       newResampler: () => new sherpa.LinearResampler(IN_RATE, VAD_RATE),
@@ -356,10 +366,14 @@ export function loadSpeech(root, { threads = CLAUDE_VOICE.threads } = {}) {
       },
     };
   })();
-  speechJob = { root, promise };
-  promise.catch(() => {
-    if (speechJob?.promise === promise) speechJob = null;
-  });
+  const job = { root, promise, done: false };
+  speechJob = job;
+  promise.then(
+    () => (job.done = true),
+    () => {
+      if (speechJob?.promise === promise) speechJob = null;
+    },
+  );
   return promise;
 }
 

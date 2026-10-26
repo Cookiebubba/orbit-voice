@@ -401,7 +401,7 @@ function AvatarSection({ s, update, name }: { s: SettingsT; update: Update; name
           checked={s.showOrb !== false}
           onChange={(showOrb) => update({ showOrb })}
           label="Show the orb"
-          hint={`Off: ${avatar === "qubit" ? "Qubit" : "the pixel buddy"} stands in for the orb when ${name} is minimized. Open ${name} again from its ${isMac ? "menu bar" : "tray"} icon.`}
+          hint={`Off: ${avatar === "qubit" ? "Qubit" : "the pixel buddy"} stands in for the orb when ${name} is minimized. Open ${name} again from the ${isMac ? "Dock or its menu bar icon" : "taskbar or its tray icon"}.`}
         />
       </Reveal>
     </Section>

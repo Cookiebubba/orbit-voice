@@ -43,9 +43,11 @@ export type Settings = {
   anywhereCdp: boolean;
   anywhereUnderOrbit: string[];
   anywhereMouse: boolean;
+  onboarded: boolean;
 };
 
-export type AppConfig = { version: string; hasKey: boolean; keyStorage: string; settings: Settings };
+/** voiceWarming: Claude voice's speech is loading and warming up (a call started now waits for it). */
+export type AppConfig = { version: string; hasKey: boolean; keyStorage: string; settings: Settings; voiceWarming?: boolean };
 export type Finished = { id: string; title: string; summary: string; at: number };
 
 export async function postJson(url: string, body: object) {
@@ -87,6 +89,7 @@ export function useAppState({ onFinished, onWake }: { onFinished: (f: Finished) 
       else if (evt.type === "claude.finished") finishedCb.current({ id: evt.id, title: evt.title, summary: evt.summary || "", at: Date.now() });
       // The bridge decides when Grok wakes by itself (spoken updates, results you asked for).
       else if (evt.type === "orbit.wake") wakeCb.current();
+      else if (evt.type === "voice.warming") setConfig((c) => (c ? { ...c, voiceWarming: !!evt.warming } : c));
       else if (evt.type === "settings.changed") setConfig((c) => (c ? { ...c, settings: { ...c.settings, ...evt.settings, hotkeyLabel: hotkeyLabel(evt.settings.wakeHotkey) } } : c));
     };
     return () => es.close();

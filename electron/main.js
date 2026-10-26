@@ -12,7 +12,7 @@ import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, n
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DEFAULTS, getSetting, onSettingsChange, updateSettings } from '../src/config.js';
+import { DEFAULTS, FIRST_RUN_SETTINGS, getSetting, onSettingsChange, updateSettings } from '../src/config.js';
 import { createClaudeWindowTracker } from './claude-window.js';
 import { helperRectToDip } from './buddy-geometry.js';
 import { DEFAULT_ANCHOR, anchorFor, isAnchor, orbPositionFor } from './orb-stick.js';
@@ -220,9 +220,11 @@ function createMain() {
   });
   lockDown(main);
   main.loadURL(authUrl('main')); // signs the window in, then shows the UI
-  main.once('ready-to-show', () => (startHidden() ? showOrb() : main.show()));
+  main.once('ready-to-show', () => (startHidden() ? showOrb({ quiet: true }) : main.show()));
   // Any way of minimizing (our button, taskbar click, Win+Down) turns into the orb.
   main.on('minimize', () => showOrb());
+  // Back from the taskbar (the orb off): Orbit is open again, as from the tray or the orb.
+  main.on('restore', () => orbMode && showMain());
   main.on('close', () => {
     quitting = true;
   });
@@ -263,11 +265,21 @@ function createOrb() {
   orb.loadURL(authUrl('orb'));
 }
 
-function showOrb() {
-  main.hide();
+/**
+ * Shrink Orbit: into the floating orb, or, with the orb off (Settings -> Avatar -> Show the orb; a
+ * new install starts that way, as Orbit Native has no orb), onto the taskbar like any app's window,
+ * with the avatar standing in for the orb. `quiet` (started with Windows): hidden, in the tray.
+ */
+function showOrb({ quiet = false } = {}) {
   orbMode = true;
   drag = null; // a click on the orb starts a "drag" that never ends; don't let it block the orb
-  if (!orbAllowed()) return orb.hide(); // the avatar stands in for it (open Orbit from the tray)
+  if (!orbAllowed()) {
+    orb.hide();
+    if (quiet) main.hide();
+    else if (!main.isMinimized()) main.minimize(); // (its 'minimize' event comes back here: nothing more to do)
+    return;
+  }
+  main.hide();
   if (getSetting('orbStick') && claude?.found) placeOrb();
   else orb.showInactive();
 }
@@ -839,6 +851,7 @@ app.whenReady().then(async () => {
       secrets: PROFILE ? undefined : encryptedKeyStore(dir), // (a test profile: its .env, see above)
       brainSecrets: PROFILE ? undefined : encryptedKeyStore(dir, 'anthropic-key.bin'),
       clipboard: (text) => clipboard.writeText(text),
+      firstRun: FIRST_RUN_SETTINGS, // a brand-new install: Qubit, no orb, and the onboarding
       // Offline wake-word model: shipped next to the app (extraResources), or in the repo in dev.
       models: app.isPackaged ? path.join(process.resourcesPath, 'models') : path.join(ROOT, 'resources', 'models'),
     });

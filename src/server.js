@@ -33,7 +33,7 @@ import {
 } from './config.js';
 import { askBrain, claudeAuthStatus, findClaude, openClaudeSignIn, speakable } from './brain.js';
 import { hotkeyLabel as platformHotkeyLabel, primeLoginShellPath } from './platform/system.js';
-import { createClaudeRealtime, keepSpare, loadRecognizer, loadSpeech, stopClaudeVoice, systemPrompt } from './claude-voice.js';
+import { createClaudeRealtime, keepSpare, loadRecognizer, loadSpeech, speechLoaded, stopClaudeVoice, systemPrompt } from './claude-voice.js';
 import { downloadModels, downloadStatus, downloadStt, modelsReady, STT_MODELS, sttOk, sttReady, sttStatus, VOICE_MODELS_MB } from './voice-models.js';
 import { setClipboardWriter } from './clipboard.js';
 import { createContinuity, quoteSafe } from './continuity.js';
@@ -287,8 +287,8 @@ function tokenMatches(value) {
  * The desktop app passes its own config folder and encrypted key store. Tests may pass a `watcher`
  * (anything with on/start/working) to feed in "Claude finished" events.
  */
-export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, brainSecrets, clipboard, models, watcher: injectedWatcher, speechInShell = false } = {}) {
-  initConfig({ dir: configDir, secrets, brainSecrets });
+export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, brainSecrets, clipboard, models, watcher: injectedWatcher, speechInShell = false, firstRun } = {}) {
+  initConfig({ dir: configDir, secrets, brainSecrets, firstRun });
   if (clipboard) setClipboardWriter(clipboard);
   const modelsDir = models || path.join(PROJECT_ROOT, 'resources', 'models');
   initLog(getConfigDir());
@@ -302,12 +302,23 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
    * desktop shell that hears and speaks itself (`speechInShell`: Orbit Native) holds the models, so
    * only Claude Code is started here (a call without the shell's speech still loads them on connect).
    */
+  // Claude voice's speech loading and warming up (the main page says "Getting Orbit's voice
+  // ready…" meanwhile; a call started then waits for it). GET /api/config has it, and an event.
+  let voiceWarming = false;
+  const setVoiceWarming = (on) => {
+    if (on === voiceWarming) return;
+    voiceWarming = on;
+    broadcast({ type: 'voice.warming', warming: on });
+  };
   const prewarmClaudeVoice = () => {
     if (!claudeVoiceOn() || !modelsReady(voiceModelsDir)) return;
     const claude = findClaude(getSetting('brainClaudePath'));
     if (!claude) return;
     if (!speechInShell) {
-      loadSpeech(voiceModelsDir).catch((e) => logWarn('voice', 'Claude voice: speech models failed to load', String(e?.message || e).slice(0, 200)));
+      if (!speechLoaded(voiceModelsDir)) setVoiceWarming(true);
+      loadSpeech(voiceModelsDir)
+        .catch((e) => logWarn('voice', 'Claude voice: speech models failed to load', String(e?.message || e).slice(0, 200)))
+        .finally(() => setVoiceWarming(false));
       // The chosen speech to text too, if it isn't Moonshine and it's downloaded (else Moonshine carries on).
       const stt = getSetting('claudeVoiceStt');
       if (stt !== 'moonshine' && sttReady(voiceModelsDir, stt)) loadRecognizer(voiceModelsDir, stt).catch((e) => logWarn('voice', `Claude voice: ${STT_MODELS[stt].label} failed to load`, String(e?.message || e).slice(0, 200)));
@@ -632,6 +643,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
             hasKey: !!getApiKey(),
             keyStorage: keyStorageKind(),
             settings: publicSettings(),
+            voiceWarming,
             limits: LIMITS,
             defaults: DEFAULTS,
           });
