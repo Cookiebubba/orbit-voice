@@ -209,38 +209,16 @@ struct FlowRow: Layout {
 
 struct AppSection: View {
   @Bindable var ctx: UIContext
-  @State private var pulse: Double?
   var body: some View {
-    let s = ctx.settings, name = s.assistantName
     let _ = ctx.shellRevision
+    // (Orbit Native has no floating orb, so none of its settings: the window minimizes to the Dock.)
     SettingsSection(title: "App") {
       VStack(alignment: .leading, spacing: 4) {
-        ToggleRow(label: "Open at login", hint: "Orbit starts quietly as the floating orb when you sign in.", isOn: ctx.login.enabled) { on in
+        ToggleRow(label: "Open at login", hint: "Orbit starts quietly in the menu bar when you sign in.", isOn: ctx.login.enabled) { on in
           ctx.login.set(on)
           ctx.shellRevision += 1
         }
         if let e = ctx.login.lastError { Hint(text: e, color: Theme.amber700) }
-      }
-      ToggleRow(label: "Stick to Claude Code", hint: "The orb rides on the Claude window: it follows it around, stays on top of it, and hides while Claude is minimized. Drag the orb to choose its spot on the window.", isOn: s.bool("orbStick")) { save(s, "orbStick", .bool($0)) }.padding(.top, 16)
-      ToggleRow(label: "Pulse with your voice", hint: "The orb grows very slightly as you speak, so you can see it hearing you.", isOn: s.bool("orbPulse")) { save(s, "orbPulse", .bool($0)) }.padding(.top, 16)
-      ToggleRow(label: "Pulse with \(name)'s voice", hint: "The same while \(name) is talking.", isOn: s.bool("orbPulseGrok")) { save(s, "orbPulseGrok", .bool($0)) }.padding(.top, 16)
-      if s.bool("orbPulse") || s.bool("orbPulseGrok") {
-        let v = pulse ?? s.double("orbPulseAmount")
-        VStack(spacing: 0) {
-          HStack {
-            Text("How much it pulses").foregroundStyle(Theme.ink)
-            Spacer()
-            Text("\(Int((v * 100).rounded()))%").monospacedDigit().foregroundStyle(Theme.fg)
-          }
-          .font(Theme.font(12.5)).padding(.bottom, 8)
-          OrbitSlider(value: Binding(get: { pulse ?? s.double("orbPulseAmount") }, set: { pulse = $0 }), range: SettingsSchema.pulseMin...SettingsSchema.pulseMax, step: 0.005, label: "How much the orb pulses") { nv in
-            if nv != s.double("orbPulseAmount") { Task { await s.set("orbPulseAmount", .number(nv)); pulse = nil } }
-          }
-          HStack { Text("Subtle"); Spacer(); Text("Noticeable") }.font(Theme.font(11)).foregroundStyle(Theme.faint).padding(.top, 4)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.soft))
-        .padding(.top, 12)
       }
     }
   }
@@ -268,7 +246,6 @@ struct AvatarSection: View {
         if s.bool("avatarThrow") && avatar == "qubit" {
           ToggleRow(label: "Sound when thrown", hint: "A quick “Wheee!” when you really throw him (not when you set him down), at the voice volume above.", isOn: s.bool("avatarThrowSound")) { save(s, "avatarThrowSound", .bool($0)) }.padding(.top, 16)
         }
-        ToggleRow(label: "Show the orb", hint: "Off: \(who) stands in for the orb when \(name) is minimized. Open \(name) again from its menu bar icon.", isOn: s.bool("showOrb")) { save(s, "showOrb", .bool($0)) }.padding(.top, 16)
       }
     }
   }

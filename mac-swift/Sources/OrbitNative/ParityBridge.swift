@@ -138,7 +138,7 @@ extension AppDelegate {
       ui?.show(view: args["name"]?.stringValue ?? "main")
       return ["ok": .bool(ui != nil)]
     case "window.minimize":
-      ui?.minimizeToOrb()
+      ui?.minimize()
       return ["ok": .bool(ui != nil)]
     case "main.start":
       guard let ui else { return ["ok": false, "error": "not ready"] }

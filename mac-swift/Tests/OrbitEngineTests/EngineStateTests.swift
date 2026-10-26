@@ -33,6 +33,28 @@ final class EngineStateTests: XCTestCase {
     XCTAssertEqual(EngineConfig(dir: dir).load(env: [:])["avatar"], "qubit")
   }
 
+  func testANewInstallOnThisMacStartsWithQubit() throws {
+    // Brand new (no file): Qubit, Claude voice, both in the file at once.
+    let c = EngineConfig(dir: dir)
+    let s = c.load(env: [:], firstRun: ["avatar": "qubit"])
+    XCTAssertEqual(s["avatar"], "qubit")
+    XCTAssertEqual(s["voiceEngine"], "claude")
+    XCTAssertEqual(try JSONValue.parse(Data(contentsOf: dir.appendingPathComponent("settings.json"))).objectValue, ["voiceEngine": "claude", "avatar": "qubit"])
+    // Started again: still Qubit, the file left as it is.
+    XCTAssertEqual(EngineConfig(dir: dir).load(env: [:], firstRun: ["avatar": "qubit"])["avatar"], "qubit")
+    // An install with a settings file already keeps its avatar (the shared default: the pixel buddy).
+    let older = dir.appendingPathComponent("older")
+    try FileManager.default.createDirectory(at: older, withIntermediateDirectories: true)
+    try Data(#"{"voice":"leo"}"#.utf8).write(to: older.appendingPathComponent("settings.json"))
+    XCTAssertEqual(EngineConfig(dir: older).load(env: [:], firstRun: ["avatar": "qubit"])["avatar"], "buddy")
+    XCTAssertEqual(try JSONValue.parse(Data(contentsOf: older.appendingPathComponent("settings.json"))).objectValue, ["voice": "leo"], "not rewritten")
+    // A new install with a key from before (Grok): Qubit still, and only the avatar is written.
+    let keyed = dir.appendingPathComponent("keyed")
+    let k = EngineConfig(dir: keyed).load(env: [:], hasKey: true, firstRun: ["avatar": "qubit"])
+    XCTAssertEqual(k["voiceEngine"], "grok")
+    XCTAssertEqual(try JSONValue.parse(Data(contentsOf: keyed.appendingPathComponent("settings.json"))).objectValue, ["avatar": "qubit"])
+  }
+
   func testUpdateSavesOnlyWhatDiffersAndTellsListeners() throws {
     let c = EngineConfig(dir: dir)
     c.load(env: [:])

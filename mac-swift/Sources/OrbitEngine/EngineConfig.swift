@@ -33,8 +33,13 @@ public final class EngineConfig: @unchecked Sendable {
    * engine: a saved choice wins; else a new install starts on Claude voice (and says so in its file
    * at once), and an install from before (a settings file, or `hasKey`: an xAI key saved) on Grok.
    */
+  /**
+   * `firstRun`: settings a brand-new install starts with on top of config.js's defaults (Orbit
+   * Native: Qubit as the avatar), written to its file at once like the voice engine, so they read
+   * as chosen. An install with a settings file already keeps what it has.
+   */
   @discardableResult
-  public func load(env: [String: String] = ProcessInfo.processInfo.environment, dotEnv: URL? = nil, hasKey: Bool = false) -> Settings {
+  public func load(env: [String: String] = ProcessInfo.processInfo.environment, dotEnv: URL? = nil, hasKey: Bool = false, firstRun: [String: JSONValue] = [:]) -> Settings {
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     var e = dotEnv.map { Self.readDotEnv($0) } ?? [:]
     for (k, v) in env { e[k] = v }
@@ -52,9 +57,15 @@ public final class EngineConfig: @unchecked Sendable {
     next["voiceEngine"] = .string(engine)
     // A brand-new install says so in its file straight away, so adding an xAI key later (without
     // changing anything else) never reads as an install from before Claude was the default.
-    if saved["voiceEngine"] == nil, !hadFile, engine == "claude" {
-      try? JSONValue.object(["voiceEngine": "claude"]).data(pretty: true).write(to: file, options: .atomic)
+    var first: [String: JSONValue] = [:]
+    if saved["voiceEngine"] == nil, !hadFile, engine == "claude" { first["voiceEngine"] = "claude" }
+    if !hadFile {
+      for (k, v) in Self.sanitize(firstRun) where k != "voiceEngine" {
+        next[k] = v
+        first[k] = v
+      }
     }
+    if !first.isEmpty { try? JSONValue.object(first).data(pretty: true).write(to: file, options: .atomic) }
     lock.withLock { settings = next }
     return next
   }

@@ -28,7 +28,7 @@ public struct OrbitUIOptions {
   /** A parity/test build: ORBIT_FAKE_PERMS and ORBIT_FAKE_LOGIN are honoured. */
   public var testBuild: Bool
   public var environment: [String: String]
-  /** Started as a login item: stay hidden (the integrator shows the orb). */
+  /** Started as a login item: stay hidden (Orbit waits in the menu bar and the Dock). */
   public var startHidden: Bool
   /** Fixes Qubit's emote sequence (snapshots); nil: random, as the page. */
   public var heroSeed: Int?
@@ -52,7 +52,7 @@ public final class OrbitUI: NSObject, NSWindowDelegate {
   public var login: any LoginItemControl { context.login }
   public let window: NSWindow
 
-  /** The minimize button: hide the launcher and show the orb (the integrator's). */
+  /** The launcher was minimized (to the Dock). */
   public var onMinimize: () -> Void = {}
   /** The close button and the menu's Quit. */
   public var onQuit: () -> Void = { NSApp.terminate(nil) }
@@ -97,11 +97,7 @@ public final class OrbitUI: NSObject, NSWindowDelegate {
     window.contentMinSize = NSSize(width: 320, height: 480) // (after the content view, which resets it)
     if window.frame.width < 320 { window.setContentSize(NSSize(width: 360, height: 580)) }
     window.center()
-    // The minimize button turns into the orb (Electron: main.on('minimize', showOrb)).
-    if let mini = window.standardWindowButton(.miniaturizeButton) {
-      mini.target = self
-      mini.action = #selector(minimizeToOrb)
-    }
+    // (The minimize button minimizes to the Dock, as any Mac app's: Orbit Native has no floating orb.)
     positionTrafficLights()
     context.hotkeyChanged = { [weak self] accel in
       self?.onHotkeyChanged(accel)
@@ -194,8 +190,9 @@ public final class OrbitUI: NSObject, NSWindowDelegate {
     showMain()
   }
 
-  @objc public func minimizeToOrb() {
-    window.orderOut(nil)
+  /** Minimize the launcher to the Dock (the parity driver's window.minimize). */
+  @objc public func minimize() {
+    window.miniaturize(nil)
     onMinimize()
   }
 

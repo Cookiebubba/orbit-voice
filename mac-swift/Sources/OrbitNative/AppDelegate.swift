@@ -68,6 +68,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     } catch {
       return fail("Orbit could not start (\(error.localizedDescription)).")
     }
+    // A new install on this Mac starts with Qubit as its avatar (the shared default is the pixel buddy).
+    eng.firstRunSettings = ["avatar": "qubit"]
     eng.loadSettings()
     engine = eng
     if config.testing, ProcessInfo.processInfo.environment["ORBIT_SWIFT_VOICE"] == "1" { enableSwiftVoice(eng) }
@@ -169,10 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     let u = OrbitUI(bridge: BridgeClient(endpoints: e), voice: voice, hotkey: hotkeys, options: options)
     u.onQuit = { NSApp.terminate(nil) }
-    u.onMinimize = { [weak self] in
-      self?.events.add("window.minimize")
-      self?.overlays?.showOrb() // minimizing turns into the orb
-    }
+    u.onMinimize = { [weak self] in self?.events.add("window.minimize") }
     u.onHotkeyChanged = { [weak self] accel in self?.saveShellSettings(["wakeHotkey": .string(accel)]) }
     ui = u
     u.start()
@@ -275,7 +274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 }
 
-/** Was this launch macOS opening Orbit at login? (Then it starts quietly, as the orb.) */
+/** Was this launch macOS opening Orbit at login? (Then it starts quietly, in the menu bar.) */
 enum LoginLaunch {
   static var wasOpenedAtLogin: Bool {
     guard let e = NSAppleEventManager.shared().currentAppleEvent else { return false }

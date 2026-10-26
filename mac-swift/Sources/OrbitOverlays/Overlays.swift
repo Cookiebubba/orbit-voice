@@ -86,11 +86,15 @@ public final class Overlays {
   private var lastHomeWindow: Int?
   private var screenObserver: NSObjectProtocol?
   private var started = false
+  /** The floating orb at all (Orbit Native has none: the launcher minimizes to the Dock like any Mac app). */
+  private let orbWanted: Bool
 
   public init(endpoints: BridgeEndpoints, settings: @escaping () -> [String: JSONValue], send: @escaping (JSONValue) -> Void,
               onTalk: @escaping () -> Void, onSound: @escaping (String) -> Void, onOrb: @escaping (OrbEvent) -> Void = { _ in },
               onEvent: @escaping (String, JSONValue) -> Void = { _, _ in },
-              log: @escaping (String) -> Void = { NSLog("overlays: %@", $0) }, helperPath: String? = ClaudeWindowTracker.defaultHelperPath()) {
+              log: @escaping (String) -> Void = { NSLog("overlays: %@", $0) }, helperPath: String? = ClaudeWindowTracker.defaultHelperPath(),
+              orb: Bool = true) {
+    self.orbWanted = orb
     self.endpoints = endpoints
     self.settings = settings
     self.sendToSidecar = send
@@ -123,7 +127,7 @@ public final class Overlays {
   /** With an avatar on, the orb can be turned off (the avatar stands in for it); without one it always shows. */
   private var orbAllowed: Bool { s["showOrb"]?.boolValue != false || avatarKind == nil }
   private var mouseWanted: Bool { s["anywhere"]?.boolValue != false && s["anywhereMouse"]?.boolValue != false }
-  private var needTracker: Bool { s["orbStick"]?.boolValue == true || avatarKind != nil }
+  private var needTracker: Bool { (orbWanted && s["orbStick"]?.boolValue == true) || avatarKind != nil }
 
   // MARK: - lifecycle
 
@@ -131,7 +135,7 @@ public final class Overlays {
   public func start() {
     guard !started else { return }
     started = true
-    if let u = endpoints.auth["orb"] {
+    if orbWanted, let u = endpoints.auth["orb"] {
       orb = OrbController(url: u, base: endpoints.base, settings: settings, allowed: { [weak self] in self?.orbAllowed ?? true }, emit: { [weak self] e in self?.onOrb(e) })
     }
     mouse = MouseOverlay(url: { [weak self] in self?.endpoints.auth["mouse"] }, base: endpoints.base, enabled: { [weak self] in self?.mouseWanted ?? false })

@@ -44,6 +44,8 @@ public final class Engine: @unchecked Sendable {
   public var xaiAPI = URL(string: "https://api.x.ai/v1")!
   /** Speaks a Claude voice sample on this Mac (the app's OrbitSpeech): 24 kHz samples. */
   public var claudePreview: (@Sendable (_ text: String, _ sid: Int, _ speed: Double) async throws -> [Float])?
+  /** What a brand-new install starts with beyond config.js's defaults (set before loadSettings; Orbit Native: Qubit). */
+  public var firstRunSettings: [String: JSONValue] = [:]
 
   /** The voice session in Swift (/voice, the sessions routes, Claude's watcher), once it's switched on. */
   public private(set) var voice: EngineVoice?
@@ -86,7 +88,7 @@ public final class Engine: @unchecked Sendable {
     // First run on a machine that used the dev version: bring the key over (initConfig does too).
     if xaiKey.get().isEmpty, let k = env["XAI_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines), !k.isEmpty { try? xaiKey.set(k) }
     // (A key saved means an install from before Claude voice was the default: it stays on Grok.)
-    config.load(env: env, dotEnv: paths.core.appendingPathComponent(".env"), hasKey: !xaiKey.get().isEmpty)
+    config.load(env: env, dotEnv: paths.core.appendingPathComponent(".env"), hasKey: !xaiKey.get().isEmpty, firstRun: firstRunSettings)
     config.onChange { [weak self] changed, all in
       guard let self else { return }
       var visible = all

@@ -156,7 +156,8 @@ extension AppDelegate {
       },
       onEvent: { [weak self] type, data in self?.events.add(type, data) },
       log: { [weak self] m in self?.log.info("overlays", m) },
-      helperPath: Self.helperPath(config: config)
+      helperPath: Self.helperPath(config: config),
+      orb: false // Orbit Native has no floating orb: the launcher minimizes to the Dock like any Mac app
     )
     overlays = o
     v.onState = { [weak o] s in o?.onVoice(s) }
