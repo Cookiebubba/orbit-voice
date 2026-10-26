@@ -207,7 +207,7 @@ npm run parity -- --app swift     # (from the repo root) the parity suite agains
 the UI built (`npm run build:ui`) and the wake-word model (`node scripts/fetch-model.mjs`); it fetches
 Vosk's library itself (`scripts/fetch-vosk.sh`). The macOS helper is built from
 `native/mac/OrbitHelper`, which comes with the macOS port (`src/platform/mac`): build from a tree
-that has both (the macOS port merged). The app is Apple silicon only, like the Electron Mac build.
+that has both (the macOS port merged). The app is Apple silicon only.
 
 ## Releasing
 
@@ -219,7 +219,7 @@ ORBIT_SIGN_ID="..." ORBIT_NOTARY_PROFILE=<profile> scripts/package.sh
 `package.sh` notarizes and staples the app and the DMG (a keychain profile made once with
 `xcrun notarytool store-credentials <profile>`), then writes `dist/Orbit-Native-<v>-arm64-mac.zip`,
 `dist/Orbit-Native-<v>-arm64.dmg` and `dist/latest-mac-native.yml`. Upload all three to the same
-GitHub release as the Electron build's files: each build reads only its own feed (Orbit Native's
+GitHub release as the Windows installer: each app reads only its own feed (Orbit Native's
 updater takes only Orbit-Native zips). A Developer ID build installs its updates itself, and only an
 update that is Orbit Native, of the feed's version, and signed by the same Developer ID. It refuses
 a test build (`--test`), and won't notarize anything not signed with a Developer ID.
@@ -241,7 +241,7 @@ Native (Swift):
   if the core process dies, Orbit relaunches itself quietly (it gives up after 3 stops in 10 min).
 - The launcher (white, Qubit's unchanged engine as the hero, the avatar carousel, icon-only buttons),
   Settings with every setting, History, the permissions onboarding (Microphone and Accessibility;
-  Screen Recording optional, in Settings), as the Electron Mac build has them.
+  Screen Recording optional, in Settings).
 - No xAI key needed to start (main 04098cc):
   - New installs start on Claude voice. A saved choice wins, and installs from before stay on Grok.
   - There is no key screen. Trying to talk to Grok without a key shows a notice on the main page,

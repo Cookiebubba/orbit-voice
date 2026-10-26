@@ -1,14 +1,9 @@
 // Desktop shell: a small frameless main window, a floating always-on-top orb that replaces
 // it while minimized, a tray icon, and the global hotkey. The bridge server runs in-process.
 //
-// macOS: the same app. Orbit's Swift helper (native/mac/OrbitHelper, see src/platform/mac/) stands in
-// for the PowerShell helpers: it drives the Claude window through the accessibility API, follows its
-// windows for the orb and Qubit, and reads and acts in other apps. Without it (or without the
-// Accessibility permission) the orb floats free and Qubit lives along the bottom of the screen. The
-// main window has the traffic lights, the tray icon is a menu-bar template image, and macOS's privacy
-// permissions (Microphone, Accessibility, Screen Recording) are asked for at sensible moments and
-// shown in Settings (see "macOS permissions" below).
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, safeStorage, screen, session, shell, systemPreferences, Tray } from 'electron';
+// This is Orbit for Windows. Orbit for Mac is Orbit Native (mac-swift/), a Swift app around the same
+// Node core.
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, safeStorage, screen, session, shell, Tray } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -16,8 +11,7 @@ import { DEFAULTS, FIRST_RUN_SETTINGS, getSetting, onSettingsChange, updateSetti
 import { createClaudeWindowTracker } from './claude-window.js';
 import { helperRectToDip } from './buddy-geometry.js';
 import { DEFAULT_ANCHOR, anchorFor, isAnchor, orbPositionFor } from './orb-stick.js';
-import { getDesktopInfo, onPromptBoxWork, setDesktopDriver, setDesktopTestPid, setFrontWindowHint } from '../src/desktop.js';
-import { hasHelper as hasMacHelper, runHelperOnce } from '../src/platform/mac/helper.js';
+import { getDesktopInfo, onPromptBoxWork, setDesktopDriver, setFrontWindowHint } from '../src/desktop.js';
 import { getLogDir, logError, logInfo, logWarn } from '../src/log.js';
 import { authUrl, hotkeyLabel, startServer, stopBackgroundWork } from '../src/server.js';
 import { createUpdater } from './updater.js';
@@ -35,30 +29,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const PRELOAD = path.join(HERE, 'preload.cjs');
 const ICON = path.join(ROOT, 'assets', 'icon.png');
-const IS_MAC = process.platform === 'darwin';
-// macOS menu bar: a black-and-alpha template image (trayTemplate.png + @2x), tinted by the system.
-const TRAY_ICON = path.join(ROOT, 'assets', IS_MAC ? 'trayTemplate.png' : 'tray.png');
+const TRAY_ICON = path.join(ROOT, 'assets', 'tray.png');
 const ORB_SIZE = 128;
-const START_HIDDEN = process.argv.includes('--background'); // used by "Start with Windows" (macOS: see startHidden)
-const LOGIN_LABEL = IS_MAC ? 'Open at login' : 'Start with Windows';
-/** Started quietly (as the orb): "--background" on Windows; opened as a login item on macOS. */
-function startHidden() {
-  if (START_HIDDEN || !IS_MAC) return START_HIDDEN;
-  try {
-    return !!app.getLoginItemSettings().wasOpenedAtLogin;
-  } catch {
-    return false;
-  }
-}
-/** Floating windows follow you across Spaces on macOS (no-op elsewhere). The dock icon stays:
- *  skipTransformProcessType keeps Orbit a normal app (without it Electron hides the dock icon to let
- *  the window float over other apps' full-screen Spaces). */
-function followSpaces(win) {
-  if (!IS_MAC || !win || win.isDestroyed()) return;
-  try {
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
-  } catch { /* older Electron */ }
-}
+const START_HIDDEN = process.argv.includes('--background'); // used by "Start with Windows"
+const LOGIN_LABEL = 'Start with Windows';
+/** Started quietly (as the orb): "--background", from "Start with Windows". */
+const startHidden = () => START_HIDDEN;
 
 app.setName('Orbit');
 // Developer testing only: feed a WAV file in as the microphone (never in the installed app).
@@ -92,32 +68,19 @@ function isOurs(url) {
 let drag = null; // { cursor, win } at drag start
 let quitting = false;
 
-// Developer testing only (the parity suite, parity/PROTOCOL.md): a throwaway profile folder for
-// settings, keys (in a plain .env there, never the Keychain or DPAPI), logs and caches, so the user's
-// own profile is never touched. The single-instance lock lives in it too.
-const PROFILE = !app.isPackaged && process.env.ORBIT_PROFILE_DIR ? path.resolve(process.env.ORBIT_PROFILE_DIR) : null;
-if (PROFILE) app.setPath('userData', PROFILE);
-if (PROFILE && IS_MAC) app.commandLine.appendSwitch('use-mock-keychain');
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => showMain());
 }
-// Developer testing only (never in the installed app): the parity suite's driver (electron/parity-driver.js).
-if (!app.isPackaged && process.env.ORBIT_PARITY_PORT) {
-  const { startParityDriver } = await import('./parity-driver.js');
-  startParityDriver({ main: () => main, orb: () => orb, avatar: () => avatar, avatarHost: () => avatarHost, claude: () => claude, orbitMouse: () => orbitMouse, showMain: () => showMain(), showOrb: () => showOrb() });
-}
 
 /**
- * A key (xAI, or the optional Anthropic one), encrypted with the system's own store: Windows DPAPI
- * (tied to your Windows account) or, on macOS, a key kept in your login Keychain. If macOS asks
- * whether Orbit may use the Keychain and you deny it, the key isn't saved (and a saved one reads as
- * missing), with a plain message instead of a crash.
+ * A key (xAI, or the optional Anthropic one), encrypted with Windows DPAPI (tied to your Windows
+ * account). If that isn't available the key isn't saved, with a plain message instead of a crash.
  */
 function encryptedKeyStore(dir, name = 'xai-key.bin') {
   const file = path.join(dir, name);
-  const system = IS_MAC ? 'macOS Keychain' : 'Windows encryption';
+  const system = 'Windows encryption';
   const available = () => {
     try {
       return safeStorage.isEncryptionAvailable();
@@ -126,7 +89,7 @@ function encryptedKeyStore(dir, name = 'xai-key.bin') {
     }
   };
   return {
-    kind: available() ? (IS_MAC ? 'macos-keychain' : 'windows-dpapi') : 'unavailable',
+    kind: available() ? 'windows-dpapi' : 'unavailable',
     get() {
       try {
         return safeStorage.decryptString(fs.readFileSync(file));
@@ -140,7 +103,7 @@ function encryptedKeyStore(dir, name = 'xai-key.bin') {
       try {
         sealed = safeStorage.encryptString(key);
       } catch {
-        throw new Error(IS_MAC ? 'Orbit could not use your macOS Keychain (access may have been denied), so the key was not saved. Try again and choose Allow.' : 'Windows encryption failed, so the key was not saved.');
+        throw new Error('Windows encryption failed, so the key was not saved.');
       }
       fs.writeFileSync(file, sealed);
     },
@@ -149,7 +112,7 @@ function encryptedKeyStore(dir, name = 'xai-key.bin') {
 
 /**
  * Connectors' sign-in tokens (Orbit anywhere, src/mcp/oauth.js): one encrypted file of key -> value,
- * sealed like the xAI key (Windows DPAPI / macOS Keychain). Without the system's encryption they're
+ * sealed like the xAI key (Windows DPAPI). Without the system's encryption they're
  * kept in memory only (until Orbit quits).
  */
 function encryptedMapStore(dir, name) {
@@ -209,9 +172,7 @@ function createMain() {
     height: 580,
     minWidth: 320,
     minHeight: 480,
-    // Windows: no frame (the page draws its own title bar). macOS: the page's bar with the system's
-    // traffic lights on it (close quits, minimize turns into the orb, as the page's buttons do there).
-    ...(IS_MAC ? { titleBarStyle: 'hidden', trafficLightPosition: { x: 14, y: 13 }, fullscreenable: false } : { frame: false }),
+    frame: false, // the page draws its own title bar
     backgroundColor: '#ffffff', // the page is white (the website's look): no dark flash while it loads
     title: 'Orbit',
     icon: ICON,
@@ -259,7 +220,6 @@ function createOrb() {
   });
   lockDown(orb);
   orb.setAlwaysOnTop(true, 'screen-saver');
-  followSpaces(orb);
   orbLayer = 'free';
   orb.setPosition(...orbStartPosition());
   orb.loadURL(authUrl('orb'));
@@ -305,13 +265,8 @@ let orbLayer = null; // 'free' | 'top' | 'above:<hwnd>'
 let claude = null; // the Claude window the orb docks on (the one you were in last): { found, hwnd, min, front, x, y, w, h } in screen pixels
 let claudeDip = null; // the Claude window in DIPs, when sticking
 let fakeWindowHelper = null; // developer testing only: a stand-in for claude-window.ps1 (see below)
-// Developer testing only (never in the installed app): on macOS, a stand-in Claude window's process
-// (scripts/mac-e2e.mjs) for the window tracker and the Claude desktop driver.
-const testClaudePid = () => (!app.isPackaged && Number(process.env.ORBIT_TEST_CLAUDE_PID)) || 0;
-if (testClaudePid()) setDesktopTestPid(testClaudePid());
 const claudeTracker = createClaudeWindowTracker({
   spawnHelper: () => fakeWindowHelper?.() || null,
-  testPid: testClaudePid,
   onChange: (s) => {
     claude = s;
     anywhereContexts.setHomeWindow(s?.found ? s.hwnd : 0); // the Claude window is Orbit's home context
@@ -384,9 +339,7 @@ function placeOrb() {
     orb.showInactive();
     orbLayer = null; // z-order set while hidden may not stick: apply it again now that it shows
   }
-  // From here the helper moves the orb itself the instant Claude moves (no trailing behind). On macOS
-  // Orbit moves it, on each report (the helper looks often while Claude's window moves).
-  if (!claudeTracker.movesOrb) setOrbBounds(orbPositionFor(claudeDip, anchor, ORB_SIZE));
+  // From here the helper moves the orb itself the instant Claude moves (no trailing behind).
   claudeTracker.follow(nativeHandle(orb), anchor);
   setOrbLayer(claude.front === 'other' ? `above:${claude.hwnd}` : 'top');
 }
@@ -429,7 +382,6 @@ function setAvatar({ live = false } = {}) {
       info: (m) => logInfo('avatar', m),
       // No Claude window to live on (no window helper): along the bottom of the screen instead.
       free: freeAvatar(),
-      onWindow: followSpaces,
       prefs: avatarPrefs,
     });
     avatar = next;
@@ -449,7 +401,7 @@ function setAvatar({ live = false } = {}) {
  * The avatar floats free when there's no Claude window tracker on this platform (only Windows has
  * one). ORBIT_FREE_AVATAR=1 forces it from source (developer testing: scripts/avatar-free-e2e.mjs).
  */
-const freeAvatar = () => (process.platform !== 'win32' && !fakeWindowHelper && !(IS_MAC && hasMacHelper())) || (!app.isPackaged && process.env.ORBIT_FREE_AVATAR === '1');
+const freeAvatar = () => (process.platform !== 'win32' && !fakeWindowHelper) || (!app.isPackaged && process.env.ORBIT_FREE_AVATAR === '1');
 
 // What the user asks the avatar to do (the voice model's `avatar` tool and the fast path that skips
 // the model) goes to its window.
@@ -472,7 +424,6 @@ const avatarHost = createAvatarHost({
       log: (m) => logWarn('avatar', m),
       info: (m) => logInfo('avatar', m),
       boxless: true,
-      onWindow: followSpaces,
       prefs: avatarPrefs,
     }),
   home: () => avatar,
@@ -573,121 +524,10 @@ function refreshTray() {
   );
 }
 
-/**
- * macOS: the menu bar's app menu (About, Settings… ⌘,, Hide, Quit ⌘Q), Edit (so ⌘C / ⌘V work in
- * Orbit's own fields) and Window. No View menu: reload and the developer tools stay out of the
- * installed app. (Windows has no app menu: the page draws its own title bar.)
- */
-function createAppMenu() {
-  if (!IS_MAC) return;
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      {
-        label: 'Orbit',
-        submenu: [
-          { role: 'about', label: 'About Orbit' },
-          { type: 'separator' },
-          { label: 'Settings…', accelerator: 'Command+,', click: () => (showMain(), main?.webContents.send('app:settings')) },
-          { type: 'separator' },
-          { role: 'services' },
-          { type: 'separator' },
-          { role: 'hide', label: 'Hide Orbit' },
-          { role: 'hideOthers' },
-          { role: 'unhide' },
-          { type: 'separator' },
-          { role: 'quit', label: 'Quit Orbit' },
-        ],
-      },
-      { role: 'editMenu' },
-      { role: 'windowMenu' },
-      ...(app.isPackaged ? [] : [{ role: 'viewMenu' }]),
-    ]),
-  );
-}
-
 function createTray() {
-  const image = nativeImage.createFromPath(TRAY_ICON);
-  if (IS_MAC) image.setTemplateImage(true); // (the name says so too; this makes sure)
-  tray = new Tray(image);
-  // macOS opens the menu on click (it has "Open Orbit"); Windows opens Orbit.
-  if (!IS_MAC) tray.on('click', showMain);
+  tray = new Tray(nativeImage.createFromPath(TRAY_ICON));
+  tray.on('click', showMain);
   refreshTray();
-}
-
-// ---------- microphone (macOS privacy) ----------
-// macOS asks once whether Orbit may use the microphone. Ask before the page first opens it, so the
-// question comes up at a sensible moment; if it's been turned off, say where to turn it on.
-const MIC_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone';
-async function ensureMicAccess() {
-  if (!IS_MAC) return 'granted';
-  let status = 'unknown';
-  try {
-    status = systemPreferences.getMediaAccessStatus('microphone');
-    if (status === 'not-determined') status = (await systemPreferences.askForMediaAccess('microphone')) ? 'granted' : 'denied';
-  } catch (e) {
-    logWarn('mic', 'Could not ask for microphone access', String(e?.message || e).slice(0, 200));
-    return status;
-  }
-  logInfo('mic', `macOS microphone access: ${status}`);
-  if (status === 'denied' || status === 'restricted') {
-    dialog
-      .showMessageBox({
-        type: 'warning',
-        message: "Orbit can't use the microphone",
-        detail: status === 'restricted' ? "Microphone access is restricted on this Mac (for example by a device policy), so Orbit can't hear you." : 'Turn on Orbit in System Settings → Privacy & Security → Microphone, then quit and reopen Orbit.',
-        buttons: status === 'restricted' ? ['OK'] : ['Open System Settings', 'Not now'],
-        defaultId: 0,
-      })
-      .then(({ response }) => status !== 'restricted' && response === 0 && shell.openExternal(MIC_SETTINGS_URL))
-      .catch(() => {});
-  }
-  return status;
-}
-
-// ---------- macOS permissions ----------
-// What Orbit needs from System Settings → Privacy & Security: Accessibility (the Claude app and
-// Orbit anywhere, through its helper, which macOS counts as Orbit), Microphone, and Screen Recording
-// (only for looking at a window). Settings and a banner on the main screen show them; "Turn on"
-// asks with macOS's own prompt where there is one, else opens the right pane.
-const PRIVACY_PANES = {
-  accessibility: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
-  microphone: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
-  screen: 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',
-};
-function macPermissions() {
-  if (!IS_MAC) return { platform: process.platform };
-  const media = (k) => {
-    try {
-      return systemPreferences.getMediaAccessStatus(k);
-    } catch {
-      return 'unknown';
-    }
-  };
-  let accessibility = false;
-  try {
-    accessibility = systemPreferences.isTrustedAccessibilityClient(false);
-  } catch {}
-  return { platform: 'darwin', accessibility, microphone: media('microphone'), screen: media('screen'), helper: hasMacHelper() };
-}
-const askedOnce = new Set(); // macOS shows each prompt once; after that, the pane in System Settings
-async function requestMacPermission(kind) {
-  if (!IS_MAC || !PRIVACY_PANES[kind]) return macPermissions();
-  const now = macPermissions();
-  const open = () => shell.openExternal(PRIVACY_PANES[kind]).catch(() => {});
-  if (kind === 'accessibility' && !now.accessibility) {
-    if (askedOnce.has(kind)) open();
-    else systemPreferences.isTrustedAccessibilityClient(true); // macOS's prompt (it offers to open the pane)
-  } else if (kind === 'microphone' && now.microphone !== 'granted') {
-    if (now.microphone === 'not-determined') await systemPreferences.askForMediaAccess('microphone').catch(() => false);
-    else open();
-  } else if (kind === 'screen' && now.screen !== 'granted') {
-    // No Electron call asks for it: Orbit's helper does (CGRequestScreenCaptureAccess, as Orbit).
-    if (askedOnce.has(kind) || now.screen === 'denied') open();
-    else await runHelperOnce(['perms', '--prompt-screen'], { timeoutMs: 5000 });
-  }
-  askedOnce.add(kind);
-  logInfo('permissions', `asked for ${kind}`);
-  return macPermissions();
 }
 
 // ---------- global hotkey ----------
@@ -728,7 +568,7 @@ handle('hotkey:set', (accel) => {
   if (activeHotkey && activeHotkey !== accel) globalShortcut.unregister(activeHotkey);
   if (!registerHotkey(accel)) {
     if (activeHotkey) registerHotkey(activeHotkey); // put the old one back
-    return hotkeyInfo({ ok: false, error: `${IS_MAC ? 'macOS' : 'Windows'} or another app is already using that shortcut. Try a different one.` });
+    return hotkeyInfo({ ok: false, error: 'Windows or another app is already using that shortcut. Try a different one.' });
   }
   activeHotkey = accel;
   updateSettings({ wakeHotkey: accel });
@@ -744,8 +584,6 @@ handle('hotkey:suspend', (suspended) => {
 handle('app:get-login', () => loginEnabled());
 handle('app:set-login', (enabled) => setLogin(enabled));
 handle('app:open-logs', () => getLogDir() && shell.openPath(getLogDir()));
-handle('perms:get', () => macPermissions());
-handle('perms:request', (kind) => requestMacPermission(String(kind)));
 handle('update:get', () => updater?.state() ?? { status: 'idle' });
 handle('update:check', () => updater?.check());
 handle('update:install', () => updater?.install());
@@ -759,7 +597,7 @@ on('orb:state', (s) => {
   avatarHost.onVoice(s); // the window the conversation is in gets it; the others rest
   orbitMouse.onVoice(s); // its colour and its pulse while Orbit speaks
   // Orbit woke: the mouse's windows get ready (hidden), so its first glide has its page loaded.
-  if (!mouseWarm && s?.phase && s.phase !== 'off' && mouseWanted() && (process.platform === 'win32' || IS_MAC)) {
+  if (!mouseWarm && s?.phase && s.phase !== 'off' && mouseWanted() && process.platform === 'win32') {
     mouseWarm = true;
     orbitMouse.prewarm();
   }
@@ -791,7 +629,7 @@ ipcMain.on('buddy:talk', (e) => {
   const hwnd = a.hostHwnd;
   if (hwnd) {
     const known = focus.recent?.find?.((r) => Number(r.hwnd) === hwnd);
-    wakeWith(known || (a === avatar ? (IS_MAC ? { hwnd, kind: 'app', exe: 'Claude', bundle: 'com.anthropic.claudefordesktop', cls: 'AXStandardWindow', title: 'Claude' } : { hwnd, kind: 'app', exe: 'claude.exe', cls: 'Chrome_WidgetWin_1', title: 'Claude' }) : { hwnd, kind: 'app' }));
+    wakeWith(known || (a === avatar ? { hwnd, kind: 'app', exe: 'claude.exe', cls: 'Chrome_WidgetWin_1', title: 'Claude' } : { hwnd, kind: 'app' }));
   }
   main?.webContents.send('avatar:talk');
 });
@@ -848,8 +686,8 @@ app.whenReady().then(async () => {
     const dir = app.getPath('userData');
     baseUrl = await startServer({
       configDir: dir,
-      secrets: PROFILE ? undefined : encryptedKeyStore(dir), // (a test profile: its .env, see above)
-      brainSecrets: PROFILE ? undefined : encryptedKeyStore(dir, 'anthropic-key.bin'),
+      secrets: encryptedKeyStore(dir),
+      brainSecrets: encryptedKeyStore(dir, 'anthropic-key.bin'),
       clipboard: (text) => clipboard.writeText(text),
       firstRun: FIRST_RUN_SETTINGS, // a brand-new install: Qubit, no orb, and the onboarding
       // Offline wake-word model: shipped next to the app (extraResources), or in the repo in dev.
@@ -881,15 +719,12 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionCheckHandler((wc, permission) => ALLOWED_PERMISSIONS.has(permission) && !!wc && isOurs(wc.getURL()));
   app.on('web-contents-created', (_e, wc) => wc.on('will-attach-webview', (ev) => ev.preventDefault()));
 
-  await ensureMicAccess(); // macOS: before the page opens the mic (no-op elsewhere)
-  if (IS_MAC && !app.isPackaged) app.dock?.setIcon(ICON); // from source the dock shows Electron's icon otherwise
   createMain();
   createOrb();
   setAvatar();
   if (needTracker()) claudeTracker.start();
   setFocusTracking();
   createTray();
-  createAppMenu();
   updater = createUpdater({
     isPackaged: app.isPackaged,
     version: app.getVersion(),
@@ -918,11 +753,4 @@ app.on('before-quit', () => {
   updater?.stop();
 });
 app.on('window-all-closed', () => app.quit());
-// macOS: clicking the dock icon brings the main window back (from the orb). Not the activation
-// that comes with launching (a login launch stays the orb).
-let activateFrom = Infinity;
-app.whenReady().then(() => (activateFrom = Date.now() + 2000));
-app.on('activate', () => {
-  if (main && !quitting && Date.now() >= activateFrom) showMain();
-});
 app.on('will-quit', () => globalShortcut.unregisterAll());

@@ -1,6 +1,7 @@
 // orbit-helper: Orbit's native helper on macOS (one small binary, several modes), the counterpart of
-// the PowerShell helpers on Windows. Built by scripts/build-mac-helper.mjs, shipped inside Orbit.app
-// (Contents/Resources/mac/orbit-helper), started by Orbit with JSON over stdin/stdout.
+// the PowerShell helpers on Windows. Built by mac-swift/scripts/build-app.sh, shipped inside Orbit
+// Native.app (Contents/Resources/core/resources/mac/orbit-helper; scripts/build-mac-helper.mjs builds it
+// on its own for the tests), started by Orbit's core with JSON over stdin/stdout.
 //
 //   orbit-helper ax              --parent-pid N   reading and acting in windows (uia.ps1's protocol; AxServer.swift)
 //   orbit-helper focus           --parent-pid N   the window in front (focus.ps1's protocol; Focus.swift)

@@ -3,8 +3,7 @@ import { History as HistoryIcon, Keyboard, Mic, MicOff, Minus, Moon, SendHorizon
 import { cn } from "@/lib/utils";
 import History from "./components/History";
 import SessionSwitcher from "./components/SessionSwitcher";
-import { desktop, isMac } from "./desktop";
-import { MacPermissionsBanner } from "./MacPermissions";
+import { desktop } from "./desktop";
 import { PULSE_DEFAULT } from "./orbLook";
 import AvatarHero from "./hero/AvatarHero";
 import Settings from "./Settings";
@@ -16,7 +15,7 @@ import { createThrowSound } from "./throwSound.js";
 import { hotkeyLabel, postJson, useAppState, type Finished } from "./useAppState";
 import { useVoice, type Phase } from "./useVoice";
 import { useWakeWord } from "./useWakeWord";
-import { CLAUDE_SETUP_URL, canTalk, checkClaudeAgain, claudeInstall, claudeVoiceReady, needsModelDownload, screenFor, talkNotice, type ClaudeVoiceReady, type TalkBlocked } from "./talk.js";
+import { canTalk, checkClaudeAgain, claudeVoiceReady, needsModelDownload, screenFor, talkNotice, type ClaudeVoiceReady, type TalkBlocked } from "./talk.js";
 import { InstallCommand, NotSignedInLine, SetupGuideLink, SignInStep } from "./components/ClaudeSetup";
 
 const PHASE_LABEL: Record<Phase, string> = {
@@ -180,7 +179,6 @@ export default function App() {
   };
   useEffect(() => desktop?.onOrbAction((a) => a === "toggle-sleep" && hotkeyRef.current()), []);
   useEffect(() => desktop?.onHotkey(() => hotkeyRef.current()), []);
-  useEffect(() => desktop?.onShowSettings?.(() => setView("settings")), []);
   // A click on the avatar: the wake word's own path (Orbit off or asleep). Already awake, the
   // avatar's little nod is all. Grok without a key: the notice on the main page says why.
   const talkRef = useRef(() => {});
@@ -197,37 +195,6 @@ export default function App() {
     v.ownSound(throwSound.current.play(settings?.voiceVolume ?? DEFAULT_VOLUME));
   };
   useEffect(() => desktop?.onAvatarSound?.((name) => soundRef.current(name)), []);
-
-  // Developer testing only (the parity suite): the driver shows views, types and changes settings
-  // through this page's own model. window.__orbitParity exists only under the parity driver's preload.
-  const parity = (window as any).__orbitParity;
-  if (parity) {
-    parity.app = {
-      view,
-      wakeWord: wakeStatus,
-      show: (next: View) => setView(next),
-      type: (t: string) => {
-        if (v.phase === "off") return { ok: false, error: "The conversation is off (the typing box shows only during a call)." };
-        v.sendText(String(t).trim());
-        return { ok: true };
-      },
-      sleep: () => v.sleep(),
-      wake: () => v.wake(),
-      hangup: () => v.stop(),
-      keySaved: () => app.setHasKey(),
-      setting: (key: string) => (key === "openAtLogin" ? desktop?.startWithWindows.get() : (app.config?.settings as any)?.[key]),
-      setSetting: async (key: string, value: unknown) => {
-        if (key === "wakeHotkey") {
-          const r = await desktop?.hotkey.set(String(value));
-          return r?.ok ? { ok: true } : { ok: false, error: r?.error || "No desktop shell." };
-        }
-        if (key === "openAtLogin") return { ok: true, value: await desktop?.startWithWindows.set(!!value) };
-        if (!app.config || !(key in app.config.settings)) return { ok: false, error: `No setting called ${key}.` };
-        await app.updateSettings({ [key]: value } as any);
-        return { ok: true };
-      },
-    };
-  }
 
   // Show which session is open in Claude straight away, and again whenever this window comes back.
   useEffect(() => {
@@ -252,7 +219,7 @@ export default function App() {
   const screen = screenFor(view); // never a key screen: the main page shows with or without a key
   // The first-run onboarding ("How should Orbit talk?") stands in for the main page until it's done
   // or skipped (Settings and History still open from the title bar).
-  const onboarding = screen === "main" && onboardingShown(settings, { parity: !!parity });
+  const onboarding = screen === "main" && onboardingShown(settings);
   // No floating orb (Settings -> Avatar): the title bar's button minimizes to the taskbar.
   const orbOff = settings?.showOrb === false && settings?.avatar !== "none";
   const startTalk = () => void tryTalk(() => v.start());
@@ -265,36 +232,6 @@ export default function App() {
     await app.updateSettings({ voiceEngine: "claude" });
     void tryTalk(() => v.start(), "claude");
   };
-  // (Parity only, as above: the notice as shown, with its buttons, and the main page's own buttons.)
-  if (parity?.app) {
-    const shown = notice && !on ? notice : null;
-    // (As drawn below: Copy sits in the command box; the rest are the notice's buttons.)
-    const buttons = !shown || shown.kind === "claude-models" ? []
-      : [
-          ...(shown.kind === "claude-missing" ? ["Copy"] : []),
-          ...(shown.kind === "claude-missing" || shown.kind === "claude-signed-out" ? ["Check again"] : []),
-          ...(shown.kind === "claude-missing" ? ["Setup guide"] : []),
-          "Open Settings",
-          ...(shown.kind === "grok-key" ? ["Use Claude voice"] : []),
-          ...(shown.kind === "claude-models-error" ? ["Try again"] : []),
-        ];
-    Object.assign(parity.app, {
-      notice: shown ? { kind: shown.kind, text: shown.text, buttons } : null,
-      focusKey: screen === "settings" && focusKey,
-      start: () => (!on ? startTalk() : undefined),
-      press: async (label: string) => {
-        if (!buttons.includes(label)) return { ok: false, error: `No "${label}" button on the main page now.` };
-        if (label === "Open Settings") openSettings();
-        else if (label === "Use Claude voice") void switchToClaude();
-        // (What it copies: a test leaves the computer's clipboard alone.)
-        else if (label === "Copy") return { ok: true, copied: claudeInstall(desktop?.platform ?? (isMac ? "darwin" : "win32")).command };
-        else if (label === "Setup guide") return { ok: true, url: CLAUDE_SETUP_URL }; // (the driver never opens a browser)
-        else if (label === "Check again") await checkAgain();
-        else startTalk();
-        return { ok: true };
-      },
-    });
-  }
   const recent = v.captions.filter((c) => c.who !== "note" || c === v.captions[v.captions.length - 1]).slice(-3);
   // Connected but not listening: Grok is finishing its goodbye before hanging up, or ("one
   // question" mode) answering / holding a draft that waits for your yes.
@@ -314,7 +251,7 @@ export default function App() {
     <div className="flex h-screen flex-col overflow-hidden bg-white text-fg select-none">
       {wakeFrame}
       {/* title bar: draggable in the desktop app (on a Mac the traffic lights sit at its left) */}
-      <div className={cn("flex h-11 shrink-0 items-center gap-1.5 pr-1.5 [-webkit-app-region:drag]", desktop && isMac ? "pl-[78px]" : "pl-4")}>
+      <div className={cn("flex h-11 shrink-0 items-center gap-1.5 pr-1.5 [-webkit-app-region:drag]", "pl-4")}>
         <span className="wordmark mr-1 text-[19px]">Orbit</span>
         <SessionSwitcher
           current={v.sessionTitle}
@@ -334,7 +271,7 @@ export default function App() {
           <TitleButton label="Settings" active={view === "settings"} onClick={() => setView((x) => (x === "settings" ? "main" : "settings"))}>
             <SettingsIcon size={15} />
           </TitleButton>
-          {desktop && !isMac && (
+          {desktop && (
             <>
               <TitleButton label={orbOff ? "Minimize" : "Shrink to orb"} onClick={() => desktop?.minimize()}>
                 <Minus size={16} />
@@ -347,7 +284,6 @@ export default function App() {
         </div>
       </div>
 
-      {desktop && isMac && screen === "main" && !onboarding && <MacPermissionsBanner />}
       {onboarding ? (
         <Onboarding config={app.config} update={app.updateSettings} onKeySaved={app.setHasKey} />
       ) : screen === "settings" ? (

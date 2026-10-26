@@ -15,10 +15,10 @@
 //     full looks the Send button keeps its place from the box's right end and bottom (it sits on the
 //     box's row), so it moves with the box.
 //
-// Free-floating (`free`: no Claude window tracker, e.g. a Mac copy without its helper): the strip
-// lives along the bottom of the screen the cursor is on, just above the Dock, always on top and on
-// every Space. There's no prompt box or Send button to stand on there, so the avatar has the
-// floor (the top of the Dock) to itself; it moves when the screen layout changes.
+// Free-floating (`free`: no Claude window tracker, e.g. Linux from source): the strip lives along
+// the bottom of the screen the cursor is on, just above the taskbar, always on top. There's no
+// prompt box or Send button to stand on there, so the avatar has the floor to itself; it moves
+// when the screen layout changes.
 //
 // Boxless (`boxless`, "Orbit anywhere": his strip on another app's window, see avatar-host.js): the
 // same strip and placement on that window, but there's no prompt box there, so he stands on the
@@ -87,7 +87,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   const PRESS_WHY = new Set(['talk', 'poke', 'throw-off', 'too-long-for-a-click', 'drag', 'hold', 'leaving', 'press-already', 'not-on-him']);
   const pressLog = rateLimitedLog((m) => info_(m), { everyMs: 5_000 });
   const pageErrLog = rateLimitedLog((m) => log(m), { everyMs: 30_000 });
-  const modeListeners = new Set(); // the parity driver's avatar.mode (onMouseMode)
+  const modeListeners = new Set(); // onMouseMode's listeners (tests)
   const hover = createHoverPoller({
     onRunning: (on) => hoverLog(on ? 'poll-on' : 'poll-off', `${kind}: hover polling ${on ? 'started' : 'stopped'}`),
     // (Only logged: the last rect stands, since a page's timers can be slowed while he hasn't moved.)
@@ -144,7 +144,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     const where = free ? 'along the screen' : boxless ? 'on another window' : 'on the Claude window';
     info_(`${kind}: avatar window opened ${where} (${openWindows} open)`);
     win.setIgnoreMouseEvents(true, { forward: true }); // clicks go through to Claude
-    onWindow(win); // (macOS: on every Space)
+    onWindow(win);
     win.loadURL(url());
     win.webContents.on('did-finish-load', () => {
       send();
@@ -547,13 +547,13 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     get free() {
       return free;
     },
-    /** For the parity driver: each change of whether its window takes the mouse. Returns an unsubscribe. */
+    /** For tests: each change of whether its window takes the mouse. Returns an unsubscribe. */
     onMouseMode(fn) {
       modeListeners.add(fn);
       return () => modeListeners.delete(fn);
     },
     /**
-     * For the parity driver (electron/parity-driver.js): what this avatar's window is doing, read-only.
+     * For tests: what this avatar's window is doing, read-only.
      * Rects in DIPs (the window's bounds, the strip's, the lifted area, the host window), the box and
      * Send button in the strip's px, the page's last hit rect in the window's px.
      */

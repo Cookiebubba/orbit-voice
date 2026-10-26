@@ -21,8 +21,6 @@
     "icons:mac": "electron scripts/make-icons.mjs --mac",
     "check": "node src/selftest.js",
     "dist": "npm run build:ui && node scripts/fetch-model.mjs && electron-builder --win --publish never",
-    "dist:mac": "npm run build:ui && node scripts/fetch-model.mjs && node scripts/build-mac-helper.mjs && node scripts/mac-native.mjs && electron-builder --mac --publish never",
-    "mac:native": "node scripts/mac-native.mjs",
     "mac:helper": "node scripts/build-mac-helper.mjs",
     "fetch-model": "node scripts/fetch-model.mjs",
     "test": "node --test test/*.test.js && node --import ./test/fuzz/register.mjs --test test/sandboxed/*.test.js",
@@ -70,8 +68,7 @@
       "LICENSE",
       "THIRD_PARTY_NOTICES.md",
       "!src/selftest.js",
-      "!electron/selftest.js",
-      "!electron/parity-*"
+      "!electron/selftest.js"
     ],
     "asarUnpack": [
       "src/desktop.ps1",
@@ -79,9 +76,7 @@
       "src/platform/win/*.ps1",
       "src/platform/win/*.cs",
       "node_modules/sherpa-onnx-node/**",
-      "node_modules/sherpa-onnx-win-x64/**",
-      "node_modules/sherpa-onnx-darwin-arm64/**",
-      "node_modules/sherpa-onnx-darwin-x64/**"
+      "node_modules/sherpa-onnx-win-x64/**"
     ],
     "directories": {
       "output": "dist",
@@ -107,52 +102,6 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Orbit",
       "deleteAppDataOnUninstall": false
-    },
-    "mac": {
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        }
-      ],
-      "icon": "build/icon.icns",
-      "category": "public.app-category.productivity",
-      "artifactName": "Orbit-${version}-${arch}.${ext}",
-      "darkModeSupport": true,
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": true,
-      "extendInfo": {
-        "NSMicrophoneUsageDescription": "Orbit listens so you can talk to Grok or Claude, and for the offline “Hey Orbit” wake word. Your voice goes only to the voice you chose, and only while a conversation is on.",
-        "NSAppleEventsUsageDescription": "Orbit doesn't send Apple Events today; if it ever asks, it is to hand your prompts to the Claude app.",
-        "NSAccessibilityUsageDescription": "Orbit uses Accessibility to type your prompts into the Claude app, press Send and Stop, answer Claude's questions, and (with Orbit anywhere) read and act in the window you ask about.",
-        "LSMinimumSystemVersion": "12.0"
-      },
-      "extraResources": [
-        {
-          "from": "resources/mac",
-          "to": "mac",
-          "filter": [
-            "orbit-helper"
-          ]
-        }
-      ]
-    },
-    "dmg": {
-      "artifactName": "Orbit-${version}-${arch}.${ext}",
-      "title": "Orbit ${version}"
     },
     "publish": [
       {

@@ -1,7 +1,8 @@
-// Builds Orbit's native macOS helper (native/mac/OrbitHelper/*.swift) into
+// Builds Orbit's native macOS helper (native/mac/OrbitHelper/*.swift) on its own into
 // resources/mac/orbit-helper: one universal binary (arm64 + x86_64) with the Xcode command line
-// tools' swiftc. electron-builder ships it in Orbit.app (Contents/Resources/mac/) and signs it with
-// the app (hardened runtime). macOS only; elsewhere it says so and does nothing.
+// tools' swiftc, for the helper's tests (test/mac-helper.test.js) and npm run e2e:mac. Orbit Native's
+// own build (mac-swift/scripts/build-app.sh) compiles the copy it ships. macOS only; elsewhere it
+// says so and does nothing.
 //
 //   node scripts/build-mac-helper.mjs            both architectures (lipo'd)
 //   node scripts/build-mac-helper.mjs --arch arm64   just one (quicker while developing)

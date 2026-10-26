@@ -5,11 +5,11 @@ export const BUDDY_HEIGHT = 240;
 
 /**
  * A window rect from a window helper ({ x, y, w, h }) in DIPs: Windows' helpers report real screen
- * pixels (converted by Electron), macOS's report points, which already are Electron's DIPs there.
+ * pixels, converted by Electron.
  */
 export function helperRectToDip(screen, r, platform = process.platform) {
   const rect = { x: r.x, y: r.y, width: r.w, height: r.h };
-  if (platform === 'win32' || typeof screen?.screenToDipRect === 'function' && platform !== 'darwin') return screen.screenToDipRect(null, rect);
+  if (platform === 'win32' || typeof screen?.screenToDipRect === 'function') return screen.screenToDipRect(null, rect);
   return rect;
 } // DIPs: room above Claude's prompt box to jump
 

@@ -1,8 +1,8 @@
-// Updates from GitHub Releases, natively, from the same releases as the Electron build
+// Updates from GitHub Releases, natively, from the same releases as the Windows app
 // (electron/updater.js + electron-updater), but from Orbit Native's own feed in each release:
 // latest-mac-native.yml (scripts/package.sh writes it, in electron-builder's latest-mac.yml shape)
-// names the version, the Orbit-Native zips and their SHA-512. Electron's latest-mac.yml names the
-// Electron app's zips, which this build never takes (file(arch:) only picks Orbit-Native ones).
+// names the version, the Orbit-Native zips and their SHA-512. Only Orbit-Native zips are ever taken
+// (file(arch:)), whatever else a release holds (older ones had the Electron Mac build's).
 //
 // Channels follow the installed version, as electron/updater.js: a stable install (1.2.0) reads
 // /releases/latest (never a prerelease); a beta install (1.3.0-beta.1) reads the releases list and

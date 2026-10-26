@@ -1,21 +1,22 @@
 # Orbit parity suite: protocol
 
-One set of test cases, two apps: the Electron build (`electron/`) and the native Swift build
-(`mac-swift/`). Neither the cases nor the protocol depend on either language. Each app, when started
-for testing, exposes the same small **driver** over HTTP; the runners speak only that driver and the
-bridge's own HTTP/WebSocket API.
+One set of test cases for Orbit Native, the Mac app (`mac-swift/`): what it must do, as the Node
+core does it (the core the Electron app runs on Windows; the engine oracle in `parity/oracle` pins the
+rest, function by function). The cases and the protocol depend on no language. The app, when started
+for testing, exposes a small **driver** over HTTP; the runners speak only that driver and the
+bridge's own HTTP/WebSocket API. (The Electron app ran these cases too while it shipped for Mac.)
 
 Two runners execute the same case files:
 
-- `parity/run.mjs` (Node): `npm run parity -- --app electron|swift|both`. Writes the parity matrix.
+- `parity/run.mjs` (Node): `npm run parity`. Writes the matrix.
 - `mac-swift/Tests/OrbitParityTests` (XCTest): `swift test --filter OrbitParityTests` runs every case
   against the Swift build (it reads the same `parity/cases/*.json`).
 
 ## Starting an app for testing
 
-The runner starts the app with these environment variables (each app honours them only when it is
-not a packaged release: Electron `!app.isPackaged`; Swift: a build with `ORBIT_PARITY_ALLOWED=1`
-baked in at build time by `mac-swift/scripts/build-app.sh --test`, never in a release build):
+The runner starts the app with these environment variables (honoured only by a build with
+`ORBIT_PARITY_ALLOWED=1` baked in at build time by `mac-swift/scripts/build-app.sh --test`, never in
+a release build):
 
 | Variable | Meaning |
 | --- | --- |
@@ -26,7 +27,7 @@ baked in at build time by `mac-swift/scripts/build-app.sh --test`, never in a re
 | `XAI_REALTIME_URL` | The fake Grok (`test/e2e/fake-grok.mjs`) when a case uses the Grok engine. |
 | `ORBIT_FAKE_DESKTOP` | A JS stand-in for the Claude desktop driver (`parity/fixtures/fake-desktop.mjs`), or unset to drive the stand-in Claude *window* (`parity/fixtures/mac/StandInClaude`). |
 | `ORBIT_TEST_CLAUDE_PID` | The stand-in Claude window's pid: the only Claude window either app may read or act on. |
-| `ORBIT_FAKE_MIC` | A WAV file (any rate, mono or stereo) used as the microphone instead of the real one. Electron maps it to Chromium's fake capture device; Swift's audio engine reads it in real time. Can be swapped at run time with `mic.play`. |
+| `ORBIT_FAKE_MIC` | A WAV file (any rate, mono or stereo) used as the microphone instead of the real one: the audio engine reads it in real time. Can be swapped at run time with `mic.play`. |
 | `ORBIT_MUTE_OUTPUT` | `1`: the voice is "played" (timed, counted, levels computed) but not sent to the speakers. |
 | `ORBIT_FAKE_LOGIN` | `1`: "Open at login" is kept in memory only (reported in `login.enabled`), never registered with macOS. |
 | `ORBIT_FAKE_PERMS` | JSON `{"mic":"granted|denied|not-determined|restricted","ax":bool,"screen":bool}`: what the permissions check reports, for the onboarding cases (never touches the real TCC state). The runners set all granted unless a case sets it (a real macOS prompt would hold an app up). |
@@ -37,7 +38,7 @@ Base: `http://127.0.0.1:$ORBIT_PARITY_PORT`. JSON in and out. Header `x-parity-t
 
 ### `GET /parity/hello`
 ```json
-{ "app": "electron" | "swift", "version": "1.3.0-beta.1", "pid": 123, "ready": true,
+{ "app": "swift", "version": "1.3.0-beta.1", "pid": 123, "ready": true,
   "bridge": { "base": "http://127.0.0.1:4521", "authUrl": "http://127.0.0.1:4521/auth?t=..." },
   "features": ["avatar", "mouse", "voice", "settings", "onboarding", "window", "hotkey", "login", "updater"] }
 ```
@@ -190,9 +191,9 @@ either a literal (deep-equal) or an operator object:
 
 `parity/out/matrix.json`:
 ```json
-{ "at": "...", "apps": ["electron", "swift"],
-  "cases": [ { "id": "...", "area": "...", "electron": { "status": "pass|fail|unsupported|error", "ms": 120, "error": "..." }, "swift": { ... } } ],
-  "summary": { "electron": { "bridge": { "pass": 10, "total": 12 } }, "swift": { ... } } }
+{ "at": "...", "apps": ["swift"],
+  "cases": [ { "id": "...", "area": "...", "swift": { "status": "pass|fail|unsupported|error", "ms": 120, "error": "..." } } ],
+  "summary": { "swift": { "bridge": { "pass": 10, "total": 12 } } } }
 ```
 and `parity/out/matrix.md`, a readable table (one row per case, a summary per area). Both are
 generated, not committed.

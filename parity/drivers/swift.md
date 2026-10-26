@@ -28,7 +28,7 @@ up. `speech` says who hears and speaks for Claude voice: `local` (OrbitSpeech in
 | `mouse` | Overlays' Orbit's mouse model |
 | `voice` | VoiceController's VoiceSession (`parity`): phase, asleep, connected, muted, played and scheduled ms, chunks, last error, draft, sent count |
 | `onboarding` | OrbitUI's OnboardingModel (Microphone and Accessibility are steps; Screen Recording optional) |
-| `hotkey` | ShellHotkey (the real Carbon hotkey, or in a driven test build an in-memory one, as Electron's driver does) |
+| `hotkey` | ShellHotkey (the real Carbon hotkey, or in a driven test build an in-memory one) |
 | `login` | OrbitUI's login item (`ORBIT_FAKE_LOGIN=1`: in memory) |
 | `events`, `sounds` | The shell's EventLog: the overlays' avatar events, the voice controller's `voice.phase`/`hotkey`/`hangup`, `perms.request`, `core.ready`; sounds as played |
 
@@ -49,7 +49,5 @@ up. `speech` says who hears and speaks for Claude voice: `local` (OrbitSpeech in
 
 ## Known differences
 
-- The Swift build's own onboarding has steps; the Electron Mac build shows a banner. Both report the
-  same `step` and `shown` for the same permission state.
 - Claude voice's speech runs in the app by default (`speech: local`); `ORBIT_SPEECH=core` in a test
   build switches back to the core's, for comparing the two.

@@ -1,9 +1,10 @@
 # Orbit parity suite
 
-One set of test cases that both Orbit builds must pass: the Electron app and Orbit Native (the
-Swift app in `mac-swift/`). The cases are JSON data, the apps are driven through a small HTTP driver
-each build serves in test mode, and two runners execute them: `run.mjs` (Node) and the
-`OrbitParityTests` XCTest target (Swift). The protocol, the step kinds and the matchers are in
+The test cases Orbit Native (the Swift Mac app in `mac-swift/`) must pass, written from what the
+Node core does (the core the Electron app runs on Windows; `oracle/` pins the engine's functions to
+it case by case). The cases are JSON data, the app is driven through a small HTTP driver it serves in
+test mode, and two runners execute them: `run.mjs` (Node) and the `OrbitParityTests` XCTest target
+(Swift). The protocol, the step kinds and the matchers are in
 [PROTOCOL.md](PROTOCOL.md).
 
 ## Areas
@@ -16,7 +17,7 @@ each build serves in test mode, and two runners execute them: `run.mjs` (Node) a
 | `cases/onboarding.json` | onboarding | The macOS permissions onboarding over faked permission states. |
 | `cases/window.json` | window | Driving the stand-in Claude window: found, sessions, switch, drafts typed into its box, send on a yes, Stop, answering a card. |
 | `cases/voice.json` | voice | Spoken scenarios end to end: a synthesised clip into each app's own microphone path, on-device speech to text, a scripted Claude Code, the tool calls and their effect: draft, a natural yes, a no, same-breath send, go to sleep, stop, answering a card, switching the model, an avatar command, "Hey Orbit" and a decoy. |
-| `cases/shell.json` | shell | What the app does by itself: Orbit Native relaunches itself (quietly, with its settings) when its core process dies. Electron's core runs inside the app, so it's n/a there. |
+| `cases/shell.json` | shell | What the app does by itself: Orbit Native relaunches itself (quietly, with its settings) when its core process dies. |
 
 ## Running (on a Mac)
 
@@ -24,19 +25,19 @@ each build serves in test mode, and two runners execute them: `run.mjs` (Node) a
 npm ci && npm run build:ui && node scripts/fetch-model.mjs   # once
 npm run parity:audio                                       # once: speech models (~175 MB) and the clips
 bash mac-swift/scripts/build-app.sh --test                 # the Swift build with its driver allowed
-npm run parity -- --app both                               # or --app swift / electron, --area, --case
+npm run parity                                             # or --area, --case
 ```
 
 The matrix goes to `parity/out/matrix.json` and `parity/out/matrix.md`. The same cases from Swift:
 
 ```bash
-cd mac-swift && swift test --filter OrbitParityTests        # ORBIT_PARITY_AREA=avatar, ORBIT_PARITY_APP=electron
+cd mac-swift && swift test --filter OrbitParityTests        # ORBIT_PARITY_AREA=avatar
 ```
 
 ## Measuring
 
 ```bash
-node parity/tools/measure.mjs                 # size, start-up, idle CPU and memory of both builds
+node parity/tools/measure.mjs                 # size, start-up, idle CPU and memory
 node parity/tools/soak.mjs --cycles 40        # 40 whole calls in a row; fails if memory keeps growing
 ```
 

@@ -1,7 +1,6 @@
 // The parity suite (../../parity/cases) run by the Swift runner against the Swift build:
 //   scripts/build-app.sh --test && swift test --filter OrbitParityTests
-// ORBIT_PARITY_APP=electron runs it against the Electron build instead; ORBIT_PARITY_AREA (comma
-// list) and ORBIT_PARITY_CASE (a regex on ids) pick cases. A failing case fails the test with its reason; cases needing a feature the build doesn't have are listed,
+// ORBIT_PARITY_AREA (comma list) and ORBIT_PARITY_CASE (a regex on ids) pick cases. A failing case fails the test with its reason; cases needing a feature the build doesn't have are listed,
 // not failed. The results also go to parity/out/matrix-<app>-xctest.json.
 import Foundation
 import XCTest
@@ -21,7 +20,7 @@ func nodeBinary() -> URL? {
 final class OrbitParityTests: XCTestCase {
   func testParitySuite() async throws {
     let env = ProcessInfo.processInfo.environment
-    let which = env["ORBIT_PARITY_APP"] ?? "swift"
+    let which = "swift"
     guard let node = nodeBinary() else { throw XCTSkip("no node for the test doubles") }
     let paths = ParityRunner.Paths(repo: repo, swiftApp: env["ORBIT_PARITY_SWIFT_APP"].map(URL.init(fileURLWithPath:)), node: node)
     if which == "swift", !FileManager.default.fileExists(atPath: paths.swiftApp.appendingPathComponent("Contents/Info.plist").path) {

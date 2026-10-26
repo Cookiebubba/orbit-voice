@@ -90,7 +90,8 @@ export async function corpus(root, r) {
   const lits = [];
   for (const f of TEST_FILES) {
     const p = path.join(root, f);
-    if (fs.existsSync(p)) lits.push(...literalsFrom(fs.readFileSync(p, 'utf8')));
+    // (Line endings as the repo stores them: a checkout with CRLF on disk reads the same corpus.)
+    if (fs.existsSync(p)) lits.push(...literalsFrom(fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n')));
   }
   return [...new Set([...EDGE, ...lits, ...randomUtterances(r, 1200)])].sort();
 }
