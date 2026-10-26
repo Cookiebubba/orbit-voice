@@ -1,161 +1,145 @@
-<p align="center"><a href="docs/demo.mp4"><img src="docs/demo.gif" width="900" alt="Orbit demo: the Grok Voice orb floating over Claude Code Desktop, answering &quot;What's Claude doing?&quot;"></a></p>
+<p align="center"><a href="https://cookiebubba.github.io/orbit-voice/"><img src="docs/orbit-hero.gif" width="640" alt="Orbit: the Orbit wordmark with Grok and Claude under it, and Qubit, Orbit's square one-eyed avatar, hopping, flipping and changing colour below"></a></p>
 
-<h1 align="center"><img src="assets/icon.png" width="40" alt="" align="top"> Orbit</h1>
-
-<p align="center"><b>A hands-free voice companion for Claude Code Desktop, powered by Grok Voice.</b><br>
-Ask what Claude is doing, hear when it finishes, switch sessions, and dictate prompts, without touching the keyboard.</p>
+<p align="center"><b>Talk to Claude Code, hands-free.</b><br>
+Orbit is a voice companion for the Claude desktop app. Ask what Claude is doing, hear when it finishes, dictate prompts, answer its questions and switch sessions without touching the keyboard. Qubit, Orbit's avatar, lives on your Claude window while you talk.</p>
 
 <p align="center">
-  <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/Cookiebubba/orbit-voice?label=release&color=D97757&style=flat-square" alt="Latest release"></a>
-  <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0b0b0c?style=flat-square" alt="Windows 10 and 11">
+  <a href="../../releases"><img src="https://img.shields.io/github/v/release/Cookiebubba/orbit-voice?include_prereleases&label=release&color=D97757&style=flat-square" alt="Newest release"></a>
+  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0b0b0c?style=flat-square" alt="Windows 10 and 11">
+  <img src="https://img.shields.io/badge/macOS-14%2B%20(Apple%20silicon)-0b0b0c?style=flat-square" alt="macOS 14 or later on Apple silicon">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/Cookiebubba/orbit-voice?color=0b0b0c&style=flat-square" alt="MIT license"></a>
   <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-reviewed-0b0b0c?style=flat-square" alt="Security reviewed"></a>
 </p>
 
-<p align="center"><a href="../../releases/latest"><b>⬇ Download for Windows</b></a> · <a href="docs/demo.mp4">Watch the demo (MP4)</a> · <a href="#how-it-works">How it works</a> · <a href="SECURITY.md">Security</a></p>
+<p align="center">
+  <a href="https://github.com/Cookiebubba/orbit-voice/releases/download/v1.3.0-beta.4/Orbit-Setup-1.3.0-beta.4.exe"><b>⬇ Download for Windows</b></a> ·
+  <a href="https://github.com/Cookiebubba/orbit-voice/releases/download/v1.3.0-beta.4/Orbit-Native-1.3.0-beta.4-arm64.dmg"><b>⬇ Download for Mac</b></a> ·
+  <a href="https://cookiebubba.github.io/orbit-voice/">Website</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="SECURITY.md">Security</a>
+</p>
 
-<p align="center"><img src="docs/screens.png" width="900" alt="Four Orbit screens: Ask (Grok answers out loud), Dictate (a draft waiting for your yes), Review (this run's conversation), Tune (voice, speed and listening settings)"></p>
+<p align="center"><sub>The newest release, 1.3.0 beta 4. <a href="../../releases">All releases</a> · <a href="RELEASE_NOTES.md">what's new</a></sub></p>
 
 > Orbit is an independent open-source project. It is not affiliated with, endorsed by, or sponsored by xAI or Anthropic. Grok is a trademark of xAI; Claude is a trademark of Anthropic.
 
 ---
 
-## What it does
+## What Orbit does
 
-- **Talk to your sessions.** "What's Claude doing?", "Did it finish?", "Summarize my launchpad session." Orbit reads your Claude Code sessions from disk and Grok answers out loud.
-- **Hear when Claude is done.** Orbit watches your recent sessions and plays a chime, shows a Windows notification, and (optionally) has Grok tell you what Claude did.
-  - **Even while Grok sleeps (optional).** With "Wake Grok to say it" on (Settings → When Claude finishes, off by default), Grok connects just long enough to say what Claude finished and asks what you'd like to do. The mic opens only after Grok has spoken, for 3 seconds. Answer and the conversation carries on; stay quiet and it hangs up. There's no always-on listening. Each wake bills a few seconds of xAI time. Press the hotkey or click the orb to hang up a wake at once.
-  - **When something you asked for is ready.** With "Wake Grok when something you asked for is ready" (on by default with "Grok tells me"), Grok also wakes when Claude finishes a prompt it sent for you, or when the second brain answers after you hung up. At most 6 wakes an hour, at least 30 s apart.
-- **Picks up where you left off.** Hanging up used to start the next call from scratch. Now, for 30 minutes, the next call gets a short note from Orbit: the last few things said, the session that was open, and what you're still waiting on. Grok uses it only when you refer back ("where were we?", "what did Claude say?"). It's kept in memory only, never on disk, and a draft in it is never sent without a new read-back and a fresh yes.
-- **Start a new session by voice.** "Start a new session", "new thread in castpilot". Orbit presses Claude's own New session button, then Grok asks what you want to say and drafts it as usual. You never touch the keyboard.
-- **Dictate prompts, safely.** "Tell Claude to run the tests." Grok drafts it and reads it back. It only types into Claude's prompt box after you say **yes**. Want it worded differently? Just say so and Grok redrafts it. It's all by voice: there's no card or button to click.
-- **Switch sessions by voice or click.** "Switch to my Ladder 6 session." Orbit opens it in Claude's sidebar, without moving your mouse.
-- **Stays out of the way.** Minimize it to a small always-on-top orb. The orb changes with Grok's state (listening, thinking, talking). It has no glow around it: brightness alone says how active it is. It dims when asleep. While Claude is working and Grok is off, it brightens with Claude-orange tiles flowing through it. While Grok is on, it keeps Grok's colors. It can also pulse slightly with your voice and/or Grok's, by an amount you choose (optional).
-- **Stick to Claude Code (optional).** The orb rides on the Claude window:
-  - It follows the window as you move or resize it, at any display scaling.
-  - It stays on top of Claude without floating over other apps.
-  - It hides while Claude is minimized.
-  - Drag it to choose its spot on the window.
-- **You control the mic, and the bill.** Say "go to sleep" and Orbit hangs up, so nothing is billed while it sleeps. Or use **one question at a time** mode: press the hotkey (default **Ctrl+Alt+G**, changeable), ask, and it hangs up after answering.
-- **Say "Hey Orbit" (optional).** A free, fully offline wake word starts Grok again after it has gone to sleep. It's recognized on your PC by a small speech model, so no audio leaves your computer until Grok is awake. Each wake starts a fresh connection, with Orbit's short note on the last call (see above), and Grok can always re-read your Claude sessions.
-- **Stop Claude.** "Stop", "stop it", "cancel that run": Orbit presses Claude's own Stop button. A bare "stop" while Claude works is pressed at once, before Grok even answers.
-- **Answer Claude when it's waiting on you.** When Claude asks permission (to run a command, edit a file) or asks a question with options, Grok tells you, even waking up to do it, and says the risky part ("It wants to run npm install. Allow it?"). Say "allow it", "deny that" or "go with the second option" and Orbit clicks Claude's own button. Only your own words answer it, and "always allow" only if you say "always".
-- **Web search.** For current facts (the latest version of something, news, docs), Grok looks them up instead of guessing: xAI's own web and X search, or with Claude voice a quick search through your Claude Code that can only search and read web pages. Turn it off in Settings → Second brain.
-- **Copy to clipboard.** "Copy Claude's last answer", "copy that command": Grok puts it on your clipboard, ready to paste.
-- **A second brain for hard questions.** When a question needs more thought, or needs a look at the code in your current project ("why would the hotkey stop working after sleep?"), Grok quietly asks Claude and tells you the answer.
-  - Grok picks Haiku, Sonnet or Opus to fit the question.
-  - Claude can read your project but can't change anything.
-  - Its answer comes back shaped for voice: a short spoken answer, with details and file references kept for follow-up questions. If Claude suggests a prompt to act on it, Grok offers to send it, and drafts it only if you say yes.
-  - Hang up while it's thinking, and the answer still reaches you: Grok wakes to tell you, or tells you in your next call.
-  - Nothing shows up on screen. You choose the model and connection in Settings → Second brain.
+- **Two voices, your choice.** Orbit talks with **Claude voice** (the default) or **Grok voice**:
+  - **Claude voice** runs on your own Claude Code sign-in, so it counts toward your Claude plan. Orbit hears you and speaks on your computer (Silero, Moonshine or Parakeet, Kitten TTS). No key, no extra bill.
+  - **Grok voice** is xAI's realtime voice: the quickest replies, billed by xAI per minute with your own key.
+  - Switch any time in Settings → Voice engine, or pick one in the first-run setup.
+- **Qubit lives on your Claude window.** A square with one eye stands on Claude's prompt box. He sleeps while Orbit sleeps, listens as you talk (his eye stretches with your voice), speaks with Orbit's voice, waits by Send for your yes, watches Claude work and celebrates when it's done. Ask him for a backflip. Pick him up and throw him. Prefer something else? Choose the pixel buddy or no avatar, and on Windows the floating orb.
+- **Talk to your sessions.** "What's Claude doing?", "Did it finish?", "Summarize my launchpad session." Orbit reads your Claude Code sessions from disk and answers out loud.
+- **Hear when Claude is done.** A chime, a notification, and (optionally) Orbit telling you what Claude did. With "wake to say it" on, Orbit connects just long enough to say it, then listens for 3 seconds for your reply.
+- **Dictate prompts, safely.** "Tell Claude to run the tests." Orbit types the draft into Claude's prompt box and asks "Send it?". Ask for changes by voice and it redrafts. Nothing is sent until you say **yes**.
+- **Answer Claude when it's waiting.** When Claude asks permission or asks a question, Orbit tells you the risky part ("It wants to run npm install. Allow it?") and clicks Claude's own button for your answer.
+- **Switch, start and stop sessions by voice.** "Switch to my Ladder 6 session", "new session in castpilot", "stop".
+- **Orbit anywhere.** Ask about or act in other apps' windows: read what's in them, click "Wi-Fi" in System Settings, type into a chat box (outward acts like Send wait for your yes), or look at a window ("what's on this chart?"). Orbit's own mouse shows where it's working. See [docs/ORBIT-ANYWHERE.md](docs/ORBIT-ANYWHERE.md).
+- **A second brain for hard questions.** For deep or code-specific questions, Orbit quietly asks Claude (Haiku, Sonnet or Opus), read-only in your current project, and tells you the answer.
+- **Web search** for current facts, and **copy to clipboard** ("copy Claude's last answer").
+- **Say "Hey Orbit".** An optional, fully offline wake word. No audio leaves your computer until Orbit is awake.
+- **You control the mic, and the bill.** Say "go to sleep" and Orbit hangs up. The hotkey (default **Ctrl+Alt+G** on Windows, **⌘⌥G** on Mac) starts, sleeps and wakes it.
+- **Picks up where you left off.** For 30 minutes after a call, the next one gets a short note on where you were, kept in memory only.
 
-## Requirements
+## Get Orbit
 
-- Windows 10 or 11 (x64), or macOS 12+ on Apple silicon or Intel (beta: see [docs/MAC.md](docs/MAC.md) for building, the permissions it asks for, and signing)
-- [Claude desktop app](https://claude.ai/download) with Claude Code sessions
-- No key to start. Orbit starts on Claude voice, which runs through your own Claude Code sign-in (your Claude plan), with speech heard and spoken on your PC. Its speech models (about 175 MB) download the first time you talk.
-- Only for Grok voice: an [xAI API key](https://console.x.ai), added in Settings → Voice engine → Grok. Grok voice is billed by xAI per minute connected (about $0.08/min at the time of writing). Orbit shows an estimate in Settings → Usage. Saying "go to sleep" hangs up, so sleeping costs nothing (unless you turn on "Wake Grok to say it": each spoken update bills a few seconds).
-- Claude Code, signed in: Claude voice, the second brain and web search run through it. The Claude desktop app may already include it, and Orbit finds it automatically. If it isn't on your PC, install it from PowerShell:
+| | Windows | Mac |
+| --- | --- | --- |
+| Download | [`Orbit-Setup-1.3.0-beta.4.exe`](https://github.com/Cookiebubba/orbit-voice/releases/download/v1.3.0-beta.4/Orbit-Setup-1.3.0-beta.4.exe) | [`Orbit-Native-1.3.0-beta.4-arm64.dmg`](https://github.com/Cookiebubba/orbit-voice/releases/download/v1.3.0-beta.4/Orbit-Native-1.3.0-beta.4-arm64.dmg) |
+| System | Windows 10 or 11 (x64) | macOS 14 or later, Apple silicon |
+| The app | Orbit (Electron) | Orbit Native, a native Swift app (beta) |
+
+**Windows:** run the installer. It isn't code-signed yet, so on the SmartScreen prompt click **More info → Run anyway**. You can check the download against the `.sha256` file on the release page.
+
+**Mac:** open the dmg and drag **Orbit Native** to Applications. It isn't notarized by Apple yet, so the first time:
+1. Open it. macOS says it can't check it for malicious software. Click **Done**.
+2. Open **System Settings → Privacy & Security**, scroll down, click **Open Anyway** next to Orbit Native and confirm.
+3. Orbit walks you through choosing a voice, then asks for the **Microphone** and **Accessibility**. If macOS asks about the Keychain, choose **Always Allow**.
+
+Until the app is notarized, macOS may ask for Accessibility and the Keychain again after an update. More in [docs/MAC.md](docs/MAC.md).
+
+**Then:** click Qubit or press the hotkey and start talking. There's no key to enter for Claude voice.
+
+## What you need
+
+- The [Claude desktop app](https://claude.ai/download) with Claude Code sessions.
+- **Claude Code, signed in.** Claude voice, the second brain and web search run through it. The Claude desktop app may already include it, and Orbit finds it. If not, Orbit shows the install command with **Copy** and **Check again** (it never runs the installer itself):
 
   ```powershell
-  irm https://claude.ai/install.ps1 | iex
+  irm https://claude.ai/install.ps1 | iex          # Windows (PowerShell)
+  ```
+  ```bash
+  curl -fsSL https://claude.ai/install.sh | bash   # Mac (Terminal)
   ```
 
-  (or `npm install -g @anthropic-ai/claude-code`, with Node.js 22 or later), then run `claude` once in a terminal and sign in with your Claude account. Anthropic's [setup guide](https://code.claude.com/docs/en/setup) has the details. When Orbit can't find Claude Code, the main page and Settings → Second brain show the same command with **Copy** and **Check again**; Orbit never runs the installer itself.
-- For the second brain: questions count toward your Claude plan, or toward an Anthropic API key if you set one in Settings.
-  - Claude Code keeps its own sign-in, separate from the Claude desktop app's, and it can expire even while the desktop app still works. Orbit checks it (Settings → Second brain shows "Signed in ✓" or a **Sign in** button). If a question fails because the sign-in expired, Grok tells you and offers to open the sign-in: say yes, and Claude Code's own sign-in opens in a small window and your browser.
-
-## Install
-
-1. Download `Orbit-Setup-x.y.z.exe` from the [latest release](../../releases/latest).
-2. Run it. The installer isn't code-signed yet, so Windows SmartScreen may warn you. Click **More info → Run anyway**. You can check the download against the `.sha256` file on the release page.
-3. Open Orbit. There's no key to enter: click Qubit or press **Ctrl+Alt+G** and start talking (on Claude voice).
-4. Want Grok's voice? Settings → Voice engine → Grok, and paste your xAI key there. It's encrypted with your Windows account (DPAPI) and never leaves your PC except to talk to xAI.
+  Then run `claude` once and sign in with your Claude account. Anthropic's [setup guide](https://code.claude.com/docs/en/setup) has the details.
+- **Only for Grok voice:** an [xAI API key](https://console.x.ai), added in Settings → Voice engine → Grok. Grok voice is billed by xAI per minute connected (about $0.08/min at the time of writing); Orbit shows an estimate in Settings → Usage. Sleeping costs nothing.
+- Claude voice's speech models (about 175 MB) download the first time you talk, and stay on your computer.
 
 ## Using it
 
 | Say or do | What happens |
 | --- | --- |
-| "What's Claude doing right now?" | Grok reads the open session and summarizes it |
+| "What's Claude doing right now?" | Orbit reads the open session and sums it up |
 | "List my sessions" / "What happened in the shakeout session?" | Finds and reads other sessions |
 | "Switch to the launchpad dashboard" | Opens that session in Claude |
 | "Start a new session" / "New thread in castpilot" | Opens a new, empty Claude session, then asks what to tell Claude |
-| "Tell Claude: add a dark mode toggle" | Shows a draft, reads it back, waits for your "yes" |
+| "Tell Claude: add a dark mode toggle" | Types the draft into Claude's box and waits for your "yes" |
 | "Stop" / "stop it, it's going the wrong way" | Presses Claude's Stop button |
 | "What's it asking?" / "Allow it" / "Deny that" / "Go with the second option" | Reads what Claude is waiting on, and clicks your answer |
+| "What's in this window?" / "Click Wi-Fi" / "Type running late in Discord and send it" | Orbit anywhere: reads or acts in the window you're in |
 | "Search the web for the latest Node LTS version" | Looks it up and tells you |
-| "Go to sleep" | Grok says goodbye and Orbit hangs up (nothing billed) |
-| "Hey Orbit" / "Hey Grok" / the hotkey / click the orb | Starts a fresh conversation (turn the wake word on in Settings → Listening) |
-| "Copy Claude's last answer" / "Copy that" | Puts it on your clipboard |
-| "What went wrong?" | Grok reads Orbit's recent error log and explains |
-| "How does the wake word avoid false triggers in this project?" / "Is this approach sound?" | Grok asks Claude (the second brain) and answers in its own words |
-| Title bar → session name | Pick a session to open it, or ask Grok about it |
-| Title bar → clock icon | Conversation history (this run only, never saved) |
-| Title bar → gear | Voice, speed, listening mode, notifications, second brain, hotkey, start with Windows, stick to Claude Code, usage |
-| Floating orb | Click: open · drag: move · right-click: sleep/wake |
+| "Qubit, do a backflip" | He does |
+| "Go to sleep" | Orbit says goodbye and hangs up |
+| "Hey Orbit" / the hotkey / click Qubit | Starts a fresh conversation (turn the wake word on in Settings → Listening) |
+| "Copy Claude's last answer" | Puts it on your clipboard |
+| "What went wrong?" | Orbit reads its recent error log and explains |
+| Title bar → session name | Pick a session to open it, or ask about it |
+| Title bar → clock / gear | This run's conversation (never saved) / Settings |
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  you(["🎙️ You"]) <--> ui
-  subgraph orbit["Orbit (Electron)"]
-    ui["Main window +<br/>floating orb"] <--> bridge["Local bridge<br/>127.0.0.1:4317"]
-    updater["Updater"]
+  you(["🎙️ You"]) <--> app
+  subgraph orbit["Orbit (Windows: Electron · Mac: Swift)"]
+    app["Main window +<br/>Qubit on Claude's window"] <--> bridge["Local bridge<br/>127.0.0.1:4317"]
+    speech["Claude voice's speech<br/>(on your computer)"] <--> bridge
   end
-  bridge <-->|"realtime voice<br/>(your key)"| grok[("Grok Voice API<br/>api.x.ai")]
+  bridge <-->|"Claude voice"| cc["Your Claude Code<br/>(your Claude plan)"]
+  bridge <-->|"Grok voice<br/>(your key)"| grok[("Grok Voice API<br/>api.x.ai")]
   bridge -->|"reads, read-only"| files["Claude session list +<br/>~/.claude/projects/**/*.jsonl"]
-  bridge -->|"watches every 2 s"| files
-  bridge -->|"fill, send, switch, new session<br/>(UI Automation, no keystrokes)"| claude["Claude Code Desktop"]
-  bridge -->|"hard questions<br/>(read-only, restricted)"| brain["Second brain:<br/>your Claude Code, headless"]
-  updater -->|"published releases<br/>(SHA-512 checked)"| releases[("GitHub Releases")]
-  wake["'Hey Grok' wake word<br/>(offline, on your PC)"] -.-> ui
+  bridge -->|"fill, send, switch, stop, answer<br/>(accessibility, no keystrokes)"| claude["Claude desktop app"]
+  bridge -->|"hard questions<br/>(read-only, restricted)"| brain["Second brain:<br/>Claude Code, headless"]
+  wake["'Hey Orbit' wake word<br/>(offline)"] -.-> app
 ```
 
-- Claude's **Microsoft Store** version keeps its session list in `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude`. The regular installer uses `%APPDATA%\Claude`. Orbit checks both.
-- **Sending a prompt** fills Claude's prompt box through Windows accessibility and presses Claude's own Send button. There are no key presses, focus changes or clipboard use. It goes into the one Claude window showing the session the draft was for, and refuses if no window or two windows show it, if the box already has your own typing, or if it can't confirm the text landed. The session is checked again just before Send is pressed.
-- **Several Claude windows** (sessions popped out into windows of their own, or more than one main window): Orbit works in the one you were in last, the same one the orb sits on. Grok's "current session" is that window's session.
-- **Switching sessions** brings forward the Claude window the session is already open in. Otherwise it presses the session's sidebar button through accessibility and confirms the window title changed. Bringing a window forward is the one focus change Orbit makes, and only when you ask to switch.
-- **Starting a new session** presses Claude's own **New** button in its sidebar (or **New session in *folder*** when you name a project), and confirms an empty new-session page appeared. Nothing is typed. Claude creates the session when you send the first prompt, which goes through the usual draft and "yes". That send checks the new, still-empty session is still the one open. Reading it back waits a few seconds for Claude to save it to disk, and never reads a different session in its place.
-- **Spoken updates while asleep** connect only when Claude finishes and the setting is on. The bridge itself drops all mic audio until Grok's update has been spoken and the window has opened, forwards it for about 3 seconds, and hangs up if you didn't speak. The window's page doesn't even open the microphone before then. Only speech that's transcribed into words carries on (a cough doesn't), and a conversation started this way hangs up after 20 seconds of quiet.
-- **The wake word** uses [Vosk](https://alphacephei.com/vosk/) (small English model, ~40 MB, shipped with the installer) running in a hidden helper page. "Grok" isn't in that model's vocabulary, so Orbit listens for close matches ("hey rock", "hey brock") and gives the model decoy names ("Brooke", "Rob", "Bob", "Rocky"...) so similar names don't trigger it. In testing it caught 10 of 10 "Hey Grok" clips across 9 voices and ignored 12 of 13 sound-alikes. The one miss was someone actually saying "Hey Brock". "Hey Orbit" works too: "orbit" is in the vocabulary, and on 160 clips across 14 voices it woke on 46 of 46 "Hey Orbit" and on none of 110 sound-alikes ("Hey Robert", "Hey rabbit", "It's in orbit"...).
-- **The second brain** runs your own Claude Code in its official headless mode (`claude -p`). Grok calls it as a tool, choosing the model and either "think" (no tools) or "explore" (read-only Read, Glob and Grep in the project of the Claude session that's open). Each run is isolated:
-  - none of your Claude Code settings, hooks, plugins or MCP servers
-  - no Bash or edit tools
-  - `.env` files and keys denied
-  - nothing saved to your session history
-
-  It's capped at 1, 2.5 or 5 minutes for Haiku, Sonnet or Opus. With "Wake Grok when something you asked for is ready" on, it carries on to that limit if you hang up, and its answer is passed on later; otherwise it stops when you hang up. It answers in a fixed shape (`--json-schema`), with each field checked and trimmed.
-- **The resume note** is built by Orbit itself, with no model call, from what the bridge already has, and kept in memory for 30 minutes. It goes into the next call quietly, as Orbit's own labelled record, so Grok doesn't start talking about it, and it never counts as anything you said.
-- **Stick to Claude Code** runs a small helper that listens for Windows' own events: a Claude window moving, being minimized, closing or changing virtual desktop, and another app coming to the front.
-  - With several Claude windows, the orb docks on the one you were in last and moves when you switch windows. If that one is minimized, it moves to one that's still on screen.
-  - The helper moves the orb itself the instant Claude moves, so the orb doesn't trail behind a dragged window. In a simulated drag it stayed in place for 39 of 40 steps.
-  - It works in real pixels on every display (per-monitor DPI aware), and keeps the orb a fixed distance from the window's corner, in Orbit's own units, at any resolution or scaling.
-  - It uses under 1% of one CPU core while idle.
-  - The orb is topmost while Claude or Orbit is in front. Otherwise it sits directly above Claude in the window stack, so other apps cover both.
-  - If Claude is closed or on another virtual desktop, the orb floats freely as usual.
-- **Updates** use electron-updater with GitHub Releases.
-  - Only published releases count; drafts are skipped.
-  - A new version downloads in the background. It's checked against the SHA-512 in the release's `latest.yml` before it's kept.
-  - It installs silently when you quit Orbit, or right away with **Restart to update** in Settings → Updates.
-  - Copies run from source don't update themselves.
-- Settings, usage and logs live in `%APPDATA%\Orbit`.
+- **Driving Claude** goes through the operating system's accessibility API: UI Automation on Windows, the macOS accessibility API on a Mac (Orbit's small `orbit-helper`, source in [`native/mac/OrbitHelper`](native/mac/OrbitHelper)). Sending a prompt fills Claude's prompt box and presses Claude's own Send button: no key presses, focus changes or clipboard. It refuses if the box already has your own typing or if it can't confirm the text landed, and checks the session again just before Send.
+- **Several Claude windows:** Orbit works in the one you were in last, the one Qubit stands on.
+- **Switching sessions** brings forward the window the session is open in, or presses its sidebar button and confirms the title changed. **New sessions** press Claude's own New button; nothing is typed until your first prompt goes through the usual draft and "yes".
+- **Claude voice** keeps a Claude Code process ready in its streaming mode and speaks its words as they come, recognised and spoken on your computer. **Grok voice** is xAI's realtime API with your key.
+- **Spoken updates while asleep** connect only when Claude finishes and the setting is on. No mic audio goes anywhere until the update has been spoken, then for about 3 seconds; only words (not a cough) carry the conversation on.
+- **The wake word** uses [Vosk](https://alphacephei.com/vosk/) (a small English model, about 40 MB, shipped with Orbit), offline. On 160 clips across 14 voices it woke on 46 of 46 "Hey Orbit" and on none of 110 sound-alikes ("Hey Robert", "Hey rabbit", "It's in orbit"...).
+- **The second brain** runs your own Claude Code headless (`claude -p`), isolated: none of your Claude Code settings, hooks, plugins or MCP servers, no Bash or edit tools, `.env` files and keys denied, nothing saved to your history. It's capped at 1, 2.5 or 5 minutes for Haiku, Sonnet or Opus and answers in a fixed, checked shape.
+- **Qubit on Claude's window** follows it as it moves, resizes, minimizes or changes desktop, from the operating system's own window events (under 1% of a core while idle). He stays above Claude but not over other apps.
+- **Updates** come from this repository's GitHub Releases, checked against the SHA-512 in the release's update file before they're kept. A beta install updates to later betas and to the next stable release.
+- Settings, usage and logs live in `%APPDATA%\Orbit` (Windows) or `~/Library/Application Support/Orbit Native` (Mac).
 
 ## Privacy and terms of use
 
-- Orbit is a **voice input method** for you, like dictation. Every prompt is yours, read back to you, and sent only after you confirm. Grok can't send on its own. The app enforces this in code: a voice "send" only goes through if your transcribed reply after the draft is a clear yes. Please don't modify Orbit to send prompts automatically or run Claude unattended through its UI. For automation, use Claude Code's official headless mode (`claude -p`) or the Agent SDK.
-- The parts of your sessions Grok reads are sent to **xAI** to answer you. Don't use Orbit on sessions containing secrets you wouldn't share with xAI.
-- When Grok uses the second brain, the question goes to **Anthropic** through your Claude Code, along with the recent messages of your open session and any project files Claude reads. Claude's answer then goes to xAI so Grok can say it. Turn the second brain, or just "Read the current project", off in Settings if you don't want that.
-- Web search sends the question to **xAI** (Grok's own search) or, with Claude voice, to **Anthropic** through your Claude Code, which searches the web. Turn it off in Settings → Second brain.
-- **Updates** come from this repository's GitHub Releases. With "Update automatically" on (the default), Orbit asks GitHub for the newest release's update info when it starts and every 6 hours. Turn it off in Settings → Updates and Orbit only checks when you press **Check now**. GitHub sees the request like any download, but Orbit sends nothing about you.
-- Nothing else leaves your computer. There's no telemetry. Logs never contain keys or prompt text.
-- The wake word listens only on your PC, only while it's turned on and Grok is off or asleep. Its audio is never recorded or sent anywhere.
-- A spoken update ("Wake Grok to say it") sends xAI the finished session's title, and what Grok reads of that session to describe it. Your mic is sent only during the 3 seconds after Grok has spoken, and longer only if you answer.
-- For 30 minutes after a call, the next call also sends xAI Orbit's resume note: text from your recent calls that xAI already had. It's kept only in memory and forgotten when Orbit quits.
+- Orbit is a **voice input method** for you, like dictation. Every prompt is yours, put in front of you, and sent only after you confirm: the app enforces it in code (a voice "send" goes through only if your reply after the draft is a clear yes). Please don't modify Orbit to send prompts automatically or run Claude unattended through its UI. For automation, use Claude Code's headless mode (`claude -p`) or the Agent SDK.
+- What the voice reads of your sessions goes to the voice you use: **Anthropic** through your Claude Code (Claude voice), or **xAI** (Grok voice). With Grok voice, don't use Orbit on sessions holding secrets you wouldn't share with xAI.
+- The second brain sends the question to **Anthropic** through your Claude Code, with the recent messages of your open session and any project files Claude reads. Turn it, or just "Read the current project", off in Settings.
+- Web search sends the question to **xAI** (Grok voice) or to **Anthropic** through your Claude Code (Claude voice). Turn it off in Settings → Second brain.
+- **Updates:** Orbit asks GitHub for the newest release's update info when it starts and every few hours (turn "Update automatically" off to check only on demand). Orbit sends nothing about you.
+- Nothing else leaves your computer. There's no telemetry. Logs never contain keys or prompt text. The wake word listens only on your computer and never records or sends audio.
 
 ## Build from source
 
-Requires Node.js 20+ on Windows. On a Mac: `bash scripts/mac-setup.sh` (also builds Orbit's Swift helper), then `npm run app`; `npm run dist:mac` builds the dmg and zip ([docs/MAC.md](docs/MAC.md)).
+**Windows** (Node.js 20+):
 
 ```bash
 npm ci
@@ -163,41 +147,23 @@ npm run build:ui
 npm run app
 ```
 
-`npm run dist` builds the installer into `dist/`. `npm run web` runs the same UI in a browser tab (no floating orb or hotkey). `npm run check` reads your sessions without needing a key.
+`npm run dist` builds the installer into `dist/`. `npm run web` runs the same UI in a browser tab. `npm run check` reads your sessions without needing a key.
 
-Project layout: `electron/` window shell, tray and hotkey · `src/` local bridge, Grok tools, session reader and watcher, Windows automation script · `ui/` React UI.
+**Mac, Orbit Native** (Xcode, Node.js): `npm ci`, `npm run build:ui` and `node scripts/fetch-model.mjs` at the root, then `mac-swift/scripts/build-app.sh` builds `Orbit Native.app` and `mac-swift/scripts/package.sh` the dmg and zip. See [mac-swift/README.md](mac-swift/README.md). The Electron build also runs on a Mac ([docs/MAC.md](docs/MAC.md)).
+
+Project layout: `src/` the local bridge, voice tools, session reader and watcher · `ui/` the React UI · `electron/` the Windows shell · `mac-swift/` Orbit Native, the Swift app · `native/mac/` the Mac accessibility helper · `parity/` cases that check both apps behave the same.
 
 ### Testing
 
-None of these touch the real Claude app, xAI or Anthropic, and none use your `%APPDATA%\Orbit`.
+None of these touch the real Claude app, xAI or Anthropic, or your own settings.
 
 | Command | What it runs |
 | --- | --- |
-| `npm test` | Unit tests, plus `test/sandboxed/` with the Claude window and the second brain swapped for fakes. |
-| `npm run fuzz -- --seed N --port 4402` | In-process fuzzer: random tool calls, bridge messages and a fake Grok, against the bridge and tool runner. |
-| `npm run e2e:wake` | Real Orbit page in a hidden Electron window and a fake Grok: checks a spoken update's audio really plays. `E2E_PORT` picks the port (default 4391). |
-| `npm run fuzz:e2e -- --seed N --iterations M [--port 4403] [--keep]` | End-to-end fuzzer (below). |
-| `npm run check` | Reads your sessions from disk, no key needed. |
-
-`npm run fuzz:e2e` runs the real app, `electron/main.js`, hidden, against test doubles:
-
-- A fake Grok realtime server (`test/e2e/fake-grok.mjs`) sends realistic but random events: audio in steady, bursty or slow rhythms, transcripts, function calls, errors, slow starts and abrupt drops (1006).
-- A fake `claude.exe` (`test/e2e/FakeClaude.cs`) is built with .NET Framework's `csc.exe` into a temp folder. The real second brain spawns it for real. It checks every argument (second-brain questions and web searches) and answers valid, malformed, huge, hostile, signed-out, slow, hanging and crashing.
-- The same file, run with `--window`, is a stand-in Claude window for UI Automation (`test/desktop-uia.test.js`): a prompt box, Send/Stop, and Claude's permission and question cards, modelled on the real app's tree. `desktop.ps1 -OnlyPid` looks only at it, never at the real Claude app.
-- A fake Claude window (`test/e2e/fake-desktop.mjs`) with several windows, loaded through the dev-only `ORBIT_FAKE_DESKTOP` switch.
-- Claude sessions on disk in a throwaway profile, finished by appending to their transcripts, so the real watcher wakes Grok.
-
-The harness clicks, types, presses the hotkey and talks through the fake Grok at random. It fails on:
-
-- a crash or hang
-- a prompt sent without a fresh yes
-- a switch, new session or copy done because of a notification, or one you asked for being refused
-- a wake that's silent, opens the mic before Grok spoke, or breaks the gap or hourly cap
-- a key or your words in the logs
-- not recovering after Grok drops the call
-- a second-brain process left running
-
-Every socket, DNS lookup and fetch is limited to 127.0.0.1. Chromium resolves no host names. The only child processes allowed are the fake `claude.exe` and `taskkill` on its own processes. The clipboard, hotkey and dialogs are stubbed. The tray icon does show while it runs. Build the UI first (`npm --prefix ui run build`).
+| `npm test` | Unit tests, plus `test/sandboxed/` with the Claude window and the second brain swapped for fakes |
+| `npm run fuzz -- --seed N` | In-process fuzzer: random tool calls, bridge messages and a fake Grok |
+| `npm run fuzz:e2e -- --seed N --iterations M` | The real app, hidden, against a fake Grok, a fake `claude.exe`, a fake Claude window and throwaway sessions. It fails on a crash or hang, a prompt sent without a fresh yes, a key or your words in the logs, and more |
+| `cd mac-swift && swift test` | Orbit Native's tests (needs a Mac) |
+| `node parity/run.mjs --app both` | The same cases against both apps on a Mac ([parity/PROTOCOL.md](parity/PROTOCOL.md)) |
 
 ## Security
 
