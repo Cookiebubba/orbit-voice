@@ -32,6 +32,8 @@ public final class VoiceController: ObservableObject {
   @Published public private(set) var hasKey = false
   /** The main page's notice after a try to talk that couldn't start (ui/src/talk.js talkNotice), or nil. */
   @Published public private(set) var talkNotice: TalkNotice?
+  /** Claude voice's speech models are still loading and warming up (the main page says so). */
+  @Published public var voiceWarming = false
   private var blocked: TalkBlocked? { didSet { refreshNotice() } }
   private var claudeStatus: JSONValue? { didSet { refreshNotice() } }
   private var claudeReady = false // checked once per run: then calls start straight away
@@ -381,6 +383,7 @@ public final class VoiceController: ObservableObject {
     case .hungUp(let reason):
       onEvent("hangup", ["reason": .string(reason.rawValue)])
       audio.callEnded()
+      if localActive { localSpeech?.callEnded() }
     }
   }
 

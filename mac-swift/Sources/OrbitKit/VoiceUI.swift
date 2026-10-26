@@ -54,11 +54,14 @@ public protocol VoiceUI: AnyObject, Observable {
   var talkNotice: TalkNotice? { get }
   /** The notice's "Use Claude voice": switch to it and start. */
   func useClaudeVoice()
+  /** Orbit's own voice is still loading and warming up. */
+  var voiceWarming: Bool { get }
 }
 
 public extension VoiceUI {
   var talkNotice: TalkNotice? { nil }
   func useClaudeVoice() {}
+  var voiceWarming: Bool { false }
 }
 
 /** The launcher's caption logic: the last three, notes only when newest (App.tsx `recent`). */

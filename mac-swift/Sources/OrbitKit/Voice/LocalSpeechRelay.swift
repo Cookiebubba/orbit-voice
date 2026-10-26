@@ -115,4 +115,10 @@ public protocol LocalSpeechEngine: AnyObject {
   func say(_ text: String, sid: Int, speed: Double, done: @escaping ([Float]) -> Void)
   /** Talked over: drop what's still to be said. */
   func cancelSpeaking()
+  /** The call ended (its speaking, for the log). */
+  func callEnded()
+}
+
+public extension LocalSpeechEngine {
+  func callEnded() {}
 }

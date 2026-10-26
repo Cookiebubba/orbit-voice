@@ -31,6 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   var overlays: Overlays?
   var wakeWord: (any WakeListening)?
   var localSpeechTask: Task<NativeLocalSpeech?, Never>?
+  /** syncLocalSpeech is waiting on localSpeechTask for the voice controller. */
+  var speechAttached = false
   var quitting = false
   let startedAt = Date()
 
@@ -47,7 +49,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       MainActor.assumeIsolated { self?.showMain() }
     }
     log.info("app", "Orbit Native \(OrbitKit.version) starting\(config.testing ? " (test build)" : "")")
+    // Claude voice's speech models load (and warm up) first, alongside everything else, so they're
+    // ready by the first call even if getting the key from the Keychain takes a while (a prompt).
+    if config.speechInApp, Self.claudeVoiceChosen(profile: config.profileDir) { startSpeechLoad() }
     startSidecar()
+  }
+
+  /**
+   * Claude voice is the voice, read straight from settings.json before anything else starts (no
+   * file: a new install, which starts on Claude voice). Only a hint for loading early: the engine's
+   * own load decides the rest, and nothing is written here.
+   */
+  static func claudeVoiceChosen(profile: URL) -> Bool {
+    guard let data = try? Data(contentsOf: profile.appendingPathComponent("settings.json")) else { return true }
+    return (try? JSONValue.parse(data))?["voiceEngine"]?.stringValue == "claude"
   }
 
   // MARK: the core
@@ -72,6 +87,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     eng.firstRunSettings = ["avatar": "qubit"]
     eng.loadSettings()
     engine = eng
+    // (Not loading yet, if the file said otherwise: the settings now say Claude voice.)
+    if config.speechInApp, eng.config.string("voiceEngine") == "claude" { startSpeechLoad() }
     if config.testing, ProcessInfo.processInfo.environment["ORBIT_SWIFT_VOICE"] == "1" { enableSwiftVoice(eng) }
     // The core behind it, on a free port of its own (only the engine talks to it).
     guard let corePort = FreePort.pick() else { return fail("Orbit could not find a free local port for its core.") }

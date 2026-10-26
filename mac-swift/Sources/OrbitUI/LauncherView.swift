@@ -144,7 +144,11 @@ struct MainContent: View {
         // CSS line boxes: 16px text in a 24px line, 11px mono "snug" in ~15px.
         Text(status).font(Theme.font(16, .semibold)).tracking(-0.32).foregroundStyle(Theme.fg).frame(minHeight: 24).padding(.top, 20)
         let notice = on ? nil : v.talkNotice
-        if let hint, notice == nil {
+        // Claude voice's speech models loading and warming up (a call started now waits for them).
+        let warming = v.voiceWarming && notice == nil && (!on || v.phase == .connecting)
+        if warming {
+          Text("Getting Orbit's voice ready…").font(Theme.mono(11)).foregroundStyle(Theme.muted).multilineTextAlignment(.center).frame(minHeight: 15).padding(.top, 6)
+        } else if let hint, notice == nil {
           Text(hint).font(Theme.mono(11)).foregroundStyle(Theme.muted).multilineTextAlignment(.center).frame(minHeight: 15).padding(.top, 6)
         }
         if let notice {

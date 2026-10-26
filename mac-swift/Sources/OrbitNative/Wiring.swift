@@ -87,6 +87,7 @@ final class VoiceUIAdapter: VoiceUI {
   var sending = false
   var sessionTitle: String?
   var talkNotice: TalkNotice?
+  var voiceWarming = false
   @ObservationIgnored private let voice: VoiceController
   @ObservationIgnored private var subs: Set<AnyCancellable> = []
 
@@ -103,6 +104,7 @@ final class VoiceUIAdapter: VoiceUI {
     voice.$draft.sink { [weak self] d in self?.draft = d }.store(in: &subs)
     voice.$sessionTitle.sink { [weak self] t in self?.sessionTitle = t }.store(in: &subs)
     voice.$talkNotice.sink { [weak self] n in self?.talkNotice = n }.store(in: &subs)
+    voice.$voiceWarming.sink { [weak self] w in self?.voiceWarming = w }.store(in: &subs)
   }
 
   func useClaudeVoice() { voice.useClaudeVoice() }
@@ -234,17 +236,19 @@ extension AppDelegate {
       }
       return
     }
-    guard v.localSpeech == nil, localSpeechTask == nil else { return }
-    let profile = config.profileDir
-    let log = self.log
-    let task = Task.detached(priority: .userInitiated) { NativeLocalSpeech.load(profile: profile) { log.info("speech", $0) } }
-    localSpeechTask = task
-    // A call starting meanwhile waits for them (at most 10 s; loading takes a second or two).
+    guard v.localSpeech == nil, !speechAttached else { return }
+    // (Usually already loading: it starts as Orbit opens, see startSpeechLoad.)
+    let task = localSpeechTask ?? startSpeechLoad()
+    speechAttached = true
+    v.voiceWarming = true
+    // A call starting meanwhile waits for them (at most a minute: a first launch can be that slow
+    // while macOS checks the app). Not having them would hand the speech to the core, which loads
+    // its own copy first, so the call would be silent for longer still.
     v.localSpeechLoading = {
       await withTaskGroup(of: NativeLocalSpeech?.self) { g in
         g.addTask { await task.value }
         g.addTask {
-          try? await Task.sleep(nanoseconds: 10_000_000_000)
+          try? await Task.sleep(nanoseconds: 60_000_000_000)
           return nil
         }
         let first = await g.next() ?? nil
@@ -256,12 +260,28 @@ extension AppDelegate {
       let engine = await task.value
       guard let self else { return }
       self.localSpeechTask = nil
+      self.speechAttached = false
       self.voiceController?.localSpeechLoading = nil
+      self.voiceController?.voiceWarming = false
       // Still wanted (the engine may have changed while loading), and not replacing one in use.
       if let engine, self.voiceController?.settings.voiceEngine == "claude", self.voiceController?.localSpeech == nil {
         self.voiceController?.localSpeech = engine
       }
     }
+  }
+
+  /**
+   * Load (and warm up) the speech models in the background: as Orbit opens when Claude voice is
+   * the voice, so they're ready by the first call rather than only starting once the core is up.
+   */
+  @discardableResult
+  func startSpeechLoad() -> Task<NativeLocalSpeech?, Never> {
+    if let t = localSpeechTask { return t }
+    let profile = config.profileDir
+    let log = self.log
+    let task = Task.detached(priority: .userInitiated) { NativeLocalSpeech.load(profile: profile) { log.info("speech", $0) } }
+    localSpeechTask = task
+    return task
   }
 }
 

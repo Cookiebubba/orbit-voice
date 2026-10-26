@@ -25,19 +25,34 @@ final class NativeLocalSpeech: LocalSpeechEngine, @unchecked Sendable {
     speaker = LocalSpeaker(speech: speech)
   }
 
-  /** The profile's speech models, if they're downloaded and verified. */
-  static func load(profile: URL, log: (String) -> Void) -> NativeLocalSpeech? {
+  /**
+   * The profile's speech models, if they're downloaded and verified, warmed up: one short sentence
+   * is spoken (and thrown away) first, since the voice's first sentence is much slower than the rest
+   * (its runtime sets itself up then), and a call's first words shouldn't wait on that.
+   */
+  static func load(profile: URL, log: @escaping @Sendable (String) -> Void) -> NativeLocalSpeech? {
     let root = profile.appendingPathComponent("claude-voice-models")
     guard SpeechModelPaths(root: root).ready(root: root) else { return nil }
     do {
-      let s = NativeLocalSpeech(speech: try OrbitSpeech(root: root))
-      log("on-device speech in Swift ready (sherpa-onnx \(OrbitSpeech.libraryVersion))")
+      let t0 = Date()
+      let speech = try OrbitSpeech(root: root)
+      let loaded = Date()
+      _ = speech.speak("Okay.", sid: 0, speed: 1)
+      let ms = { (a: Date, b: Date) in Int((b.timeIntervalSince(a) * 1000).rounded()) }
+      log("on-device speech in Swift ready (sherpa-onnx \(OrbitSpeech.libraryVersion)): models loaded in \(ms(t0, loaded)) ms, voice warmed up in \(ms(loaded, Date())) ms")
+      let s = NativeLocalSpeech(speech: speech)
+      s.log = log
       return s
     } catch {
       log("on-device speech in Swift unavailable: \(error)")
       return nil
     }
   }
+
+  // One call's speaking, for the log as it ends: how long each piece took to make (from asking to
+  // samples, so waiting behind the one before counts too), and how many were dropped by a talk-over.
+  var log: @Sendable (String) -> Void = { _ in }
+  private let stats = Locked<(asked: Int, made: Int, firstMs: Int?, slowestMs: Int, totalMs: Int, dropped: Int)>((0, 0, nil, 0, 0, 0))
 
   func feed(_ samples24k: [Float]) { listener.feed(samples24k) }
 
@@ -51,10 +66,38 @@ final class NativeLocalSpeech: LocalSpeechEngine, @unchecked Sendable {
 
   func say(_ text: String, sid: Int, speed: Double, done: @escaping ([Float]) -> Void) {
     nonisolated(unsafe) let handOver = done // (called once, from the speaker's own queue)
-    speaker.say(text, sid: sid, speed: Float(speed)) { samples in handOver(samples) }
+    let asked = Date()
+    let stats = self.stats
+    stats.update { $0.asked += 1 }
+    speaker.say(text, sid: sid, speed: Float(speed)) { samples in
+      let ms = Int((Date().timeIntervalSince(asked) * 1000).rounded())
+      stats.update { s in
+        s.made += 1
+        if s.firstMs == nil { s.firstMs = ms }
+        s.slowestMs = max(s.slowestMs, ms)
+        s.totalMs += ms
+      }
+      handOver(samples)
+    }
   }
 
-  func cancelSpeaking() { speaker.cancel() }
+  func cancelSpeaking() {
+    // (What was asked for and not made yet is dropped.)
+    stats.update { s in
+      s.dropped += max(0, s.asked - s.made - s.dropped)
+    }
+    speaker.cancel()
+  }
+
+  func callEnded() {
+    let s = stats.update { s -> (asked: Int, made: Int, firstMs: Int?, slowestMs: Int, totalMs: Int, dropped: Int) in
+      defer { s = (0, 0, nil, 0, 0, 0) }
+      return s
+    }
+    guard s.asked > 0 else { return }
+    let avg = s.made > 0 ? s.totalMs / s.made : 0
+    log("speech this call: \(s.made) of \(s.asked) piece(s) made, first in \(s.firstMs.map { "\($0) ms" } ?? "–"), \(avg) ms on average, slowest \(s.slowestMs) ms\(s.dropped > 0 ? ", \(s.dropped) dropped when talked over" : "")")
+  }
 }
 
 /**
