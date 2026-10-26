@@ -13,7 +13,8 @@ import { createThrowSound } from "./throwSound.js";
 import { hotkeyLabel, postJson, useAppState, type Finished } from "./useAppState";
 import { useVoice, type Phase } from "./useVoice";
 import { useWakeWord } from "./useWakeWord";
-import { canTalk, needsModelDownload, screenFor, talkNotice, type ClaudeVoiceReady, type TalkBlocked } from "./talk.js";
+import { canTalk, checkClaudeAgain, claudeVoiceReady, needsModelDownload, screenFor, talkNotice, type ClaudeVoiceReady, type TalkBlocked } from "./talk.js";
+import { InstallCommand, NotSignedInLine, SetupGuideLink, SignInStep } from "./components/ClaudeSetup";
 
 const PHASE_LABEL: Record<Phase, string> = {
   off: "Sleeping", // hung up: nothing is billed until you start again
@@ -95,7 +96,7 @@ export default function App() {
     let st: ClaudeVoiceReady | null = await fetch("/api/claude-voice")
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null);
-    if (st?.claudeFound && st.models?.state === "ready") {
+    if (claudeVoiceReady(st)) {
       claudeReady.current = true;
       setBlocked(null);
       return go();
@@ -104,7 +105,7 @@ export default function App() {
       setBlocked(null);
       return go(); // couldn't check: the bridge says what's wrong, if anything
     }
-    if (needsModelDownload(st)) {
+    if (st.signedIn !== false && needsModelDownload(st)) {
       const r = await postJson("/api/claude-voice/download", {})
         .then((x) => x.json())
         .catch(() => null);
@@ -121,13 +122,31 @@ export default function App() {
       fetch("/api/claude-voice")
         .then((r) => r.json())
         .then((st: ClaudeVoiceReady) => {
-          if (st.claudeFound && st.models.state === "ready") claudeReady.current = true;
+          if (claudeVoiceReady(st)) claudeReady.current = true;
           setClaudeStatus(st);
         })
         .catch(() => {});
     }, 1000);
     return () => clearInterval(id);
   }, [modelsLoading]);
+  // The notice's "Check again" (Claude Code missing or signed out): look again; found and ready
+  // clears the notice, otherwise it follows what was found (the models' download starts if needed).
+  const [checking, setChecking] = useState<"idle" | "checking" | "still">("idle");
+  const checkAgain = async () => {
+    setChecking("checking");
+    const before = notice?.kind;
+    const r = await checkClaudeAgain({
+      fetchStatus: () => fetch("/api/claude-voice").then((x) => (x.ok ? x.json() : null)),
+      startDownload: () => postJson("/api/claude-voice/download", {}).then((x) => x.json()),
+    });
+    if (r.ready) {
+      claudeReady.current = true;
+      setBlocked(null);
+    } else if (r.status) setClaudeStatus(r.status);
+    const after = r.ready ? null : talkNotice("claude", app.config, r.status ?? claudeStatus)?.kind;
+    setChecking(after && after === before ? "still" : "idle");
+  };
+  useEffect(() => setChecking("idle"), [notice?.kind]);
 
   // The avatar (pixel buddy or Qubit) carries each new draft to Claude's box, stomps Send when it
   // goes, and (Qubit) shivers at an error.
@@ -284,9 +303,26 @@ export default function App() {
             {desktop && hint && !notice && <div className="mt-1.5 text-center font-mono text-[11px] leading-snug text-muted">{hint}</div>}
             {notice && !on && (
               <div role="status" className="mt-2 flex max-w-[320px] flex-col items-center gap-2 text-center">
-                <p className={cn("text-[12.5px] leading-snug", notice.kind === "claude-models" ? "text-ink" : "text-amber-700")}>{notice.text}</p>
+                {notice.kind === "claude-signed-out" ? (
+                  <NotSignedInLine />
+                ) : (
+                  <p className={cn("text-[12.5px] leading-snug", notice.kind === "claude-models" ? "text-ink" : "text-amber-700")}>{notice.text}</p>
+                )}
+                {notice.kind === "claude-missing" && (
+                  <>
+                    <InstallCommand />
+                    <SignInStep className="w-full text-left" />
+                  </>
+                )}
+                {checking === "still" && <p className="text-[12px] leading-snug text-muted">{notice.kind === "claude-missing" ? "Still not found. If it just finished installing, give it a moment." : "Still not signed in."}</p>}
                 {notice.kind !== "claude-models" && (
                   <div className="flex flex-wrap justify-center gap-2">
+                    {(notice.kind === "claude-missing" || notice.kind === "claude-signed-out") && (
+                      <NoticeButton onClick={checkAgain} disabled={checking === "checking"}>
+                        {checking === "checking" ? "Checking…" : "Check again"}
+                      </NoticeButton>
+                    )}
+                    {notice.kind === "claude-missing" && <SetupGuideLink className={NOTICE_BUTTON} />}
                     <NoticeButton onClick={openSettings}>Open Settings</NoticeButton>
                     {notice.kind === "grok-key" && <NoticeButton onClick={switchToClaude}>Use Claude voice</NoticeButton>}
                     {notice.kind === "claude-models-error" && <NoticeButton onClick={startTalk}>Try again</NoticeButton>}
@@ -402,9 +438,10 @@ function IconButton(props: { label: string; onClick: () => void; active?: boolea
 }
 
 /** A small pill button in the main page's notice (the same look as Settings' small buttons). */
-function NoticeButton(props: { onClick: () => void; children: React.ReactNode }) {
+const NOTICE_BUTTON = "rounded-full bg-soft px-3 py-1.5 text-[12.5px] text-ink transition-colors hover:bg-black/[0.08] hover:text-fg disabled:opacity-50";
+function NoticeButton(props: { onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
   return (
-    <button onClick={props.onClick} className="rounded-full bg-soft px-3 py-1.5 text-[12.5px] text-ink transition-colors hover:bg-black/[0.08] hover:text-fg">
+    <button onClick={props.onClick} disabled={props.disabled} className={NOTICE_BUTTON}>
       {props.children}
     </button>
   );

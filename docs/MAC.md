@@ -4,6 +4,21 @@ Phase 1 makes Orbit's core run on a Mac: the voice (Grok or Claude), the wake wo
 avatars, hearing what your Claude sessions are doing, the second brain and web search. What it
 doesn't do on a Mac yet is reach into the Claude app itself. That's phase 2.
 
+## Requirements
+
+- Claude Code, signed in. If the Claude app's copy isn't there and `claude` isn't installed, install it
+  in Terminal:
+
+  ```bash
+  curl -fsSL https://claude.ai/install.sh | bash
+  ```
+
+  (or `brew install --cask claude-code`, or `npm install -g @anthropic-ai/claude-code` with Node.js 22
+  or later), then run `claude` once and sign in with your Claude account. See Anthropic's
+  [setup guide](https://code.claude.com/docs/en/setup). Orbit shows the same command, with Copy and
+  Check again, when it can't find Claude Code. It never runs the installer itself.
+- Only for Grok voice: an xAI API key.
+
 ## What works, and what doesn't yet
 
 | On a Mac | Phase 1 |
