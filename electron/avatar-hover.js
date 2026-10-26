@@ -167,9 +167,8 @@ export function rateLimitedLog(log, { everyMs = 10_000, now = () => Date.now() }
   };
 }
 
-// Developer testing only (the parity driver's `cursor.set`, electron/parity-driver.js): where every
-// poller takes the cursor to be instead of the real one. null (always, outside the parity suite):
-// the real cursor.
+// Developer testing only: where every poller takes the cursor to be instead of the real one. null
+// (always, outside tests): the real cursor.
 let testCursor = null;
 export function setTestCursor(p) {
   testCursor = p && Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: p.x, y: p.y } : null;

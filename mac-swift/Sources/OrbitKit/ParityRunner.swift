@@ -1,7 +1,6 @@
 // The parity suite's runner in Swift: the same case files (parity/cases/*.json), the same driver
 // protocol and the same test doubles as parity/run.mjs, so the suite doesn't depend on either
-// language. Used by the OrbitParityTests XCTest target against the Swift build (and it can drive the
-// Electron build too). See parity/PROTOCOL.md.
+// language. Used by the OrbitParityTests XCTest target against the Swift build. See parity/PROTOCOL.md.
 import Foundation
 import Network
 
@@ -39,7 +38,7 @@ public final class ParityRunner: @unchecked Sendable {
     }
   }
 
-  public static let ports: [String: (bridge: Int, driver: Int)] = ["swift": (4521, 4522), "electron": (4541, 4542)]
+  public static let ports: [String: (bridge: Int, driver: Int)] = ["swift": (4521, 4522)]
   static let standinPort = 4525
   static let grokPort = 4526
   static let fakeKey = "xai-parityfakekey0000000000000000000000"

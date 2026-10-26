@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 // Orbit's parity suite runner (see parity/PROTOCOL.md): every case in parity/cases/*.json against
-// the Electron build, the Swift build, or both, then a parity matrix (parity/out/matrix.json and
-// matrix.md). Runs on a Mac, from the repo root:
+// Orbit Native (the Swift app), then a matrix (parity/out/matrix.json and matrix.md). The cases say
+// what the Node core does (what the Electron app on Windows runs); the engine oracle
+// (parity/oracle) pins the rest. Runs on a Mac, from the repo root:
 //
-//   npm run parity -- --app both                 everything, both builds
-//   npm run parity -- --app swift --area avatar  one area, one build
+//   npm run parity                               everything
+//   npm run parity -- --area avatar              one area
 //   npm run parity -- --case 'bridge\.config'    cases whose id matches
 //   npm run parity -- --list                     the cases, no run
 //
 // Options: --env K=V (extra env for the apps, repeatable), --swift-app <path to "Orbit Native.app"> (default mac-swift/dist), --electron-root <a
-// checkout with node_modules/electron> (default this repo), --voice-models <folder with Claude
+// checkout with node_modules/electron, the stand-in Claude window's host> (default this repo), --voice-models <folder with Claude
 // voice's speech models> (default ~/orbit-swift-dev/voice-models), --out <folder>, --keep (keep
 // every case's temp folder; failed ones are always kept).
 //
@@ -32,7 +33,9 @@ const opt = (name, def) => {
   return i > 0 && process.argv[i + 1] !== undefined ? process.argv[i + 1] : def;
 };
 const flag = (name) => process.argv.includes(`--${name}`);
-const APPS = { both: ['electron', 'swift'], electron: ['electron'], swift: ['swift'] }[opt('app', 'both')] || ['swift'];
+// (Orbit for Mac is Orbit Native: the Electron build left the Mac, so `--app swift` is the only app.)
+if (opt('app', 'swift') !== 'swift') throw new Error(`--app ${opt('app')}: only swift (Orbit Native) runs the parity suite now`);
+const APPS = ['swift'];
 const AREAS = opt('area', '') ? opt('area').split(',') : null;
 const CASE_RE = opt('case', '') ? new RegExp(opt('case')) : null;
 const OUT = path.resolve(opt('out', path.join(HERE, 'out')));
@@ -46,8 +49,7 @@ export const paths = {
   voiceModels: path.resolve(opt('voice-models', path.join(os.homedir(), 'orbit-swift-dev', 'voice-models'))),
   audio: path.resolve(opt('audio', path.join(HERE, 'out', 'audio'))),
 };
-// Ports: each build its own, so a leftover from one never answers for the other.
-export const PORTS = { swift: { bridge: 4521, driver: 4522 }, electron: { bridge: 4541, driver: 4542 }, standin: 4525, grok: 4526 };
+export const PORTS = { swift: { bridge: 4521, driver: 4522 }, standin: 4525, grok: 4526 };
 const FAKE_XAI_KEY = 'xai-parityfakekey0000000000000000000000';
 
 export function loadCases(dir = path.join(HERE, 'cases')) {

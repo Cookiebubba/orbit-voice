@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Size, start-up time, and idle CPU and memory of the two builds, the same way for both:
-//   node parity/tools/measure.mjs [--runs 3] [--idle 30] [--electron-app <packaged Orbit.app>]
+//   node parity/tools/measure.mjs [--runs 3] [--idle 30]
 //
 // - Start-up: from `open` to the app's driver saying ready (bridge up, main window and page loaded).
 // - Idle: after a 15 s settle with the launcher shown and nothing happening, the CPU time the app's
@@ -75,17 +75,14 @@ const result = {
   at: new Date().toISOString(),
   size: {
     swiftApp: du(paths.swiftApp),
-    electronDevRuntime: du(path.join(REPO, 'node_modules', 'electron', 'dist', 'Electron.app')),
-    electronPackagedApp: opt('electron-app', null) ? du(opt('electron-app')) : null,
   },
   swift: await measure('swift'),
-  electron: await measure('electron'),
 };
 fs.mkdirSync(path.join(REPO, 'parity', 'out'), { recursive: true });
 fs.writeFileSync(path.join(REPO, 'parity', 'out', 'measure.json'), JSON.stringify(result, null, 2));
 const mb = (b) => (b == null ? '-' : `${Math.round(b / 1048576)} MB`);
-console.log(`size: Orbit Native ${mb(result.size.swiftApp)}, Electron packaged ${mb(result.size.electronPackagedApp)} (Electron runtime alone ${mb(result.size.electronDevRuntime)})`);
-for (const w of ['swift', 'electron']) {
+console.log(`size: Orbit Native ${mb(result.size.swiftApp)}`);
+for (const w of ['swift']) {
   const r = result[w];
   console.log(`${w}: start-up ${r.startupMs} ms, idle CPU ${r.idleCpuPct}%, memory ${r.rssMb} MB in ${r.processes} processes ${JSON.stringify(r.runs.at(-1).byKind)}`);
 }

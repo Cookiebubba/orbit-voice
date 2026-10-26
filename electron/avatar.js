@@ -87,7 +87,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   const PRESS_WHY = new Set(['talk', 'poke', 'throw-off', 'too-long-for-a-click', 'drag', 'hold', 'leaving', 'press-already', 'not-on-him']);
   const pressLog = rateLimitedLog((m) => info_(m), { everyMs: 5_000 });
   const pageErrLog = rateLimitedLog((m) => log(m), { everyMs: 30_000 });
-  const modeListeners = new Set(); // the parity driver's avatar.mode (onMouseMode)
+  const modeListeners = new Set(); // onMouseMode's listeners (tests)
   const hover = createHoverPoller({
     onRunning: (on) => hoverLog(on ? 'poll-on' : 'poll-off', `${kind}: hover polling ${on ? 'started' : 'stopped'}`),
     // (Only logged: the last rect stands, since a page's timers can be slowed while he hasn't moved.)
@@ -547,13 +547,13 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     get free() {
       return free;
     },
-    /** For the parity driver: each change of whether its window takes the mouse. Returns an unsubscribe. */
+    /** For tests: each change of whether its window takes the mouse. Returns an unsubscribe. */
     onMouseMode(fn) {
       modeListeners.add(fn);
       return () => modeListeners.delete(fn);
     },
     /**
-     * For the parity driver (electron/parity-driver.js): what this avatar's window is doing, read-only.
+     * For tests: what this avatar's window is doing, read-only.
      * Rects in DIPs (the window's bounds, the strip's, the lifted area, the host window), the box and
      * Send button in the strip's px, the page's last hit rect in the window's px.
      */

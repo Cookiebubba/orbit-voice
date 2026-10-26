@@ -2,7 +2,7 @@
 // A soak run: many whole conversations in a row on one app, watching its memory, so a leak in a call's
 // path (the voice socket, audio, on-device speech, the overlays) shows before users find it.
 //
-//   node parity/tools/soak.mjs [--app swift|electron|both] [--cycles 40] [--max-growth-mb 1]
+//   node parity/tools/soak.mjs [--cycles 40] [--max-growth-mb 1]
 //
 // Each cycle, with Claude voice (on-device speech, the scripted Claude Code), the fake microphone and
 // muted output, exactly as the voice parity cases: the hotkey starts a call, a spoken question goes in
@@ -22,7 +22,7 @@ import { PORTS, paths, prepare } from '../run.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
 const opt = (n, d) => (process.argv.includes(`--${n}`) ? process.argv[process.argv.indexOf(`--${n}`) + 1] : d);
-const APPS = opt('app', 'both') === 'both' ? ['swift', 'electron'] : [opt('app')];
+const APPS = ['swift']; // (Orbit Native: the Electron build left the Mac)
 const CYCLES = Number(opt('cycles', 40));
 const WARMUP = 5;
 const MAX_SLOPE = Number(opt('max-growth-mb', 1));

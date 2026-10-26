@@ -835,29 +835,6 @@ export function useVoice(options: VoiceOptions) {
     [sendText, start],
   );
 
-  // Developer testing only (the parity suite, parity/PROTOCOL.md): the driver reads the voice state
-  // from here. window.__orbitParity exists only when the parity driver's own preload put it there
-  // (electron/parity-preload.cjs, never in the installed app), so other pages expose nothing.
-  const parity = (window as any).__orbitParity;
-  if (parity) {
-    parity.voice = () => {
-      const st = audioStats.current;
-      const lastError = [...captions].reverse().find((c) => c.who === "error")?.text ?? null;
-      return {
-        phase,
-        asleep,
-        connected: ws.current?.readyState === WebSocket.OPEN && ready.current,
-        muted,
-        playedMs: Math.round(playedSoFar() * 1000),
-        scheduledMs: Math.round(st.scheduled * 1000),
-        chunks: st.chunks,
-        lastError: lastError && lastError.slice(0, 200),
-        draft: draft && { id: draft.id, text: draft.text, targetTitle: draft.targetTitle },
-        sentCount,
-      };
-    };
-  }
-
   return {
     phase,
     asleep,

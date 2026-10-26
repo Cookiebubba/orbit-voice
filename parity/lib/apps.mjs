@@ -116,7 +116,7 @@ export async function until(fn, ms, every = 100) {
 }
 
 /**
- * Starts one app under test. `which`: 'swift' | 'electron'. Resolves { which, pid, hello, driver,
+ * Starts the app under test. `which`: 'swift' (Orbit Native). Resolves { which, pid, hello, driver,
  * stop() } once its driver answers, or throws with what its logs said.
  */
 export async function startApp(which, { paths, profileDir, logDir, bridgePort, driverPort, env = {} }) {
@@ -134,16 +134,12 @@ export async function startApp(which, { paths, profileDir, logDir, bridgePort, d
   if (which === 'swift') {
     if (!fs.existsSync(paths.swiftApp)) throw new Error(`no Swift build at ${paths.swiftApp} (mac-swift/scripts/build-app.sh --test)`);
     await openApp(paths.swiftApp, { env: common, logDir, name: 'swift' });
-  } else if (which === 'electron') {
-    const bundle = path.join(paths.electronRoot, 'node_modules', 'electron', 'dist', 'Electron.app');
-    if (!fs.existsSync(bundle)) throw new Error(`no Electron at ${bundle} (node node_modules/electron/install.js)`);
-    await openApp(bundle, { env: common, args: [paths.electronRoot], logDir, name: 'electron' });
   } else throw new Error(`unknown app ${which}`);
   const driver = driverClient(driverPort, tok);
   const hello = await until(async () => {
     const r = await driver.hello();
     return r.status === 200 && r.body?.bridge?.base && r.body.ready !== false ? r.body : null;
-  }, which === 'electron' ? 45_000 : 30_000);
+  }, 30_000);
   if (!hello?.bridge?.base) {
     // Never leave it running: it would hold the ports for every case after this one.
     for (const pid of pidsWithEnv(`ORBIT_PROFILE_DIR=${profileDir}`)) await ensureGone(pid, 0);

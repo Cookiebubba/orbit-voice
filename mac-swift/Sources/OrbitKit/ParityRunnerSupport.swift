@@ -180,16 +180,11 @@ public final class AppHandle: @unchecked Sendable {
     let token = tokBytes.map { String(format: "%02x", $0) }.joined()
     var env = ["ORBIT_PARITY_PORT": String(driverPort), "ORBIT_PARITY_TOKEN": token, "ORBIT_PROFILE_DIR": profile.path, "PORT": String(bridgePort), "ORBIT_MUTE_OUTPUT": "1"]
     for (k, v) in extra { env[k] = v }
-    if which == "swift" {
-      guard FileManager.default.fileExists(atPath: paths.swiftApp.path) else { throw RunnerError("no Swift build at \(paths.swiftApp.path)") }
-      try open(paths.swiftApp, env: env, logs: logs, name: "swift")
-    } else {
-      let bundle = paths.electronRoot.appendingPathComponent("node_modules/electron/dist/Electron.app")
-      guard FileManager.default.fileExists(atPath: bundle.path) else { throw RunnerError("no Electron at \(bundle.path)") }
-      try open(bundle, env: env, args: [paths.electronRoot.path], logs: logs, name: "electron")
-    }
+    guard which == "swift" else { throw RunnerError("unknown app \(which): only swift (Orbit Native) runs the parity suite") }
+    guard FileManager.default.fileExists(atPath: paths.swiftApp.path) else { throw RunnerError("no Swift build at \(paths.swiftApp.path)") }
+    try open(paths.swiftApp, env: env, logs: logs, name: "swift")
     let probe = AppHandle(which: which, hello: .null, driverPort: driverPort, token: token)
-    let end = Date().addingTimeInterval(which == "electron" ? 45 : 30)
+    let end = Date().addingTimeInterval(30)
     while Date() < end {
       if let r = try? await probe.driver("GET", "/parity/hello", timeout: 2000), r["status"]?.intValue == 200, let h = r["body"], h.at(path: "bridge.base")?.stringValue?.isEmpty == false, h["ready"] != .bool(false) {
         return AppHandle(which: which, hello: h, driverPort: driverPort, token: token, profile: profile)
