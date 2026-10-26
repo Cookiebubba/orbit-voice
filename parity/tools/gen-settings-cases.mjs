@@ -21,7 +21,7 @@ const VALUES = {
   avatarThrow: [false, true], avatarThrowSound: [false, true], showOrb: [false, true], anywhere: [false, true],
   anywhereVision: [true, false], anywhereCdp: [true, false], anywhereMouse: [false, true],
 };
-const NOT_IN_SETTINGS = new Set(['wakeHotkey', 'model', 'orbPosition', 'orbStickAnchor', 'anywhereMouseLeadMs', 'helperEngine', 'anywhereUnderOrbit']);
+const NOT_IN_SETTINGS = new Set(['wakeHotkey', 'model', 'orbPosition', 'orbStickAnchor', 'anywhereMouseLeadMs', 'helperEngine', 'anywhereUnderOrbit', 'onboarded']);
 const missing = Object.keys(DEFAULTS).filter((k) => !NOT_IN_SETTINGS.has(k) && !VALUES[k]);
 if (missing.length) throw new Error(`no test values for: ${missing.join(', ')}`);
 

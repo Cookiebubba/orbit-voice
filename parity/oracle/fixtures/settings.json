@@ -43,7 +43,8 @@
   "anywhereUnderOrbit": [],
   "anywhereMouse": true,
   "anywhereMouseLeadMs": 220,
-  "helperEngine": "claude-code"
+  "helperEngine": "claude-code",
+  "onboarded": true
  },
  "cases": [
   {
@@ -34855,6 +34856,720 @@
   },
   {
    "input": {
+    "onboarded": true
+   },
+   "output": {
+    "onboarded": true
+   }
+  },
+  {
+   "input": {
+    "onboarded": false
+   },
+   "output": {
+    "onboarded": false
+   }
+  },
+  {
+   "input": {
+    "onboarded": "true"
+   },
+   "output": {
+    "onboarded": true
+   }
+  },
+  {
+   "input": {
+    "onboarded": "false"
+   },
+   "output": {
+    "onboarded": false
+   }
+  },
+  {
+   "input": {
+    "onboarded": ""
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": " "
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "  1.5 "
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "1.5"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "2"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "0x10"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "0b11"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "1e3"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": ".5"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "5."
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "+1"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "-1"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "abc"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "1,5"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "Infinity"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "\t7\n"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 0
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 1
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": -1
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 0.5
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 0.004
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 0.0049
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 0.005
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 0.0051
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 0.123456
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 1.005
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 1.2
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 1.234567
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 1.5
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 1.55
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 2
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 2.5
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 3
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 3.7
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 7
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 8
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 10
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 599.5
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 600.4
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 601
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 10000
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 10001
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": 1e+21
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": -0.5
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": null
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": []
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": [
+     1,
+     2
+    ]
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": [
+     1.6,
+     2.4
+    ]
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": [
+     1,
+     2,
+     3
+    ]
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": [
+     "1",
+     2
+    ]
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": [
+     null
+    ]
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": {}
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": {
+     "toString": 1
+    }
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": {
+     "corner": "tl",
+     "dx": 1.5,
+     "dy": 2.5
+    }
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": {
+     "corner": "br",
+     "dx": 0,
+     "dy": 10000
+    }
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": {
+     "corner": "xx",
+     "dx": 1,
+     "dy": 1
+    }
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": {
+     "corner": "tr",
+     "dx": -1,
+     "dy": 1
+    }
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": {
+     "corner": "bl",
+     "dx": "5",
+     "dy": 5
+    }
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": [
+     "Discord.exe",
+     "discord.exe",
+     "Slack",
+     "bad/name",
+     "my app (beta)",
+     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     5,
+     "A+B.exe"
+    ]
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "eve"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "EVE"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "Rex_2"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "bad voice"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "always"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "tap"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "speak"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "chime"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "off"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "auto"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "haiku"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "sonnet"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "opus"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "fable"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "claude-code"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "api-key"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "codex"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "grok"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "claude"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "low"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "medium"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "high"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "moonshine"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "parakeet-110m"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "parakeet-v2"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "buddy"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "qubit"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "none"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "Command+Alt+G"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "Control+Alt+K"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "Ctrl Alt"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "é+K"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "grok-voice-latest"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "/usr/local/bin/claude"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "/Users/me/.local/bin/claude"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "/opt/homebrew/bin/CLAUDE"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "/Users/x/claude.exe"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "relative/claude"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "//share/claude"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "/bin/cl\"aude"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "/bin/claude2"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "/a\tb/claude"
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "onboarded": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude"
+   },
+   "output": {}
+  },
+  {
+   "input": {
     "nope": 1,
     "__proto__x": 2
    },
@@ -34872,17 +35587,16 @@
   },
   {
    "input": {
-    "claudeVoiceStt": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude"
+    "avatar": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude"
    },
    "output": {}
   },
   {
    "input": {
     "unknown0": "high",
-    "claudeVoiceModel": "parakeet-110m",
+    "claudeVoiceModel": 601,
     "brainExplore": "0b11",
-    "orbPosition": 601,
-    "claudeVoice": 601
+    "orbPosition": 601
    },
    "output": {
     "brainExplore": false
@@ -34891,41 +35605,43 @@
   {
    "input": {
     "orbPulseGrok": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude",
-    "orbStickAnchor": "relative/claude",
-    "anywhereVision": [
+    "brainEnabled": "relative/claude",
+    "anywhereCdp": [
      1.6,
      2.4
     ],
-    "avatar": "2",
+    "buddySize": "2",
     "orbStick": "/Users/me/.local/bin/claude"
    },
    "output": {
     "orbPulseGrok": false,
-    "anywhereVision": false,
+    "brainEnabled": false,
+    "anywhereCdp": false,
+    "buddySize": 2,
     "orbStick": false
    }
   },
   {
    "input": {
-    "voiceEngine": {
+    "claudeVoice": {
      "corner": "xx",
      "dx": 1,
      "dy": 1
     },
     "announceWake": "chime",
-    "wakeOnResults": "1.5"
+    "costPerMinute": "1.5"
    },
    "output": {
     "announceWake": false,
-    "wakeOnResults": false
+    "costPerMinute": 1.5
    }
   },
   {
    "input": {
-    "avatarThrow": 0.0049,
+    "avatarThrowSound": 0.0049,
     "brainEnabled": "bad voice",
     "wakeWord": "always",
-    "helperEngine": 0.005
+    "onboarded": 0.005
    },
    "output": {
     "brainEnabled": false,
@@ -34934,42 +35650,39 @@
   },
   {
    "input": {
-    "avatarClickTalk": "grok-voice-latest"
+    "avatarThrow": "grok-voice-latest"
    },
    "output": {}
   },
   {
    "input": {
-    "claudeVoiceEffort": "auto",
+    "claudeVoiceStt": "auto",
     "unknown1": 0.5,
-    "brainExplore": "true",
+    "brainConnection": "true",
     "brainModel": 1.234567,
-    "anywhereMouse": "auto"
+    "anywhereMouseLeadMs": "auto"
    },
-   "output": {
-    "brainExplore": true,
-    "anywhereMouse": false
-   }
+   "output": {}
   },
   {
    "input": {
-    "anywhereMouse": ".5"
+    "anywhereMouseLeadMs": ".5"
    },
    "output": {
-    "anywhereMouse": false
+    "anywhereMouseLeadMs": 1
    }
   },
   {
    "input": {
     "buddySize": "claude-code",
     "costPerMinute": 0.0051,
-    "anywhereVision": 10,
+    "anywhereCdp": 10,
     "anywhereUnderOrbit": 10000,
-    "anywhereMouseLeadMs": "buddy"
+    "helperEngine": "buddy"
    },
    "output": {
     "costPerMinute": 0.005,
-    "anywhereVision": false
+    "anywhereCdp": false
    }
   },
   {
@@ -34983,12 +35696,13 @@
     "unknown2": "false",
     "wakeHotkey": "1e3",
     "orbStick": "//share/claude",
-    "avatarThrowSound": 0.0051
+    "showOrb": 0.0051
    },
    "output": {
     "wakeWord": false,
     "wakeHotkey": "1e3",
-    "orbStick": false
+    "orbStick": false,
+    "showOrb": false
    }
   },
   {
@@ -34996,9 +35710,9 @@
     "claudeVoiceModel": 1e+21,
     "orbPulseGrok": "claude",
     "wakeOnResults": 599.5,
-    "voiceEngine": "1.5",
+    "claudeVoice": "1.5",
     "avatar": 0.123456,
-    "helperEngine": [
+    "onboarded": [
      1.6,
      2.4
     ]
@@ -35010,23 +35724,22 @@
   },
   {
    "input": {
-    "anywhereVision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "anywhereCdp": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "orbStick": 10001,
     "unknown2": "high",
-    "orbPulseGrok": [],
-    "anywhereMouseLeadMs": "opus"
+    "orbPulseAmount": [],
+    "helperEngine": "opus"
    },
    "output": {
-    "anywhereVision": false,
-    "orbStick": false,
-    "orbPulseGrok": false
+    "anywhereCdp": false,
+    "orbStick": false
    }
   },
   {
    "input": {
     "wakeOnResults": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     "speed": "Control+Alt+K",
-    "orbPulseAmount": [
+    "orbStickAnchor": [
      "Discord.exe",
      "discord.exe",
      "Slack",
@@ -35036,7 +35749,7 @@
      5,
      "A+B.exe"
     ],
-    "avatarThrow": -0.5,
+    "avatarThrowSound": -0.5,
     "brainExplore": 0.0049
    },
    "output": {
@@ -35053,11 +35766,10 @@
   {
    "input": {
     "wakeHotkey": "true",
-    "orbPulseAmount": 0.005
+    "orbStickAnchor": 0.005
    },
    "output": {
-    "wakeHotkey": "true",
-    "orbPulseAmount": 0.01
+    "wakeHotkey": "true"
    }
   },
   {
@@ -35072,11 +35784,12 @@
   },
   {
    "input": {
-    "anywhereUnderOrbit": "claude-code",
-    "autoUpdate": "haiku"
+    "anywhereMouse": "claude-code",
+    "orbStick": "haiku"
    },
    "output": {
-    "autoUpdate": false
+    "anywhereMouse": false,
+    "orbStick": false
    }
   },
   {
@@ -35087,7 +35800,7 @@
      "dy": 1
     },
     "voice": 10001,
-    "avatar": "tap"
+    "buddySize": "tap"
    },
    "output": {
     "voice": "10001"
@@ -35098,12 +35811,12 @@
     "voiceEngine": 3.7,
     "orbPulseGrok": false,
     "speed": 0.0051,
-    "orbStick": ".5"
+    "orbPulse": ".5"
    },
    "output": {
     "orbPulseGrok": false,
     "speed": 0.7,
-    "orbStick": false
+    "orbPulse": false
    }
   },
   {
@@ -35122,32 +35835,33 @@
      2,
      3
     ],
-    "orbPulseAmount": "buddy",
-    "webSearch": "auto",
-    "anywhereUnderOrbit": "tap",
-    "halfDuplex": 8,
-    "claudeVoiceModel": 3.7
+    "orbStickAnchor": "buddy",
+    "voiceEngine": "auto",
+    "anywhereMouse": "tap",
+    "wakeWord": 8,
+    "claudeVoiceEffort": 3.7
    },
    "output": {
     "autoUpdate": false,
-    "webSearch": false,
-    "halfDuplex": false
+    "anywhereMouse": false,
+    "wakeWord": false
    }
   },
   {
    "input": {
-    "claudeVoice": "off",
-    "brainConnection": "EVE",
-    "orbStickAnchor": "parakeet-v2",
+    "claudeVoiceModel": "off",
+    "brainClaudePath": "EVE",
+    "brainEnabled": "parakeet-v2",
     "orbStick": "haiku"
    },
    "output": {
+    "brainEnabled": false,
     "orbStick": false
    }
   },
   {
    "input": {
-    "claudeVoiceModel": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "claudeVoiceEffort": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "halfDuplex": "  1.5 "
    },
    "output": {
@@ -35156,16 +35870,17 @@
   },
   {
    "input": {
-    "claudeVoiceEffort": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "announceWake": [
+    "claudeVoiceStt": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "announceWake": "speak",
+    "anywhereMouse": {
+     "toString": 1
+    },
+    "orbPulseGrok": "none",
+    "wakeOnResults": [
      1,
      2,
      3
     ],
-    "anywhereUnderOrbit": {
-     "toString": 1
-    },
-    "orbPulseGrok": "none",
     "unknown5": {
      "corner": "br",
      "dx": 0,
@@ -35174,18 +35889,20 @@
    },
    "output": {
     "announceWake": false,
-    "orbPulseGrok": false
+    "anywhereMouse": false,
+    "orbPulseGrok": false,
+    "wakeOnResults": false
    }
   },
   {
    "input": {
     "orbPulseAmount": 0.0049,
-    "avatarClickTalk": {
+    "avatarThrow": {
      "toString": 1
     },
     "orbStick": "//share/claude",
-    "buddySize": "0x10",
-    "claudeVoiceStt": "eve",
+    "avatarClickTalk": "0x10",
+    "avatar": "eve",
     "brainConnection": 3.7
    },
    "output": {
@@ -35206,11 +35923,9 @@
      3
     ],
     "unknown3": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "brainEnabled": "codex"
+    "brainModel": "codex"
    },
-   "output": {
-    "brainEnabled": false
-   }
+   "output": {}
   },
   {
    "input": {
@@ -35233,83 +35948,84 @@
   },
   {
    "input": {
-    "announce": "moonshine",
-    "wakeOnResults": "tap"
+    "announceWake": "moonshine",
+    "costPerMinute": "tap"
    },
    "output": {
-    "wakeOnResults": false
+    "announceWake": false
    }
   },
   {
    "input": {
-    "brainEnabled": "abc",
-    "avatarThrowSound": {
+    "brainModel": "abc",
+    "showOrb": {
      "corner": "bl",
      "dx": "5",
      "dy": 5
     }
    },
    "output": {
-    "brainEnabled": false
+    "showOrb": false
    }
   },
   {
    "input": {
-    "claudeVoiceEffort": 600.4,
+    "claudeVoiceStt": 600.4,
     "speed": "5.",
-    "webSearch": [
+    "voiceEngine": [
      null
     ],
-    "claudeVoiceModel": 0.5
+    "claudeVoiceEffort": 0.5
    },
    "output": {
-    "speed": 1.5,
-    "webSearch": false
+    "speed": 1.5
    }
   },
   {
    "input": {
-    "claudeVoiceModel": "medium",
-    "orbStick": 0.5,
+    "claudeVoiceEffort": "medium",
+    "orbPulse": 0.5,
     "orbPulseGrok": "\t7\n"
    },
    "output": {
-    "orbStick": false,
+    "claudeVoiceEffort": "medium",
+    "orbPulse": false,
     "orbPulseGrok": false
    }
   },
   {
    "input": {
-    "avatarThrow": 1.234567,
+    "avatarThrowSound": 1.234567,
     "wakeWord": [
      "1",
      2
     ],
-    "avatarThrowSound": "/Users/me/.local/bin/claude",
-    "orbPosition": "/Users/x/claude.exe"
+    "showOrb": "/Users/me/.local/bin/claude",
+    "autoUpdate": "/Users/x/claude.exe"
    },
    "output": {
-    "wakeWord": false
+    "wakeWord": false,
+    "showOrb": false,
+    "autoUpdate": false
    }
   },
   {
    "input": {
-    "wakeWord": "fable",
+    "announce": "fable",
     "autoUpdate": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude",
-    "orbPulseAmount": "sonnet",
-    "showOrb": "grok-voice-latest"
+    "orbStickAnchor": "sonnet",
+    "anywhere": "grok-voice-latest"
    },
    "output": {
-    "wakeWord": false,
     "autoUpdate": false,
-    "showOrb": false
+    "anywhere": false
    }
   },
   {
    "input": {
     "unknown0": 1.5,
     "listenMode": -1,
-    "claudeVoiceModel": "/bin/cl\"aude",
+    "claudeVoiceEffort": "/bin/cl\"aude",
     "brainModel": "/usr/local/bin/claude"
    },
    "output": {}
@@ -35323,7 +36039,7 @@
   {
    "input": {
     "orbStick": "",
-    "avatar": "false",
+    "buddySize": "false",
     "halfDuplex": 2
    },
    "output": {
@@ -35333,31 +36049,32 @@
   },
   {
    "input": {
-    "orbPulse": ".5",
+    "orbPulseGrok": ".5",
     "halfDuplex": "/bin/cl\"aude",
-    "anywhereMouseLeadMs": "claude-code",
+    "helperEngine": "claude-code",
     "model": "chime",
     "unknown4": {
      "toString": 1
     }
    },
    "output": {
-    "orbPulse": false,
+    "orbPulseGrok": false,
     "halfDuplex": false,
+    "helperEngine": "claude-code",
     "model": "chime"
    }
   },
   {
    "input": {
     "autoUpdate": 0,
-    "orbPulseGrok": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "orbPulseAmount": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     "wakeOnResults": "1.5",
-    "avatarThrowSound": 3.7
+    "showOrb": 3.7
    },
    "output": {
     "autoUpdate": false,
-    "orbPulseGrok": false,
-    "wakeOnResults": false
+    "wakeOnResults": false,
+    "showOrb": false
    }
   },
   {
@@ -35375,12 +36092,12 @@
   {
    "input": {
     "webSearch": "/opt/homebrew/bin/CLAUDE",
-    "anywhereVision": "/bin/cl\"aude",
+    "anywhereCdp": "/bin/cl\"aude",
     "wakeWord": "fable"
    },
    "output": {
     "webSearch": false,
-    "anywhereVision": false,
+    "anywhereCdp": false,
     "wakeWord": false
    }
   },
@@ -35388,22 +36105,23 @@
    "input": {
     "orbStick": 1.2,
     "brainExplore": "bad voice",
-    "orbPulse": 0.005,
-    "avatarThrowSound": "medium",
+    "orbPulseGrok": 0.005,
+    "showOrb": "medium",
     "voiceEngine": 3.7,
     "brainEnabled": 1.55
    },
    "output": {
     "orbStick": false,
     "brainExplore": false,
-    "orbPulse": false,
+    "orbPulseGrok": false,
+    "showOrb": false,
     "brainEnabled": false
    }
   },
   {
    "input": {
     "halfDuplex": "/usr/local/bin/claude",
-    "claudeVoiceEffort": 1
+    "claudeVoiceStt": 1
    },
    "output": {
     "halfDuplex": false
@@ -35412,23 +36130,22 @@
   {
    "input": {
     "orbPulse": "+1",
-    "helperEngine": {
+    "onboarded": {
      "corner": "bl",
      "dx": "5",
      "dy": 5
     },
-    "anywhereMouse": "opus",
-    "claudeVoiceModel": 601,
-    "claudeVoiceEffort": "0b11"
+    "anywhereMouseLeadMs": "opus",
+    "claudeVoiceEffort": 601,
+    "claudeVoiceStt": "0b11"
    },
    "output": {
-    "orbPulse": false,
-    "anywhereMouse": false
+    "orbPulse": false
    }
   },
   {
    "input": {
-    "claudeVoiceStt": [
+    "avatar": [
      1,
      2
     ]
@@ -35438,7 +36155,7 @@
   {
    "input": {
     "unknown0": "EVE",
-    "avatar": {
+    "buddySize": {
      "corner": "xx",
      "dx": 1,
      "dy": 1
@@ -35450,22 +36167,22 @@
   },
   {
    "input": {
-    "voiceEngine": "Control+Alt+K",
-    "wakeWord": "é+K",
-    "showOrb": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "claudeVoice": "Control+Alt+K",
+    "announce": "é+K",
+    "anywhere": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     "halfDuplex": 601,
-    "brainModel": "/Users/me/.local/bin/claude",
+    "brainExplore": "/Users/me/.local/bin/claude",
     "avatarThrow": " "
    },
    "output": {
-    "wakeWord": false,
-    "showOrb": false,
-    "halfDuplex": false
+    "anywhere": false,
+    "halfDuplex": false,
+    "brainExplore": false
    }
   },
   {
    "input": {
-    "avatarThrow": "0x10",
+    "avatarThrowSound": "0x10",
     "voiceVolume": "Rex_2"
    },
    "output": {}
@@ -35495,29 +36212,29 @@
   },
   {
    "input": {
-    "autoUpdate": true,
-    "listenMode": "abc",
-    "voiceEngine": 1.005,
+    "orbStick": true,
+    "halfDuplex": "abc",
+    "claudeVoice": 1.005,
     "orbPulse": "1,5",
-    "model": "abc"
+    "orbPosition": "abc"
    },
    "output": {
-    "autoUpdate": true,
-    "orbPulse": false,
-    "model": "abc"
+    "orbStick": true,
+    "halfDuplex": false,
+    "orbPulse": false
    }
   },
   {
    "input": {
-    "helperEngine": "parakeet-v2",
-    "anywhere": "buddy",
+    "onboarded": "parakeet-v2",
+    "anywhereVision": "buddy",
     "voiceVolume": 601,
     "brainEnabled": "true",
     "orbPulseAmount": "always",
     "claudeVoiceStt": "\t7\n"
    },
    "output": {
-    "anywhere": false,
+    "anywhereVision": false,
     "voiceVolume": 1,
     "brainEnabled": true
    }
@@ -35525,32 +36242,35 @@
   {
    "input": {
     "unknown0": 1.55,
-    "claudeVoiceModel": "moonshine",
+    "claudeVoiceEffort": "moonshine",
     "unknown2": "Ctrl Alt",
-    "brainConnection": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    "brainClaudePath": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
    },
    "output": {}
   },
   {
    "input": {
-    "helperEngine": "none",
-    "anywhereMouseLeadMs": "claude-code",
-    "orbPulseGrok": 10001,
-    "claudeVoiceStt": "sonnet",
-    "orbPulse": "codex",
+    "onboarded": "none",
+    "helperEngine": "claude-code",
+    "orbPulseAmount": 10001,
+    "avatar": "sonnet",
+    "orbPulseGrok": "codex",
     "unknown5": "2"
    },
    "output": {
-    "orbPulseGrok": false,
-    "orbPulse": false
+    "helperEngine": "claude-code",
+    "orbPulseAmount": 0.1,
+    "orbPulseGrok": false
    }
   },
   {
    "input": {
     "unknown0": false,
-    "helperEngine": false
+    "onboarded": false
    },
-   "output": {}
+   "output": {
+    "onboarded": false
+   }
   },
   {
    "input": {
@@ -35570,48 +36290,49 @@
   },
   {
    "input": {
-    "anywhereUnderOrbit": "eve",
-    "brainModel": 0.0051,
+    "anywhereMouse": "eve",
+    "brainExplore": 0.0051,
     "claudeVoice": "/opt/homebrew/bin/CLAUDE",
-    "webSearch": "+1"
+    "voiceEngine": "+1"
    },
    "output": {
-    "webSearch": false
+    "anywhereMouse": false,
+    "brainExplore": false
    }
   },
   {
    "input": {
-    "anywhereMouse": 3
+    "anywhereMouseLeadMs": 3
    },
    "output": {
-    "anywhereMouse": false
+    "anywhereMouseLeadMs": 3
    }
   },
   {
    "input": {
     "halfDuplex": "EVE",
-    "anywhere": "  1.5 ",
-    "claudeVoiceStt": 0.0049
+    "anywhereVision": "  1.5 ",
+    "avatar": 0.0049
    },
    "output": {
     "halfDuplex": false,
-    "anywhere": false
+    "anywhereVision": false
    }
   },
   {
    "input": {
-    "autoUpdate": {
+    "orbStick": {
      "corner": "br",
      "dx": 0,
      "dy": 10000
     },
     "listenMode": "EVE",
-    "avatarThrow": " ",
+    "avatarThrowSound": " ",
     "announceWake": "Rex_2",
     "anywhereMouse": "false"
    },
    "output": {
-    "autoUpdate": false,
+    "orbStick": false,
     "announceWake": false,
     "anywhereMouse": false
    }
@@ -35620,10 +36341,11 @@
    "input": {
     "unknown0": "high",
     "orbStickAnchor": " ",
-    "anywhereUnderOrbit": "parakeet-v2",
+    "anywhereMouse": "parakeet-v2",
     "voice": "claude-code"
    },
    "output": {
+    "anywhereMouse": false,
     "voice": "claude-code"
    }
   },
@@ -35631,12 +36353,13 @@
    "input": {
     "listenMode": 1e+21,
     "voice": 0.005,
-    "anywhereUnderOrbit": "off",
+    "anywhereMouse": "off",
     "wakeHotkey": "claude",
     "unknown4": "/bin/claude2",
     "orbPulse": "opus"
    },
    "output": {
+    "anywhereMouse": false,
     "wakeHotkey": "claude",
     "orbPulse": false
    }
@@ -35644,29 +36367,28 @@
   {
    "input": {
     "unknown0": 600.4,
-    "wakeWord": 3.7,
+    "announce": 3.7,
     "announceWake": 2.5,
     "orbPulseGrok": 0.004
    },
    "output": {
-    "wakeWord": false,
     "announceWake": false,
     "orbPulseGrok": false
    }
   },
   {
    "input": {
-    "claudeVoice": {
+    "claudeVoiceModel": {
      "toString": 1
     },
-    "buddySize": "Control+Alt+K",
+    "avatarClickTalk": "Control+Alt+K",
     "costPerMinute": "1e3",
     "brainEnabled": 1,
-    "anywhereVision": true
+    "anywhereCdp": true
    },
    "output": {
     "brainEnabled": false,
-    "anywhereVision": true
+    "anywhereCdp": true
    }
   },
   {
@@ -35679,38 +36401,40 @@
   },
   {
    "input": {
-    "helperEngine": 0.004,
-    "avatar": 1.2,
+    "onboarded": 0.004,
+    "buddySize": 1.2,
     "wakeOnResults": {
      "corner": "tr",
      "dx": -1,
      "dy": 1
     },
-    "anywhereUnderOrbit": -0.5
+    "anywhereMouse": -0.5
    },
    "output": {
-    "wakeOnResults": false
+    "wakeOnResults": false,
+    "anywhereMouse": false
    }
   },
   {
    "input": {
-    "brainConnection": 0,
+    "brainClaudePath": 0,
     "announce": "always",
     "listenMode": 1.005,
-    "buddySize": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "model": "1,5"
+    "buddySize": "true",
+    "avatarClickTalk": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "orbPosition": "1,5"
    },
    "output": {}
   },
   {
    "input": {
-    "avatarClickTalk": 2.5
+    "avatarThrow": 2.5
    },
    "output": {}
   },
   {
    "input": {
-    "webSearch": "medium",
+    "voiceEngine": "medium",
     "halfDuplex": "chime",
     "announceWake": ".5",
     "autoUpdate": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -35718,7 +36442,6 @@
     "costPerMinute": "true"
    },
    "output": {
-    "webSearch": false,
     "halfDuplex": false,
     "announceWake": false,
     "autoUpdate": false,
@@ -35728,13 +36451,12 @@
   {
    "input": {
     "voiceVolume": {},
-    "claudeVoiceModel": "claude-code",
-    "webSearch": 0.123456,
+    "claudeVoiceEffort": "claude-code",
+    "voiceEngine": 0.123456,
     "avatar": "parakeet-110m",
     "voice": "sonnet"
    },
    "output": {
-    "webSearch": false,
     "voice": "sonnet"
    }
   },
@@ -35770,23 +36492,34 @@
     "unknown2": {
      "toString": 1
     },
-    "anywhereVision": "true",
-    "showOrb": "off",
-    "anywhereCdp": "medium"
+    "anywhereCdp": "medium",
+    "anywhere": "off"
    },
    "output": {
     "wakeHotkey": "10001",
-    "anywhereVision": true,
-    "showOrb": false,
-    "anywhereCdp": false
+    "anywhereCdp": false,
+    "anywhere": false
    }
   },
   {
    "input": {
     "model": "  1.5 ",
-    "showOrb": "/usr/local/bin/claude",
+    "anywhere": "/usr/local/bin/claude",
     "unknown2": "haiku",
     "listenMode": "chime"
+   },
+   "output": {
+    "anywhere": false
+   }
+  },
+  {
+   "input": {
+    "claudeVoiceModel": ".5",
+    "showOrb": "-1",
+    "brainClaudePath": "high",
+    "buddySize": "Ctrl Alt",
+    "avatar": "\t7\n",
+    "orbStickAnchor": 1
    },
    "output": {
     "showOrb": false
@@ -35794,33 +36527,26 @@
   },
   {
    "input": {
-    "claudeVoiceModel": ".5",
-    "avatarThrowSound": "-1",
-    "brainConnection": "high",
-    "avatar": "Ctrl Alt",
-    "claudeVoiceStt": "\t7\n",
-    "orbStickAnchor": 1
-   },
-   "output": {}
-  },
-  {
-   "input": {
     "costPerMinute": "api-key",
-    "brainModel": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "brainExplore": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     "unknown2": "auto"
    },
-   "output": {}
+   "output": {
+    "brainExplore": false
+   }
   },
   {
    "input": {
     "voiceEngine": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "orbPosition": "1,5",
     "avatarClickTalk": "medium",
-    "helperEngine": "",
+    "onboarded": "",
     "voice": "/a\tb/claude",
-    "brainModel": 8
+    "brainExplore": 8
    },
-   "output": {}
+   "output": {
+    "brainExplore": false
+   }
   },
   {
    "input": {
@@ -35846,28 +36572,27 @@
   },
   {
    "input": {
-    "anywhereVision": [
+    "anywhereCdp": [
      null
     ],
-    "brainExplore": 0.5,
-    "claudeVoiceEffort": "1e3",
-    "anywhereMouse": "//share/claude",
-    "anywhere": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "anywhereUnderOrbit": "\t7\n"
+    "brainConnection": 0.5,
+    "claudeVoiceStt": "1e3",
+    "anywhereMouseLeadMs": "//share/claude",
+    "anywhereVision": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "anywhereMouse": "\t7\n"
    },
    "output": {
+    "anywhereCdp": false,
     "anywhereVision": false,
-    "brainExplore": false,
-    "anywhereMouse": false,
-    "anywhere": false
+    "anywhereMouse": false
    }
   },
   {
    "input": {
     "announceWake": 601,
-    "helperEngine": "eve",
-    "avatarThrow": 2,
-    "brainConnection": 0.005
+    "onboarded": "eve",
+    "avatarThrowSound": 2,
+    "brainClaudePath": 0.005
    },
    "output": {
     "announceWake": false
@@ -35875,7 +36600,7 @@
   },
   {
    "input": {
-    "avatarThrow": [
+    "avatarThrowSound": [
      1,
      2,
      3
@@ -35895,33 +36620,30 @@
    "input": {
     "wakeOnResults": "off",
     "showOrb": 0,
-    "anywhereCdp": "1.5",
-    "anywhereMouseLeadMs": "fable",
-    "autoUpdate": "1,5"
+    "anywhereUnderOrbit": "1.5",
+    "helperEngine": "fable",
+    "orbStick": "1,5"
    },
    "output": {
     "wakeOnResults": false,
     "showOrb": false,
-    "anywhereCdp": false,
-    "autoUpdate": false
+    "orbStick": false
    }
   },
   {
    "input": {
-    "anywhereMouseLeadMs": "0x10"
+    "helperEngine": "0x10"
    },
-   "output": {
-    "anywhereMouseLeadMs": 16
-   }
+   "output": {}
   },
   {
    "input": {
-    "claudeVoiceStt": {
+    "avatar": {
      "toString": 1
     },
     "brainExplore": "always",
-    "anywhereMouse": "/usr/local/bin/claude",
-    "brainEnabled": "  1.5 ",
+    "anywhereMouseLeadMs": "/usr/local/bin/claude",
+    "brainModel": "  1.5 ",
     "orbStick": {
      "corner": "br",
      "dx": 0,
@@ -35930,8 +36652,6 @@
    },
    "output": {
     "brainExplore": false,
-    "anywhereMouse": false,
-    "brainEnabled": false,
     "orbStick": false
    }
   },
@@ -35944,34 +36664,34 @@
   {
    "input": {
     "model": "codex",
-    "showOrb": 7,
+    "anywhere": 7,
     "unknown2": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
    },
    "output": {
     "model": "codex",
-    "showOrb": false
+    "anywhere": false
    }
   },
   {
    "input": {
-    "anywhereUnderOrbit": -1,
+    "anywhereMouse": -1,
     "unknown1": "high",
     "avatarThrow": 3.7,
-    "anywhereCdp": "é+K",
+    "anywhereUnderOrbit": "é+K",
     "orbPosition": [
      null
     ],
     "costPerMinute": "low"
    },
    "output": {
-    "anywhereCdp": false
+    "anywhereMouse": false
    }
   },
   {
    "input": {
     "announceWake": "qubit",
     "costPerMinute": "chime",
-    "helperEngine": 10,
+    "onboarded": 10,
     "orbStick": [
      1.6,
      2.4
@@ -35985,35 +36705,30 @@
   {
    "input": {
     "listenMode": null,
-    "anywhereMouse": "/opt/homebrew/bin/CLAUDE",
-    "anywhereCdp": "5."
+    "anywhereMouseLeadMs": "/opt/homebrew/bin/CLAUDE",
+    "anywhereUnderOrbit": "5."
    },
-   "output": {
-    "anywhereMouse": false,
-    "anywhereCdp": false
-   }
+   "output": {}
   },
   {
    "input": {
-    "anywhereCdp": 10,
+    "anywhereUnderOrbit": 10,
     "announce": 0.0049,
     "speed": {
      "corner": "tr",
      "dx": -1,
      "dy": 1
     },
-    "claudeVoiceModel": "false"
+    "claudeVoiceEffort": "false"
    },
-   "output": {
-    "anywhereCdp": false
-   }
+   "output": {}
   },
   {
    "input": {
-    "brainExplore": "false",
-    "anywhere": "codex",
+    "brainConnection": "false",
+    "anywhereVision": "codex",
     "wakeOnResults": ".5",
-    "anywhereMouse": {
+    "anywhereMouseLeadMs": {
      "corner": "xx",
      "dx": 1,
      "dy": 1
@@ -36021,10 +36736,8 @@
     "voiceVolume": "true"
    },
    "output": {
-    "brainExplore": false,
-    "anywhere": false,
-    "wakeOnResults": false,
-    "anywhereMouse": false
+    "anywhereVision": false,
+    "wakeOnResults": false
    }
   },
   {
@@ -36039,23 +36752,25 @@
   {
    "input": {
     "model": 1.005,
-    "brainConnection": {
+    "brainClaudePath": {
      "corner": "xx",
      "dx": 1,
      "dy": 1
     },
-    "avatar": 600.4,
-    "avatarThrowSound": "\t7\n"
+    "buddySize": "5.",
+    "showOrb": "\t7\n",
+    "avatar": 600.4
    },
    "output": {
-    "model": "1.005"
+    "model": "1.005",
+    "showOrb": false
    }
   },
   {
    "input": {
     "autoUpdate": "speak",
-    "avatarThrow": 0.5,
-    "announce": [
+    "avatarThrowSound": 0.5,
+    "announceWake": [
      1,
      2
     ],
@@ -36069,11 +36784,12 @@
      5,
      "A+B.exe"
     ],
-    "orbPulseAmount": "parakeet-v2",
+    "orbStickAnchor": "parakeet-v2",
     "orbStick": "Infinity"
    },
    "output": {
     "autoUpdate": false,
+    "announceWake": false,
     "orbStick": false
    }
   },
@@ -36085,31 +36801,29 @@
      "dx": 1.5,
      "dy": 2.5
     },
-    "anywhereMouse": 10001,
-    "anywhere": "moonshine",
-    "claudeVoiceStt": 600.4,
+    "anywhereMouseLeadMs": 10001,
+    "anywhereVision": "moonshine",
+    "avatar": 600.4,
     "wakeWord": "Ctrl Alt"
    },
    "output": {
-    "anywhereMouse": false,
-    "anywhere": false,
+    "anywhereMouseLeadMs": 600,
+    "anywhereVision": false,
     "wakeWord": false
    }
   },
   {
    "input": {
-    "helperEngine": [
+    "onboarded": [
      1.6,
      2.4
     ],
-    "anywhereMouseLeadMs": "  1.5 ",
+    "helperEngine": "  1.5 ",
     "claudeVoice": [
      null
     ]
    },
-   "output": {
-    "anywhereMouseLeadMs": 2
-   }
+   "output": {}
   },
   {
    "input": {
@@ -36122,8 +36836,8 @@
   },
   {
    "input": {
-    "avatarThrow": null,
-    "claudeVoiceModel": "claude-code",
+    "avatarThrowSound": null,
+    "claudeVoiceEffort": "claude-code",
     "avatar": "relative/claude",
     "announceWake": 0,
     "orbPulseGrok": "Control+Alt+K"
@@ -36136,9 +36850,9 @@
   {
    "input": {
     "orbPulseAmount": true,
-    "claudeVoiceEffort": 2.5,
+    "claudeVoiceStt": 2.5,
     "speed": "",
-    "claudeVoiceStt": -1,
+    "avatar": -1,
     "brainExplore": "/bin/claude2"
    },
    "output": {
@@ -36149,21 +36863,24 @@
    "input": {
     "unknown0": "eve",
     "wakeOnResults": "true",
-    "anywhereUnderOrbit": "parakeet-v2",
+    "anywhereMouse": "parakeet-v2",
     "unknown3": 1e+21
    },
    "output": {
-    "wakeOnResults": true
+    "wakeOnResults": true,
+    "anywhereMouse": false
    }
   },
   {
    "input": {
-    "brainModel": "parakeet-v2",
+    "brainExplore": "parakeet-v2",
     "listenMode": "claude",
     "avatarThrow": "/a\tb/claude",
     "unknown3": "tap"
    },
-   "output": {}
+   "output": {
+    "brainExplore": false
+   }
   },
   {
    "input": {
@@ -36184,23 +36901,22 @@
     "autoUpdate": "1e3",
     "wakeOnResults": "always",
     "listenMode": "claude-code",
-    "anywhereCdp": "tap"
+    "anywhereUnderOrbit": "tap"
    },
    "output": {
     "orbStick": false,
     "autoUpdate": false,
-    "wakeOnResults": false,
-    "anywhereCdp": false
+    "wakeOnResults": false
    }
   },
   {
    "input": {
     "voiceVolume": 1.2,
-    "autoUpdate": "false"
+    "orbStick": "false"
    },
    "output": {
     "voiceVolume": 1,
-    "autoUpdate": false
+    "orbStick": false
    }
   },
   {
@@ -36214,24 +36930,25 @@
   },
   {
    "input": {
-    "brainConnection": 7,
+    "brainClaudePath": 7,
     "voice": "1,5"
    },
    "output": {}
   },
   {
    "input": {
-    "brainModel": "haiku",
+    "brainExplore": "haiku",
     "wakeOnResults": 599.5,
     "orbPulseGrok": 601,
-    "orbStickAnchor": 0.123456,
+    "brainEnabled": 0.123456,
     "voiceEngine": "false",
     "avatar": ""
    },
    "output": {
-    "brainModel": "haiku",
+    "brainExplore": false,
     "wakeOnResults": false,
-    "orbPulseGrok": false
+    "orbPulseGrok": false,
+    "brainEnabled": false
    }
   },
   {
@@ -36240,7 +36957,7 @@
     "brainEnabled": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     "voiceEngine": "fable",
     "brainExplore": null,
-    "claudeVoiceStt": 1
+    "avatar": 1
    },
    "output": {
     "brainEnabled": false,
@@ -36251,35 +36968,35 @@
    "input": {
     "unknown0": "1e3",
     "costPerMinute": "Infinity",
-    "anywhere": 8,
+    "anywhereVision": 8,
     "avatarClickTalk": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "claudeVoice": " ",
-    "showOrb": 3.7
+    "claudeVoiceModel": " ",
+    "anywhere": 3.7
    },
    "output": {
-    "anywhere": false,
-    "showOrb": false
+    "anywhereVision": false,
+    "anywhere": false
    }
   },
   {
    "input": {
     "unknown0": 599.5,
     "voiceVolume": "5.",
-    "anywhere": "+1"
+    "anywhereVision": "+1"
    },
    "output": {
     "voiceVolume": 1,
-    "anywhere": false
+    "anywhereVision": false
    }
   },
   {
    "input": {
-    "orbStick": "/a\tb/claude",
+    "orbPulse": "/a\tb/claude",
     "webSearch": "1,5",
     "orbPulseAmount": 0.123456
    },
    "output": {
-    "orbStick": false,
+    "orbPulse": false,
     "webSearch": false,
     "orbPulseAmount": 0.1
    }
@@ -36287,69 +37004,67 @@
   {
    "input": {
     "orbPosition": " ",
-    "helperEngine": "parakeet-110m",
-    "orbPulseGrok": "none",
+    "onboarded": "parakeet-110m",
+    "orbPulseAmount": "none",
     "voiceEngine": "medium"
-   },
-   "output": {
-    "orbPulseGrok": false
-   }
-  },
-  {
-   "input": {
-    "orbPulseGrok": "api-key",
-    "brainModel": "\t7\n",
-    "autoUpdate": "speak",
-    "webSearch": 0
-   },
-   "output": {
-    "orbPulseGrok": false,
-    "autoUpdate": false,
-    "webSearch": false
-   }
-  },
-  {
-   "input": {
-    "anywhereUnderOrbit": "/Users/x/claude.exe",
-    "unknown1": 0,
-    "unknown2": "EVE"
    },
    "output": {}
   },
   {
    "input": {
-    "autoUpdate": {
+    "orbPulseAmount": "api-key",
+    "brainModel": "\t7\n",
+    "orbStick": "speak",
+    "webSearch": 0
+   },
+   "output": {
+    "orbStick": false,
+    "webSearch": false
+   }
+  },
+  {
+   "input": {
+    "anywhereMouse": "/Users/x/claude.exe",
+    "unknown1": 0,
+    "unknown2": "EVE"
+   },
+   "output": {
+    "anywhereMouse": false
+   }
+  },
+  {
+   "input": {
+    "orbStick": {
      "corner": "bl",
      "dx": "5",
      "dy": 5
     },
     "orbPulseGrok": 1,
     "brainEnabled": "low",
-    "orbPulseAmount": 8,
-    "anywhereMouse": "-1",
+    "orbStickAnchor": 8,
+    "anywhereMouseLeadMs": "-1",
     "claudeVoiceModel": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
    },
    "output": {
-    "autoUpdate": false,
+    "orbStick": false,
     "orbPulseGrok": false,
     "brainEnabled": false,
-    "orbPulseAmount": 0.1,
-    "anywhereMouse": false
+    "anywhereMouseLeadMs": 0
    }
   },
   {
    "input": {
-    "autoUpdate": "tap",
-    "anywhereMouseLeadMs": "/usr/local/bin/claude",
+    "orbStick": "tap",
+    "helperEngine": "/usr/local/bin/claude",
     "halfDuplex": "fable",
-    "anywhere": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "claudeVoiceEffort": "off",
+    "anywhereVision": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "claudeVoiceStt": "off",
     "orbPosition": "/bin/claude2"
    },
    "output": {
-    "autoUpdate": false,
+    "orbStick": false,
     "halfDuplex": false,
-    "anywhere": false
+    "anywhereVision": false
    }
   },
   {
@@ -36360,66 +37075,66 @@
   },
   {
    "input": {
-    "showOrb": "parakeet-v2"
+    "anywhere": "parakeet-v2"
    },
    "output": {
-    "showOrb": false
+    "anywhere": false
    }
   },
   {
    "input": {
-    "wakeWord": "/a\tb/claude",
-    "showOrb": "eve"
+    "announce": "/a\tb/claude",
+    "anywhere": "eve"
    },
    "output": {
-    "wakeWord": false,
-    "showOrb": false
+    "anywhere": false
    }
   },
   {
    "input": {
     "claudeVoiceModel": "qubit",
-    "anywhereUnderOrbit": 3.7,
+    "anywhereMouse": 3.7,
     "brainEnabled": "-1",
-    "buddySize": "-1",
+    "avatarClickTalk": "-1",
     "costPerMinute": "/bin/claude2"
    },
    "output": {
+    "anywhereMouse": false,
     "brainEnabled": false
    }
   },
   {
    "input": {
     "avatar": 1.55,
-    "costPerMinute": 0.0049
+    "model": 0.0049
    },
    "output": {
-    "costPerMinute": 0.005
+    "model": "0.0049"
    }
   },
   {
    "input": {
     "brainExplore": 1.005,
     "wakeOnResults": 10,
-    "orbStickAnchor": [
+    "brainEnabled": [
      1,
      2,
      3
     ],
     "listenMode": 1.234567,
-    "orbPulse": "+1",
-    "anywhereMouseLeadMs": 2
+    "orbPulseGrok": "+1",
+    "helperEngine": 2
    },
    "output": {
     "brainExplore": false,
     "wakeOnResults": false,
-    "orbPulse": false,
-    "anywhereMouseLeadMs": 2
+    "brainEnabled": false,
+    "orbPulseGrok": false
    }
   },
   {
    "input": {
-    "model": {
+    "orbPosition": {
      "corner": "br",
      "dx": 0,
      "dy": 10000
@@ -36442,35 +37157,34 @@
   },
   {
    "input": {
-    "brainEnabled": 0.005,
+    "brainModel": 0.005,
     "avatarThrowSound": 7,
-    "webSearch": "sonnet",
-    "anywhere": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    "voiceEngine": "sonnet",
+    "anywhereVision": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
    },
    "output": {
-    "brainEnabled": false,
-    "webSearch": false,
+    "anywhereVision": false
+   }
+  },
+  {
+   "input": {
+    "brainExplore": ".5",
+    "anywhere": "-1"
+   },
+   "output": {
+    "brainExplore": false,
     "anywhere": false
    }
   },
   {
    "input": {
-    "brainModel": ".5",
-    "showOrb": "-1"
-   },
-   "output": {
-    "showOrb": false
-   }
-  },
-  {
-   "input": {
-    "helperEngine": [
+    "onboarded": [
      1,
      2
     ],
-    "avatarClickTalk": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude",
-    "brainEnabled": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "anywhereUnderOrbit": "grok",
+    "avatarThrow": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude",
+    "brainModel": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "anywhereMouse": "grok",
     "claudeVoice": {
      "corner": "br",
      "dx": 0,
@@ -36478,7 +37192,7 @@
     }
    },
    "output": {
-    "brainEnabled": false
+    "anywhereMouse": false
    }
   },
   {
@@ -36491,18 +37205,16 @@
   },
   {
    "input": {
-    "webSearch": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    "voiceEngine": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
    },
-   "output": {
-    "webSearch": false
-   }
+   "output": {}
   },
   {
    "input": {
-    "anywhere": 0.0049,
-    "autoUpdate": "low",
-    "anywhereMouse": "Infinity",
-    "wakeWord": "1e3",
+    "anywhereVision": 0.0049,
+    "orbStick": "low",
+    "anywhereMouseLeadMs": "Infinity",
+    "announce": "1e3",
     "wakeHotkey": {
      "corner": "bl",
      "dx": "5",
@@ -36510,10 +37222,8 @@
     }
    },
    "output": {
-    "anywhere": false,
-    "autoUpdate": false,
-    "anywhereMouse": false,
-    "wakeWord": false
+    "anywhereVision": false,
+    "orbStick": false
    }
   },
   {
@@ -36522,19 +37232,19 @@
     "buddySize": " ",
     "claudeVoice": "é+K",
     "unknown3": 1e+21,
-    "showOrb": null,
+    "anywhere": null,
     "voiceVolume": 0.004
    },
    "output": {
     "wakeHotkey": "EVE",
-    "showOrb": false,
+    "anywhere": false,
     "voiceVolume": 0
    }
   },
   {
    "input": {
-    "claudeVoice": 1.5,
-    "claudeVoiceEffort": [
+    "claudeVoiceModel": 1.5,
+    "claudeVoiceStt": [
      "Discord.exe",
      "discord.exe",
      "Slack",
@@ -36550,12 +37260,12 @@
   {
    "input": {
     "wakeHotkey": "always",
-    "wakeOnResults": "1.5",
-    "avatarClickTalk": 3.7
+    "costPerMinute": "1.5",
+    "avatarThrow": 3.7
    },
    "output": {
     "wakeHotkey": "always",
-    "wakeOnResults": false
+    "costPerMinute": 1.5
    }
   },
   {
@@ -36568,7 +37278,7 @@
   },
   {
    "input": {
-    "anywhereVision": "+1",
+    "anywhereCdp": "+1",
     "unknown1": {
      "corner": "br",
      "dx": 0,
@@ -36576,35 +37286,35 @@
     },
     "unknown2": " ",
     "brainExplore": "api-key",
-    "claudeVoice": "eve"
+    "claudeVoiceModel": "eve"
    },
    "output": {
-    "anywhereVision": false,
+    "anywhereCdp": false,
     "brainExplore": false
    }
   },
   {
    "input": {
-    "orbPulseAmount": "fable"
+    "orbStickAnchor": "fable"
    },
    "output": {}
   },
   {
    "input": {
-    "webSearch": "haiku",
-    "avatarThrowSound": 10
+    "voiceEngine": "haiku",
+    "showOrb": 10
    },
    "output": {
-    "webSearch": false
+    "showOrb": false
    }
   },
   {
    "input": {
     "unknown0": ".5",
     "wakeHotkey": "sonnet",
-    "claudeVoiceStt": "grok-voice-latest",
+    "avatar": "grok-voice-latest",
     "wakeOnResults": " ",
-    "costPerMinute": null,
+    "model": null,
     "orbStick": "EVE"
    },
    "output": {
@@ -36617,7 +37327,7 @@
    "input": {
     "unknown0": "haiku",
     "orbStick": "eve",
-    "orbPulseAmount": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    "orbStickAnchor": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
    },
    "output": {
     "orbStick": false
@@ -36625,7 +37335,7 @@
   },
   {
    "input": {
-    "buddySize": 2.5,
+    "avatarClickTalk": 2.5,
     "speed": "high",
     "orbPulseGrok": "opus",
     "announceWake": 1.55,
@@ -36639,7 +37349,7 @@
   {
    "input": {
     "model": "bad voice",
-    "avatarThrow": [
+    "avatarThrowSound": [
      null
     ],
     "orbPulseGrok": {
@@ -36662,43 +37372,43 @@
   {
    "input": {
     "speed": 600.4,
-    "wakeWord": 0.004,
-    "avatarThrow": {
+    "announce": 0.004,
+    "avatarThrowSound": {
      "toString": 1
     }
    },
    "output": {
-    "speed": 1.5,
-    "wakeWord": false
+    "speed": 1.5
    }
   },
   {
    "input": {
-    "claudeVoice": "\t7\n",
-    "orbPulseGrok": 1e+21,
-    "anywhere": "true",
-    "anywhereVision": "+1",
-    "avatarClickTalk": 0.123456
+    "claudeVoiceModel": "\t7\n",
+    "orbPulseAmount": 1e+21,
+    "anywhereVision": "true",
+    "anywhereCdp": "+1",
+    "avatarThrow": 0.123456
    },
    "output": {
-    "claudeVoice": 7,
-    "orbPulseGrok": false,
-    "anywhere": true,
-    "anywhereVision": false
+    "orbPulseAmount": 0.1,
+    "anywhereVision": true,
+    "anywhereCdp": false
    }
   },
   {
    "input": {
     "voiceVolume": "grok-voice-latest",
-    "claudeVoiceEffort": 3.7,
-    "avatarThrowSound": "Infinity",
+    "claudeVoiceStt": 3.7,
+    "showOrb": "Infinity",
     "claudeVoice": "chime"
    },
-   "output": {}
+   "output": {
+    "showOrb": false
+   }
   },
   {
    "input": {
-    "claudeVoice": "abc"
+    "claudeVoiceModel": "abc"
    },
    "output": {}
   },
@@ -36716,11 +37426,11 @@
   },
   {
    "input": {
-    "orbStick": "sonnet",
-    "helperEngine": "/Users/me/.local/bin/claude"
+    "orbPulse": "sonnet",
+    "onboarded": "/Users/me/.local/bin/claude"
    },
    "output": {
-    "orbStick": false
+    "orbPulse": false
    }
   },
   {
@@ -36734,25 +37444,27 @@
   },
   {
    "input": {
-    "brainEnabled": 10001,
+    "brainModel": 10001,
     "brainClaudePath": {},
-    "orbPulse": "0x10",
-    "brainModel": [
+    "orbPulseGrok": "0x10",
+    "brainExplore": [
      null
     ],
-    "voiceVolume": 0.123456
+    "wakeHotkey": 0.123456
    },
    "output": {
-    "brainEnabled": false,
-    "orbPulse": false,
-    "voiceVolume": 0.12
+    "orbPulseGrok": false,
+    "brainExplore": false,
+    "wakeHotkey": "0.123456"
    }
   },
   {
    "input": {
-    "orbStickAnchor": 1.005
+    "brainEnabled": 1.005
    },
-   "output": {}
+   "output": {
+    "brainEnabled": false
+   }
   },
   {
    "input": {
@@ -36768,7 +37480,7 @@
     "unknown1": 7,
     "claudeVoiceStt": -1,
     "unknown3": "\t7\n",
-    "buddySize": "/usr/local/bin/claude",
+    "avatarClickTalk": "/usr/local/bin/claude",
     "unknown5": "speak"
    },
    "output": {
@@ -36796,7 +37508,7 @@
      2
     ],
     "brainModel": 1.005,
-    "autoUpdate": {
+    "orbStick": {
      "toString": 1
     }
    },
@@ -36804,16 +37516,16 @@
     "costPerMinute": 0.005,
     "anywhere": false,
     "voice": "8",
-    "autoUpdate": false
+    "orbStick": false
    }
   },
   {
    "input": {
-    "anywhereVision": "grok-voice-latest",
-    "anywhereMouseLeadMs": "relative/claude"
+    "anywhereCdp": "grok-voice-latest",
+    "helperEngine": "relative/claude"
    },
    "output": {
-    "anywhereVision": false
+    "anywhereCdp": false
    }
   },
   {
@@ -36835,36 +37547,37 @@
   {
    "input": {
     "voiceEngine": 8,
-    "orbPosition": {
+    "autoUpdate": {
      "toString": 1
     },
     "webSearch": "auto"
    },
    "output": {
+    "autoUpdate": false,
     "webSearch": false
    }
   },
   {
    "input": {
     "avatar": 0,
-    "showOrb": 599.5,
-    "voiceEngine": "/Users/x/claude.exe",
+    "anywhere": 599.5,
+    "claudeVoice": "/Users/x/claude.exe",
     "speed": 600.4
    },
    "output": {
-    "showOrb": false,
+    "anywhere": false,
     "speed": 1.5
    }
   },
   {
    "input": {
-    "orbPosition": 1.234567,
-    "model": true,
-    "costPerMinute": "medium",
-    "autoUpdate": 600.4
+    "orbPosition": true,
+    "model": "medium",
+    "orbStick": 600.4
    },
    "output": {
-    "autoUpdate": false
+    "model": "medium",
+    "orbStick": false
    }
   },
   {
@@ -36894,29 +37607,25 @@
      5,
      "A+B.exe"
     ],
-    "brainEnabled": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    "brainModel": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
    },
    "output": {
-    "orbPulseGrok": false,
-    "brainEnabled": false
+    "orbPulseGrok": false
    }
   },
   {
    "input": {
-    "brainExplore": "\t7\n",
+    "brainConnection": "\t7\n",
     "claudeVoiceModel": "claude",
-    "helperEngine": "claude-code",
+    "onboarded": "claude-code",
     "orbPulseAmount": "sonnet",
-    "avatarThrow": null
+    "avatarThrowSound": null
    },
-   "output": {
-    "brainExplore": false,
-    "helperEngine": "claude-code"
-   }
+   "output": {}
   },
   {
    "input": {
-    "showOrb": "relative/claude",
+    "anywhere": "relative/claude",
     "unknown1": "codex",
     "webSearch": "false",
     "halfDuplex": [
@@ -36926,43 +37635,38 @@
     ]
    },
    "output": {
-    "showOrb": false,
+    "anywhere": false,
     "webSearch": false,
     "halfDuplex": false
    }
   },
   {
    "input": {
-    "webSearch": "haiku",
-    "buddySize": 3,
-    "claudeVoiceEffort": "haiku",
+    "voiceEngine": "haiku",
+    "avatarClickTalk": 3,
+    "claudeVoiceStt": "haiku",
     "unknown3": "haiku"
-   },
-   "output": {
-    "webSearch": false,
-    "buddySize": 3
-   }
-  },
-  {
-   "input": {
-    "voiceEngine": false
    },
    "output": {}
   },
   {
    "input": {
-    "buddySize": 599.5,
-    "anywhereCdp": "/bin/claude2",
+    "claudeVoice": false
+   },
+   "output": {}
+  },
+  {
+   "input": {
+    "avatarClickTalk": 599.5,
+    "anywhereUnderOrbit": "/bin/claude2",
     "orbStickAnchor": "  1.5 "
    },
-   "output": {
-    "anywhereCdp": false
-   }
+   "output": {}
   },
   {
    "input": {
     "anywhereUnderOrbit": "fable",
-    "claudeVoice": 8,
+    "claudeVoiceModel": 8,
     "unknown2": "low",
     "brainEnabled": 10001,
     "listenMode": "moonshine"
@@ -36973,28 +37677,26 @@
   },
   {
    "input": {
-    "claudeVoiceModel": "claude",
+    "claudeVoiceEffort": "claude",
     "buddySize": "/usr/local/bin/claude",
     "orbPosition": [
      null
     ],
     "wakeHotkey": " ",
-    "wakeWord": "/usr/local/bin/claude"
+    "announce": "/usr/local/bin/claude"
    },
-   "output": {
-    "wakeWord": false
-   }
+   "output": {}
   },
   {
    "input": {
-    "halfDuplex": "grok-voice-latest",
+    "wakeWord": "grok-voice-latest",
     "voiceVolume": "0x10",
-    "avatar": [
+    "buddySize": [
      null
     ]
    },
    "output": {
-    "halfDuplex": false,
+    "wakeWord": false,
     "voiceVolume": 1
    }
   },
@@ -37002,18 +37704,16 @@
    "input": {
     "unknown0": "5.",
     "unknown1": "/bin/cl\"aude",
-    "claudeVoiceStt": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude",
-    "brainEnabled": "claude-code",
-    "buddySize": "Ctrl Alt"
+    "avatar": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude",
+    "brainModel": "claude-code",
+    "avatarClickTalk": "Ctrl Alt"
    },
-   "output": {
-    "brainEnabled": false
-   }
+   "output": {}
   },
   {
    "input": {
     "unknown0": 1.005,
-    "orbPulseAmount": {
+    "orbStickAnchor": {
      "corner": "tr",
      "dx": -1,
      "dy": 1
@@ -37054,7 +37754,7 @@
    "input": {
     "wakeOnResults": 1.5,
     "autoUpdate": 1,
-    "brainClaudePath": {
+    "webSearch": {
      "corner": "tr",
      "dx": -1,
      "dy": 1
@@ -37063,22 +37763,23 @@
      1.6,
      2.4
     ],
-    "avatarClickTalk": "/bin/cl\"aude"
+    "avatarThrow": "/bin/cl\"aude"
    },
    "output": {
     "wakeOnResults": false,
-    "autoUpdate": false
+    "autoUpdate": false,
+    "webSearch": false
    }
   },
   {
    "input": {
-    "anywhereMouseLeadMs": false,
+    "helperEngine": false,
     "unknown1": "haiku",
-    "autoUpdate": "",
+    "orbStick": "",
     "orbPulse": "parakeet-v2"
    },
    "output": {
-    "autoUpdate": false,
+    "orbStick": false,
     "orbPulse": false
    }
   },
@@ -37088,7 +37789,7 @@
     "announceWake": 600.4,
     "announce": "fable",
     "unknown3": 1.55,
-    "brainConnection": null
+    "brainClaudePath": null
    },
    "output": {
     "announceWake": false
@@ -37113,15 +37814,16 @@
   {
    "input": {
     "voice": 0,
-    "brainModel": "1.5"
+    "brainExplore": "1.5"
    },
    "output": {
-    "voice": "0"
+    "voice": "0",
+    "brainExplore": false
    }
   },
   {
    "input": {
-    "voiceEngine": [
+    "claudeVoice": [
      "Discord.exe",
      "discord.exe",
      "Slack",
@@ -37133,8 +37835,8 @@
     ],
     "costPerMinute": "speak",
     "orbPulseAmount": "\t7\n",
-    "anywhereVision": 0.0051,
-    "anywhereUnderOrbit": [
+    "anywhereCdp": 0.0051,
+    "anywhereMouse": [
      1,
      2,
      3
@@ -37142,13 +37844,13 @@
    },
    "output": {
     "orbPulseAmount": 0.1,
-    "anywhereVision": false,
-    "anywhereUnderOrbit": []
+    "anywhereCdp": false,
+    "anywhereMouse": false
    }
   },
   {
    "input": {
-    "avatarThrow": 2.5,
+    "avatarThrowSound": 2.5,
     "buddySize": "/a\tb/claude",
     "voiceVolume": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
    },
@@ -37165,14 +37867,13 @@
    "input": {
     "unknown0": 8,
     "unknown1": "low",
-    "claudeVoiceModel": -0.5,
+    "claudeVoiceEffort": -0.5,
     "halfDuplex": "",
-    "brainEnabled": 10,
-    "claudeVoice": "grok-voice-latest"
+    "brainModel": 10,
+    "claudeVoiceModel": "grok-voice-latest"
    },
    "output": {
-    "halfDuplex": false,
-    "brainEnabled": false
+    "halfDuplex": false
    }
   },
   {
@@ -37192,13 +37893,13 @@
   },
   {
    "input": {
-    "avatarThrow": "  1.5 "
+    "avatarThrowSound": "  1.5 "
    },
    "output": {}
   },
   {
    "input": {
-    "claudeVoiceModel": {},
+    "claudeVoiceEffort": {},
     "claudeVoice": "1,5",
     "brainExplore": 601
    },
@@ -37216,6 +37917,7 @@
   },
   {
    "input": {
+    "autoUpdate": "é+K",
     "orbPosition": "claude-code",
     "wakeOnResults": {
      "corner": "tr",
@@ -37227,6 +37929,7 @@
     "halfDuplex": 1e+21
    },
    "output": {
+    "autoUpdate": false,
     "wakeOnResults": false,
     "orbPulse": false,
     "halfDuplex": false
@@ -37260,9 +37963,9 @@
   },
   {
    "input": {
-    "avatarClickTalk": "api-key",
+    "avatarThrow": "api-key",
     "listenMode": 3,
-    "anywhereVision": 0.005,
+    "anywhereCdp": 0.005,
     "unknown3": "/a\tb/claude",
     "avatarThrowSound": [
      1,
@@ -37271,13 +37974,13 @@
     ]
    },
    "output": {
-    "anywhereVision": false
+    "anywhereCdp": false
    }
   },
   {
    "input": {
     "brainClaudePath": "1.5",
-    "avatarThrow": {
+    "avatarThrowSound": {
      "corner": "bl",
      "dx": "5",
      "dy": 5
@@ -37289,7 +37992,7 @@
   {
    "input": {
     "autoUpdate": [],
-    "avatar": [
+    "buddySize": [
      1,
      2,
      3
@@ -37306,21 +38009,20 @@
    "input": {
     "orbStickAnchor": "0b11",
     "unknown1": ".5",
-    "anywhere": 0.123456,
-    "anywhereMouse": "codex"
+    "anywhereVision": 0.123456,
+    "anywhereMouseLeadMs": "codex"
    },
    "output": {
-    "anywhere": false,
-    "anywhereMouse": false
+    "anywhereVision": false
    }
   },
   {
    "input": {
-    "anywhereMouseLeadMs": [
+    "helperEngine": [
      1,
      2
     ],
-    "avatarThrow": [
+    "avatarThrowSound": [
      "Discord.exe",
      "discord.exe",
      "Slack",
@@ -37330,28 +38032,27 @@
      5,
      "A+B.exe"
     ],
-    "avatarThrowSound": "off"
+    "showOrb": "off"
+   },
+   "output": {
+    "showOrb": false
+   }
+  },
+  {
+   "input": {
+    "brainConnection": 1.234567,
+    "avatar": "chime",
+    "claudeVoiceEffort": 2,
+    "unknown4": "relative/claude"
    },
    "output": {}
   },
   {
    "input": {
-    "brainExplore": 1.234567,
-    "avatar": "EVE",
-    "claudeVoiceModel": 2,
-    "claudeVoiceStt": "chime",
-    "unknown4": "relative/claude"
+    "orbPulseGrok": "speak"
    },
    "output": {
-    "brainExplore": false
-   }
-  },
-  {
-   "input": {
-    "orbPulse": "speak"
-   },
-   "output": {
-    "orbPulse": false
+    "orbPulseGrok": false
    }
   },
   {
@@ -37363,35 +38064,33 @@
   {
    "input": {
     "model": 2.5,
-    "anywhereCdp": 3,
-    "anywhereMouse": "EVE",
-    "voiceVolume": 1.5
+    "anywhereUnderOrbit": 3,
+    "anywhereMouseLeadMs": "EVE",
+    "wakeHotkey": 1.5
    },
    "output": {
     "model": "2.5",
-    "anywhereCdp": false,
-    "anywhereMouse": false,
-    "voiceVolume": 1
+    "wakeHotkey": "1.5"
    }
   },
   {
    "input": {
     "brainExplore": 10000,
     "claudeVoiceModel": "off",
-    "anywhere": 2.5
+    "anywhereVision": 2.5
    },
    "output": {
     "brainExplore": false,
-    "anywhere": false
+    "anywhereVision": false
    }
   },
   {
    "input": {
-    "avatarThrow": "//share/claude",
+    "avatarThrowSound": "//share/claude",
     "brainModel": "//share/claude",
     "autoUpdate": "/bin/cl\"aude",
     "unknown3": 0.0049,
-    "helperEngine": "chime"
+    "onboarded": "chime"
    },
    "output": {
     "autoUpdate": false
@@ -37399,46 +38098,46 @@
   },
   {
    "input": {
-    "buddySize": 0.005,
-    "halfDuplex": "EVE"
+    "avatarClickTalk": 0.005,
+    "wakeWord": "EVE"
    },
    "output": {
-    "halfDuplex": false
+    "wakeWord": false
    }
   },
   {
    "input": {
-    "showOrb": "grok-voice-latest",
-    "anywhere": {
+    "anywhere": "grok-voice-latest",
+    "anywhereVision": {
      "toString": 1
     },
     "model": "Control+Alt+K",
     "voiceEngine": false
    },
    "output": {
-    "showOrb": false,
     "anywhere": false,
+    "anywhereVision": false,
     "model": "Control+Alt+K"
    }
   },
   {
    "input": {
     "unknown0": 1.55,
-    "avatar": 0.004,
+    "buddySize": 0.004,
     "claudeVoice": "Rex_2"
    },
    "output": {}
   },
   {
    "input": {
-    "anywhereMouse": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "anywhereMouseLeadMs": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "orbPosition": [
      1,
      2,
      3
     ],
-    "buddySize": 8,
-    "orbStickAnchor": [
+    "avatarClickTalk": 8,
+    "brainEnabled": [
      "Discord.exe",
      "discord.exe",
      "Slack",
@@ -37451,32 +38150,31 @@
     "claudeVoiceModel": "opus"
    },
    "output": {
-    "anywhereMouse": false,
+    "brainEnabled": false,
     "claudeVoiceModel": "opus"
    }
   },
   {
    "input": {
     "announce": "\t7\n",
-    "orbPulseAmount": "off",
+    "orbStickAnchor": "off",
     "showOrb": 1e+21,
     "claudeVoiceEffort": "fable",
-    "brainModel": "/bin/cl\"aude"
+    "brainExplore": "/bin/cl\"aude"
    },
    "output": {
-    "showOrb": false
+    "showOrb": false,
+    "brainExplore": false
    }
   },
   {
    "input": {
-    "avatarThrow": "opus",
-    "claudeVoiceEffort": "Infinity",
+    "avatarThrowSound": "opus",
+    "claudeVoiceStt": "Infinity",
     "announce": 10,
-    "orbPulseGrok": "abc"
+    "orbPulseAmount": "abc"
    },
-   "output": {
-    "orbPulseGrok": false
-   }
+   "output": {}
   },
   {
    "input": {
@@ -37489,7 +38187,6 @@
   },
   {
    "input": {
-    "brainModel": "",
     "brainExplore": "off",
     "costPerMinute": -1
    },
@@ -37499,43 +38196,44 @@
   },
   {
    "input": {
-    "orbPulseGrok": "claude",
+    "orbPulseAmount": "claude",
     "speed": "1e3"
    },
    "output": {
-    "orbPulseGrok": false,
     "speed": 1.5
    }
   },
   {
    "input": {
-    "brainModel": 2
+    "brainExplore": 2
    },
-   "output": {}
+   "output": {
+    "brainExplore": false
+   }
   },
   {
    "input": {
     "anywhere": 0.0049,
-    "anywhereUnderOrbit": "Rex_2",
+    "anywhereMouse": "Rex_2",
     "brainConnection": "",
     "voice": 0
    },
    "output": {
     "anywhere": false,
+    "anywhereMouse": false,
     "voice": "0"
    }
   },
   {
    "input": {
-    "autoUpdate": "always",
+    "orbStick": "always",
     "costPerMinute": "fable",
-    "helperEngine": "api-key",
-    "anywhereCdp": 10001,
-    "claudeVoice": "eve"
+    "onboarded": "api-key",
+    "anywhereUnderOrbit": 10001,
+    "claudeVoiceModel": "eve"
    },
    "output": {
-    "autoUpdate": false,
-    "anywhereCdp": false
+    "orbStick": false
    }
   },
   {
@@ -37549,28 +38247,28 @@
   },
   {
    "input": {
-    "anywhere": "abc",
+    "anywhereVision": "abc",
     "voiceVolume": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude"
    },
    "output": {
-    "anywhere": false
+    "anywhereVision": false
    }
   },
   {
    "input": {
-    "anywhereMouse": "low",
+    "anywhereMouseLeadMs": "low",
     "brainEnabled": 0.0049,
-    "avatarThrowSound": "moonshine"
+    "showOrb": "moonshine"
    },
    "output": {
-    "anywhereMouse": false,
-    "brainEnabled": false
+    "brainEnabled": false,
+    "showOrb": false
    }
   },
   {
    "input": {
     "unknown0": " ",
-    "anywhereVision": "grok",
+    "anywhereCdp": "grok",
     "orbPulseAmount": [
      1.6,
      2.4
@@ -37578,7 +38276,7 @@
     "avatar": 10
    },
    "output": {
-    "anywhereVision": false
+    "anywhereCdp": false
    }
   },
   {
@@ -37589,29 +38287,30 @@
   },
   {
    "input": {
-    "listenMode": "/usr/local/bin/claude",
+    "halfDuplex": "/usr/local/bin/claude",
     "orbStickAnchor": "0x10",
     "wakeWord": "chime"
    },
    "output": {
+    "halfDuplex": false,
     "wakeWord": false
    }
   },
   {
    "input": {
-    "showOrb": "é+K",
-    "helperEngine": "Rex_2",
+    "anywhere": "é+K",
+    "onboarded": "Rex_2",
     "orbPosition": 0.005,
     "voiceEngine": "opus"
    },
    "output": {
-    "showOrb": false
+    "anywhere": false
    }
   },
   {
    "input": {
     "orbPulse": 3,
-    "claudeVoiceModel": "1e3"
+    "claudeVoiceEffort": "1e3"
    },
    "output": {
     "orbPulse": false
@@ -37619,100 +38318,100 @@
   },
   {
    "input": {
-    "claudeVoiceModel": "1e3",
-    "brainExplore": 601,
-    "avatarThrow": "false",
-    "brainEnabled": 1,
+    "claudeVoiceEffort": "1e3",
+    "brainExplore": [],
+    "avatarThrowSound": "false",
+    "brainConnection": 601,
+    "brainModel": 1,
     "unknown5": "0x10"
    },
    "output": {
     "brainExplore": false,
-    "avatarThrow": false,
-    "brainEnabled": false
+    "avatarThrowSound": false
    }
   },
   {
    "input": {
     "orbPulseAmount": 10,
-    "orbStickAnchor": "buddy",
+    "brainEnabled": "buddy",
     "brainExplore": ".5",
-    "anywhereCdp": []
+    "anywhereUnderOrbit": []
    },
    "output": {
     "orbPulseAmount": 0.1,
+    "brainEnabled": false,
     "brainExplore": false,
-    "anywhereCdp": false
+    "anywhereUnderOrbit": []
    }
   },
   {
    "input": {
     "autoUpdate": "Rex_2",
-    "showOrb": "api-key",
+    "anywhere": "api-key",
     "brainEnabled": "/a\tb/claude",
     "brainModel": "grok"
    },
    "output": {
     "autoUpdate": false,
-    "showOrb": false,
+    "anywhere": false,
     "brainEnabled": false
    }
   },
   {
    "input": {
-    "autoUpdate": "\t7\n",
+    "orbStick": "\t7\n",
     "webSearch": 0.004,
     "wakeOnResults": "qubit",
-    "buddySize": 1.234567,
-    "anywhereMouseLeadMs": 0,
+    "avatarClickTalk": 1.234567,
+    "helperEngine": 0,
     "unknown5": "tap"
    },
    "output": {
-    "autoUpdate": false,
+    "orbStick": false,
     "webSearch": false,
-    "wakeOnResults": false,
-    "anywhereMouseLeadMs": 0
+    "wakeOnResults": false
    }
   },
   {
    "input": {
     "wakeHotkey": 1.55,
     "voiceVolume": "false",
-    "avatarClickTalk": "Rex_2",
-    "orbPulseGrok": "5.",
-    "orbPulse": "qubit"
+    "avatarThrow": "Rex_2",
+    "orbPulseAmount": "5.",
+    "orbPulseGrok": "qubit"
    },
    "output": {
     "wakeHotkey": "1.55",
-    "orbPulseGrok": false,
-    "orbPulse": false
+    "orbPulseAmount": 0.1,
+    "orbPulseGrok": false
    }
   },
   {
    "input": {
-    "brainModel": "medium",
-    "anywhereVision": 10,
+    "brainExplore": "medium",
+    "anywhereCdp": 10,
     "claudeVoiceEffort": 1.234567,
-    "brainEnabled": "  1.5 ",
-    "avatarClickTalk": {
+    "brainModel": "  1.5 ",
+    "avatarThrow": {
      "corner": "br",
      "dx": 0,
      "dy": 10000
     }
    },
    "output": {
-    "anywhereVision": false,
-    "brainEnabled": false
+    "brainExplore": false,
+    "anywhereCdp": false
    }
   },
   {
    "input": {
     "webSearch": "sonnet",
-    "avatar": "opus",
-    "announceWake": "moonshine"
+    "buddySize": "opus",
+    "wakeOnResults": "moonshine"
    },
    "output": {
     "webSearch": false,
-    "announceWake": false
+    "wakeOnResults": false
    }
   },
   {
@@ -37725,9 +38424,11 @@
   },
   {
    "input": {
-    "orbStickAnchor": "1.5"
+    "brainEnabled": "1.5"
    },
-   "output": {}
+   "output": {
+    "brainEnabled": false
+   }
   },
   {
    "input": {
@@ -37747,7 +38448,7 @@
    "input": {
     "orbPulseGrok": "tap",
     "brainExplore": "moonshine",
-    "claudeVoiceStt": "Rex_2",
+    "avatar": "Rex_2",
     "orbStickAnchor": "grok",
     "orbPulse": [
      1,
@@ -37765,7 +38466,7 @@
     "unknown0": "codex",
     "listenMode": "off",
     "webSearch": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "voiceEngine": {
+    "claudeVoice": {
      "corner": "tr",
      "dx": -1,
      "dy": 1
@@ -37779,8 +38480,8 @@
   },
   {
    "input": {
-    "brainEnabled": "chime",
-    "avatarThrow": [
+    "brainModel": "chime",
+    "avatarThrowSound": [
      "1",
      2
     ],
@@ -37791,9 +38492,7 @@
     ],
     "orbStickAnchor": "grok-voice-latest"
    },
-   "output": {
-    "brainEnabled": false
-   }
+   "output": {}
   },
   {
    "input": {
@@ -37807,8 +38506,8 @@
   },
   {
    "input": {
-    "brainClaudePath": null,
-    "claudeVoice": "/Users/me/.local/bin/claude",
+    "webSearch": null,
+    "claudeVoiceModel": "/Users/me/.local/bin/claude",
     "listenMode": 7,
     "wakeWord": [
      1.6,
@@ -37816,38 +38515,40 @@
     ]
    },
    "output": {
+    "webSearch": false,
     "wakeWord": false
    }
   },
   {
    "input": {
-    "wakeOnResults": null,
+    "costPerMinute": null,
     "orbPulse": false,
     "orbStick": "1,5",
     "orbStickAnchor": 3,
-    "orbPosition": 1.005
+    "autoUpdate": 1.005
    },
    "output": {
-    "wakeOnResults": false,
     "orbPulse": false,
-    "orbStick": false
+    "orbStick": false,
+    "autoUpdate": false
    }
   },
   {
    "input": {
     "unknown0": "high",
-    "avatarThrowSound": "Ctrl Alt",
+    "showOrb": "Ctrl Alt",
     "orbPulseGrok": "fable",
-    "claudeVoiceEffort": "-1"
+    "claudeVoiceStt": "-1"
    },
    "output": {
+    "showOrb": false,
     "orbPulseGrok": false
    }
   },
   {
    "input": {
     "speed": "  1.5 ",
-    "avatarClickTalk": "medium",
+    "avatarThrow": "medium",
     "wakeHotkey": [
      "Discord.exe",
      "discord.exe",
@@ -37867,11 +38568,12 @@
   {
    "input": {
     "unknown0": "eve",
-    "brainModel": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude",
-    "autoUpdate": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    "brainExplore": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude",
+    "orbStick": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
    },
    "output": {
-    "autoUpdate": false
+    "brainExplore": false,
+    "orbStick": false
    }
   },
   {
@@ -37884,23 +38586,22 @@
   },
   {
    "input": {
-    "orbPulseAmount": "/Users/x/claude.exe",
+    "orbStickAnchor": "/Users/x/claude.exe",
     "model": "medium",
-    "anywhereMouseLeadMs": ".5",
+    "helperEngine": ".5",
     "orbStick": []
    },
    "output": {
     "model": "medium",
-    "anywhereMouseLeadMs": 1,
     "orbStick": false
    }
   },
   {
    "input": {
     "claudeVoiceStt": true,
-    "claudeVoiceModel": "/bin/cl\"aude",
-    "anywhereVision": "bad voice",
-    "anywhere": "relative/claude",
+    "claudeVoiceEffort": "/bin/cl\"aude",
+    "anywhereCdp": "bad voice",
+    "anywhereVision": "relative/claude",
     "unknown4": 0.123456,
     "model": {
      "corner": "tl",
@@ -37909,20 +38610,20 @@
     }
    },
    "output": {
-    "anywhereVision": false,
-    "anywhere": false
+    "anywhereCdp": false,
+    "anywhereVision": false
    }
   },
   {
    "input": {
-    "avatar": {}
+    "buddySize": {}
    },
    "output": {}
   },
   {
    "input": {
     "claudeVoiceEffort": "Ctrl Alt",
-    "avatarThrow": "-1"
+    "avatarThrowSound": "-1"
    },
    "output": {}
   },
@@ -37938,29 +38639,26 @@
    "input": {
     "unknown0": "speak",
     "model": "0x10",
-    "anywhereMouse": [],
+    "anywhereMouseLeadMs": [],
     "speed": "sonnet",
     "claudeVoiceStt": 0
    },
    "output": {
-    "model": "0x10",
-    "anywhereMouse": false
+    "model": "0x10"
    }
   },
   {
    "input": {
-    "anywhereMouseLeadMs": 10
+    "helperEngine": 10
    },
-   "output": {
-    "anywhereMouseLeadMs": 10
-   }
+   "output": {}
   },
   {
    "input": {
     "unknown0": 0.123456,
     "unknown1": "false",
     "claudeVoiceStt": ".5",
-    "claudeVoice": -1,
+    "claudeVoiceModel": -1,
     "costPerMinute": {
      "corner": "br",
      "dx": 0,
@@ -37979,41 +38677,42 @@
   },
   {
    "input": {
-    "brainClaudePath": "speak",
+    "webSearch": "speak",
     "voice": "/bin/claude2",
     "buddySize": "\t7\n",
-    "claudeVoice": {
+    "claudeVoiceModel": {
      "corner": "tl",
      "dx": 1.5,
      "dy": 2.5
     },
     "unknown4": "claude"
    },
-   "output": {}
+   "output": {
+    "webSearch": false
+   }
   },
   {
    "input": {
     "brainEnabled": null,
-    "webSearch": null,
-    "helperEngine": "\t7\n",
+    "voiceEngine": null,
+    "onboarded": "\t7\n",
     "voice": 0.005,
     "voiceVolume": 10
    },
    "output": {
     "brainEnabled": false,
-    "webSearch": false,
     "voiceVolume": 1
    }
   },
   {
    "input": {
-    "helperEngine": "EVE",
+    "onboarded": "EVE",
     "claudeVoice": "2",
-    "anywhereUnderOrbit": []
+    "anywhereMouse": []
    },
    "output": {
     "claudeVoice": 2,
-    "anywhereUnderOrbit": []
+    "anywhereMouse": false
    }
   },
   {
@@ -38026,15 +38725,12 @@
   },
   {
    "input": {
-    "claudeVoiceEffort": "tap",
-    "anywhereCdp": "off",
-    "avatarClickTalk": "/usr/local/bin/claude",
-    "wakeOnResults": ""
+    "claudeVoiceStt": "tap",
+    "anywhereUnderOrbit": "off",
+    "avatarThrow": "/usr/local/bin/claude",
+    "costPerMinute": ""
    },
-   "output": {
-    "anywhereCdp": false,
-    "wakeOnResults": false
-   }
+   "output": {}
   },
   {
    "input": {
@@ -38042,7 +38738,7 @@
     "unknown1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "webSearch": "parakeet-v2",
     "claudeVoice": 1.234567,
-    "orbPulseAmount": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    "orbStickAnchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
    },
    "output": {
     "webSearch": false
@@ -38058,23 +38754,25 @@
   },
   {
    "input": {
-    "claudeVoice": "haiku",
-    "claudeVoiceModel": 599.5,
+    "claudeVoiceModel": "haiku",
+    "claudeVoiceEffort": 599.5,
     "unknown2": null,
     "wakeOnResults": "always"
    },
    "output": {
+    "claudeVoiceModel": "haiku",
     "wakeOnResults": false
    }
   },
   {
    "input": {
     "unknown0": 1e+21,
-    "avatarThrow": "\t7\n",
-    "orbStickAnchor": "parakeet-110m",
+    "avatarThrowSound": "\t7\n",
+    "brainEnabled": "parakeet-110m",
     "model": 600.4
    },
    "output": {
+    "brainEnabled": false,
     "model": "600.4"
    }
   },
@@ -38089,27 +38787,27 @@
   },
   {
    "input": {
-    "brainEnabled": 0.005,
-    "orbPosition": {
+    "brainModel": 0.005,
+    "autoUpdate": {
      "toString": 1
     }
    },
    "output": {
-    "brainEnabled": false
+    "autoUpdate": false
    }
   },
   {
    "input": {
     "brainExplore": 8,
     "unknown1": "grok-voice-latest",
-    "helperEngine": "eve",
+    "onboarded": "eve",
     "unknown3": "+1",
-    "webSearch": "claude",
+    "voiceEngine": "claude",
     "costPerMinute": "1e3"
    },
    "output": {
     "brainExplore": false,
-    "webSearch": false
+    "voiceEngine": "claude"
    }
   },
   {
@@ -38120,28 +38818,27 @@
   },
   {
    "input": {
-    "anywhereVision": "/opt/homebrew/bin/CLAUDE",
-    "showOrb": [
+    "anywhereVision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "anywhere": [
      1,
      2,
      3
     ],
-    "avatarThrowSound": "api-key",
+    "showOrb": "api-key",
     "model": "EVE",
-    "avatarClickTalk": "Ctrl Alt",
-    "anywhere": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    "avatarClickTalk": "Ctrl Alt"
    },
    "output": {
     "anywhereVision": false,
+    "anywhere": false,
     "showOrb": false,
-    "model": "EVE",
-    "anywhere": false
+    "model": "EVE"
    }
   },
   {
    "input": {
     "unknown0": "1,5",
-    "voiceEngine": 600.4,
+    "claudeVoice": 600.4,
     "unknown2": "speak"
    },
    "output": {}
@@ -38149,12 +38846,12 @@
   {
    "input": {
     "anywhereCdp": "none",
-    "avatar": [
+    "buddySize": [
      "1",
      2
     ],
     "brainEnabled": "1,5",
-    "brainExplore": {
+    "brainConnection": {
      "corner": "tr",
      "dx": -1,
      "dy": 1
@@ -38162,27 +38859,25 @@
    },
    "output": {
     "anywhereCdp": false,
-    "brainEnabled": false,
-    "brainExplore": false
+    "brainEnabled": false
    }
   },
   {
    "input": {
-    "avatar": "claude",
-    "wakeOnResults": "Infinity",
-    "anywhereVision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "announceWake": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude",
+    "buddySize": "claude",
+    "costPerMinute": "Infinity",
+    "anywhereCdp": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "wakeOnResults": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude",
     "orbPulseAmount": {}
    },
    "output": {
-    "wakeOnResults": false,
-    "anywhereVision": false,
-    "announceWake": false
+    "anywhereCdp": false,
+    "wakeOnResults": false
    }
   },
   {
    "input": {
-    "buddySize": 0.5,
+    "avatarClickTalk": 0.5,
     "listenMode": "5.",
     "orbStick": 0.5,
     "wakeOnResults": "Infinity",
@@ -38195,10 +38890,10 @@
   },
   {
    "input": {
-    "autoUpdate": "Command+Alt+G"
+    "orbStick": "Command+Alt+G"
    },
    "output": {
-    "autoUpdate": false
+    "orbStick": false
    }
   },
   {
@@ -38212,8 +38907,8 @@
    "input": {
     "orbPulseGrok": "parakeet-v2",
     "orbStick": "-1",
-    "brainConnection": 0,
-    "anywhereMouseLeadMs": "grok"
+    "brainClaudePath": 0,
+    "helperEngine": "grok"
    },
    "output": {
     "orbPulseGrok": false,
@@ -38248,21 +38943,21 @@
      "dx": "5",
      "dy": 5
     },
-    "voiceVolume": "api-key",
-    "avatarThrow": 1.2,
-    "anywhereMouse": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "anywhere": "0b11"
+    "wakeHotkey": "api-key",
+    "avatarThrowSound": 1.2,
+    "anywhereMouseLeadMs": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "anywhereVision": "0b11"
    },
    "output": {
     "wakeWord": false,
-    "anywhereMouse": false,
-    "anywhere": false
+    "wakeHotkey": "api-key",
+    "anywhereVision": false
    }
   },
   {
    "input": {
     "speed": 0,
-    "anywhereVision": "off",
+    "anywhereCdp": "off",
     "unknown2": "1e3",
     "claudeVoice": {
      "corner": "tr",
@@ -38270,101 +38965,105 @@
      "dy": 1
     },
     "anywhere": "/opt/homebrew/bin/CLAUDE",
-    "brainModel": "medium"
+    "brainExplore": "medium"
    },
    "output": {
     "speed": 0.7,
-    "anywhereVision": false,
-    "anywhere": false
-   }
-  },
-  {
-   "input": {
-    "anywhereVision": "Rex_2",
-    "orbPulse": "-1",
-    "claudeVoiceEffort": {},
-    "avatarThrowSound": "api-key"
-   },
-   "output": {
-    "anywhereVision": false,
-    "orbPulse": false
-   }
-  },
-  {
-   "input": {
-    "anywhereMouse": "1,5"
-   },
-   "output": {
-    "anywhereMouse": false
-   }
-  },
-  {
-   "input": {
-    "model": "none",
-    "anywhere": "always",
-    "showOrb": "  1.5 ",
-    "listenMode": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-   },
-   "output": {
-    "model": "none",
+    "anywhereCdp": false,
     "anywhere": false,
+    "brainExplore": false
+   }
+  },
+  {
+   "input": {
+    "anywhereCdp": "Rex_2",
+    "orbPulse": 3,
+    "claudeVoiceStt": {},
+    "orbPulseGrok": "-1",
+    "showOrb": "api-key"
+   },
+   "output": {
+    "anywhereCdp": false,
+    "orbPulse": false,
+    "orbPulseGrok": false,
     "showOrb": false
    }
   },
   {
    "input": {
-    "voiceEngine": "medium",
-    "voiceVolume": "  1.5 ",
-    "webSearch": "high",
-    "unknown3": [
-     "1",
-     2
-    ],
-    "unknown4": "Infinity",
-    "anywhereMouseLeadMs": [
-     1,
-     2
-    ]
-   },
-   "output": {
-    "voiceVolume": 1,
-    "webSearch": false
-   }
-  },
-  {
-   "input": {
-    "claudeVoiceStt": "buddy",
-    "avatarThrow": 1.55
+    "anywhereMouseLeadMs": "1,5"
    },
    "output": {}
   },
   {
    "input": {
-    "anywhereCdp": "/usr/local/bin/claude",
+    "model": "none",
+    "anywhereVision": "always",
+    "showOrb": "  1.5 ",
+    "listenMode": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "output": {
+    "model": "none",
+    "anywhereVision": false,
+    "showOrb": false
+   }
+  },
+  {
+   "input": {
+    "voiceEngine": "high",
+    "voiceVolume": "  1.5 ",
+    "unknown3": [
+     "1",
+     2
+    ],
+    "unknown4": "Infinity",
+    "helperEngine": [
+     1,
+     2
+    ]
+   },
+   "output": {
+    "voiceVolume": 1
+   }
+  },
+  {
+   "input": {
+    "avatar": "buddy",
+    "avatarThrow": "/bin/cl\"aude",
+    "avatarThrowSound": 1.55
+   },
+   "output": {
+    "avatar": "buddy"
+   }
+  },
+  {
+   "input": {
+    "anywhereUnderOrbit": "/usr/local/bin/claude",
     "listenMode": {
      "corner": "br",
      "dx": 0,
      "dy": 10000
     },
-    "orbPulseGrok": 10001,
+    "orbPulseAmount": 10001,
     "autoUpdate": "relative/claude"
    },
    "output": {
-    "anywhereCdp": false,
-    "orbPulseGrok": false,
+    "orbPulseAmount": 0.1,
     "autoUpdate": false
    }
   },
   {
    "input": {
     "claudeVoice": "é+K",
-    "brainClaudePath": 1.55
+    "webSearch": 1.55
    },
-   "output": {}
+   "output": {
+    "webSearch": false
+   }
   },
   {
    "input": {
-    "claudeVoiceModel": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "claudeVoiceEffort": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "halfDuplex": 0.0051,
     "costPerMinute": "//share/claude",
     "model": 10001,
@@ -38379,23 +39078,25 @@
    "input": {
     "listenMode": 1.005,
     "orbPulseAmount": "/Users/x/claude.exe",
-    "anywhereMouseLeadMs": [
+    "helperEngine": [
      1,
      2
     ],
-    "anywhereMouse": 0.5,
+    "anywhereMouseLeadMs": 0.5,
     "announce": "chime"
    },
    "output": {
-    "anywhereMouse": false,
+    "anywhereMouseLeadMs": 1,
     "announce": "chime"
    }
   },
   {
    "input": {
-    "claudeVoiceStt": "none"
+    "avatar": "none"
    },
-   "output": {}
+   "output": {
+    "avatar": "none"
+   }
   },
   {
    "input": {
@@ -38408,7 +39109,7 @@
   },
   {
    "input": {
-    "avatarThrow": 8,
+    "avatarThrowSound": 8,
     "autoUpdate": 1.55,
     "wakeWord": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
    },
@@ -38420,9 +39121,8 @@
   {
    "input": {
     "halfDuplex": "speak",
-    "brainConnection": "  1.5 ",
-    "avatarClickTalk": "Infinity",
-    "brainClaudePath": 10000
+    "brainClaudePath": 10000,
+    "avatarThrow": "Infinity"
    },
    "output": {
     "halfDuplex": false
@@ -38430,12 +39130,13 @@
   },
   {
    "input": {
-    "brainExplore": {
+    "brainExplore": 10,
+    "brainConnection": {
      "corner": "xx",
      "dx": 1,
      "dy": 1
     },
-    "claudeVoice": "/bin/cl\"aude"
+    "claudeVoiceModel": "/bin/cl\"aude"
    },
    "output": {
     "brainExplore": false
@@ -38443,11 +39144,9 @@
   },
   {
    "input": {
-    "anywhereMouse": "parakeet-110m"
+    "anywhereMouseLeadMs": "parakeet-110m"
    },
-   "output": {
-    "anywhereMouse": false
-   }
+   "output": {}
   },
   {
    "input": {
@@ -38469,26 +39168,30 @@
   },
   {
    "input": {
-    "voiceEngine": "abc",
+    "claudeVoice": "abc",
     "claudeVoiceEffort": 1.5,
     "brainClaudePath": "opus",
-    "orbStickAnchor": {
+    "brainEnabled": {
      "corner": "tr",
      "dx": -1,
      "dy": 1
     }
    },
-   "output": {}
+   "output": {
+    "brainEnabled": false
+   }
   },
   {
    "input": {
-    "brainClaudePath": "abc"
+    "webSearch": "abc"
    },
-   "output": {}
+   "output": {
+    "webSearch": false
+   }
   },
   {
    "input": {
-    "voiceEngine": "1,5"
+    "claudeVoice": "1,5"
    },
    "output": {}
   },
@@ -38529,58 +39232,57 @@
   },
   {
    "input": {
-    "announceWake": "high",
+    "wakeOnResults": "high",
     "wakeHotkey": "buddy",
-    "anywhere": " ",
+    "anywhereVision": " ",
     "brainModel": -1,
     "unknown4": "codex"
    },
    "output": {
-    "announceWake": false,
+    "wakeOnResults": false,
     "wakeHotkey": "buddy",
-    "anywhere": false
+    "anywhereVision": false
    }
   },
   {
    "input": {
     "wakeOnResults": "/bin/claude2",
-    "brainConnection": [
+    "brainClaudePath": [
      "1",
      2
     ],
-    "anywhereMouse": 8,
+    "anywhereMouse": "Infinity",
     "unknown3": null,
-    "unknown4": "1,5"
+    "unknown4": "1,5",
+    "anywhereMouseLeadMs": 8
    },
    "output": {
     "wakeOnResults": false,
-    "anywhereMouse": false
+    "anywhereMouse": false,
+    "anywhereMouseLeadMs": 8
    }
   },
   {
    "input": {
-    "halfDuplex": "high",
+    "wakeWord": "high",
     "brainClaudePath": "sonnet",
     "brainModel": "parakeet-110m"
    },
    "output": {
-    "halfDuplex": false
+    "wakeWord": false
    }
   },
   {
    "input": {
-    "anywhereMouseLeadMs": 0.0051,
-    "anywhereVision": "medium",
-    "webSearch": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "wakeWord": {},
-    "orbPulse": {}
+    "helperEngine": 0.0051,
+    "anywhereCdp": "medium",
+    "voiceEngine": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "announce": {},
+    "orbPulseGrok": {}
    },
    "output": {
-    "anywhereMouseLeadMs": 0,
-    "anywhereVision": false,
-    "webSearch": false,
-    "wakeWord": false,
-    "orbPulse": false
+    "anywhereCdp": false,
+    "orbPulseGrok": false
    }
   },
   {
@@ -38591,19 +39293,19 @@
   },
   {
    "input": {
-    "anywhereMouse": "  1.5 ",
+    "anywhereMouseLeadMs": "  1.5 ",
     "unknown1": {}
    },
    "output": {
-    "anywhereMouse": false
+    "anywhereMouseLeadMs": 2
    }
   },
   {
    "input": {
-    "claudeVoiceEffort": 0.005,
+    "claudeVoiceStt": 0.005,
     "brainClaudePath": "high",
     "unknown2": ".5",
-    "avatarThrow": 1,
+    "avatarThrowSound": 1,
     "unknown4": "Infinity",
     "unknown5": {}
    },
@@ -38613,42 +39315,42 @@
    "input": {
     "claudeVoice": "opus",
     "unknown1": "always",
-    "announceWake": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    "wakeOnResults": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
    },
    "output": {
-    "announceWake": false
+    "wakeOnResults": false
    }
   },
   {
    "input": {
-    "brainConnection": 7
+    "brainClaudePath": 7
    },
    "output": {}
   },
   {
    "input": {
     "voice": "0x10",
-    "anywhereCdp": 1.234567,
-    "helperEngine": {
+    "anywhereUnderOrbit": 1.234567,
+    "onboarded": {
      "corner": "bl",
      "dx": "5",
      "dy": 5
     },
-    "anywhereUnderOrbit": {
+    "anywhereMouse": {
      "corner": "tr",
      "dx": -1,
      "dy": 1
     },
-    "voiceEngine": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude"
+    "claudeVoice": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude"
    },
    "output": {
     "voice": "0x10",
-    "anywhereCdp": false
+    "anywhereMouse": false
    }
   },
   {
    "input": {
-    "orbPulseAmount": "//share/claude",
+    "orbStickAnchor": "//share/claude",
     "unknown1": [
      null
     ],
@@ -38659,33 +39361,32 @@
   {
    "input": {
     "halfDuplex": 1.2,
-    "anywhereVision": "opus",
+    "anywhereCdp": "opus",
     "unknown2": []
    },
    "output": {
     "halfDuplex": false,
-    "anywhereVision": false
+    "anywhereCdp": false
    }
   },
   {
    "input": {
-    "anywhereUnderOrbit": "/usr/local/bin/claude",
-    "orbPulseAmount": -0.5
+    "anywhereMouse": "/usr/local/bin/claude",
+    "orbStickAnchor": -0.5
    },
    "output": {
-    "orbPulseAmount": 0.01
+    "anywhereMouse": false
    }
   },
   {
    "input": {
-    "buddySize": "grok",
-    "brainConnection": 0.5,
+    "avatarClickTalk": "grok",
+    "brainConnection": [],
     "orbStickAnchor": "  1.5 ",
     "orbPosition": [
      1,
      2
     ],
-    "brainExplore": [],
     "model": {
      "corner": "xx",
      "dx": 1,
@@ -38696,66 +39397,67 @@
     "orbPosition": [
      1,
      2
-    ],
-    "brainExplore": false
+    ]
    }
   },
   {
    "input": {
-    "announce": "chime"
+    "announceWake": "chime"
    },
    "output": {
-    "announce": "chime"
+    "announceWake": false
    }
   },
   {
    "input": {
     "voiceEngine": "grok",
     "autoUpdate": 1.55,
-    "halfDuplex": "buddy",
+    "wakeWord": "buddy",
     "webSearch": 7
    },
    "output": {
     "voiceEngine": "grok",
     "autoUpdate": false,
-    "halfDuplex": false,
+    "wakeWord": false,
     "webSearch": false
    }
   },
   {
    "input": {
     "claudeVoiceEffort": "grok",
-    "orbStickAnchor": 7,
-    "voiceEngine": "true"
+    "brainEnabled": 7,
+    "claudeVoice": "true"
    },
-   "output": {}
+   "output": {
+    "brainEnabled": false
+   }
   },
   {
    "input": {
-    "anywhereCdp": [
+    "anywhereUnderOrbit": [
      1,
      2,
      3
     ],
     "announce": "é+K",
-    "wakeOnResults": 0.0049,
-    "orbPulse": 7
+    "costPerMinute": 0.0049,
+    "orbPulseGrok": 7
    },
    "output": {
-    "anywhereCdp": false,
-    "wakeOnResults": false,
-    "orbPulse": false
+    "anywhereUnderOrbit": [],
+    "costPerMinute": 0.005,
+    "orbPulseGrok": false
    }
   },
   {
    "input": {
-    "claudeVoiceModel": "abc",
-    "halfDuplex": 1.234567,
+    "claudeVoiceEffort": "abc",
+    "wakeWord": 1.234567,
     "webSearch": "medium",
-    "buddySize": "parakeet-110m"
+    "avatarClickTalk": "parakeet-110m"
    },
    "output": {
-    "halfDuplex": false,
+    "wakeWord": false,
     "webSearch": false
    }
   },
@@ -38768,32 +39470,31 @@
   {
    "input": {
     "orbPulseAmount": 10,
-    "anywhereMouse": {
+    "anywhereMouseLeadMs": {
      "corner": "xx",
      "dx": 1,
      "dy": 1
     }
    },
    "output": {
-    "orbPulseAmount": 0.1,
-    "anywhereMouse": false
+    "orbPulseAmount": 0.1
    }
   },
   {
    "input": {
     "listenMode": "high",
-    "claudeVoiceModel": 1.2,
-    "anywhereMouse": "1e3",
-    "claudeVoiceEffort": {
+    "claudeVoiceEffort": 1.2,
+    "anywhereMouseLeadMs": "1e3",
+    "claudeVoiceStt": {
      "corner": "tl",
      "dx": 1.5,
      "dy": 2.5
     },
     "unknown4": 10000,
-    "claudeVoice": -1
+    "claudeVoiceModel": -1
    },
    "output": {
-    "anywhereMouse": false
+    "anywhereMouseLeadMs": 600
    }
   },
   {
@@ -38802,42 +39503,40 @@
     "unknown1": "/usr/local/bin/claude",
     "unknown2": "api-key",
     "halfDuplex": 7,
-    "anywhereCdp": 1e+21
+    "anywhereUnderOrbit": 1e+21
    },
    "output": {
-    "halfDuplex": false,
-    "anywhereCdp": false
+    "halfDuplex": false
    }
   },
   {
    "input": {
     "listenMode": "",
     "avatar": {},
-    "orbPulse": 1.234567
+    "orbPulse": "+1",
+    "orbPulseGrok": 1.234567
    },
    "output": {
-    "orbPulse": false
+    "orbPulse": false,
+    "orbPulseGrok": false
    }
   },
   {
    "input": {
     "anywhereUnderOrbit": "moonshine",
     "announceWake": "parakeet-v2",
-    "orbPulseAmount": 7
+    "orbStickAnchor": 7
    },
    "output": {
-    "announceWake": false,
-    "orbPulseAmount": 0.1
+    "announceWake": false
    }
   },
   {
    "input": {
-    "orbPulseAmount": 2.5,
-    "avatarThrow": "Command+Alt+G"
+    "orbStickAnchor": 2.5,
+    "avatarThrowSound": "Command+Alt+G"
    },
-   "output": {
-    "orbPulseAmount": 0.1
-   }
+   "output": {}
   },
   {
    "input": {
@@ -38852,22 +39551,21 @@
    "input": {
     "wakeHotkey": "always",
     "unknown1": "grok-voice-latest",
-    "orbStick": "parakeet-v2"
+    "orbPulse": "parakeet-v2"
    },
    "output": {
     "wakeHotkey": "always",
-    "orbStick": false
+    "orbPulse": false
    }
   },
   {
    "input": {
-    "avatar": "grok",
-    "buddySize": "Rex_2",
-    "brainExplore": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "buddySize": "grok",
+    "avatarClickTalk": "Rex_2",
+    "brainConnection": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     "autoUpdate": "medium"
    },
    "output": {
-    "brainExplore": false,
     "autoUpdate": false
    }
   },
@@ -38879,19 +39577,20 @@
   },
   {
    "input": {
-    "anywhereMouse": "/bin/cl\"aude",
-    "avatarThrowSound": "/usr/local/bin/claude"
+    "anywhereMouseLeadMs": "/bin/cl\"aude",
+    "showOrb": "/usr/local/bin/claude"
    },
    "output": {
-    "anywhereMouse": false
+    "showOrb": false
    }
   },
   {
    "input": {
-    "avatarThrowSound": "grok-voice-latest",
+    "showOrb": "grok-voice-latest",
     "announceWake": 1.5
    },
    "output": {
+    "showOrb": false,
     "announceWake": false
    }
   },
@@ -38899,9 +39598,9 @@
    "input": {
     "voiceVolume": "relative/claude",
     "wakeOnResults": "none",
-    "avatarClickTalk": "sonnet",
+    "avatarThrow": "sonnet",
     "listenMode": " ",
-    "claudeVoice": true
+    "claudeVoiceModel": true
    },
    "output": {
     "wakeOnResults": false
@@ -38920,8 +39619,8 @@
   },
   {
    "input": {
-    "helperEngine": "",
-    "avatar": false,
+    "onboarded": "",
+    "buddySize": false,
     "voiceVolume": "claude-code"
    },
    "output": {}
@@ -38936,13 +39635,13 @@
   },
   {
    "input": {
-    "avatarThrow": "none",
-    "announce": "Ctrl Alt",
-    "buddySize": 2,
+    "avatarThrowSound": "none",
+    "announceWake": "Ctrl Alt",
+    "avatarClickTalk": 2,
     "unknown3": 2.5
    },
    "output": {
-    "buddySize": 2
+    "announceWake": false
    }
   },
   {
@@ -38956,20 +39655,20 @@
    "input": {
     "wakeHotkey": "0x10",
     "helperEngine": {},
-    "autoUpdate": [
+    "orbStick": [
      null
     ],
     "unknown3": "EVE"
    },
    "output": {
     "wakeHotkey": "0x10",
-    "autoUpdate": false
+    "orbStick": false
    }
   },
   {
    "input": {
     "unknown0": "codex",
-    "claudeVoice": "/opt/homebrew/bin/CLAUDE",
+    "claudeVoiceModel": "/opt/homebrew/bin/CLAUDE",
     "avatarThrowSound": "-1",
     "wakeWord": 0.0051,
     "costPerMinute": "2",
@@ -38994,8 +39693,8 @@
    "input": {
     "wakeWord": "off",
     "costPerMinute": "\t7\n",
-    "showOrb": 10001,
-    "anywhereMouseLeadMs": -0.5,
+    "anywhere": 10001,
+    "helperEngine": -0.5,
     "wakeOnResults": 1.55,
     "orbPulseGrok": {
      "corner": "xx",
@@ -39006,42 +39705,40 @@
    "output": {
     "wakeWord": false,
     "costPerMinute": 7,
-    "showOrb": false,
-    "anywhereMouseLeadMs": 0,
+    "anywhere": false,
     "wakeOnResults": false,
     "orbPulseGrok": false
    }
   },
   {
    "input": {
-    "wakeOnResults": "Ctrl Alt"
+    "costPerMinute": "Ctrl Alt"
    },
-   "output": {
-    "wakeOnResults": false
-   }
+   "output": {}
   },
   {
    "input": {
     "orbStickAnchor": "Command+Alt+G",
-    "orbStick": "/usr/local/bin/claude",
+    "orbPulse": "/usr/local/bin/claude",
     "webSearch": "0b11",
     "wakeOnResults": false,
-    "helperEngine": "/opt/homebrew/bin/CLAUDE"
+    "onboarded": "/opt/homebrew/bin/CLAUDE"
    },
    "output": {
-    "orbStick": false,
+    "orbPulse": false,
     "webSearch": false,
     "wakeOnResults": false
    }
   },
   {
    "input": {
-    "anywhereUnderOrbit": ".5",
+    "anywhereMouse": ".5",
     "claudeVoiceModel": "always",
-    "showOrb": "/Users/me/.local/bin/claude"
+    "anywhere": "/Users/me/.local/bin/claude"
    },
    "output": {
-    "showOrb": false
+    "anywhereMouse": false,
+    "anywhere": false
    }
   },
   {
@@ -39053,17 +39750,16 @@
   },
   {
    "input": {
-    "webSearch": "medium",
+    "voiceEngine": "medium",
     "speed": 10
    },
    "output": {
-    "webSearch": false,
     "speed": 1.5
    }
   },
   {
    "input": {
-    "helperEngine": "-1",
+    "onboarded": "-1",
     "wakeWord": "  1.5 "
    },
    "output": {
@@ -39073,24 +39769,22 @@
   {
    "input": {
     "claudeVoiceModel": "relative/claude",
-    "claudeVoiceStt": "parakeet-110m",
-    "brainConnection": "chime",
+    "avatar": "parakeet-110m",
+    "brainClaudePath": "chime",
     "orbPulseAmount": {
      "corner": "xx",
      "dx": 1,
      "dy": 1
     },
-    "anywhereUnderOrbit": [
+    "anywhereMouse": [
      1,
      2,
      3
     ],
-    "anywhereCdp": "EVE"
+    "anywhereUnderOrbit": "EVE"
    },
    "output": {
-    "claudeVoiceStt": "parakeet-110m",
-    "anywhereUnderOrbit": [],
-    "anywhereCdp": false
+    "anywhereMouse": false
    }
   },
   {
@@ -39098,55 +39792,54 @@
     "listenMode": 1.5,
     "model": "5.",
     "costPerMinute": "1,5",
-    "brainEnabled": "/Users/me/.local/bin/claude",
-    "halfDuplex": 1.234567
+    "brainModel": "/Users/me/.local/bin/claude",
+    "wakeWord": 1.234567
    },
    "output": {
     "model": "5.",
-    "brainEnabled": false,
-    "halfDuplex": false
+    "wakeWord": false
    }
   },
   {
    "input": {
-    "anywhereVision": "auto",
+    "anywhereCdp": "auto",
     "buddySize": 3,
     "claudeVoiceStt": "claude",
-    "anywhereMouseLeadMs": {
+    "helperEngine": {
      "corner": "tr",
      "dx": -1,
      "dy": 1
     },
     "unknown4": "grok",
-    "anywhereMouse": false
+    "anywhereMouseLeadMs": false
    },
    "output": {
-    "anywhereVision": false,
-    "buddySize": 3,
-    "anywhereMouse": false
+    "anywhereCdp": false,
+    "buddySize": 3
    }
   },
   {
    "input": {
-    "avatarThrowSound": 1,
+    "showOrb": 1,
     "brainExplore": "parakeet-110m",
-    "anywhereVision": 10000,
+    "anywhereCdp": 10000,
     "claudeVoiceEffort": "codex",
     "avatar": "grok-voice-latest"
    },
    "output": {
+    "showOrb": false,
     "brainExplore": false,
-    "anywhereVision": false
+    "anywhereCdp": false
    }
   },
   {
    "input": {
-    "claudeVoiceStt": "Command+Alt+G",
+    "avatar": "Command+Alt+G",
     "orbPulseAmount": "0b11",
     "wakeOnResults": "false",
-    "webSearch": 1.5,
+    "voiceEngine": 1.5,
     "unknown4": "  1.5 ",
-    "brainExplore": {
+    "brainConnection": {
      "corner": "br",
      "dx": 0,
      "dy": 10000
@@ -39154,119 +39847,117 @@
    },
    "output": {
     "orbPulseAmount": 0.1,
-    "wakeOnResults": false,
-    "webSearch": false,
-    "brainExplore": false
-   }
-  },
-  {
-   "input": {
-    "orbPulseGrok": 1,
-    "orbStickAnchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "anywhereUnderOrbit": 1.5
-   },
-   "output": {
-    "orbPulseGrok": false
-   }
-  },
-  {
-   "input": {
-    "wakeOnResults": "2",
-    "claudeVoiceEffort": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude",
-    "unknown2": 1e+21
-   },
-   "output": {
     "wakeOnResults": false
    }
   },
   {
    "input": {
-    "claudeVoiceModel": [
-     1,
-     2
-    ],
-    "halfDuplex": true,
-    "model": "true"
+    "orbPulseGrok": 1,
+    "brainEnabled": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "anywhereMouse": 1.5
    },
    "output": {
-    "halfDuplex": true,
-    "model": "true"
+    "orbPulseGrok": false,
+    "brainEnabled": false,
+    "anywhereMouse": false
    }
   },
   {
    "input": {
-    "anywhereUnderOrbit": {
+    "costPerMinute": "2",
+    "claudeVoiceStt": "/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/d/claude",
+    "unknown2": 1e+21
+   },
+   "output": {
+    "costPerMinute": 2
+   }
+  },
+  {
+   "input": {
+    "claudeVoiceEffort": [
+     1,
+     2
+    ],
+    "halfDuplex": true,
+    "orbPosition": "true"
+   },
+   "output": {
+    "halfDuplex": true
+   }
+  },
+  {
+   "input": {
+    "anywhereMouse": {
      "corner": "tr",
      "dx": -1,
      "dy": 1
     },
     "voiceVolume": "\t7\n",
-    "claudeVoice": "\t7\n",
-    "showOrb": "grok"
+    "claudeVoiceModel": "\t7\n",
+    "anywhere": "grok"
    },
    "output": {
+    "anywhereMouse": false,
     "voiceVolume": 1,
-    "claudeVoice": 7,
-    "showOrb": false
+    "anywhere": false
    }
   },
   {
    "input": {
     "voice": "api-key",
-    "announce": -0.5,
+    "announceWake": -0.5,
     "unknown2": "auto",
     "unknown3": 0,
-    "avatar": "/bin/claude2"
+    "buddySize": "/bin/claude2"
    },
    "output": {
-    "voice": "api-key"
+    "voice": "api-key",
+    "announceWake": false
    }
   },
   {
    "input": {
     "wakeOnResults": true,
-    "brainEnabled": 10001,
-    "claudeVoiceModel": 0.0051
+    "brainModel": 10001,
+    "claudeVoiceEffort": 0.0051
    },
    "output": {
-    "wakeOnResults": true,
-    "brainEnabled": false
+    "wakeOnResults": true
    }
   },
   {
    "input": {
-    "avatar": "qubit",
-    "halfDuplex": "low",
-    "anywhereUnderOrbit": "  1.5 ",
-    "claudeVoiceStt": 0.004
+    "buddySize": "qubit",
+    "wakeWord": "low",
+    "anywhereMouse": "  1.5 ",
+    "avatar": 0.004
    },
    "output": {
-    "avatar": "qubit",
-    "halfDuplex": false
+    "wakeWord": false,
+    "anywhereMouse": false
    }
   },
   {
    "input": {
-    "showOrb": "codex",
+    "anywhere": "codex",
     "voiceEngine": 0.5,
-    "claudeVoiceModel": "  1.5 ",
+    "claudeVoiceEffort": "  1.5 ",
     "announceWake": "false",
-    "brainExplore": [
+    "brainConnection": [
      "1",
      2
     ]
    },
    "output": {
-    "showOrb": false,
-    "announceWake": false,
-    "brainExplore": false
+    "anywhere": false,
+    "announceWake": false
    }
   },
   {
    "input": {
     "model": "false",
     "voice": "/bin/cl\"aude",
-    "helperEngine": "2"
+    "onboarded": "2"
    },
    "output": {
     "model": "false"
@@ -39275,11 +39966,11 @@
   {
    "input": {
     "voiceVolume": "Command+Alt+G",
-    "claudeVoiceModel": true,
-    "anywhereMouse": 0.004
+    "claudeVoiceEffort": true,
+    "anywhereMouseLeadMs": 0.004
    },
    "output": {
-    "anywhereMouse": false
+    "anywhereMouseLeadMs": 0
    }
   },
   {
@@ -39288,7 +39979,7 @@
     "unknown1": ".5",
     "wakeHotkey": 1.5,
     "voice": "1e3",
-    "claudeVoiceModel": [
+    "claudeVoiceEffort": [
      1.6,
      2.4
     ],
@@ -39301,17 +39992,16 @@
   },
   {
    "input": {
-    "brainEnabled": 1,
+    "brainModel": 1,
     "costPerMinute": 1.234567
    },
    "output": {
-    "brainEnabled": false,
     "costPerMinute": 1.235
    }
   },
   {
    "input": {
-    "avatarThrow": 599.5,
+    "avatarThrowSound": 599.5,
     "unknown1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
    },
    "output": {}
@@ -39319,25 +40009,28 @@
   {
    "input": {
     "orbPosition": "bad voice",
-    "avatarThrowSound": 1e+21
+    "showOrb": 1e+21
    },
-   "output": {}
+   "output": {
+    "showOrb": false
+   }
   },
   {
    "input": {
-    "anywhereUnderOrbit": "é+K",
-    "halfDuplex": "  1.5 ",
+    "anywhereMouse": "é+K",
+    "wakeWord": "  1.5 ",
     "voiceVolume": "codex"
    },
    "output": {
-    "halfDuplex": false
+    "anywhereMouse": false,
+    "wakeWord": false
    }
   },
   {
    "input": {
     "halfDuplex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "model": "buddy",
-    "claudeVoice": 1.5,
+    "claudeVoiceModel": 1.5,
     "webSearch": "opus"
    },
    "output": {
@@ -39348,8 +40041,8 @@
   },
   {
    "input": {
-    "buddySize": 1.2,
-    "avatarThrow": 1
+    "avatarClickTalk": 1.2,
+    "avatarThrowSound": 1
    },
    "output": {}
   },
@@ -39360,41 +40053,34 @@
      2
     ],
     "unknown1": "grok",
-    "showOrb": "/Users/x/claude.exe",
+    "anywhere": "/Users/x/claude.exe",
     "avatarClickTalk": "  1.5 "
    },
    "output": {
     "brainExplore": false,
-    "showOrb": false
+    "anywhere": false
    }
   },
   {
    "input": {
-    "orbStick": 599.5,
-    "unknown1": "/usr/local/bin/claude",
-    "autoUpdate": "/usr/local/bin/claude"
+    "orbStick": "/usr/local/bin/claude",
+    "unknown1": "/usr/local/bin/claude"
    },
    "output": {
-    "orbStick": false,
-    "autoUpdate": false
+    "orbStick": false
    }
   },
   {
    "input": {
-    "avatarThrowSound": 1,
-    "anywhere": "medium",
-    "webSearch": {
-     "corner": "br",
-     "dx": 0,
-     "dy": 10000
-    },
+    "showOrb": 1,
+    "anywhereVision": "medium",
     "voiceEngine": 1.234567,
     "avatarClickTalk": "/bin/claude2",
     "claudeVoiceEffort": "opus"
    },
    "output": {
-    "anywhere": false,
-    "webSearch": false
+    "showOrb": false,
+    "anywhereVision": false
    }
   },
   {
@@ -39405,18 +40091,18 @@
   },
   {
    "input": {
-    "anywhereVision": -1,
+    "anywhereCdp": -1,
     "orbStick": "Rex_2",
     "unknown2": 3
    },
    "output": {
-    "anywhereVision": false,
+    "anywhereCdp": false,
     "orbStick": false
    }
   },
   {
    "input": {
-    "helperEngine": [
+    "onboarded": [
      1,
      2,
      3
@@ -39431,42 +40117,36 @@
   },
   {
    "input": {
-    "anywhereUnderOrbit": [
+    "anywhereMouse": [
      "1",
      2
     ]
    },
    "output": {
-    "anywhereUnderOrbit": [
-     "1"
-    ]
+    "anywhereMouse": false
    }
   },
   {
    "input": {
-    "brainExplore": {
+    "brainConnection": {
      "corner": "tr",
      "dx": -1,
      "dy": 1
     },
     "unknown1": "/Users/x/claude.exe"
    },
-   "output": {
-    "brainExplore": false
-   }
+   "output": {}
   },
   {
    "input": {
-    "brainEnabled": 8,
+    "brainModel": 8,
     "orbPulseGrok": "Command+Alt+G",
-    "anywhereCdp": "none",
-    "claudeVoice": "off",
-    "claudeVoiceModel": "-1"
+    "anywhereUnderOrbit": "none",
+    "claudeVoiceModel": "off",
+    "claudeVoiceEffort": "-1"
    },
    "output": {
-    "brainEnabled": false,
-    "orbPulseGrok": false,
-    "anywhereCdp": false
+    "orbPulseGrok": false
    }
   },
   {
@@ -39479,41 +40159,39 @@
   },
   {
    "input": {
-    "buddySize": 3.7
+    "avatarClickTalk": 3.7
    },
    "output": {}
   },
   {
    "input": {
-    "wakeWord": "relative/claude",
-    "claudeVoice": {
+    "announce": "relative/claude",
+    "claudeVoiceModel": {
      "corner": "tl",
      "dx": 1.5,
      "dy": 2.5
     },
-    "wakeHotkey": ".5",
+    "listenMode": ".5",
     "unknown3": 0
    },
-   "output": {
-    "wakeWord": false,
-    "wakeHotkey": ".5"
-   }
+   "output": {}
   },
   {
    "input": {
     "wakeOnResults": "/Users/x/claude.exe",
-    "helperEngine": "true",
+    "onboarded": "true",
     "speed": "haiku",
     "announce": "grok-voice-latest"
    },
    "output": {
-    "wakeOnResults": false
+    "wakeOnResults": false,
+    "onboarded": true
    }
   },
   {
    "input": {
-    "claudeVoiceModel": "EVE",
-    "webSearch": -0.5,
+    "claudeVoiceEffort": "EVE",
+    "voiceEngine": -0.5,
     "orbPulse": "true",
     "autoUpdate": "Control+Alt+K",
     "orbPulseGrok": [
@@ -39528,7 +40206,6 @@
     ]
    },
    "output": {
-    "webSearch": false,
     "orbPulse": true,
     "autoUpdate": false,
     "orbPulseGrok": false
@@ -39547,33 +40224,29 @@
    "input": {
     "claudeVoiceStt": "1e3",
     "voiceVolume": "/bin/cl\"aude",
-    "brainExplore": ""
+    "brainConnection": ""
    },
-   "output": {
-    "brainExplore": false
-   }
+   "output": {}
   },
   {
    "input": {
     "brainEnabled": -1,
     "speed": "/bin/cl\"aude",
-    "avatarThrowSound": 1e+21
+    "showOrb": 1e+21
    },
    "output": {
-    "brainEnabled": false
+    "brainEnabled": false,
+    "showOrb": false
    }
   },
   {
    "input": {
     "unknown0": 0.0049,
     "unknown1": -0.5,
-    "anywhereMouse": "/bin/claude2",
-    "brainEnabled": "relative/claude"
+    "anywhereMouseLeadMs": "/bin/claude2",
+    "brainModel": "relative/claude"
    },
-   "output": {
-    "anywhereMouse": false,
-    "brainEnabled": false
-   }
+   "output": {}
   },
   {
    "input": {
@@ -39585,7 +40258,7 @@
    "input": {
     "anywhere": "eve",
     "announceWake": "é+K",
-    "avatarClickTalk": "Rex_2",
+    "avatarThrow": "Rex_2",
     "brainExplore": "fable"
    },
    "output": {
@@ -39597,13 +40270,13 @@
   {
    "input": {
     "voiceEngine": 601,
-    "claudeVoiceEffort": 0.0049
+    "claudeVoiceStt": 0.0049
    },
    "output": {}
   },
   {
    "input": {
-    "claudeVoiceEffort": "claude-code"
+    "claudeVoiceStt": "claude-code"
    },
    "output": {}
   },
@@ -39611,18 +40284,17 @@
    "input": {
     "voice": "/opt/homebrew/bin/CLAUDE",
     "anywhereMouse": 0.0049,
-    "anywhereMouseLeadMs": 10001,
-    "claudeVoiceStt": 0.005
+    "helperEngine": 10001,
+    "avatar": 0.005
    },
    "output": {
-    "anywhereMouse": false,
-    "anywhereMouseLeadMs": 600
+    "anywhereMouse": false
    }
   },
   {
    "input": {
     "model": "opus",
-    "claudeVoiceModel": "off"
+    "claudeVoiceEffort": "off"
    },
    "output": {
     "model": "opus"
@@ -39630,21 +40302,21 @@
   },
   {
    "input": {
-    "avatarClickTalk": "api-key",
-    "showOrb": "  1.5 ",
+    "avatarThrow": "api-key",
+    "anywhere": "  1.5 ",
     "brainEnabled": "moonshine",
     "orbPosition": "api-key"
    },
    "output": {
-    "showOrb": false,
+    "anywhere": false,
     "brainEnabled": false
    }
   },
   {
    "input": {
-    "helperEngine": "/bin/cl\"aude",
+    "onboarded": "/bin/cl\"aude",
     "claudeVoice": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "avatar": -0.5
+    "buddySize": -0.5
    },
    "output": {}
   },
@@ -39660,7 +40332,7 @@
   },
   {
    "input": {
-    "brainConnection": 0.5
+    "brainClaudePath": 0.5
    },
    "output": {}
   },
@@ -39721,7 +40393,8 @@
     "anywhereUnderOrbit": [],
     "anywhereMouse": true,
     "anywhereMouseLeadMs": 220,
-    "helperEngine": "claude-code"
+    "helperEngine": "claude-code",
+    "onboarded": true
    },
    "afterLoad": "{\n  \"voiceEngine\": \"claude\"\n}",
    "afterChange": "{\n  \"speed\": 1.3,\n  \"voiceEngine\": \"claude\"\n}",
@@ -39774,7 +40447,8 @@
     "anywhereUnderOrbit": [],
     "anywhereMouse": true,
     "anywhereMouseLeadMs": 220,
-    "helperEngine": "claude-code"
+    "helperEngine": "claude-code",
+    "onboarded": true
    },
    "afterLoad": null,
    "afterChange": "{\n  \"speed\": 1.3,\n  \"voiceEngine\": \"grok\"\n}",
@@ -39830,7 +40504,8 @@
     "anywhereUnderOrbit": [],
     "anywhereMouse": true,
     "anywhereMouseLeadMs": 220,
-    "helperEngine": "claude-code"
+    "helperEngine": "claude-code",
+    "onboarded": true
    },
    "afterLoad": "{\"voice\":\"eve\",\"speed\":1.2}",
    "afterChange": "{\n  \"speed\": 1.3,\n  \"voiceEngine\": \"grok\"\n}",
@@ -39883,7 +40558,8 @@
     "anywhereUnderOrbit": [],
     "anywhereMouse": true,
     "anywhereMouseLeadMs": 220,
-    "helperEngine": "claude-code"
+    "helperEngine": "claude-code",
+    "onboarded": true
    },
    "afterLoad": "{}",
    "afterChange": "{\n  \"speed\": 1.3,\n  \"voiceEngine\": \"grok\"\n}",
@@ -39938,7 +40614,8 @@
     "anywhereUnderOrbit": [],
     "anywhereMouse": true,
     "anywhereMouseLeadMs": 220,
-    "helperEngine": "claude-code"
+    "helperEngine": "claude-code",
+    "onboarded": true
    },
    "afterLoad": "{\"avatar\":\"qubit\"}",
    "afterChange": "{\n  \"speed\": 1.3,\n  \"voiceEngine\": \"grok\",\n  \"avatar\": \"qubit\"\n}",
@@ -39993,7 +40670,8 @@
     "anywhereUnderOrbit": [],
     "anywhereMouse": true,
     "anywhereMouseLeadMs": 220,
-    "helperEngine": "claude-code"
+    "helperEngine": "claude-code",
+    "onboarded": true
    },
    "afterLoad": "{\"voiceEngine\":\"claude\"}",
    "afterChange": "{\n  \"speed\": 1.3,\n  \"voiceEngine\": \"claude\"\n}",
@@ -40048,7 +40726,8 @@
     "anywhereUnderOrbit": [],
     "anywhereMouse": true,
     "anywhereMouseLeadMs": 220,
-    "helperEngine": "claude-code"
+    "helperEngine": "claude-code",
+    "onboarded": true
    },
    "afterLoad": "{\"voiceEngine\":\"grok\"}",
    "afterChange": "{\n  \"speed\": 1.3,\n  \"voiceEngine\": \"grok\"\n}",
@@ -40103,7 +40782,8 @@
     "anywhereUnderOrbit": [],
     "anywhereMouse": true,
     "anywhereMouseLeadMs": 220,
-    "helperEngine": "claude-code"
+    "helperEngine": "claude-code",
+    "onboarded": true
    },
    "afterLoad": "{\"voiceEngine\":\"gpt\"}",
    "afterChange": "{\n  \"speed\": 1.3,\n  \"voiceEngine\": \"grok\"\n}",
@@ -40156,7 +40836,8 @@
     "anywhereUnderOrbit": [],
     "anywhereMouse": true,
     "anywhereMouseLeadMs": 220,
-    "helperEngine": "claude-code"
+    "helperEngine": "claude-code",
+    "onboarded": true
    },
    "afterLoad": "{\"voiceEngine\": 5}",
    "afterChange": "{\n  \"speed\": 1.3,\n  \"voiceEngine\": \"grok\"\n}",
@@ -40209,7 +40890,8 @@
     "anywhereUnderOrbit": [],
     "anywhereMouse": true,
     "anywhereMouseLeadMs": 220,
-    "helperEngine": "claude-code"
+    "helperEngine": "claude-code",
+    "onboarded": true
    },
    "afterLoad": "{nope",
    "afterChange": "{\n  \"speed\": 1.3,\n  \"voiceEngine\": \"grok\"\n}",
@@ -40264,7 +40946,8 @@
     "anywhereUnderOrbit": [],
     "anywhereMouse": true,
     "anywhereMouseLeadMs": 220,
-    "helperEngine": "claude-code"
+    "helperEngine": "claude-code",
+    "onboarded": true
    },
    "afterLoad": "{\"buddy\":false}",
    "afterChange": "{\n  \"speed\": 1.3,\n  \"voiceEngine\": \"grok\",\n  \"avatar\": \"none\"\n}",

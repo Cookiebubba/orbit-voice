@@ -215,7 +215,7 @@ public final class EngineConfig: @unchecked Sendable {
         if ["moonshine", "parakeet-110m", "parakeet-v2"].contains(val.stringValue ?? "\u{0}") { out[k] = val }
       case "avatar":
         if avatars.contains(val.stringValue ?? "\u{0}") { out[k] = val }
-      case "avatarClickTalk", "avatarThrow", "avatarThrowSound":
+      case "avatarClickTalk", "avatarThrow", "avatarThrowSound", "onboarded":
         // Only a real yes or no (true/false, or their strings): anything else is ignored.
         if case .bool = v { out[k] = val } else if v == "true" || v == "false" { out[k] = val }
       case "buddySize":

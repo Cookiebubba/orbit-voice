@@ -110,6 +110,9 @@ public enum SettingsSchema {
     SettingSpec("anywhereMouse", .bool, true, .anywhere, "Show Orbit's mouse"),
     SettingSpec("anywhereMouseLeadMs", .number(min: 0, max: 600, places: 0), 220, .hidden, "Mouse lead (ms)"),
     SettingSpec("helperEngine", .choice(["claude-code", "codex"]), "claude-code", .hidden, "Helper engine"),
+    // src/config.js's: the Windows app's first-run onboarding has been through. Orbit Native keeps its
+    // own (onboarding.json); the setting is here so its settings are config.js's, key for key.
+    SettingSpec("onboarded", .strictBool, true, .hidden, "Onboarded"),
   ]
 
   public static let byKey: [String: SettingSpec] = Dictionary(uniqueKeysWithValues: specs.map { ($0.key, $0) })
