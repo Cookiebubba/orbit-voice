@@ -338,7 +338,9 @@ public final class VoiceController: ObservableObject {
       audio.startCapture { [weak self] r in
         guard let self else { return }
         switch r {
-        case .success: self.session.micOpened()
+        case .success:
+          self.session.micOpened()
+          self.audio.logOutput() // (where this call's voice plays, for the log)
         case .failure(let e): self.session.micFailed(e)
         }
       }

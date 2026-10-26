@@ -10,6 +10,7 @@
 //                         (or "silence"): a fake mic that starts silent. The real mic is never
 //                         touched, so no microphone permission is needed.
 import AVFoundation
+import CoreAudio
 import Foundation
 import OrbitKit
 
@@ -53,6 +54,8 @@ public final class AudioIO {
   public var onFrame: ([Int16]) -> Void = { _ in }
   /** The output was reset (device change): scheduled audio is gone. */
   public var onOutputLost: () -> Void = {}
+  /** Where the voice plays and when that changes (device names only), for the app's log. */
+  public var log: (String) -> Void = { _ in }
   /**
    * A second listener on the same microphone ("Hey Orbit", while the call is off or asleep): gets the
    * same 24 kHz frames, on the main thread, whether or not a call has the mic open.
@@ -93,6 +96,66 @@ public final class AudioIO {
     configObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
       MainActor.assumeIsolated { self?.configurationChanged() }
     }
+    if !config.muteOutput { followDefaultOutput() }
+  }
+
+  // MARK: - which output the voice plays on
+
+  /**
+   * The Mac's default output changed (headphones in, AirPods, a display, a choice in Control
+   * Center): the voice follows it. With echo cancellation on, the engine stays on the device it
+   * started with, so it's restarted as for a device change. (The preview in Settings always plays
+   * on the default output: a call that didn't follow it played where nobody was listening.)
+   */
+  private func followDefaultOutput() {
+    var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+      DispatchQueue.main.async { MainActor.assumeIsolated { self?.defaultOutputChanged() } }
+    }
+    AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &addr, DispatchQueue.main, block)
+  }
+
+  private func defaultOutputChanged() {
+    log("default output is now \(Self.deviceName(Self.defaultOutputDevice))")
+    guard graphReady, engine.isRunning else { return }
+    log("the voice moves to it")
+    engine.stop()
+    configurationChanged()
+  }
+
+  static var defaultOutputDevice: AudioDeviceID {
+    var id = AudioDeviceID(0)
+    var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+    var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &id)
+    return id
+  }
+
+  static func deviceName(_ id: AudioDeviceID) -> String {
+    guard id != 0 else { return "none" }
+    var name: Unmanaged<CFString>?
+    var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+    var addr = AudioObjectPropertyAddress(mSelector: kAudioObjectPropertyName, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &name) == noErr, let n = name?.takeRetainedValue() else { return "device \(id)" }
+    return n as String
+  }
+
+  /** The device the engine's output really plays on (with echo cancellation, possibly not the default). */
+  var engineOutputDevice: AudioDeviceID? {
+    guard let unit = engine.outputNode.audioUnit else { return nil }
+    var id = AudioDeviceID(0)
+    var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+    guard AudioUnitGetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &id, &size) == noErr else { return nil }
+    return id
+  }
+
+  /** "on <device> (the default: <device>), echo cancellation on|off", for the log at the start of a call. */
+  public var outputDescription: String {
+    let def = Self.defaultOutputDevice
+    let cur = engineOutputDevice
+    let on = cur.map { Self.deviceName($0) } ?? "the default output"
+    let same = cur == nil || cur == def
+    return "voice plays on \(on)\(same ? "" : " (the default output is \(Self.deviceName(def)))"), echo cancellation \(engine.inputNode.isVoiceProcessingEnabled ? "on" : "off")"
   }
 
   /** "running", or why not, for ui.bye. */
@@ -128,6 +191,11 @@ public final class AudioIO {
   /** A call is starting: get the output ready so the first chunk isn't late. */
   public func prepareOutput() {
     if !config.muteOutput { ensureRunning() }
+  }
+
+  /** Once per call, once its mic is open: where the voice will play (the log). */
+  public func logOutput() {
+    if !config.muteOutput { log(outputDescription) }
   }
 
   /** The call ended: let the device go after a moment (a chime may still be playing). */
@@ -322,6 +390,7 @@ public final class AudioIO {
     } else if engine.attachedNodes.contains(player) && (capturing || player.isPlaying) {
       ensureRunning()
     }
+    if engine.isRunning { log("audio device changed: \(outputDescription)") }
     onOutputLost()
   }
 }

@@ -124,6 +124,7 @@ extension AppDelegate {
   func startVoiceAndOverlays(_ e: BridgeEndpoints) {
     // The test switches (fake mic, muted output) only in a test build; a release always uses the real ones.
     let io = AudioIO(config: config.testing ? .fromEnvironment() : AudioIO.Config())
+    io.log = { [weak self] m in self?.log.info("audio", m) }
     let v = VoiceController(endpoints: e, audio: io)
     let fakeHotkey = config.testing && ParityDriver.config(info: info) != nil
     let hk = ShellHotkey(accelerator: HotkeyAccelerator.defaultAccelerator, fake: fakeHotkey)
