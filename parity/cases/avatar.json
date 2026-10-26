@@ -766,15 +766,82 @@
     {
      "do": "state",
      "expect": {
-      "avatars.0.figure": {
-       "$inside": "${q.host.frame}"
-      },
       "avatars": {
        "$len": 1
       }
      }
+    },
+    {
+     "do": "save",
+     "from": "state",
+     "path": "avatars.0.figure",
+     "as": "g"
+    },
+    {
+     "do": "calc",
+     "as": "half",
+     "expr": "${g.h} / 2.48"
+    },
+    {
+     "do": "calc",
+     "as": "gl",
+     "expr": "${g.x} + ${g.w} / 2 - ${half}"
+    },
+    {
+     "do": "calc",
+     "as": "gr",
+     "expr": "${g.x} + ${g.w} / 2 + ${half}"
+    },
+    {
+     "do": "calc",
+     "as": "gt",
+     "expr": "${g.y} + ${g.h} / 2 - ${half}"
+    },
+    {
+     "do": "calc",
+     "as": "gb",
+     "expr": "${g.y} + ${g.h} / 2 + ${half}"
+    },
+    {
+     "do": "calc",
+     "as": "hr",
+     "expr": "${q.host.frame.x} + ${q.host.frame.w}"
+    },
+    {
+     "do": "calc",
+     "as": "hb",
+     "expr": "${q.host.frame.y} + ${q.host.frame.h}"
+    },
+    {
+     "do": "check",
+     "value": "${gl}",
+     "expect": {
+      "$gte": "${q.host.frame.x}"
+     }
+    },
+    {
+     "do": "check",
+     "value": "${gt}",
+     "expect": {
+      "$gte": "${q.host.frame.y}"
+     }
+    },
+    {
+     "do": "check",
+     "value": "${gr}",
+     "expect": {
+      "$lte": "${hr}"
+     }
+    },
+    {
+     "do": "check",
+     "value": "${gb}",
+     "expect": {
+      "$lte": "${hb}"
+     }
     }
-   ]
+   ],
+   "about": "Inside means his drawn body (half a side from his centre), not his hit area, which reaches a little past it."
   },
   {
    "id": "avatar.throw.gentle-no-wheee",
@@ -1431,7 +1498,11 @@
       }
      }
     }
-   ]
+   ],
+   "env": {
+    "ORBIT_TEST_CLAUDE_PID": "1"
+   },
+   "about": "Only a process with no Claude window counts as Claude here (pid 1, launchd), so a real Claude app open on the test Mac is never looked at and the case means what it says."
   },
   {
    "id": "avatar.art-rules",

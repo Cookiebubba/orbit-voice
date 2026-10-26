@@ -419,10 +419,15 @@ public final class Overlays {
 
   public func parityOrb() -> ParityWindow { orb?.parity ?? ParityWindow(visible: false, frame: nil, view: "orb") }
 
+  /**
+   * Claude's window, and its prompt box and Send as Qubit stands on them: the home avatar's own
+   * (the rounded box you see, padded out from the text field the helper reports), on screen, as the
+   * Electron driver reports them. Nothing while no home avatar lives on this window.
+   */
   public func parityClaude() -> ParityClaude {
     guard claude.found else { return ParityClaude(found: false) }
-    let b = lastBox?.hwnd == claude.hwnd ? lastBox : nil
-    return ParityClaude(found: true, pid: pidOf(window: claude.hwnd), frame: claude.rect, box: b?.rect, send: b?.send)
+    let snap = lastBox?.hwnd == claude.hwnd ? home?.snapshot : nil
+    return ParityClaude(found: true, pid: pidOf(window: claude.hwnd), frame: claude.rect, box: snap?.boxOnScreen, send: snap?.sendOnScreen)
   }
 
   /** A synthetic mouse event delivered to that avatar's page only (never to the system). */

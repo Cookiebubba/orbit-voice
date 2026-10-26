@@ -102,6 +102,12 @@ final class AvatarModelTests: XCTestCase {
     XCTAssertEqual(st["box"], box.rectJSON)
     XCTAssertEqual(st["send"], AvatarGeometry.sendInStrip(send, rawWin: host, host: host, strip: strip)!.rectJSON)
     XCTAssertEqual(st["boxKnown"], true)
+    // On screen (the parity driver's claude.box): the box he stands on, the rounded box you see,
+    // padded 14 pt above the text field the helper reports, not the text field itself.
+    let sn = a.snapshot
+    XCTAssertEqual(sn.boxOnScreen, Rect(x: strip.x + box.x, y: strip.y + box.y, w: box.w, h: box.h))
+    XCTAssertEqual(sn.boxOnScreen?.y, raw.y - AvatarGeometry.boxPadTop)
+    XCTAssertEqual(sn.sendOnScreen, Rect(x: 950, y: 765, w: 30, h: 30))
     // The box grows (no Send in this report): Send keeps its place from the box's right end and bottom.
     a.onBoxRect(BoxReport(hwnd: 77, rect: Rect(x: 400, y: 730, w: 600, h: 70), win: host))
     XCTAssertEqual(w.last("buddy:state")?["send"], AvatarGeometry.sendInStrip(send, rawWin: host, host: host, strip: strip)!.rectJSON)

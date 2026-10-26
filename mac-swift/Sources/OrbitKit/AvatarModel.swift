@@ -600,6 +600,13 @@ public final class AvatarModel: AvatarHandle {
     public var leaving: Bool
     public var box: Rect?
     public var send: Rect?
+    /**
+     * The prompt box as he stands on it (the rounded box you see, padded out from the text field
+     * the helper reports) and Send, on screen: the strip's own rects moved by the strip's origin,
+     * as the Electron driver reports `claude.box` and `claude.send`. nil while he floats free.
+     */
+    public var boxOnScreen: Rect? = nil
+    public var sendOnScreen: Rect? = nil
   }
 
   public var snapshot: Snapshot {
@@ -610,7 +617,11 @@ public final class AvatarModel: AvatarHandle {
     // Lifted, the page reports his rect in the lifted window's px: no surface to compare with.
     let on = visible ? AvatarGeometry.standingOn(kind: kind.rawValue, hit: hit, stripHeight: stripH, box: lastBox, size: scale, lifted: lifted != nil) : nil
     let asleep = voice["phase"]?.stringValue == "off" || voice["asleep"]?.boolValue == true
+    let strip = stripBounds
+    let placed = !free && win != nil
+    let onScreen = { (r: Rect?) -> Rect? in r.flatMap { placed ? Rect(x: strip.x + $0.x, y: strip.y + $0.y, w: $0.w, h: $0.h) : nil } }
     return Snapshot(visible: visible, frame: f, host: free ? nil : host, hostHwnd: hostHwnd, figure: figure, standingOn: on, lifted: lifted != nil,
-                    asleep: asleep, takesMouse: hover.isTaking, leaving: leaving, box: lastBox, send: lastSend)
+                    asleep: asleep, takesMouse: hover.isTaking, leaving: leaving, box: lastBox, send: lastSend,
+                    boxOnScreen: onScreen(lastBox), sendOnScreen: onScreen(lastSend))
   }
 }

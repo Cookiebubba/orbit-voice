@@ -62,6 +62,8 @@ A snapshot of everything the cases look at. Frames are screen points, top-left o
     "orb":    { "visible": false, "frame": {...} }
   },
   "claude": { "found": true, "pid": 456, "frame": {...}, "box": {...} | null, "send": {...} | null },
+             // box/send: the prompt box and Send as the home avatar stands on them (the rounded box you
+             // see, padded out from the text field the helper reports), on screen; null without one
   "avatars": [
     { "id": "home", "kind": "qubit" | "buddy", "role": "home" | "guest",
       "visible": true, "frame": {...},            // the overlay window
