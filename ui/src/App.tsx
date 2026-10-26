@@ -338,7 +338,7 @@ export default function App() {
         </div>
       </div>
 
-      {desktop && isMac && view === "main" && <MacPermissionsBanner />}
+      {desktop && isMac && screen === "main" && <MacPermissionsBanner />}
       {screen === "settings" ? (
         <Settings
           config={app.config}

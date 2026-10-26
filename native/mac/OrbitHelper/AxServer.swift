@@ -86,6 +86,18 @@ final class AxServer {
     return yes
   }
 
+  /** Chromium's page tree for this window, built on request: wait (up to about 3 s) until it shows. */
+  private func waitForWebTree(_ el: AXUIElement) {
+    func hasPage(_ e: AXUIElement, _ depth: Int) -> Bool {
+      if depth > 12 { return false }
+      let v = AX.many(e, [kAXRoleAttribute, kAXChildrenAttribute])
+      let kids = (v[1] as? [AXUIElement]) ?? []
+      if (v[0] as? String) == "AXWebArea" && !kids.isEmpty { return true }
+      return kids.contains { hasPage($0, depth + 1) }
+    }
+    for _ in 0..<10 where !hasPage(el, 0) { Thread.sleep(forTimeInterval: 0.3) }
+  }
+
   // ---- scan ----
 
   private func walk(_ root: AXUIElement, max: Int, values: Bool, frame: CGRect, skip: Set<String>, nodes: inout [[String: Any]], els: inout [AXUIElement], raws: inout [AX.Raw]) -> Bool {
@@ -158,7 +170,10 @@ final class AxServer {
     let t0 = DispatchTime.now()
     guard let w = window(req) else { return Self.fail("no_window", "That window is gone.") }
     let maxChars = Swift.max(200, Swift.min(40000, req.int("maxChars", 6000)))
-    if isChromium(w.pid) && AX.enableWebTree(w.pid) { Thread.sleep(forTimeInterval: 0.7) }
+    if isChromium(w.pid) {
+      if AX.enableWebTree(w.pid) { Thread.sleep(forTimeInterval: 0.7) }
+      waitForWebTree(w.el)
+    }
     var lines: [String] = []
     var chars = 0, truncated = false, count = 0
     var last: String? = nil

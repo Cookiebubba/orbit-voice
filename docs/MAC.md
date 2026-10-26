@@ -33,6 +33,7 @@ on for Orbit in System Settings cover it.
 
 | On a Mac | |
 | --- | --- |
+| First launch: straight to Qubit on Claude voice, no key screen (Grok needs an xAI key, in Settings → Voice engine) | Works |
 | Grok voice, the hotkey (**⌘⌥G** by default), the "Hey Orbit" wake word | Works |
 | Claude voice: Silero VAD, Moonshine / Parakeet speech to text, Kitten speech, all on the Mac | Works (macOS 14+ on Apple silicon, 15+ on Intel) |
 | Typing a draft into Claude, Send, Stop, answering permission and question cards | Works (Accessibility) |
