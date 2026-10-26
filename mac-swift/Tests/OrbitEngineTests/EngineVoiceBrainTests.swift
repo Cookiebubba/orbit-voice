@@ -188,7 +188,8 @@ final class EngineVoiceBrainTests: XCTestCase {
     port = Int(try XCTUnwrap(FreePort.pick()))
     engine = try Engine(paths: .init(profile: root.appendingPathComponent("profile"), core: root.appendingPathComponent("core")), port: port, sealKey: Data(repeating: 9, count: 32), version: "9.9.9")
     engine.loadSettings(env: [:])
-    engine.brain = BrainRunner(baseEnv: ["PATH": "/usr/bin:/bin"], shellPath: { [] })
+    // (Its own home: a Claude Code installed on this Mac, in ~/.local/bin or the Claude app's data, isn't found.)
+    engine.brain = BrainRunner(baseEnv: ["PATH": "/usr/bin:/bin"], home: root.path, shellPath: { [] })
     try await engine.start()
 
     // The stand-in xAI: its voice list (as set) and text to speech.
