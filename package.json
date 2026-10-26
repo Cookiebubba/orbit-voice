@@ -1,7 +1,7 @@
 {
   "name": "orbit-voice",
   "productName": "Orbit",
-  "version": "1.3.0-beta.3",
+  "version": "1.3.0-beta.4",
   "description": "A hands-free voice companion for Claude Code Desktop, powered by Grok Voice. Hear what your sessions are doing and dictate prompts into them.",
   "type": "module",
   "private": true,
