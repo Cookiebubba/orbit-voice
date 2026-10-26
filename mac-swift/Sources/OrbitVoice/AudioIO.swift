@@ -193,13 +193,71 @@ public final class AudioIO {
     if !config.muteOutput { ensureRunning() }
   }
 
-  /** Once per call, once its mic is open: where the voice will play (the log). */
+  /**
+   * How far (host seconds) the engine has rendered: its last render cycle's time plus one cycle
+   * (about 10 ms of output on a Mac; 15 ms allowed). A buffer due before this is already too late
+   * for that much of it. 0 if the player hasn't rendered yet (nothing can be late then).
+   */
+  private func renderedUpTo() -> Double {
+    guard player.isPlaying, let last = player.lastRenderTime, last.isHostTimeValid else { return 0 }
+    return AVAudioTime.seconds(forHostTime: last.hostTime) + 0.015
+  }
+
+  /** One call's voice output, for the log when it ends: what was scheduled, late, and really heard. */
+  final class Meter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var scheduledS = 0.0, lateChunks = 0, maxLateMs = 0.0, audibleS = 0.0, peak: Float = 0
+    func reset() { lock.withLock { scheduledS = 0; lateChunks = 0; maxLateMs = 0; audibleS = 0; peak = 0 } }
+    func scheduled(_ s: Double) { lock.withLock { scheduledS += s } }
+    func late(ms: Double) { lock.withLock { lateChunks += 1; maxLateMs = max(maxLateMs, ms) } }
+    /** A buffer that left the voice's mixer (the render thread): how loud, how long. */
+    func rendered(_ buf: AVAudioPCMBuffer) {
+      guard let d = buf.floatChannelData?[0] else { return }
+      let n = Int(buf.frameLength)
+      var p: Float = 0
+      for i in 0..<n { p = max(p, abs(d[i])) }
+      let secs = Double(n) / buf.format.sampleRate
+      lock.withLock {
+        peak = max(peak, p)
+        if p > 0.01 { audibleS += secs }
+      }
+    }
+    var summary: (scheduled: Double, late: Int, maxLateMs: Double, audible: Double, peak: Float) {
+      lock.withLock { (scheduledS, lateChunks, maxLateMs, audibleS, peak) }
+    }
+  }
+  let meter = Meter()
+  private var meterTapped = false
+
+  /** The voice's mixer is watched while a call is on (its level, after the volume). */
+  private func tapMeter() {
+    guard !meterTapped, graphReady else { return }
+    meterTapped = true
+    let m = meter
+    voiceMixer.installTap(onBus: 0, bufferSize: 2048, format: nil) { buf, _ in m.rendered(buf) }
+  }
+
+  /** Once per call, once its mic is open: where the voice will play (the log), and its meter starts. */
   public func logOutput() {
-    if !config.muteOutput { log(outputDescription) }
+    guard !config.muteOutput else { return }
+    meter.reset()
+    tapMeter()
+    log(outputDescription)
+  }
+
+  /** The call's voice output, for the log as it ends (seconds and levels only). */
+  public func logCallOutput() {
+    guard !config.muteOutput, meterTapped else { return }
+    let s = meter.summary
+    guard s.scheduled > 0 else { return }
+    let r1 = { (v: Double) in String(format: "%.1f", v) }
+    log("voice output: \(r1(s.scheduled))s scheduled, \(r1(s.audible))s left the mixer with sound (peak \(String(format: "%.2f", s.peak))), \(s.late) chunk(s) late\(s.late > 0 ? " (up to \(Int(s.maxLateMs)) ms, played at once)" : "")")
+    meter.reset()
   }
 
   /** The call ended: let the device go after a moment (a chime may still be playing). */
   public func callEnded() {
+    logCallOutput()
     guard !capturing, wakeListener == nil else { return }
     idleStop?.cancel()
     let w = DispatchWorkItem { [weak self] in
@@ -214,7 +272,12 @@ public final class AudioIO {
     DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: w)
   }
 
-  /** Play a chunk at `chunk.at` on the host clock (now, if that's past). */
+  /**
+   * Play a chunk at `chunk.at` on the host clock. A chunk whose start the engine has already passed
+   * (it renders ahead of the speakers, more so with echo cancellation) would have that much of it
+   * skipped, all of it if it's short, while still counting as played: it plays at once instead,
+   * right after anything still queued.
+   */
   public func schedule(_ chunk: PlaybackChunk) {
     chunksScheduled += chunk.isTail ? 0 : 1
     secondsScheduled += chunk.isTail ? 0 : chunk.duration
@@ -222,7 +285,13 @@ public final class AudioIO {
     guard let buf = AVAudioPCMBuffer(pcmFormat: voiceFormat, frameCapacity: AVAudioFrameCount(chunk.samples.count)) else { return }
     buf.frameLength = AVAudioFrameCount(chunk.samples.count)
     chunk.samples.withUnsafeBufferPointer { src in buf.floatChannelData![0].update(from: src.baseAddress!, count: src.count) }
-    let when = AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: chunk.at))
+    var when: AVAudioTime? = AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: chunk.at))
+    let lateBy = renderedUpTo() - chunk.at
+    if lateBy > 0 {
+      when = nil
+      meter.late(ms: lateBy * 1000)
+    }
+    meter.scheduled(chunk.isTail ? 0 : chunk.duration)
     let end = chunk.at + chunk.duration
     let clock = self.clock
     player.scheduleBuffer(buf, at: when, options: [], completionCallbackType: .dataPlayedBack) { [weak self] _ in
