@@ -90,6 +90,8 @@ let package = Package(
     .testTarget(name: "OrbitKitTests", dependencies: ["OrbitKit"], path: "Tests/OrbitKitTests", exclude: ["Fixtures"]),
     .testTarget(name: "OrbitIntentTests", dependencies: ["OrbitIntent", "OrbitKit"], path: "Tests/OrbitIntentTests"),
     .testTarget(name: "OrbitEngineTests", dependencies: ["OrbitEngine", "OrbitBridge", "OrbitKit"], path: "Tests/OrbitEngineTests"),
+    // Plays a quiet tone on the Mac's default output (skipped where there is none).
+    .testTarget(name: "OrbitVoiceTests", dependencies: ["OrbitVoice", "OrbitKit"], path: "Tests/OrbitVoiceTests"),
     .testTarget(name: "OrbitWakeTests", dependencies: ["OrbitWake"], path: "Tests/OrbitWakeTests", linkerSettings: voskLink),
     .testTarget(name: "OrbitSpeechTests", dependencies: ["OrbitSpeech", "OrbitKit"], path: "Tests/OrbitSpeechTests", exclude: ["reference.mjs", "engine-reference.mjs"], linkerSettings: sherpaLink),
     // Runs ../parity/cases against the Swift build (needs a built test app; see README).

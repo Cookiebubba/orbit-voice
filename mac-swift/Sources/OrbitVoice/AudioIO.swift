@@ -181,11 +181,22 @@ public final class AudioIO {
     if !engine.isRunning {
       engine.prepare()
       do { try engine.start() } catch { return false }
+      // A player that was playing before the engine stopped (the mic opening restarts it for echo
+      // cancellation; a device change) still says it is playing but never sounds again: nothing it's
+      // given is heard. Stop them so they start afresh below.
+      player.stop()
+      chimePlayer.stop()
     }
     if !player.isPlaying { player.play() }
     if !chimePlayer.isPlaying { chimePlayer.play() }
     clock.outputLatency = engine.outputNode.presentationLatency
     return true
+  }
+
+  /** Tests: the engine stops and starts again, as it does when the mic opens for a call. */
+  func restartEngine() {
+    engine.stop()
+    ensureRunning()
   }
 
   /** A call is starting: get the output ready so the first chunk isn't late. */
@@ -234,7 +245,7 @@ public final class AudioIO {
     guard !meterTapped, graphReady else { return }
     meterTapped = true
     let m = meter
-    voiceMixer.installTap(onBus: 0, bufferSize: 2048, format: nil) { buf, _ in m.rendered(buf) }
+    voiceMixer.installTap(onBus: 0, bufferSize: 2048, format: nil) { @Sendable buf, _ in m.rendered(buf) }
   }
 
   /** Once per call, once its mic is open: where the voice will play (the log), and its meter starts. */
@@ -294,7 +305,7 @@ public final class AudioIO {
     meter.scheduled(chunk.isTail ? 0 : chunk.duration)
     let end = chunk.at + chunk.duration
     let clock = self.clock
-    player.scheduleBuffer(buf, at: when, options: [], completionCallbackType: .dataPlayedBack) { [weak self] _ in
+    player.scheduleBuffer(buf, at: when, options: [], completionCallbackType: .dataPlayedBack) { @Sendable [weak self] _ in
       let late = clock.audioTime - end
       DispatchQueue.main.async {
         MainActor.assumeIsolated {
@@ -409,7 +420,7 @@ public final class AudioIO {
       DispatchQueue.main.async { MainActor.assumeIsolated { self?.frame(pcm) } }
     }
     capture = conv
-    input.installTap(onBus: 0, bufferSize: 4096, format: format) { buf, _ in conv.process(buf) }
+    input.installTap(onBus: 0, bufferSize: 4096, format: format) { @Sendable buf, _ in conv.process(buf) }
     tapInstalled = true
     if !ensureRunning() {
       closeRealDevice()
