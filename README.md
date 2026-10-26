@@ -149,9 +149,9 @@ npm run app
 
 `npm run dist` builds the installer into `dist/`. `npm run web` runs the same UI in a browser tab. `npm run check` reads your sessions without needing a key.
 
-**Mac, Orbit Native** (Xcode, Node.js): `npm ci`, `npm run build:ui` and `node scripts/fetch-model.mjs` at the root, then `mac-swift/scripts/build-app.sh` builds `Orbit Native.app` and `mac-swift/scripts/package.sh` the dmg and zip. See [mac-swift/README.md](mac-swift/README.md). The Electron build also runs on a Mac ([docs/MAC.md](docs/MAC.md)).
+**Mac, Orbit Native** (Xcode, Node.js): `npm ci`, `npm run build:ui` and `node scripts/fetch-model.mjs` at the root, then `mac-swift/scripts/build-app.sh` builds `Orbit Native.app` and `mac-swift/scripts/package.sh` the dmg and zip. See [mac-swift/README.md](mac-swift/README.md) and [docs/MAC.md](docs/MAC.md).
 
-Project layout: `src/` the local bridge, voice tools, session reader and watcher · `ui/` the React UI · `electron/` the Windows shell · `mac-swift/` Orbit Native, the Swift app · `native/mac/` the Mac accessibility helper · `parity/` cases that check both apps behave the same.
+Project layout: `src/` the local bridge, voice tools, session reader and watcher · `ui/` the React UI · `electron/` the Windows shell · `mac-swift/` Orbit Native, the Swift app · `native/mac/` the Mac accessibility helper · `parity/` the cases Orbit Native must pass, written from what the core does.
 
 ### Testing
 
@@ -163,7 +163,7 @@ None of these touch the real Claude app, xAI or Anthropic, or your own settings.
 | `npm run fuzz -- --seed N` | In-process fuzzer: random tool calls, bridge messages and a fake Grok |
 | `npm run fuzz:e2e -- --seed N --iterations M` | The real app, hidden, against a fake Grok, a fake `claude.exe`, a fake Claude window and throwaway sessions. It fails on a crash or hang, a prompt sent without a fresh yes, a key or your words in the logs, and more |
 | `cd mac-swift && swift test` | Orbit Native's tests (needs a Mac) |
-| `node parity/run.mjs --app both` | The same cases against both apps on a Mac ([parity/PROTOCOL.md](parity/PROTOCOL.md)) |
+| `npm run parity` | The parity cases against a test build of Orbit Native, on a Mac ([parity/PROTOCOL.md](parity/PROTOCOL.md)) |
 
 ## Security
 

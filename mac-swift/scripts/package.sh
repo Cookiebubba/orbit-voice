@@ -1,6 +1,6 @@
 #!/bin/bash
 # Packages a built "Orbit Native.app" (scripts/build-app.sh) for a GitHub release, next to the
-# Electron build's files:
+# Windows installer:
 #
 #   dist/Orbit-Native-<version>-<arch>-mac.zip   what the updater downloads (ditto, keeps the signature)
 #   dist/Orbit-Native-<version>-<arch>.dmg       what people download to install
@@ -13,7 +13,7 @@
 #                                      `xcrun notarytool store-credentials`), then staple the ticket
 #
 # Refuses a test build (the parity driver allowed) and, when notarizing, anything not signed with a
-# Developer ID. Upload all three files to the release; the Electron build's latest-mac.yml stays its own.
+# Developer ID. Upload all three files to the release.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"   # mac-swift
