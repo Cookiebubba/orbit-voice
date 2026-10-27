@@ -4,6 +4,7 @@
 Orbit is a voice companion for the Claude desktop app. Ask what Claude is doing, hear when it finishes, dictate prompts, answer its questions and switch sessions without touching the keyboard. Qubit, Orbit's avatar, lives on your Claude window while you talk.</p>
 
 <p align="center">
+  <a href="https://github.com/Cookiebubba/orbit-voice/actions/workflows/ci.yml"><img src="https://github.com/Cookiebubba/orbit-voice/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI: the Windows installer and Orbit Native build on main"></a>
   <a href="../../releases"><img src="https://img.shields.io/github/v/release/Cookiebubba/orbit-voice?include_prereleases&label=release&color=D97757&style=flat-square" alt="Newest release"></a>
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0b0b0c?style=flat-square" alt="Windows 10 and 11">
   <img src="https://img.shields.io/badge/macOS-14%2B%20(Apple%20silicon)-0b0b0c?style=flat-square" alt="macOS 14 or later on Apple silicon">

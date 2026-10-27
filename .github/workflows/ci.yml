@@ -1,0 +1,86 @@
+name: CI
+
+# Builds both apps on every push and pull request to main, so a broken build turns the run red (and
+# GitHub tells whoever pushed). Build only: the tests and the parity suite are run before work lands.
+#   windows    the installer, exactly as a release builds it (npm run dist), kept for 7 days
+#   mac-swift  Orbit Native (mac-swift/, SwiftPM), every target: swift build
+# No secrets, read-only token, no credentials kept. Actions are pinned to commit SHAs (the tag each
+# one was is in the comment), the same ones release.yml uses.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            ui/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Build UI and installer
+        run: npm run dist
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: orbit-installer-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: dist/Orbit-Setup-*.exe
+
+  mac-swift:
+    # Apple silicon (Orbit Native is arm64 only), the image's default Xcode 26 (Swift 6.3). Not
+    # macos-15: its Xcode 16.4 (Swift 6.1) rejects VoiceController's local speech loading. The Mac it
+    # is developed on has Xcode 27, which no hosted runner has yet.
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install (for sherpa-onnx-darwin-arm64, which the Swift build links)
+        # No install scripts: the Swift build needs only the prebuilt library, not Electron's download.
+        run: |
+          npm ci --no-audit --no-fund --ignore-scripts
+          test -f node_modules/sherpa-onnx-darwin-arm64/libsherpa-onnx-c-api.dylib || { ls node_modules/sherpa-onnx-darwin-arm64; exit 1; }
+
+      - name: Fetch Vosk
+        run: bash mac-swift/scripts/fetch-vosk.sh
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Swift build
+        working-directory: mac-swift
+        run: swift build
