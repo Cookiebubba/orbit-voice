@@ -53,7 +53,7 @@ jobs:
   mac-swift:
     # Apple silicon (Orbit Native is arm64 only), Xcode 26 / Swift 6.2: the code needs 6.2's
     # concurrency checking (Xcode 16.4's Swift 6.1 rejects VoiceController's local speech loading).
-    runs-on: macos-27
+    runs-on: macos-26
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0

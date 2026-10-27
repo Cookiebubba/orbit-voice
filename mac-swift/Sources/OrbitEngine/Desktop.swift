@@ -139,7 +139,7 @@ public final class Desktop: @unchecked Sendable {
   public func onPromptBoxWork(_ fn: @escaping @Sendable (String) -> Void) -> () -> Void {
     let id = UUID()
     boxWork.update { $0[id] = fn }
-    return { [boxWork] in boxWork.update { $0.removeValue(forKey: id) } }
+    return { [boxWork] in boxWork.update { _ = $0.removeValue(forKey: id) } }
   }
 
   func tellBoxWork(_ phase: String) { for fn in boxWork.get().values { fn(phase) } }
