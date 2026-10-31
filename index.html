@@ -24,12 +24,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/site.css?v=14">
+<link rel="stylesheet" href="css/site.css?v=15">
 <!-- bump ?v= (here, the two Qubit scripts and the import in site.js) on each publish so browsers drop the old copy -->
 <!-- Qubit: his engine and pathing, copied as is from ui/src/vendor/avatars/ -->
-<script defer src="js/orbit-nav.js?v=14"></script>
-<script defer src="js/qubit-engine.js?v=14"></script>
-<script type="module" src="js/site.js?v=14"></script>
+<script defer src="js/orbit-nav.js?v=15"></script>
+<script defer src="js/qubit-engine.js?v=15"></script>
+<script type="module" src="js/site.js?v=15"></script>
 </head>
 <body data-page="home">
 
@@ -41,6 +41,7 @@
     <a class="brand" href="#/">Orbit</a>
     <nav class="nav" aria-label="Main">
       <a href="#/about" data-route="about">What is Orbit?</a>
+      <a href="#/robot" data-route="robot">Robot</a>
       <a href="#/docs" data-route="docs">Docs</a>
       <a href="#/security" data-route="security">Security</a>
       <a href="#/changelog" data-route="changelog">Changelog</a>
@@ -92,6 +93,97 @@
       <video src="media/orbit-demo.mp4" poster="media/orbit-demo.jpg" autoplay muted loop playsinline controls preload="auto"></video>
     </div>
     <p class="caption">Orbit in use: asking what Claude is doing and shipping a release by voice. Sound is off until you turn it on.</p>
+  </section>
+</template>
+
+<template id="tpl-robot">
+  <section class="robot">
+    <div class="r-back" aria-hidden="true"></div>
+    <canvas class="r-stage" aria-hidden="true"></canvas>
+    <div class="r-veil" aria-hidden="true"></div>
+    <a class="coffee small r-pin" href="https://buymeacoffee.com/brandynships" target="_blank" rel="noopener">Buy me a coffee</a>
+    <div class="r-scroll" tabindex="-1">
+      <section class="r-hero">
+        <div class="copy">
+          <h1 class="wordmark">Qubit</h1>
+          <p class="lead">Help me build a robot.</p>
+          <p class="body">He's 14 inches tall, and an iPhone is his brain and his face. He's designed in CAD. Your coffee buys the parts for the first real one.</p>
+          <a class="coffee" href="https://buymeacoffee.com/brandynships" target="_blank" rel="noopener">Buy me a coffee</a>
+          <p class="tag">$5 a coffee · about 296 coffees builds him</p>
+        </div>
+        <img class="poster" src="media/robot/hero.webp" width="674" height="986" alt="Qubit, an orange robot on two wheels. An iPhone on a two-joint arm is his face.">
+      </section>
+
+      <section class="r-scrub r-robot">
+        <div class="r-sticky">
+          <div class="copy">
+            <p class="eyebrow">The robot</p>
+            <h2>Every part of him is already drawn.</h2>
+            <ul class="r-lines">
+              <li>The iPhone runs him, and Qubit lives on its screen.</li>
+              <li>Its LiDAR maps the room.</li>
+              <li>Two joints nod his head and flip the phone round.</li>
+              <li>He rolls on two side wheels and a caster.</li>
+              <li>An ESP32 in the base takes the phone's orders.</li>
+              <li>Qi2 keeps the phone charged.</li>
+            </ul>
+            <p class="tag">79 printed parts · printed at home</p>
+            <p class="status"><i aria-hidden="true"></i>Designed in CAD, in engineering review. Not built yet.</p>
+          </div>
+          <img class="poster" src="media/robot/exploded.webp" width="910" height="1524" loading="lazy" alt="Qubit pulled apart: shell panels, chassis, electronics, battery, arm and phone.">
+        </div>
+      </section>
+
+      <section class="r-scrub r-ar">
+        <div class="r-sticky">
+          <div class="copy">
+            <p class="eyebrow">The AR app</p>
+            <h2>He'll meet you before he's real.</h2>
+            <p class="body">An iPhone app will stand a life-size Qubit on your floor. He'll map the room with LiDAR, drive around your furniture, and talk to you in his real voice.</p>
+            <p class="tag warn">Planned. The app isn't built yet. This scene is a simulation.</p>
+          </div>
+          <img class="poster" src="media/robot/ar.webp" width="2000" height="1300" loading="lazy" alt="A simulation: Qubit in a dark room mapped as dots, with his route drawn on the floor.">
+        </div>
+      </section>
+
+      <section class="r-money">
+        <div class="left">
+          <p class="eyebrow">What the money buys</p>
+          <h2>$1,480 builds the first one.</h2>
+          <p class="body">About 296 coffees, at $5 each.</p>
+          <ul class="tiers">
+            <li><b>1 coffee</b> the motor driver</li>
+            <li><b>3 coffees</b> the ESP32 board</li>
+            <li><b>13 coffees</b> both drive motors</li>
+            <li><b>18 coffees</b> the battery</li>
+          </ul>
+          <p class="note">An estimate from the parts list, with prices read October 29 to 31, 2026. Shipping is assumed. Buying whole packs leaves about $513 of spare stock. The iPhone isn't included.</p>
+        </div>
+        <!-- From robot/bom/bom.json, 2026-10-31: the item categories, plus totals.filament and totals.shippingEstimate. The rows add up to totals.grand, $1,479.91. -->
+        <ul class="r-rows">
+          <li style="--w:100%"><span>Motors and motion</span><b>$328.73</b></li>
+          <li style="--w:88.9%"><span>Power and charging</span><b>$292.16</b></li>
+          <li style="--w:84.8%"><span>Screws, inserts and pins</span><b>$278.76</b></li>
+          <li style="--w:58.4%" class="est"><span>Shipping (estimate)</span><b>$191.83</b></li>
+          <li style="--w:47.5%"><span>Brain, sensors and lights</span><b>$156.26</b></li>
+          <li style="--w:42.1%"><span>Filament, tape and supplies</span><b>$138.33</b></li>
+          <li style="--w:28.5%"><span>Wiring</span><b>$93.84</b></li>
+        </ul>
+      </section>
+
+      <section class="r-last">
+        <div class="copy">
+          <h2 class="big">Every coffee is a part.</h2>
+          <a class="coffee" href="https://buymeacoffee.com/brandynships" target="_blank" rel="noopener">Buy me a coffee</a>
+          <a class="to-orbit" href="#/">
+            <span class="mark">Orbit</span>
+            <span class="line">Qubit already lives in Orbit, a free, open-source voice companion for Claude Code.</span>
+          </a>
+          <p class="legal">iPhone is a trademark of Apple Inc. Not affiliated with Apple, xAI or Anthropic.</p>
+        </div>
+        <img class="poster" src="media/robot/happy.webp" width="476" height="979" loading="lazy" alt="Qubit, smiling on his screen.">
+      </section>
+    </div>
   </section>
 </template>
 

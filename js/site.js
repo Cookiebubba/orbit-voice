@@ -1,6 +1,6 @@
 import { marked } from "https://cdn.jsdelivr.net/npm/marked@12.0.2/lib/marked.esm.js";
 import DOMPurify from "https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.es.mjs";
-import { startQubit } from "./qubit.js?v=14";
+import { startQubit } from "./qubit.js?v=15";
 
 /* --------------------------------- config --------------------------------- */
 const REPO = "Cookiebubba/orbit-voice";
@@ -46,11 +46,12 @@ handle.href = `https://x.com/${X_HANDLE}`;
 const view = document.getElementById("view");
 let current = null; // { page, section }
 let release = null; // { beta, stable }: each release's installer, once known
+let leaveRobot = null; // undoes the robot page (its model, its renderer, the coffee widget) on the way out
 const cache = new Map(); // fetched markdown, by page
 
 /* --------------------------------- router --------------------------------- */
-// routes: #/  ·  #/about  ·  #/docs  ·  #/docs/how-it-works
-const VIEWS = { about: "What is Orbit?" }; // pages that aren't markdown
+// routes: #/  ·  #/about  ·  #/robot  ·  #/docs  ·  #/docs/how-it-works
+const VIEWS = { about: "What is Orbit?", robot: "Robot" }; // pages that aren't markdown
 function parse() {
   const [page = "", section = ""] = location.hash.replace(/^#\/?/, "").split("/");
   return { page: PAGES[page] || VIEWS[page] ? page : "", section };
@@ -71,7 +72,10 @@ async function route() {
     if (a.dataset.route === next.page) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
   document.title = next.page ? `${PAGES[next.page]?.title || VIEWS[next.page]} · Orbit` : "Orbit";
+  leaveRobot?.();
+  leaveRobot = null;
   if (next.page === "about") renderAbout();
+  else if (next.page === "robot") renderRobot();
   else if (next.page) renderDoc(next.page, next.section);
   else renderHome();
   view.classList.remove("leaving");
@@ -154,6 +158,16 @@ function fileUrl(os) {
 function renderAbout() {
   view.replaceChildren(document.getElementById("tpl-about").content.cloneNode(true));
   view.querySelector("video").play?.().catch(() => {}); // muted autoplay; the poster stands in if a browser refuses
+}
+
+/* ---------------------------------- robot --------------------------------- */
+// three.js, the model and the coffee widget load here, for this page only
+function renderRobot() {
+  view.replaceChildren(document.getElementById("tpl-robot").content.cloneNode(true));
+  const root = view.querySelector(".robot");
+  import("./robot/page.js?v=1").then(({ mountRobot }) => {
+    if (root.isConnected) leaveRobot = mountRobot(root);
+  }).catch(() => root.classList.add("static")); // the posters and the coffee links still work
 }
 
 /* ---------------------------------- docs ---------------------------------- */
