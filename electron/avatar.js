@@ -79,13 +79,17 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   let liftTimer = null;
   let stageEnabled = false, stageFrame = null, stageNative = null, persistentStage = null;
   let automatic = false, roamOptions = null, activeDisplay = null, movementRevision = 0, movementKey = '', recovery = 0;
+  // The page's movement revision: Automatic stages carry the counter, every other placement reports 0.
+  // Comparing a contained page with the last Automatic counter dropped every hit and press after
+  // escape was turned off, leaving the window click-through until restart.
+  const pageRevision = () => (automatic ? movementRevision : 0);
   let nativeGesture = null, lastGestureId = 0;
   function finishGesture(cancel = true) {
     const g = nativeGesture;
     if (!g) return;
     nativeGesture = null;
     clearTimeout(g.timer); g.stop?.(); hover.setHeld(false);
-    if (cancel && win && !win.isDestroyed()) win.webContents.send('buddy:gesture', { id: g.id, revision: movementRevision, sequence: ++g.sequence, cancel: true });
+    if (cancel && win && !win.isDestroyed()) win.webContents.send('buddy:gesture', { id: g.id, revision: pageRevision(), sequence: ++g.sequence, cancel: true });
   }
   let lastHit = null; // where the page last said it draws the avatar (window px), for debug()
   // Whether the window takes the mouse: the real cursor over the avatar (polled here, see
@@ -617,7 +621,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     /** Active-avatar-only read-only button/cursor reconciliation. Never starts a gesture itself. */
     gesture(message) {
       const m = message;
-      if (!m || !Number.isSafeInteger(m.id) || m.id <= 0 || m.revision !== movementRevision) return false;
+      if (!m || !Number.isSafeInteger(m.id) || m.id <= 0 || m.revision !== pageRevision()) return false;
       if (m.phase === 'update') { if (nativeGesture?.id !== m.id) return false; nativeGesture.renew?.(); return true; }
       if (m.phase === 'end') { if (nativeGesture?.id === m.id) finishGesture(false); return true; }
       if (m.phase !== 'begin' || m.id <= lastGestureId || !visible() || leaving || !lastHit) return false;
@@ -630,7 +634,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       const unavailable = () => {
         if (nativeGesture !== g) return;
         g.stop?.(); g.stop = null; g.nativeLost = true;
-        win?.webContents.send('buddy:gesture', { id: g.id, revision: movementRevision, sequence: ++g.sequence, trackingLost: true });
+        win?.webContents.send('buddy:gesture', { id: g.id, revision: pageRevision(), sequence: ++g.sequence, trackingLost: true });
         stale(); // only real DOM movement may renew a degraded gesture
       };
       const stop = watchGesture?.(m.id, (sample) => {
@@ -639,7 +643,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
         let p;
         try { p = process.platform === 'win32' ? screen.screenToDipPoint({ x: sample.x, y: sample.y }) : sample; } catch { return finishGesture(); }
         stale();
-        win?.webContents.send('buddy:gesture', { id: g.id, revision: movementRevision, sequence: ++g.sequence, x: p.x, y: p.y, down: sample.down, doubleClickMs: sample.doubleClickMs });
+        win?.webContents.send('buddy:gesture', { id: g.id, revision: pageRevision(), sequence: ++g.sequence, x: p.x, y: p.y, down: sample.down, doubleClickMs: sample.doubleClickMs });
         if (!sample.down) finishGesture(false);
       });
       if (g.nativeLost || nativeGesture !== g) stop?.();
@@ -661,7 +665,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     },
     /** The page: where the avatar is drawn (window px), so the window takes the mouse over it. */
     hit(rect) {
-      if (rect && (rect.revision || 0) !== movementRevision) return;
+      if (rect && (rect.revision || 0) !== pageRevision()) return;
       lastHit = rect ? { ...rect } : null; // (for debug())
       hover.setHit(rect);
     },

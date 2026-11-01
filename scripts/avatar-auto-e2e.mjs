@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, ipcMain, screen, session } from 'electron';
 import { createAvatar } from '../electron/avatar.js';
+import { setTestCursor } from '../electron/avatar-hover.js';
 import { createAvatarHost } from '../electron/avatar-host.js';
 import { createExternalAvatarBinding } from '../electron/external-avatar.js';
 import { createExternalHost, readDescriptor } from '../src/external-host.js';
@@ -204,6 +205,19 @@ async function run() {
       // Safe active-display removal rebuilds placement but not renderer/controller/voice.
       screen.getAllDisplays = () => [{ id: 9877, scaleFactor: 1.25, workArea, bounds: workArea }]; screen.getPrimaryDisplay = () => screen.getAllDisplays()[0]; screen.getDisplayMatching = () => screen.getPrimaryDisplay();
       screen.emit('display-removed'); await delay(100); assert.equal((await sample()).held, false); await assertIdentity('display-recovery'); await capture('display-recovered');
+      // Escape turned off: a contained page reports revision 0. Its hit and press must still be
+      // accepted after Automatic, or the window stays click-through and Qubit can't be grabbed.
+      avatar.onStage(null, null, false);
+      const containedBounds = win.getBounds();
+      setTestCursor({ x: containedBounds.x + 120, y: containedBounds.y + 120 });
+      try {
+        avatar.hit({ x: 100, y: 100, w: 40, h: 40, revision: 0 });
+        assert.equal(avatar.debug().hit?.x, 100, 'contained hit after Automatic was dropped');
+        assert.equal(avatar.takingMouse, true, 'contained Qubit stayed click-through after Automatic');
+        assert.equal(avatar.gesture({ phase: 'begin', id: 1e9, revision: 0 }), true, 'contained press after Automatic was refused');
+        assert.equal(avatar.gesture({ phase: 'end', id: 1e9, revision: 0 }), true);
+      } finally { setTestCursor(null); }
+      checks.push('contained-after-automatic-grab');
     }
     assert.equal(errors.length, 0, errors.join('\n'));
     console.log(`PASS hidden Automatic compositor: ${checks.join(', ')}; captures ${output}`);
