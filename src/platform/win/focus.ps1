@@ -75,6 +75,7 @@ public static class OrbitFocus {
   [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
   [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
   [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
+  [DllImport("user32.dll")] static extern uint GetDoubleClickTime();
   [DllImport("user32.dll")] static extern bool KillTimer(IntPtr h, UIntPtr id);
   [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr h, int index);
   [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out RECT r, int size);
@@ -189,7 +190,7 @@ public static class OrbitFocus {
       gestureId = 0;
     } else {
       bool down = (GetAsyncKeyState(PrimaryMouseKey(GetSystemMetrics(23) != 0)) & 0x8000) != 0;
-      Out("{\"gesture\":{\"id\":" + gestureId + ",\"sequence\":" + (++gestureSequence) + ",\"x\":" + p.X + ",\"y\":" + p.Y + ",\"down\":" + (down ? "true" : "false") + "}}");
+      Out("{\"gesture\":{\"id\":" + gestureId + ",\"sequence\":" + (++gestureSequence) + ",\"x\":" + p.X + ",\"y\":" + p.Y + ",\"down\":" + (down ? "true" : "false") + ",\"doubleClickMs\":" + GetDoubleClickTime() + "}}");
       if (!down) gestureId = 0;
     }
     if (gestureId == 0 && gestureTimer != UIntPtr.Zero) { KillTimer(IntPtr.Zero, gestureTimer); gestureTimer = UIntPtr.Zero; }

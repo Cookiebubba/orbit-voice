@@ -18,6 +18,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const option = (name) => { const i = process.argv.indexOf(`--${name}`); return i < 0 ? null : process.argv[i + 1]; };
 if (process.argv.includes('--visible')) throw new Error('This harness is hidden-only.');
 const hostFile = option('host-file'), expectedPid = Number(option('expected-host-pid'));
+const interactionsOnly = process.argv.includes('--interactions-only');
+const reducedMotion = process.argv.includes('--reduced-motion');
+if (reducedMotion) app.commandLine.appendSwitch('force-prefers-reduced-motion');
 if (hostFile && (!Number.isSafeInteger(expectedPid) || expectedPid <= 0)) throw new Error('Supply the caller-owned isolated bro PID.');
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-auto-profile-'));
 const output = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-auto-captures-'));
@@ -51,7 +54,8 @@ const server = http.createServer((req, res) => {
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const base = `http://127.0.0.1:${server.address().port}`;
 let host, binding, client, tracker, avatar, win, gestureSink = null, activeGestureId = null;
-let made = 0, talk = 0, front = 123, failureCapture = null;
+let made = 0, talk = 0, settingsOpened = 0, front = 123, failureCapture = null;
+const voiceActions = [], orbActions = [];
 const voiceConnection = Object.freeze({ id: crypto.randomUUID(), fake: true });
 const errors = [], captures = [], checks = [];
 async function run() {
@@ -84,6 +88,9 @@ async function run() {
     ipcMain.on('buddy:hover', (e, on, held) => target(e)?.hover(on, held));
     ipcMain.on('buddy:gesture', (e, m) => target(e)?.gesture(m));
     ipcMain.on('buddy:talk', () => { talk++; });
+    ipcMain.on('buddy:settings', (e) => { if (target(e)) settingsOpened++; });
+    ipcMain.on('buddy:voice', (e, action) => { if (target(e)) voiceActions.push(action); });
+    ipcMain.on('orb:action', (_e, action) => orbActions.push(action));
     client = createExternalHost({ descriptor: hostFile ? readDescriptor(path.resolve(hostFile)) : { protocol: 1, instanceId: 'auto-fixture', url: base, token }, onSnapshot: (s) => {
       if (hostFile && s && (s.name !== 'bro' || s.window?.pid !== expectedPid)) { errors.push('Descriptor does not identify the supplied isolated bro'); return; }
       void binding.sync(s, 'auto');
@@ -134,9 +141,56 @@ async function run() {
       // Late up/cancel cannot finish twice or start talking.
       await js('dispatchEvent(new PointerEvent("pointerup",{pointerId:77,button:0}));dispatchEvent(new PointerEvent("pointercancel",{pointerId:77}))');
       await delay(80); assert.equal(talk, 0); await assertIdentity('drag-crossings-native-release');
-      // Active helper failure safely releases a hold, never talks.
-      await point(100, 250); await delay(50); await down(); await waitFor(() => !!gestureSink, 'second gesture not registered'); nativeSample(150, 220); await delay(80); gestureSink({ cancel: true });
-      await delay(60); assert.equal((await sample()).held, false); assert.equal((await sample()).press, false); assert.equal(talk, 0); await assertIdentity('helper-cancel-no-talk');
+      // A working DOM capture survives native-helper failure. Actual movement renews the bounded
+      // gesture; losing capture after the helper fails releases safely, without waking voice.
+      await point(600, 300); await delay(50); await down(); await waitFor(() => !!gestureSink, 'second gesture not registered');
+      gestureSink({ cancel: true });
+      const move = (x, y) => js(`(()=>{const b=__qubit.state.bounds;dispatchEvent(new PointerEvent('pointermove',{pointerId:77,buttons:1,clientX:${x},clientY:${y},screenX:b.x+${x},screenY:b.y+${y}}));})()`);
+      for (let i = 0; i < 12; i++) { await move(600 + i * 4, 280); await delay(110); }
+      assert.equal((await sample()).held, true); assert.equal((await sample()).press, true);
+      assert.ok(Math.abs((await sample()).x - 644) < 4, 'real DOM movement failed to carry Qubit');
+      await capture('dom-drag-native-unavailable');
+      await js('dispatchEvent(new PointerEvent("lostpointercapture",{pointerId:77}))');
+      await waitFor(async () => !(await sample()).press, 'lost capture after helper failure did not release');
+      assert.equal((await sample()).held, false); assert.equal(talk, 0); await assertIdentity('dom-drag-helper-failure');
+
+      // Real renderer presses, not direct calls to the throw controller. Opening settings must
+      // never also wake voice, including Chromium's dblclick following the second pointerup.
+      const click = async () => {
+        await point(600, 300);
+        await js(`(()=>{const b=__qubit.state.bounds;for(const type of ['pointerdown','pointerup'])dispatchEvent(new PointerEvent(type,{pointerId:77,button:0,clientX:600,clientY:300,screenX:b.x+600,screenY:b.y+300}));})()`);
+      };
+      await click(); await delay(90); await click();
+      await js('dispatchEvent(new MouseEvent("dblclick",{clientX:600,clientY:300}))');
+      await delay(650); assert.equal(settingsOpened, 1); assert.equal(talk, 0); checks.push('double-click-settings-no-voice');
+      // A native up racing Chromium's up does not swallow a real single click.
+      await point(600, 300); await delay(50); await down(); await waitFor(() => !!gestureSink, 'click gesture not registered');
+      nativeSample(600, 300, false);
+      await js(`(()=>{const q=__qubit.q,b=__qubit.state.bounds,x=q._rx??q.cx,y=q._ry??q.ground-q.cy;dispatchEvent(new PointerEvent('pointerup',{pointerId:77,button:0,clientX:x,clientY:y,screenX:b.x+x,screenY:b.y+y}));})()`);
+      await delay(650); assert.equal(talk, 1); checks.push('single-click-native-release-race');
+      await js('dispatchEvent(new MouseEvent("contextmenu",{clientX:__qubit.q._rx??__qubit.q.cx,clientY:__qubit.q._ry??__qubit.q.ground-__qubit.q.cy,cancelable:true}))');
+      await delay(50); assert.deepEqual(orbActions, ['toggle-sleep']);
+
+      // The visible control follows actual capture + gate state and sends fixed start/stop actions.
+      const control = () => js(`(()=>{const box=document.querySelector('.qubit-voice'),b=box.getBoundingClientRect();return {label:box.querySelector('[role=status]').textContent,button:box.querySelector('button').textContent,listening:box.dataset.listening,hidden:box.hidden,inBounds:b.x>=0&&b.y>=0&&b.right<=innerWidth&&b.bottom<=innerHeight};})()`);
+      for (const [voice, label, button, action] of [
+        [{phase:'off',microphone:'off',listening:false},'Mic off','Start','start'],
+        [{phase:'listening',microphone:'active',listening:true},'Listening','Stop','stop'],
+        [{phase:'listening',microphone:'active',muted:true,listening:false},'Mic muted','Unmute','start'],
+        [{phase:'speaking',microphone:'active',listening:false},'Speaking · mic off','Stop','stop'],
+        [{phase:'listening',microphone:'active',asleep:true,listening:false},'Mic off','Start','start'],
+      ]) {
+        host.onVoice(voice); await waitFor(async () => (await control()).label === label, `missing mic state: ${label}`);
+        const c = await control(); assert.equal(c.button, button); assert.equal(c.hidden, false); assert.equal(c.inBounds, true);
+        assert.equal(c.listening, String(voice.listening));
+        await js('document.querySelector(".qubit-voice button").click()');
+        await waitFor(() => voiceActions.length > 0, 'voice control did not send an action');
+        assert.equal(voiceActions.pop(), action);
+        await capture(`mic-${button.toLowerCase()}-${voice.phase}`);
+      }
+      checks.push('visible-mic-state-and-controls');
+      if (reducedMotion) assert.equal(await js('matchMedia("(prefers-reduced-motion: reduce)").matches'), true);
+      if (interactionsOnly) { console.log(`PASS hidden interaction compositor${reducedMotion ? ' (reduced motion)' : ''}: ${checks.join(', ')}; captures ${output}`); return; }
       // Reachable walking shares the same floor/navigation across the open client boundary.
       await js('(()=>{const Q=__qubit,q=Q.q;Q.throw.recover();Q.dir.homeAgain();q.cx=100;q.sy=0;q.cy=q.side/2;q.air=false;window.__walk=q.goTo(650,q.ground-1);})()');
       await waitFor(async () => (await sample()).x > 620, 'reachable floor walk did not cross'); await capture('walk-crossing'); await assertIdentity('reachable-walk');

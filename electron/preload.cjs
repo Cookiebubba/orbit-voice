@@ -49,7 +49,7 @@ contextBridge.exposeInMainWorld('desktop', {
   // A press on the avatar and what came of it ('click' | 'pickup' | 'ignored', and why), for the log.
   buddyPress: (outcome, why) => ipcRenderer.send('buddy:press', String(outcome), String(why || '')),
   // Where the avatar is drawn (its window's px), so its window takes the mouse there.
-  buddyHit: (r) => ipcRenderer.send('buddy:hit', r && typeof r === 'object' ? { x: +r.x, y: +r.y, w: +r.w, h: +r.h, revision: r.revision === undefined ? 0 : r.revision } : null),
+  buddyHit: (r) => ipcRenderer.send('buddy:hit', r && typeof r === 'object' ? { x: +r.x, y: +r.y, w: +r.w, h: +r.h, revision: r.revision === undefined ? 0 : r.revision, ...(Array.isArray(r.controls) ? { controls: r.controls.slice(0, 2).map((c) => ({ x: +c.x, y: +c.y, w: +c.w, h: +c.h })) } : {}) } : null),
   // The real cursor near the avatar's window (screen px; null: away), polled by Orbit itself.
   onBuddyCursor: (cb) => {
     const fn = (_e, c) => cb(c);
@@ -58,6 +58,13 @@ contextBridge.exposeInMainWorld('desktop', {
   },
   // A quick click on the avatar: start talking (as "Hey Orbit" with its window in front).
   buddyTalk: () => ipcRenderer.send('buddy:talk'),
+  buddySettings: () => ipcRenderer.send('buddy:settings'),
+  buddyVoice: (action) => { if (action === 'start' || action === 'stop') ipcRenderer.send('buddy:voice', action); },
+  onAvatarVoice: (cb) => {
+    const fn = (_e, action) => cb(action);
+    ipcRenderer.on('avatar:voice', fn);
+    return () => ipcRenderer.removeListener('avatar:voice', fn);
+  },
   // Picked up (true) or put back (false): the avatar's window covers the work area meanwhile.
   buddyLift: (on) => ipcRenderer.send('buddy:lift', !!on),
   // Thrown for real: the main window plays its sound.

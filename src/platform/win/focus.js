@@ -46,7 +46,7 @@ export function createWinFocusTracker({ onFocus = () => {}, onSwitching = () => 
       if (s.cancel || ![s.x, s.y].every(Number.isFinite) || typeof s.down !== 'boolean') return cancelGesture();
       g.sequence = s.sequence;
       clearTimeout(g.timer); g.timer = setTimeout(cancelGesture, 750); g.timer.unref?.();
-      g.cb({ id: g.id, sequence: g.sequence, x: s.x, y: s.y, down: s.down });
+      g.cb({ id: g.id, sequence: g.sequence, x: s.x, y: s.y, down: s.down, ...(Number.isFinite(s.doubleClickMs) && s.doubleClickMs >= 50 && s.doubleClickMs <= 5000 ? { doubleClickMs: s.doubleClickMs } : {}) });
       if (!s.down && gesture === g) { clearTimeout(g.timer); gesture = null; }
       return;
     }

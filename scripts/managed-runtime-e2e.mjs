@@ -78,7 +78,11 @@ ipcMain.on('managed:status', (_event, value) => {
     credentialAvailable: value?.credentialAvailable, failure: value?.failure };
 });
 ipcMain.on('managed:ack', (_event, _id, applied) => { state.lastApplied = applied; });
+ipcMain.on('orb:state', (_event, value) => {
+  state.avatarVoice = { asleep: !!value?.asleep, listening: !!value?.listening, microphone: value?.microphone };
+});
 let main = null, sampling = false, closingSettings = false;
+let avatarActionSequence = 0;
 const audio = async () => main.webContents.executeJavaScript('JSON.parse(JSON.stringify(window.__managedAudio))');
 app.on('web-contents-created', (_event, contents) => {
   contents.setAudioMuted(true);
@@ -103,6 +107,17 @@ app.whenReady().then(() => {
     if (!main || main.isDestroyed() || sampling) return;
     sampling = true;
     try {
+      // Fixture-only commands exercise the real React avatar subscription with fake devices.
+      const actionFile = path.join(directory, 'avatar-action.json');
+      if (fs.existsSync(actionFile)) {
+        const action = JSON.parse(fs.readFileSync(actionFile, 'utf8'));
+        if (action.sequence > avatarActionSequence && ['start', 'stop', 'sleep'].includes(action.action)) {
+          avatarActionSequence = action.sequence;
+          if (action.action === 'sleep') main.webContents.send('orb:action', 'toggle-sleep');
+          else main.webContents.send('avatar:voice', action.action);
+          state.avatarActionSequence = avatarActionSequence;
+        }
+      }
       state.renderer = await audio();
       assert.equal(main.isVisible(), false);
       if (state.showRequests && !closingSettings && await main.webContents.executeJavaScript('Array.from(document.querySelectorAll("h2")).some(h => h.textContent === "Settings" && h.getClientRects().length > 0)')) {

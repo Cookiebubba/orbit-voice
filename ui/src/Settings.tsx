@@ -423,7 +423,7 @@ function AvatarSection({ s, update, name }: { s: SettingsT; update: Update; name
       </Reveal>
       <Reveal show={avatar === "qubit"}>
         <p className="mt-2 text-[12px] leading-snug text-muted">
-          A square with one eye lives on your Claude window. He sleeps while {name} sleeps, wakes when you call, his eye stretches as you talk and opens with {name}'s voice. He waits by Send for your yes, stomps it, watches Claude work and celebrates when it's done. His colour shows what's going on.
+          Qubit sleeps while {name} sleeps, wakes when you call, and reacts as you talk. Double-click him to open settings. The mic indicator beside him shows when Orbit is listening; use Start or Stop to control voice.
         </p>
       </Reveal>
       <Reveal show={avatar === "none"}>
@@ -452,7 +452,7 @@ function AvatarSection({ s, update, name }: { s: SettingsT; update: Update; name
           checked={s.avatarThrow !== false}
           onChange={(avatarThrow) => update({ avatarThrow })}
           label="Throw your avatar"
-          hint={avatar === "qubit" ? "Press and hold Qubit to pick him up, drag him about inside his window and let go to throw him. He bounces off its edges, lands, shakes it off and carries on from where he landed." : "Press and hold the pixel buddy to pick it up, then drop it somewhere along the strip."}
+          hint={avatar === "qubit" ? "Drag Qubit to pick him up, then let go to throw him. With reduced motion, you can still move him; he drops without a throw." : "Press and hold the pixel buddy to pick it up, then drop it somewhere along the strip."}
         />
         <Reveal show={s.avatarThrow !== false && avatar === "qubit"}>
           <Toggle

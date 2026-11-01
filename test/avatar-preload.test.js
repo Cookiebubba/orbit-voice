@@ -40,6 +40,13 @@ test('gesture bridge exposes only phase, identity and movement revision', () => 
   assert.deepEqual(f.sent.pop(), ['buddy:gesture', null]);
 });
 
+test('avatar settings and voice controls expose only fixed actions and bounded hit regions', () => {
+  const f = fixture(); f.desktop.buddySettings(); f.desktop.buddyVoice('start'); f.desktop.buddyVoice('stop'); f.desktop.buddyVoice('execute');
+  assert.deepEqual(f.sent, [['buddy:settings'], ['buddy:voice', 'start'], ['buddy:voice', 'stop']]);
+  f.desktop.buddyHit({ x: 1, y: 2, w: 3, h: 4, controls: [{ x: 5, y: 6, w: 7, h: 8, command: 'not forwarded' }] });
+  assert.deepEqual(f.sent.at(-1)[1].controls, [{ x: 5, y: 6, w: 7, h: 8 }]);
+});
+
 test('native gesture subscription is removable and never generates talk or a new press', () => {
   const f = fixture(), received = [];
   const unsubscribe = f.desktop.onBuddyGesture((sample) => received.push(sample));

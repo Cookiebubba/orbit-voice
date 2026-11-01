@@ -189,6 +189,10 @@ export function useVoice(options: VoiceOptions) {
   };
 
   /** Open the microphone and start sending it (unless asleep). Needs the AudioContext from start(). */
+  function acceptingMicrophone() {
+    return !mutedRef.current && !asleepRef.current && announceRef.current?.stage !== 'speaking'
+      && !(opts.current.halfDuplex && (isPlaying() || soundPlaying()));
+  }
   const openMic = useCallback(async () => {
     const ac = ctx.current;
     if (!ac || mic.current) return;
@@ -211,8 +215,7 @@ export function useVoice(options: VoiceOptions) {
       node.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
         // Not listening: asleep, a spoken update whose listening window isn't open, or
         // (half-duplex) Grok is talking and might hear itself.
-        const a = announceRef.current;
-        const deaf = mutedRef.current || asleepRef.current || (!!a && a.stage === "speaking") || (opts.current.halfDuplex && (isPlaying() || soundPlaying()));
+        const deaf = !acceptingMicrophone();
         const pcm = new Int16Array(e.data);
         let sum = 0;
         for (let i = 0; i < pcm.length; i++) sum += (pcm[i] / 0x8000) ** 2;
@@ -883,6 +886,7 @@ export function useVoice(options: VoiceOptions) {
   return {
     phase,
     microphone,
+    listening: microphone === "active" && acceptingMicrophone(),
     failure,
     asleep,
     levels,

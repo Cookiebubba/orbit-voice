@@ -50,6 +50,14 @@ function rig({ bounds = { x: -4200, y: 680, width: 1200, height: 240 } } = {}) {
   };
 }
 
+test('status controls take mouse input while the gap and surrounding workspace stay click-through', () => {
+  const r = rig(); r.p.start();
+  r.p.setHit({ x: 900, y: 100, w: 44, h: 44, controls: [{ x: 980, y: 100, w: 150, h: 32 }] });
+  r.move(r.bounds.x + 1000, r.bounds.y + 110); assert.equal(r.p.taking, true);
+  r.move(r.bounds.x + 960, r.bounds.y + 110); assert.equal(r.p.taking, false);
+  r.p.setHit(null); r.move(r.bounds.x + 1000, r.bounds.y + 110); assert.equal(r.p.taking, false);
+});
+
 test('hover: the window takes the mouse when the real cursor is on him, with no forwarded moves at all', () => {
   const r = rig();
   r.p.start();

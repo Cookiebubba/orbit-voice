@@ -9,6 +9,8 @@
 //   - a quick click (press and release without dragging) starts talking to Orbit, the same as saying
 //     "Hey Orbit" with this window in front (Settings: "Click your avatar to talk"; off, a click is a
 //     little poke);
+//   - a double-click opens settings without starting voice; the adjacent microphone control starts
+//     or stops voice explicitly, and right-click keeps the orb's original sleep/wake action;
 //   - press and hold, or drag: he's picked up and follows the pointer; let go and he's thrown
 //     (throw.js), with the pointer's speed (Settings: "Throw your avatar"). While he's held or in the
 //     air his window covers the window he lives on (electron/avatar.js lift; free-floating, the work
@@ -25,6 +27,8 @@ import '../vendor/avatars/qubit-engine.js';
 import { FLOOR, createDirector, sideFor } from './director.js';
 import { bodyExtents, createThrow, headBack } from './throw.js';
 import { createRoamClassifier } from './roam.js';
+import { createAvatarClicks } from '../buddy/interactions.js';
+import { createVoiceControl } from './controls.js';
 import { liftedStage, onStrip, pressKind, pushSample, throwSoundFor, throwVelocity } from '../buddy/throw.js';
 
 const E = window.QubitEngine;
@@ -37,6 +41,7 @@ document.body.style.cssText = 'margin:0;background:transparent;overflow:hidden;t
 const mount = document.createElement('div');
 Object.assign(mount.style, { position: 'fixed', inset: '0', opacity: '0', transition: `opacity ${FADE_MS}ms ease` });
 document.body.appendChild(mount);
+const voiceControl = createVoiceControl({ desktop });
 
 let st = { voice: { phase: 'off' }, box: null, send: null, boxKnown: false, scale: 2, visible: true, bounds: null, lift: null, prefs: { clickTalk: true, throw: true } };
 let q = null;
@@ -274,6 +279,21 @@ const onHim = (x, y) => {
 };
 /** A press's outcome, for Orbit's log (fixed words only, rate-limited there). */
 const pressLog = (outcome, why = '') => desktop?.buddyPress?.(outcome, why);
+let settingsOpenedAt = -Infinity;
+function openSettings() {
+  if (performance.now() - settingsOpenedAt < 500) return;
+  settingsOpenedAt = performance.now();
+  pressLog('click', 'settings'); desktop?.buddySettings?.();
+}
+const clicks = createAvatarClicks({
+  single: () => {
+    if (gone) return;
+    pressLog('click', st.prefs.clickTalk !== false ? 'talk' : 'poke');
+    if (st.prefs.clickTalk !== false) { desktop?.buddyTalk?.(); dir?.ack(); }
+    else dir?.poke();
+  },
+  double: openSettings,
+});
 /**
  * His rect in this window's px, for Orbit's own hover check: when it changes, and every half second
  * anyway (Orbit forgets a rect it hasn't heard for 3 s, so nothing it was told can go stale). The
@@ -284,8 +304,9 @@ function sendHit(now = performance.now()) {
   const r = hitR();
   const x = q._rx ?? q.cx;
   const y = q._ry ?? q.ground - q.cy;
-  const rect = { x: Math.round(x - r), y: Math.round(y - r), w: Math.round(2 * r), h: Math.round(2 * r), revision: revision() };
-  const key = `${rect.x},${rect.y},${rect.w},${frame},${rect.revision},${th.blocked}`;
+  const control = voiceControl.update(st.voice, { x, y, radius: r, width: innerWidth, height: innerHeight, visible: st.visible && !th.blocked, held: !!press?.dragging });
+  const rect = { x: Math.round(x - r), y: Math.round(y - r), w: Math.round(2 * r), h: Math.round(2 * r), revision: revision(), controls: control ? [control] : [] };
+  const key = JSON.stringify([rect, frame, th.blocked]);
   if (key !== hitSent || now - hitSentAt > 500) {
     hitSent = key;
     hitSentAt = now;
@@ -302,12 +323,13 @@ const toStage = (p) => {
   return p && { x: p.x - o.x, y: p.y - o.y };
 };
 function cursor() {
-  document.body.style.cursor = press?.dragging ? 'grabbing' : hovering ? (st.prefs.throw && !reduceMotion ? 'grab' : 'pointer') : 'default';
+  document.body.style.cursor = press?.dragging ? 'grabbing' : hovering ? (st.prefs.throw ? 'grab' : 'pointer') : 'default';
 }
 addEventListener('mousemove', (e) => {
   if (!q) return;
   movedAt = performance.now();
   pointer = { x: e.screenX, y: e.screenY };
+  if (press) movePress(e);
   if (!press) {
     q.setPointer({ x: e.clientX, y: e.clientY });
     setHover(!gone && onHim(e.clientX, e.clientY));
@@ -325,11 +347,12 @@ addEventListener('mouseleave', () => {
 // ---------- click, hold, drag, throw ----------
 let press = null; // { id, x, y, t, off: { x, y } (pointer minus his centre), samples, dragging }
 let nextGesture = 1;
-const canThrow = () => st.prefs.throw !== false && !reduceMotion;
+const canThrow = () => st.prefs.throw !== false;
 let keepAliveAt = 0;
 let returning = false; // landed away from his strip: on his way back
 
 addEventListener('pointerdown', (e) => {
+  if (e.target?.closest?.('[data-avatar-control]')) return;
   // (On his way back to his strip too: a click still talks, and a press picks him up again.)
   if (e.button !== 0 || !q) return;
   // Only a new primary down may supersede a lost old press, never a secondary-button event.
@@ -337,12 +360,13 @@ addEventListener('pointerdown', (e) => {
   if (gone) return pressLog('ignored', 'leaving');
   if (press) return pressLog('ignored', 'press-already');
   if (!onHim(e.clientX, e.clientY)) return pressLog('ignored', 'not-on-him');
+  clicks.begin();
   try {
     document.documentElement.setPointerCapture(e.pointerId);
   } catch {}
   const cx = q._rx ?? q.cx;
   const cy = q._ry ?? q.ground - q.cy;
-  press = { id: e.pointerId, x: e.screenX, y: e.screenY, t: e.timeStamp, off: { x: e.clientX - cx, y: e.clientY - cy }, samples: [{ x: e.screenX, y: e.screenY, t: e.timeStamp }], dragging: false, frame, gesture: nextGesture++, sequence: 0, fallback: false, nativeAt: performance.now() };
+  press = { id: e.pointerId, x: e.screenX, y: e.screenY, t: e.timeStamp, off: { x: e.clientX - cx, y: e.clientY - cy }, samples: [{ x: e.screenX, y: e.screenY, t: e.timeStamp }], dragging: false, frame, gesture: nextGesture++, sequence: 0, fallback: false, nativeAt: performance.now(), domAt: performance.now(), nativeLost: false, keepAt: 0, upTimer: null };
   pointer = { x: e.screenX, y: e.screenY };
   desktop?.buddyGesture?.({ phase: 'begin', id: press.gesture, revision: revision() });
   setHover(true); // the window keeps the mouse for the whole press
@@ -351,22 +375,38 @@ addEventListener('pointerdown', (e) => {
 });
 addEventListener('pointermove', (e) => {
   if (!press || e.pointerId !== press.id || e.timeStamp < press.t) return;
+  movePress(e);
+});
+function movePress(e) {
+  if (!press || e.timeStamp < press.t) return;
   // (No "button is up" guess from a move here: a move reporting no button can arrive mid-press, and
   // ending the press on it meant no press ever became a pickup. A press whose pointerup was lost is
   // cleared by the next press instead, and Orbit lets go of a press it stops hearing about.)
-  for (const c of e.getCoalescedEvents?.() || [e]) pushSample(press.samples, { x: c.screenX, y: c.screenY, t: c.timeStamp });
+  const now = performance.now(); press.domAt = now;
+  if (now - press.keepAt > 100) { press.keepAt = now; desktop?.buddyGesture?.({ phase: 'update', id: press.gesture, revision: revision() }); }
+  const coalesced = e.getCoalescedEvents?.();
+  for (const c of coalesced?.length ? coalesced : [e]) pushSample(press.samples, { x: c.screenX, y: c.screenY, t: c.timeStamp });
   pointer = { x: e.screenX, y: e.screenY };
   if (!press.dragging && canThrow() && pressKind({ dx: e.screenX - press.x, dy: e.screenY - press.y, ms: e.timeStamp - press.t }) === 'drag') pickUp();
   if (press.dragging) th.move(heldTarget());
-});
+}
 addEventListener('pointerup', (e) => {
   if (!press || e.pointerId !== press.id || e.timeStamp < press.t) return;
   finishPress(e);
+});
+addEventListener('dblclick', (event) => {
+  if (event.target?.closest?.('[data-avatar-control]') || !q || !onHim(event.clientX, event.clientY)) return;
+  clicks.cancel(); openSettings();
+});
+addEventListener('contextmenu', (event) => {
+  if (event.target?.closest?.('[data-avatar-control]') || !q || !onHim(event.clientX, event.clientY)) return;
+  event.preventDefault(); clicks.cancel(); desktop?.orbAction?.('toggle-sleep');
 });
 function finishPress(e, { cancel = false, native = false } = {}) {
   const p = press;
   if (!p) return false;
   press = null; // exactly once, before releasePointerCapture can dispatch lostcapture
+  clearTimeout(p.upTimer);
   desktop?.buddyGesture?.({ phase: 'end', id: p.gesture, revision: revision() });
   try {
     document.documentElement.releasePointerCapture(p.id);
@@ -377,16 +417,14 @@ function finishPress(e, { cancel = false, native = false } = {}) {
     letGo(cancel ? { x: 0, y: 0 } : throwVelocity(p.samples, e?.timeStamp ?? performance.now(), { windowMs: 80 }));
   } else if (!fallback && e) {
     const kind = pressKind({ dx: e.screenX - p.x, dy: e.screenY - p.y, ms: e.timeStamp - p.t, released: true });
-    if (kind === 'click' && st.prefs.clickTalk !== false) {
-      // "Hey Orbit", with this window in front: the same wake path (see electron/main.js buddy:talk).
-      pressLog('click', 'talk');
-      desktop?.buddyTalk?.();
-      dir.ack();
-    } else {
+    if (kind === 'click') clicks.click({ x: e.screenX, y: e.screenY });
+    else {
+      clicks.cancel();
       pressLog('click', kind === 'click' ? 'poke' : !canThrow() ? 'throw-off' : 'too-long-for-a-click');
       dir.poke();
     }
   }
+  if (fallback) clicks.cancel();
   hoverNow();
   cursor();
   return true;
@@ -396,7 +434,7 @@ function captureLost(e) {
   press.fallback = true;
   // With the button physically down, continue the same gesture from native samples. Otherwise
   // native-confirmed up/stale failure finishes it. Never infer a click or synthesize a press.
-  if (!desktop?.buddyGesture) finishPress(null, { cancel: true });
+  if (!desktop?.buddyGesture || press.nativeLost) finishPress(null, { cancel: true });
 }
 addEventListener('pointercancel', captureLost);
 addEventListener('lostpointercapture', captureLost, true);
@@ -405,12 +443,20 @@ desktop?.onBuddyGesture?.((sample) => {
   const p = press;
   if (!p || !sample || sample.id !== p.gesture || sample.revision !== revision() || !Number.isSafeInteger(sample.sequence) || sample.sequence <= p.sequence) return;
   p.sequence = sample.sequence; p.nativeAt = performance.now();
+  clicks.setDelay(sample.doubleClickMs);
+  if (sample.trackingLost) { p.nativeLost = true; if (p.fallback) finishPress(null, { cancel: true }); return; }
   if (sample.cancel) return finishPress(null, { cancel: true });
   if (![sample.x, sample.y].every(Number.isFinite) || typeof sample.down !== 'boolean') return;
   const now = performance.now();
+  if (!sample.down) {
+    // Let Chromium deliver its real pointerup before falling back to native release.
+    clearTimeout(p.upTimer);
+    p.upTimer = setTimeout(() => { if (press === p) finishPress({ screenX: sample.x, screenY: sample.y, timeStamp: performance.now() }, { native: true }); }, 75);
+    return;
+  }
+  if (!p.fallback && now - p.domAt < 80) return;
   pointer = { x: sample.x, y: sample.y };
   pushSample(p.samples, { ...pointer, t: now });
-  if (!sample.down) return finishPress({ screenX: sample.x, screenY: sample.y, timeStamp: now }, { native: true });
   if (!p.dragging && canThrow() && pressKind({ dx: sample.x - p.x, dy: sample.y - p.y, ms: now - p.t }) === 'drag') pickUp();
   if (p.dragging) th.move(heldTarget());
 });
@@ -422,6 +468,7 @@ function heldTarget() {
 }
 
 function pickUp(how = 'drag') {
+  clicks.cancel();
   pressLog('pickup', how);
   press.dragging = true;
   returning = false; // (picked up on his way back: that walk is over)
@@ -432,6 +479,7 @@ function pickUp(how = 'drag') {
 }
 
 function letGo(v) {
+  if (reduceMotion) v = { x: 0, y: 0 };
   // A real throw (not a put-down): "Wheee!" (played by Orbit's main window, at the voice volume).
   if (throwSoundFor(v, q.side, st.prefs)) desktop?.buddySound?.('throw');
   th.release(v);
@@ -489,7 +537,7 @@ function frameTick(dt, now) {
     const list = th.solids;
     if (JSON.stringify(list) !== JSON.stringify(dir.geometry.solids)) dir.setGeometry({ ...geometry(), stage: { ...st.stage, solids: list } }, { keepBody: true, manual: true });
   }
-  if (press && desktop?.buddyGesture && now - press.nativeAt > 1100) finishPress(null, { cancel: true });
+  if (press?.fallback && desktop?.buddyGesture && now - press.nativeAt > 1100) finishPress(null, { cancel: true });
   sendHit(now);
   if (!isAuto() && (th.active || returning) && !press) {
     stuckSince ||= now;
@@ -558,6 +606,8 @@ desktop?.onBuddyEvent?.((name) => {
     if (q) dir.place({ entrance: true });
     else entrance = true;
   } else if (name === 'leave') {
+    clicks.cancel();
+    voiceControl.hide();
     gone = true;
     finishPress(null, { cancel: true });
     setHover(false);

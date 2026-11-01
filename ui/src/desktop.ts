@@ -7,6 +7,8 @@ export type OrbSync = {
   pulseMe: boolean; pulseGrok: boolean; pulseAmount: number;
   // For the avatar: the mic is muted, a draft waits for a yes, a prompt is being sent.
   muted?: boolean; draft?: boolean; sending?: boolean;
+  microphone?: 'off' | 'requesting' | 'active' | 'denied';
+  listening?: boolean;
 };
 
 export type HotkeyInfo = {
@@ -41,6 +43,7 @@ type DesktopApi = {
   onBuddyCommand?(cb: (c: { action: string; dir?: "left" | "right" }) => void): () => void;
   /** The avatar was clicked to talk (Settings -> Avatar -> Click your avatar to talk). */
   onAvatarTalk?(cb: () => void): () => void;
+  onAvatarVoice?(cb: (action: 'start' | 'stop') => void): () => void;
   /** An avatar's sound to play here ('throw': Qubit was thrown). */
   onAvatarSound?(cb: (name: string) => void): () => void;
   /** A feeling as the voice's words play (an emote cue), for the avatar. */

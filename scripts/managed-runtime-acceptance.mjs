@@ -60,6 +60,13 @@ const waitFor = async (condition, label, timeout = 18000) => {
 };
 const report = () => { try { return JSON.parse(fs.readFileSync(path.join(evidence, 'report.json'), 'utf8')); } catch { return {}; } };
 const queue = (command) => commands.set(crypto.randomUUID(), command);
+let avatarSequence = 0;
+const avatarAction = async (action) => {
+  const sequence = ++avatarSequence;
+  const file = path.join(evidence, 'avatar-action.json');
+  fs.writeFileSync(`${file}.tmp`, JSON.stringify({ sequence, action })); fs.renameSync(`${file}.tmp`, file);
+  await waitFor(() => report().avatarActionSequence === sequence, `avatar ${action} dispatch`);
+};
 const protect = (file) => {
   if (process.platform !== 'win32') return fs.chmodSync(file, 0o600);
   const windows = process.env.SystemRoot || 'C:/Windows';
@@ -95,7 +102,10 @@ try {
   queue({ kind: 'start' });
   await waitFor(() => status?.phase === 'listening' && status.microphone === 'active', 'explicit start');
   queue({ kind: 'setMute', muted: true }); await waitFor(() => status?.muted === true, 'mute');
-  queue({ kind: 'setMute', muted: false }); await waitFor(() => status?.muted === false, 'unmute');
+  await avatarAction('start'); await waitFor(() => status?.muted === false, 'avatar unmute');
+  await avatarAction('sleep'); await waitFor(() => report().avatarVoice?.asleep === true && report().avatarVoice?.listening === false, 'original orb sleep');
+  await avatarAction('start'); await waitFor(() => report().avatarVoice?.asleep === false && report().avatarVoice?.listening === true, 'avatar wake');
+  await avatarAction('start'); // idempotent: never creates another voice socket or audio context
   queue({ kind: 'showSettings' }); await waitFor(() => report().settingsHidden, 'settings close preserves voice');
   assert.equal(status.phase, 'listening');
   const runtimeId = status.runtimeId;
@@ -104,7 +114,7 @@ try {
   assert.equal(report().providerStarts, 1); assert.equal(report().rendererIds.length, 1);
   assert.equal(report().renderer.contexts, 1); assert.equal(report().renderer.tracksStopped, 0);
   await waitFor(() => catalog.tools.every((tool) => report().tools?.includes(tool.name)), 'catalog recovery on the same provider socket');
-  queue({ kind: 'stop' });
+  await avatarAction('stop');
   await waitFor(() => status?.phase === 'off' && status.microphone === 'off' && report().providerCloses === 1, 'stop releases fake devices');
   queue({ kind: 'quit' });
   await waitFor(() => exit !== null, 'clean quit');
@@ -113,7 +123,7 @@ try {
   assert.deepEqual(final.errors, []);
   assert.equal(final.blockedChildren, 0); assert.equal(final.clipboardWrites, 0); assert.equal(final.desktopCalls, 0);
   assert.equal(final.renderer.contextsClosed, 1); assert.equal(final.renderer.tracksStopped, 1);
-  console.log(`PASS managed startup, controls, settings, owner handover and device release: ${evidence}`);
+  console.log(`PASS managed startup, avatar unmute/wake/stop, settings, owner handover and device release: ${evidence}`);
 } finally {
   if (child && !exit) { child.kill(); await new Promise((resolve) => child.once('exit', resolve)); }
   await new Promise((resolve) => server.close(resolve));

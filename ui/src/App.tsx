@@ -170,8 +170,8 @@ export default function App() {
   // Keep the floating orb (and the avatar) in sync with this window.
   const draftWaiting = !!v.draft;
   useEffect(() => {
-    desktop?.sendOrbState({ phase: v.phase, input: v.levels.input, output: v.levels.output, asleep: v.asleep, hearing: v.hearing, claudeWorking, muted: v.muted, draft: draftWaiting, sending: v.sending, ...pulse });
-  }, [v.phase, v.levels, v.asleep, v.hearing, claudeWorking, v.muted, draftWaiting, v.sending, pulse.pulseMe, pulse.pulseGrok, pulse.pulseAmount]);
+    desktop?.sendOrbState({ phase: v.phase, microphone: v.microphone, listening: v.listening, input: v.levels.input, output: v.levels.output, asleep: v.asleep, hearing: v.hearing, claudeWorking, muted: v.muted, draft: draftWaiting, sending: v.sending, ...pulse });
+  }, [v.phase, v.microphone, v.listening, v.levels, v.asleep, v.hearing, claudeWorking, v.muted, draftWaiting, v.sending, pulse.pulseMe, pulse.pulseGrok, pulse.pulseAmount]);
 
   // Right-clicking the floating orb toggles sleep; the global hotkey starts / sleeps / wakes.
   const actions = useRef(v);
@@ -191,6 +191,18 @@ export default function App() {
     if (v.phase === "off" || v.asleep) hotkeyRef.current();
   };
   useEffect(() => desktop?.onAvatarTalk?.(() => talkRef.current()), []);
+  const voiceActionRef = useRef((_action: 'start' | 'stop') => {});
+  voiceActionRef.current = (action) => {
+    if (action === 'stop') return v.stop();
+    if (!canTalk(app.config)) { setView('settings'); desktop?.orbRestore(); return; }
+    void tryTalk(() => {
+      const voice = actions.current;
+      if (voice.muted) voice.setMute(false);
+      if (voice.asleep) voice.wake();
+      else if (voice.phase === 'off') void voice.start();
+    });
+  };
+  useEffect(() => desktop?.onAvatarVoice?.((action) => voiceActionRef.current(action)), []);
   // Qubit thrown for real: "Wheee!" at the voice volume, once (a new throw restarts it), awake or
   // asleep; while it plays Orbit's listening treats it like its own voice.
   const throwSound = useRef(createThrowSound({ gain: volumeGain }));

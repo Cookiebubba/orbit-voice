@@ -94,7 +94,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   const hoverLog = rateLimitedLog((m) => info_(m), { everyMs: 10_000 });
   // What a press on it came to, one line per outcome kind (rate-limited; only words from these lists).
   const PRESS_OUTCOMES = new Set(['click', 'pickup', 'ignored']);
-  const PRESS_WHY = new Set(['talk', 'poke', 'throw-off', 'too-long-for-a-click', 'drag', 'hold', 'leaving', 'press-already', 'not-on-him']);
+  const PRESS_WHY = new Set(['talk', 'poke', 'settings', 'throw-off', 'too-long-for-a-click', 'drag', 'hold', 'leaving', 'press-already', 'not-on-him']);
   const pressLog = rateLimitedLog((m) => info_(m), { everyMs: 5_000 });
   const pageErrLog = rateLimitedLog((m) => log(m), { everyMs: 30_000 });
   const modeListeners = new Set(); // onMouseMode's listeners (tests)
@@ -560,6 +560,8 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       if (!state || typeof state !== 'object') return;
       voice = {
         phase: state.phase,
+        microphone: state.microphone,
+        listening: state.listening,
         asleep: !!state.asleep,
         hearing: !!state.hearing,
         input: Number(state.input) || 0,
@@ -616,23 +618,33 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     gesture(message) {
       const m = message;
       if (!m || !Number.isSafeInteger(m.id) || m.id <= 0 || m.revision !== movementRevision) return false;
+      if (m.phase === 'update') { if (nativeGesture?.id !== m.id) return false; nativeGesture.renew?.(); return true; }
       if (m.phase === 'end') { if (nativeGesture?.id === m.id) finishGesture(false); return true; }
       if (m.phase !== 'begin' || m.id <= lastGestureId || !visible() || leaving || !lastHit) return false;
       finishGesture(); lastGestureId = m.id;
       const g = { id: m.id, sequence: 0, stop: null, timer: null };
       nativeGesture = g;
       const stale = () => { clearTimeout(g.timer); g.timer = setTimeout(() => { if (nativeGesture === g) finishGesture(); }, 900); g.timer.unref?.(); };
+      g.renew = stale;
       stale(); hover.setHeld(true);
-      // No helper is safe cancellation, never a guessed up/click or a synthetic press.
-      g.stop = watchGesture?.(m.id, (sample) => {
+      const unavailable = () => {
         if (nativeGesture !== g) return;
-        if (sample?.cancel || !sample || ![sample.x, sample.y].every(Number.isFinite) || typeof sample.down !== 'boolean') return finishGesture();
+        g.stop?.(); g.stop = null; g.nativeLost = true;
+        win?.webContents.send('buddy:gesture', { id: g.id, revision: movementRevision, sequence: ++g.sequence, trackingLost: true });
+        stale(); // only real DOM movement may renew a degraded gesture
+      };
+      const stop = watchGesture?.(m.id, (sample) => {
+        if (nativeGesture !== g) return;
+        if (sample?.cancel || !sample || ![sample.x, sample.y].every(Number.isFinite) || typeof sample.down !== 'boolean') return unavailable();
         let p;
         try { p = process.platform === 'win32' ? screen.screenToDipPoint({ x: sample.x, y: sample.y }) : sample; } catch { return finishGesture(); }
         stale();
-        win?.webContents.send('buddy:gesture', { id: g.id, revision: movementRevision, sequence: ++g.sequence, x: p.x, y: p.y, down: sample.down });
+        win?.webContents.send('buddy:gesture', { id: g.id, revision: movementRevision, sequence: ++g.sequence, x: p.x, y: p.y, down: sample.down, doubleClickMs: sample.doubleClickMs });
         if (!sample.down) finishGesture(false);
       });
+      if (g.nativeLost || nativeGesture !== g) stop?.();
+      else g.stop = stop;
+      if (!watchGesture) unavailable();
       return true;
     },
     /** Held heartbeats are not authority to renew a native gesture forever. */

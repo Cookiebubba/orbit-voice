@@ -151,6 +151,8 @@ The native resolver reads only `OPENAI_API_KEY`, in process, Windows user, then 
 
 Desktop and attached modes reuse the original native Qubit/Buddy renderer, director, navigation, emotes, click-through behavior, pickup and throw physics. Host geometry grants no execution authority. Standalone placement remains independent of host selection.
 
+Qubit's mic control follows the audio owner's actual capture and input gate. It shows when Orbit is off, connecting, listening, muted, or speaking with the mic on/off. Start wakes or unmutes the existing conversation; Stop hangs up and releases the microphone. Missing provider setup opens settings. Single-click keeps the original wake behavior, right-click keeps the orb's sleep/wake action, and double-click opens settings without starting voice. Reduced motion preserves dragging and drops him without an inertial throw. Mouse input is limited to the body and visible control.
+
 With `avatar.stage.v1`, Orbit validates the native HWND/PID, client origin, DPI, window epoch and bounded geometry revision. Surfaces are `solid` or `oneWay`, with an optional preferred surface. Missing, malformed, stale or mismatched geometry removes old colliders. Suspended/excluded regions hide the attached character rather than leaving invisible obstacles. Geometry transport is separate from voice and work delivery.
 
 `avatar.roam.v1` optionally allows Qubit to move between the host and one display's usable desktop area while retaining one native controller and one voice runtime. Dragging, walking and swept throws use the same physics. A host advertising `avatar.containment.v1` must explicitly grant `avatarPlacement:{schema:1,allowEscape:true}` before roaming is permitted. Missing permission keeps Qubit contained. Other selected avatars retain their existing placement.
@@ -168,12 +170,13 @@ npm run test:external-host
 npm run e2e:managed
 npm run e2e:avatar-stage
 npx --no-install electron scripts/avatar-auto-e2e.mjs
+npx --no-install electron scripts/avatar-auto-e2e.mjs --interactions-only --reduced-motion
 git diff --check
 ```
 
 Set `CI=true` when native desktop/input tests must remain skipped. The pull request records executed commands and counts. CI builds the typed UI, runs unit/sandboxed tests and native sidecar/parity matcher tests, then builds the standard Windows installer. The existing Mac job still compiles Orbit Native.
 
-`e2e:managed` needs no Bro checkout or running host. It starts the actual hidden Electron main, React audio owner and HTTP/voice bridge against a temporary protected loopback host. Fake devices and provider connections check startup silence, Start/Stop/Mute, closing settings during voice, same-lineage owner handover, catalog recovery on the same provider socket and clean device release. External connections, desktop helpers and real clipboard writes are blocked. Pairing credentials are removed after the fixture.
+`e2e:managed` needs no Bro checkout or running host. It starts the actual hidden Electron main, React audio owner and HTTP/voice bridge against a temporary protected loopback host. Fake devices and provider connections check startup silence, Start/Stop/Mute, avatar wake/unmute/stop, closing settings during voice, same-lineage owner handover, catalog recovery on the same provider socket and clean device release. External connections, desktop helpers and real clipboard writes are blocked. Pairing credentials are removed after the fixture.
 
 Stage and Automatic harnesses use temporary profiles and their own hidden Electron compositor. They import no microphone/provider runtime and send no OS input. Their printed output directories contain renderer captures and state. The default fixture mode never inspects a user-owned window. Real HWND testing requires an explicitly supplied isolated host descriptor and expected PID through `--host-file` and `--expected-host-pid`.
 

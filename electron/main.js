@@ -671,8 +671,17 @@ ipcMain.on('buddy:gesture', (e, message) => {
 });
 ipcMain.on('buddy:hit', (e, r) => {
   if (!fromUs(e)) return;
-  const ok = r && typeof r === 'object' && [r.x, r.y, r.w, r.h].every((n) => Number.isFinite(n) && Math.abs(n) < 100_000);
+  const rect = (r) => r && typeof r === 'object' && [r.x, r.y, r.w, r.h].every((n) => Number.isFinite(n) && Math.abs(n) < 100_000) && r.w > 0 && r.h > 0;
+  const ok = rect(r) && (r.controls === undefined || Array.isArray(r.controls) && r.controls.length <= 2 && r.controls.every(rect));
   avatarFor(e.sender)?.hit(ok ? r : null);
+});
+ipcMain.on('buddy:settings', (event) => {
+  if (!fromUs(event) || !avatarFor(event.sender)) return;
+  showMain(); main?.webContents.send('external:open-settings');
+});
+ipcMain.on('buddy:voice', (event, action) => {
+  if (!fromUs(event) || !avatarFor(event.sender) || !['start', 'stop'].includes(action)) return;
+  main?.webContents.send('avatar:voice', action);
 });
 // A quick click on the avatar: start talking, the same as "Hey Orbit" with its window in front (the
 // main window runs the wake word's own path; the call takes that window as the one you're in).
