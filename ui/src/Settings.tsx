@@ -243,19 +243,20 @@ function OpenAISettings({ s, update, config, onSaved }: { s: SettingsT; update: 
 }
 
 function ExternalHostSection({ s, update }: { s: SettingsT; update: Update }) {
-  const [host, setHost] = useState<{ connected: boolean; capabilities: string[]; mode?: 'desktop' | 'attached' | null; avatarRoam?: { schema: 1; policy: 'auto' } | null } | null>(null);
+  const [host, setHost] = useState<{ connected: boolean; name?: string | null; capabilities: string[]; mode?: 'desktop' | 'attached' | null; avatarRoam?: { schema: 1; policy: 'auto' } | null } | null>(null);
   useEffect(() => { let active = true; const refresh = () => fetch('/api/external-host').then((r) => r.json()).then((h) => { if (active) setHost(h); }).catch(() => { if (active) setHost(null); }); void refresh(); const timer = setInterval(refresh, 2000); return () => { active = false; clearInterval(timer); }; }, []);
   const automatic = host?.capabilities.includes('avatar.roam.v1') && host.avatarRoam?.schema === 1 && host.avatarRoam.policy === 'auto';
-  const placement = automatic ? 'Automatic' : host?.mode === 'attached' ? 'Stay with bro' : 'Desktop';
+  const app = host?.name || 'your workspace';
+  const placement = automatic ? 'Automatic' : host?.mode === 'attached' ? `Stay with ${app}` : 'Desktop';
   return <Section title="Connected workspace">
-    <p role="status" className="text-[13px] text-muted">{host?.connected ? 'Connected to bro. Spoken work goes through its orchestrator, with the session pinned when you start speaking.' : 'The selected workspace is disconnected. Reconnect from bro; Orbit will not switch to another backend or resend uncertain work.'}</p>
+    <p role="status" className="text-[13px] text-muted">{host?.connected ? `Connected to ${app}. Spoken work is handed to it, pinned to the session you were viewing when you started speaking.` : 'Your workspace app is disconnected. Reconnect from that app; Orbit will not switch to another backend or resend uncertain work.'}</p>
     <p className="mt-2 text-[12.5px] text-muted">Results are spoken during an active conversation. This preview does not wake the microphone automatically for workspace results.</p>
-    {!host ? <p role="status" className="mt-3 text-[13px] text-muted">Checking character placement…</p> : host.mode === 'desktop' || host.mode === 'attached' ? <p role="status" className="mt-3 text-[13px] text-muted">Placement requested by bro: <span className="font-medium text-fg">{placement}</span>. Change this in bro.</p> : <div className="mt-3"><Segmented value={s.externalAvatarMode} onChange={(externalAvatarMode) => update({ externalAvatarMode })} options={[{ value: 'desktop', label: 'Desktop' }, ...(host.capabilities.includes('avatar.attached') ? [{ value: 'attached' as const, label: 'Stay with bro' }] : [])]} /></div>}
+    {!host ? <p role="status" className="mt-3 text-[13px] text-muted">Checking character placement…</p> : host.mode === 'desktop' || host.mode === 'attached' ? <p role="status" className="mt-3 text-[13px] text-muted">Placement requested by {app}: <span className="font-medium text-fg">{placement}</span>. Change this in {app}.</p> : <div className="mt-3"><Segmented value={s.externalAvatarMode} onChange={(externalAvatarMode) => update({ externalAvatarMode })} options={[{ value: 'desktop', label: 'Desktop' }, ...(host.capabilities.includes('avatar.attached') ? [{ value: 'attached' as const, label: `Stay with ${app}` }] : [])]} /></div>}
     <p className="mt-2 text-[12.5px] text-muted">{automatic
       ? s.avatar === 'qubit'
         ? 'Drag Qubit out to the desktop or back into the workspace. Walking and throws share the same world on one display; fresh workspace geometry is required to enter. Crossing does not restart your conversation.'
         : 'Automatic movement is available for Qubit. Your selected avatar keeps its existing placement; choose Qubit to use workspace-to-desktop roaming.'
-      : 'The same animated character walks, reacts and can be picked up and thrown. Desktop uses a bounded screen strip. Stay with bro follows its validated native window and hides when it is minimized.'}</p>
+      : `The same animated character walks, reacts and can be picked up and thrown. Desktop uses a bounded screen strip. Stay with ${app} follows its validated native window and hides when it is minimized.`}</p>
   </Section>;
 }
 

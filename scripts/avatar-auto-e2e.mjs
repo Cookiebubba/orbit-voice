@@ -1,6 +1,6 @@
 // Isolated hidden real Qubit renderer. Source modules served directly: no UI build/manifest changes.
 // No voice/config/provider/microphone imports, OS input or user-window manipulation.
-// Optional --host-file PATH --expected-host-pid PID authenticates only a caller-owned inactive bro.
+// Optional --host-file PATH --expected-host-pid PID authenticates only a caller-owned inactive host.
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -21,7 +21,7 @@ const hostFile = option('host-file'), expectedPid = Number(option('expected-host
 const interactionsOnly = process.argv.includes('--interactions-only');
 const reducedMotion = process.argv.includes('--reduced-motion');
 if (reducedMotion) app.commandLine.appendSwitch('force-prefers-reduced-motion');
-if (hostFile && (!Number.isSafeInteger(expectedPid) || expectedPid <= 0)) throw new Error('Supply the caller-owned isolated bro PID.');
+if (hostFile && (!Number.isSafeInteger(expectedPid) || expectedPid <= 0)) throw new Error('Supply the caller-owned isolated host PID.');
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-auto-profile-'));
 const output = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-auto-captures-'));
 app.setPath('userData', profile);
@@ -33,7 +33,7 @@ const workArea = { x: -1800, y: 40, width: 1200, height: 800 };
 let native = { hwnd: 123, pid: 42, kind: 'app', x: -1510, y: 120, w: 620, h: 540, client: { x: -1500, y: 140, w: 600, h: 500 }, dpi: 96 };
 let hostRevision = 1, stageAvailable = true, headerY = 300;
 const caps = ['sessions.read', 'orchestrator.submit', 'requests.observe', 'avatar.attached', 'avatar.stage.v1', 'avatar.roam.v1'];
-const hostSnapshot = () => ({ protocol: 1, instanceId: 'auto-fixture', name: 'bro', mode: 'attached', avatarRoam: { schema: 1, policy: 'auto' }, capabilities: caps, window: { handle: '123', pid: 42, epoch: 'w1' }, sessions: [] });
+const hostSnapshot = () => ({ protocol: 1, instanceId: 'auto-fixture', name: 'Fixture host', mode: 'attached', avatarRoam: { schema: 1, policy: 'auto' }, capabilities: caps, window: { handle: '123', pid: 42, epoch: 'w1' }, sessions: [] });
 const stageSnapshot = () => ({ schema: 1, instanceId: 'auto-fixture', revision: hostRevision, available: stageAvailable, frame: stageAvailable ? { window: hostSnapshot().window, viewport: { width: 600, height: 500, scaleFactor: 1, physicalOrigin: { x: native.client.x, y: native.client.y } }, suspended: false, surfaces: [{ id: 'header', kind: 'oneWay', rect: { x: 40, y: headerY, w: 500, h: 12 } }], exclusions: [], preferredSurfaceId: 'header' } : null });
 const token = crypto.randomBytes(32).toString('hex');
 const server = http.createServer((req, res) => {
@@ -92,7 +92,7 @@ async function run() {
     ipcMain.on('buddy:voice', (e, action) => { if (target(e)) voiceActions.push(action); });
     ipcMain.on('orb:action', (_e, action) => orbActions.push(action));
     client = createExternalHost({ descriptor: hostFile ? readDescriptor(path.resolve(hostFile)) : { protocol: 1, instanceId: 'auto-fixture', url: base, token }, onSnapshot: (s) => {
-      if (hostFile && s && (s.name !== 'bro' || s.window?.pid !== expectedPid)) { errors.push('Descriptor does not identify the supplied isolated bro'); return; }
+      if (hostFile && s && s.window?.pid !== expectedPid) { errors.push('Descriptor does not identify the supplied isolated host'); return; }
       void binding.sync(s, 'auto');
     }, onStage: (s) => binding.stage(s) });
     await client.start();
@@ -106,7 +106,7 @@ async function run() {
     const assertIdentity = async (label) => { assert.equal(host.active(), avatar); assert.equal(win.webContents.id, wc); assert.equal(made, 1); assert.equal((await sample()).identity, true); assert.equal(voiceConnection.fake, true); checks.push(label); };
     await delay(250); await capture('initial');
     if (hostFile) {
-      // Native descriptor inventory only. Inactive/covered bro must not be falsely called eligible.
+      // Native descriptor inventory only. An inactive/covered host must not be falsely called eligible.
       assert.equal(avatar.debug().stage.automatic, true); await assertIdentity('supplied-native-owner');
       binding.clear(); await delay(80); await assertIdentity('supplied-host-loss');
       assert.equal((await sample()).eligible, false);
@@ -130,10 +130,10 @@ async function run() {
       checks.push('active-geometry-revision-stale-hit');
       const beforeMove = await sample(); native = { ...native, client: { ...native.client, x: native.client.x + 80 }, x: native.x + 80 }; hostRevision++; host.onWins([native]); binding.stage(stageSnapshot());
       await delay(80); const moved = await sample(); assert.ok(Math.abs(moved.x - beforeMove.x) < 3 && Math.abs(moved.y - beforeMove.y) < 3, 'host movement changed held screen pose');
-      nativeSample(550, 250); await delay(220); await capture('reentered-same-gesture'); assert.equal((await sample()).domain, 'bro', JSON.stringify(await sample()));
+      nativeSample(550, 250); await delay(220); await capture('reentered-same-gesture'); assert.equal((await sample()).domain, 'host', JSON.stringify(await sample()));
       for (let i = 0; i < 3; i++) {
         nativeSample(85, 250); await delay(140); assert.equal((await sample()).domain, 'desktop');
-        nativeSample(550, 250); await delay(140); assert.equal((await sample()).domain, 'bro');
+        nativeSample(550, 250); await delay(140); assert.equal((await sample()).domain, 'host');
         assert.equal(activeGestureId, gestureBeforeGeometry);
       }
       checks.push('rapid-crossings-same-native-gesture');
@@ -194,7 +194,7 @@ async function run() {
       // Reachable walking shares the same floor/navigation across the open client boundary.
       await js('(()=>{const Q=__qubit,q=Q.q;Q.throw.recover();Q.dir.homeAgain();q.cx=100;q.sy=0;q.cy=q.side/2;q.air=false;window.__walk=q.goTo(650,q.ground-1);})()');
       await waitFor(async () => (await sample()).x > 620, 'reachable floor walk did not cross'); await capture('walk-crossing'); await assertIdentity('reachable-walk');
-      // Swept throw from bro to desktop, no watchdog/home placement.
+      // Swept throw from host to desktop, no watchdog/home placement.
       await js('(()=>{const Q=__qubit,q=Q.q;Q.throw.recover();q.cx=550;q.cy=q.ground-240;Q.throw.hold({x:550,y:240});Q.dir.grabbed();Q.throw.release({x:-1700,y:-100});Q.dir.thrown();})()');
       await delay(350); assert.equal((await sample()).returning, false); await capture('throw-outside'); await assertIdentity('swept-throw');
       // Stage expiry revokes geometry/entry, outside owner persists. Avoid polling lease renewal.

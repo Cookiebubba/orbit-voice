@@ -260,6 +260,11 @@ const MIME = {
 
 // ---------- server ----------
 let server = null;
+/** The selected host's advertised display name, as plain bounded text, or null. */
+const hostName = () => {
+  const name = externalHost()?.snapshot()?.name;
+  return typeof name === 'string' ? name.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').trim().slice(0, 64) || null : null;
+};
 let offOpenAICredentials = () => {};
 /** Native/test lifecycle cleanup after voice clients have disconnected. */
 export async function closeServer() {
@@ -671,7 +676,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
             hasXaiKey: !!getApiKey(),
             hasOpenAIKey: !!getOpenAIStatus()?.savedPresent,
             openai: getOpenAIStatus(),
-            externalHost: externalHost() ? { selected: true, connected: !!externalHost().snapshot(), capabilities: externalHost().snapshot()?.capabilities || [], name: typeof externalHost().snapshot()?.name === 'string' ? externalHost().snapshot().name.slice(0, 64) : null } : null,
+            externalHost: externalHost() ? { selected: true, connected: !!externalHost().snapshot(), capabilities: externalHost().snapshot()?.capabilities || [], name: hostName() } : null,
             keyStorage: keyStorageKind(),
             settings: publicSettings(),
             voiceWarming,
@@ -683,7 +688,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           const snapshot = externalHost()?.snapshot();
           const mode = ['desktop', 'attached'].includes(snapshot?.mode) ? snapshot.mode : null;
           const avatarRoam = snapshot?.capabilities?.includes('avatar.roam.v1') && snapshot.avatarRoam?.schema === 1 && snapshot.avatarRoam?.policy === 'auto' ? { schema: 1, policy: 'auto' } : null;
-          return sendJson(res, 200, { selected: !!externalHost(), connected: !!snapshot, capabilities: snapshot?.capabilities || [], mode, avatarRoam });
+          return sendJson(res, 200, { selected: !!externalHost(), connected: !!snapshot, name: hostName(), capabilities: snapshot?.capabilities || [], mode, avatarRoam });
         }
 
         case 'POST /api/openai/key': {

@@ -1,4 +1,4 @@
-// Actual electron/main.js + React/useVoice + server, driven by bro's native lifecycle fixture.
+// Actual electron/main.js + React/useVoice + server, driven by a fixture host's native lifecycle.
 // Only this isolated process's windows are captured. Devices/providers/desktop/input are fakes.
 import assert from 'node:assert/strict';
 import childProcess from 'node:child_process';
@@ -14,21 +14,20 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const option = (name) => { const i = process.argv.indexOf(`--${name}`); return i >= 0 ? process.argv[i + 1] : null; };
 const directory = option('acceptance-dir'), descriptor = option('external-host-file');
 assert.ok(directory && descriptor && path.isAbsolute(directory) && path.isAbsolute(descriptor));
-assert.ok(process.argv.includes('--bro-managed'));
+assert.ok(process.argv.includes('--host-managed'));
 fs.mkdirSync(directory, { recursive: true });
 const reportFile = path.join(directory, 'report.json');
 const state = globalThis.__managedAcceptance = { providerStarts: 0, providerCloses: 0, tools: [], errors: [],
   showRequests: 0, settingsObserved: false, settingsHidden: false, blockedChildren: 0, clipboardWrites: 0,
   startup: null, renderer: null, rendererIds: [], snapshots: [] };
 const writeReport = () => { fs.writeFileSync(`${reportFile}.tmp`, JSON.stringify(state)); fs.renameSync(`${reportFile}.tmp`, reportFile); };
-for (const [key, name] of [['APPDATA', 'appdata'], ['LOCALAPPDATA', 'local'], ['HOME', 'home'], ['USERPROFILE', 'home'],
-  ['BRO_DIR', 'bro'], ['CLAUDE_POOL_DIR', 'pool'], ['BRO_CODEX_PROFILES_DIR', 'codex']]) {
+for (const [key, name] of [['APPDATA', 'appdata'], ['LOCALAPPDATA', 'local'], ['HOME', 'home'], ['USERPROFILE', 'home']]) {
   process.env[key] = path.join(directory, name); fs.mkdirSync(process.env[key], { recursive: true });
 }
 app.setPath('appData', process.env.APPDATA);
 const profile = path.join(directory, 'orbit-profile'); fs.mkdirSync(profile, { recursive: true });
 app.setPath('userData', profile);
-process.env.ORBIT_BRO_PREVIEW_USER_DATA = profile;
+process.env.ORBIT_COMPANION_USER_DATA = profile;
 process.env.ORBIT_FAKE_DESKTOP = path.join(ROOT, 'test/e2e/fake-desktop.mjs');
 for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'XAI_API_KEY', 'GVB_FAKE_MIC', 'GVB_SNAPSHOT_DIR', 'ORBIT_EXTERNAL_HOST_FILE']) delete process.env[key];
 process.env.PATH = path.join(process.env.SystemRoot || 'C:/Windows', 'System32');

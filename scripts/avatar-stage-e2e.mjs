@@ -20,9 +20,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const opt = (name) => { const i = process.argv.indexOf(`--${name}`); return i < 0 ? null : process.argv[i + 1]; };
 const hostFile = opt('host-file'), visible = process.argv.includes('--visible');
 const expectedPid = Number(opt('expected-host-pid'));
-if (hostFile && (!Number.isSafeInteger(expectedPid) || expectedPid <= 0)) throw new Error('Supply the isolated bro GUI PID explicitly.');
+if (hostFile && (!Number.isSafeInteger(expectedPid) || expectedPid <= 0)) throw new Error('Supply the isolated host GUI PID explicitly.');
 if (visible && !hostFile) throw new Error('--visible requires an explicitly identified isolated native host.');
-const profile = process.env.ORBIT_BRO_PREVIEW_USER_DATA || fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-stage-profile-'));
+const profile = process.env.ORBIT_COMPANION_USER_DATA || fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-stage-profile-'));
 fs.mkdirSync(profile, { recursive: true });
 app.setPath('userData', profile);
 app.commandLine.appendSwitch('disable-background-networking');
@@ -88,7 +88,7 @@ try {
   binding = createExternalAvatarBinding({ avatarHost: host, tracker: () => tracker, platform: 'win32' });
   host.setKind('qubit', 2);
   client = createExternalHost({ descriptor: hostFile ? readDescriptor(path.resolve(hostFile)) : { protocol: 1, instanceId: 'stage-fixture', url: base, token }, onSnapshot: (s) => {
-    if (hostFile && s && (s.name !== 'bro' || s.window?.pid !== expectedPid)) { errors.push('Supplied host is not the expected isolated GUI PID'); binding.clear(); return; }
+    if (hostFile && s && s.window?.pid !== expectedPid) { errors.push('Supplied host is not the expected isolated GUI PID'); binding.clear(); return; }
     void binding.sync(s, 'attached');
   }, onStage: (s) => binding.stage(s) });
   await client.start();

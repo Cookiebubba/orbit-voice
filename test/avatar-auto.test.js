@@ -51,7 +51,7 @@ test('Auto host loss/replacement, identity reuse, stage lease, minimize and fore
   const a = f.host.active(), fakeVoice = { phase: 'speaking', connection: {} }; f.host.onVoice(fakeVoice);
   assert.equal(a.roam.at(-1).options.eligible, true);
   f.setFront(999); assert.equal(a.roam.at(-1).options.eligible, false);
-  f.setFront(999, 'orbit'); assert.equal(a.roam.at(-1).options.eligible, false, 'Orbit settings is not an occlusion exemption for the bro region');
+  f.setFront(999, 'orbit'); assert.equal(a.roam.at(-1).options.eligible, false, 'Orbit settings is not an occlusion exemption for the host region');
   f.setFront(123); assert.equal(a.roam.at(-1).options.eligible, true);
   f.host.onWins([{ ...native(), min: true }]); assert.equal(a.roam.at(-1).options.eligible, false);
   f.host.onWins([native()]); t.mock.timers.tick(2001); assert.equal(a.roam.at(-1).options.eligible, false);
@@ -64,7 +64,7 @@ test('Auto host loss/replacement, identity reuse, stage lease, minimize and fore
   f.host.onWins([{ ...native(124), pid: 99 }]); assert.equal(a.roam.at(-1).options.eligible, false); assert.equal(f.host.active(), a);
   f.binding.clear(); f.host.stop();
 });
-test('Automatic full work-area transform uses interior bro surfaces and retains active display, including negative origins', () => {
+test('Automatic full work-area transform uses interior host surfaces and retains active display, including negative origins', () => {
   const display = { id: 1, scaleFactor: 1, workArea: { x: -1920, y: 0, width: 1920, height: 1040 } };
   const screen = { screenToDipRect: (_, r) => r, getDisplayMatching: () => display };
   const s = automaticStageFor(screen, display, stage().frame, native(), { identity: 'a:w1', eligible: true });
@@ -78,12 +78,12 @@ test('Automatic full work-area transform uses interior bro surfaces and retains 
 test('classifier uses actual moving body/pointer, hysteresis and swept segments; moving host never catches stationary detached body', () => {
   const c = createRoamClassifier(), r = { x: 100, y: 100, w: 400, h: 400 };
   const put = (x, y = 300, extra = {}) => c.update({ region: r, eligible: true, identity: 'a', body: { x, y, ex: 18, ey: 18 }, ...extra });
-  assert.equal(put(50), 'desktop'); assert.equal(put(150), 'bro');
-  for (let i = 0; i < 40; i++) assert.equal(put(100 + i % 2), 'bro');
+  assert.equal(put(50), 'desktop'); assert.equal(put(150), 'host');
+  for (let i = 0; i < 40; i++) assert.equal(put(100 + i % 2), 'host');
   assert.equal(put(50), 'desktop');
   const r2 = { ...r, x: 0 }; assert.equal(put(50, 300, { region: r2 }), 'desktop');
   assert.equal(put(70, 300, { region: r2 }), 'desktop', 'geometry appearing under detached body is not entry');
-  assert.equal(put(450, 300, { region: r2 }), 'desktop'); assert.equal(put(200, 300, { region: r2 }), 'bro');
+  assert.equal(put(450, 300, { region: r2 }), 'desktop'); assert.equal(put(200, 300, { region: r2 }), 'host');
   assert.equal(put(200, 300, { region: r2, eligible: false }), 'desktop');
   assert.equal(sweptRegion({ x: -100, y: 200 }, { x: 800, y: 200 }, r), true);
   assert.equal(sweptRegion({ x: -100, y: 20 }, { x: 800, y: 20 }, r), false);

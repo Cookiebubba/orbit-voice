@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('desktop', {
   // 'win32' | 'darwin' | 'linux': for platform-aware words (hotkey symbols, "Open at login").
   platform: process.platform,
-  managed: process.argv.includes('--bro-managed-ui'),
+  managed: process.argv.includes('--host-managed-ui'),
   managedStatus: (status) => ipcRenderer.send('managed:status', status),
   managedAck: (id, applied) => ipcRenderer.send('managed:ack', id, applied === true),
   onManagedControl: (cb) => {

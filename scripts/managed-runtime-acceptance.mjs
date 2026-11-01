@@ -1,5 +1,5 @@
 // Real hidden Electron/React/server, a protected loopback host and fake audio/provider.
-// This driver never pairs with a running Bro, touches a real microphone or uses a real API key.
+// This driver never pairs with a running host, touches a real microphone or uses a real API key.
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -29,7 +29,7 @@ const server = http.createServer(async (request, response) => {
   const json = (code, body) => { response.writeHead(code, { 'content-type': 'application/json' }); response.end(JSON.stringify(body)); };
   if (request.headers.authorization !== `Bearer ${token}`) return json(401, { error: 'fixture authentication required' });
   const route = new URL(request.url, 'http://127.0.0.1').pathname;
-  if (request.method === 'GET' && route === '/orbit/v1/host') return json(200, { protocol: 1, instanceId: epoch, name: 'bro',
+  if (request.method === 'GET' && route === '/orbit/v1/host') return json(200, { protocol: 1, instanceId: epoch, name: 'Fixture host',
     lineage, ownerEpoch: epoch, mode: 'attached', window: null, focusedSessionId: null, sessions: [], capabilities, toolCatalogRevision: catalog.revision });
   if (request.method === 'GET' && route === '/orbit/v1/tools/catalog') return json(200, catalog);
   if (request.method === 'GET' && route === '/orbit/v1/events') return json(200, { events: [], cursor: 0, gap: false });
@@ -89,7 +89,7 @@ try {
   const stdout = fs.openSync(path.join(evidence, 'stdout.log'), 'w'), stderr = fs.openSync(path.join(evidence, 'stderr.log'), 'w');
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
-  child = spawn(electron, [path.join(root, 'scripts/managed-runtime-e2e.mjs'), '--bro-managed', '--external-host-file', descriptor,
+  child = spawn(electron, [path.join(root, 'scripts/managed-runtime-e2e.mjs'), '--host-managed', '--external-host-file', descriptor,
     '--acceptance-dir', evidence], { cwd: root, env, windowsHide: true, stdio: ['ignore', stdout, stderr] });
   fs.closeSync(stdout); fs.closeSync(stderr);
   child.on('exit', (code, signal) => { exit = { code, signal }; });

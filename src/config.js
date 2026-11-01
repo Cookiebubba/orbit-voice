@@ -57,7 +57,7 @@ export const DEFAULTS = Object.freeze({
   openaiVoice: 'cedar',
   openaiKeySource: 'saved', // 'saved' | 'system' | 'saved-or-system'; only native pairing changes the default
   previewHotkeyEnabled: false, // paired launches require explicit shortcut setup; standalone keeps its shortcut
-  externalAvatarMode: 'desktop', // Desktop / Stay with bro / Automatic, not a development switch
+  externalAvatarMode: 'desktop', // Desktop / Stay with host / Automatic, not a development switch
   claudeVoice: 0, // which of Kitten's 8 voices Claude voice speaks with (0–7)
   // The brain behind Claude voice: 'haiku' (fastest), 'sonnet', 'opus' or 'fable', and its effort.
   claudeVoiceModel: 'haiku',
@@ -347,7 +347,7 @@ export function initConfig({ dir, secrets, brainSecrets, openaiSecrets, openaiCr
   }
   if (managedConfig) {
     // Separate preferences: integration setup must not rewrite the standalone provider.
-    const file = path.join(configDir, 'bro-managed-settings.json');
+    const file = path.join(configDir, 'managed-settings.json');
     let overlay = {};
     try {
       const stat = fs.statSync(file);
@@ -401,7 +401,7 @@ export function updateSettings(patch) {
     // The voice engine is always written out, even at its default, so the file says it was chosen
     // (an older file without it was a Grok install: see engineFor).
     const toSave = Object.fromEntries(Object.entries(settings).filter(([k, v]) => k === 'voiceEngine' || k === 'openaiKeySource' || JSON.stringify(v) !== JSON.stringify(DEFAULTS[k])));
-    const file = path.join(configDir, managedConfig ? 'bro-managed-settings.json' : 'settings.json');
+    const file = path.join(configDir, managedConfig ? 'managed-settings.json' : 'settings.json');
     const temporary = `${file}.${randomUUID()}.tmp`;
     try {
       fs.writeFileSync(temporary, JSON.stringify(toSave, null, 2), { mode: 0o600, flag: 'wx' });

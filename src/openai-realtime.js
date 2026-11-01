@@ -1,6 +1,6 @@
 // OpenAI GA Realtime -> Orbit's existing normalized socket runtime. Native process only.
 // Wire evidence: openai/openai-node resources/realtime/realtime.ts and realtime/internal-base.ts.
-// The legacy bro /v1/live/sessions + gpt-live-1 dialect is not a documented Realtime contract.
+// A legacy /v1/live/sessions + gpt-live-1 dialect is not a documented Realtime contract.
 import { EventEmitter } from 'node:events';
 import WebSocket from 'ws';
 

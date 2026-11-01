@@ -24,10 +24,10 @@ export function createRoamClassifier({ hysteresis = 5 } = {}) {
       const ex = body.ex || 0, ey = body.ey || 0;
       const inner = { x: region.x + ex, y: region.y + ey, w: region.w - 2 * ex, h: region.h - 2 * ey };
       const inside = inner.w > 0 && inner.h > 0 && contains(inner, body, -hysteresis) && (!pointer || contains(region, pointer, -hysteresis));
-      if (initialize) { domain = inside ? 'bro' : 'desktop'; armed = !inside; }
+      if (initialize) { domain = inside ? 'host' : 'desktop'; armed = !inside; }
       else if (changed && domain === 'desktop' && contains(region, body, hysteresis)) armed = false;
       if (!contains(region, body, hysteresis) && (!pointer || !contains(region, pointer, hysteresis))) { domain = 'desktop'; armed = true; }
-      else if (!changed && armed && previous && Math.hypot(p.x - previous.x, p.y - previous.y) > 0.01 && sweptRegion(previous, p, region) && inside) { domain = 'bro'; armed = false; }
+      else if (!changed && armed && previous && Math.hypot(p.x - previous.x, p.y - previous.y) > 0.01 && sweptRegion(previous, p, region) && inside) { domain = 'host'; armed = false; }
       previous = { ...p };
       return domain;
     },

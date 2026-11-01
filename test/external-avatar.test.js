@@ -22,7 +22,7 @@ function fixture() {
   return { host, binding, avatars, snapshot, describes: () => describes, setWindows: (v) => windows = v };
 }
 
-test('Stay with bro uses existing animated native host with validated HWND/PID and negative coordinates', async () => {
+test('Stay with host uses existing animated native host with validated HWND/PID and negative coordinates', async () => {
   const f = fixture();
   assert.equal(await f.binding.sync(f.snapshot, 'attached'), true);
   assert.equal(f.host.guests.length, 1);

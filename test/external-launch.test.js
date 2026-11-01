@@ -20,18 +20,18 @@ test('ordinary Orbit preserves its profile, identity, default port, updates and 
 });
 
 test('standalone development keeps PORT and ORBIT_USER_DATA without importing the companion override', () => {
-  const launch = externalLaunch({ argv: [], env: { PORT: '48123', ORBIT_USER_DATA: 'standalone-fixture', ORBIT_BRO_PREVIEW_USER_DATA: 'companion-fixture' } });
+  const launch = externalLaunch({ argv: [], env: { PORT: '48123', ORBIT_USER_DATA: 'standalone-fixture', ORBIT_COMPANION_USER_DATA: 'companion-fixture' } });
   assert.equal(launch.port, 48123);
   assert.equal(launch.userDataOverride, 'standalone-fixture');
 });
 
 test('an explicit host gets an isolated profile, dynamic port and opt-in shortcut', () => {
   for (const managed of [false, true]) {
-    const launch = externalLaunch({ argv: ['--external-host-file', 'fixture.json', ...(managed ? ['--bro-managed'] : [])], env: { PORT: '48123', ORBIT_USER_DATA: 'standalone-fixture', ORBIT_BRO_PREVIEW_USER_DATA: 'companion-fixture' } });
+    const launch = externalLaunch({ argv: ['--external-host-file', 'fixture.json', ...(managed ? ['--host-managed'] : [])], env: { PORT: '48123', ORBIT_USER_DATA: 'standalone-fixture', ORBIT_COMPANION_USER_DATA: 'companion-fixture' } });
     assert.equal(launch.paired, true);
     assert.equal(launch.managed, managed);
     assert.equal(launch.descriptor, 'fixture.json');
-    assert.equal(launch.profile, 'OrbitBroPreview');
+    assert.equal(launch.profile, 'OrbitCompanion');
     assert.notEqual(launch.appId, 'dev.orbit.voice');
     assert.equal(launch.userDataOverride, 'companion-fixture');
     assert.equal(launch.port, 0);
@@ -43,7 +43,7 @@ test('an explicit host gets an isolated profile, dynamic port and opt-in shortcu
 });
 
 test('packaged launches ignore development pairing and profile overrides', () => {
-  const env = { ORBIT_EXTERNAL_HOST_FILE: 'untrusted-env.json', ORBIT_USER_DATA: 'standalone-fixture', ORBIT_BRO_PREVIEW_USER_DATA: 'companion-fixture' };
+  const env = { ORBIT_EXTERNAL_HOST_FILE: 'untrusted-env.json', ORBIT_USER_DATA: 'standalone-fixture', ORBIT_COMPANION_USER_DATA: 'companion-fixture' };
   const standalone = externalLaunch({ argv: [], env, packaged: true });
   assert.equal(standalone.paired, false);
   assert.equal(standalone.userDataOverride, null);
@@ -55,7 +55,7 @@ test('packaged launches ignore development pairing and profile overrides', () =>
 test('development environment pairing is explicit and an empty CLI argument fails', () => {
   assert.equal(externalLaunch({ argv: [], env: { ORBIT_EXTERNAL_HOST_FILE: 'fixture.json' } }).paired, true);
   assert.throws(() => externalLaunch({ argv: ['--external-host-file'], env: {} }), /descriptor path/);
-  assert.equal(externalLaunch({ argv: ['--bro-managed'], env: {} }).profile, 'OrbitBroPreview');
+  assert.equal(externalLaunch({ argv: ['--host-managed'], env: {} }).profile, 'OrbitCompanion');
 });
 
 test('managed build identity supports source checkouts and retains preview manifest compatibility', (t) => {
@@ -64,6 +64,6 @@ test('managed build identity supports source checkouts and retains preview manif
   const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
   fs.writeFileSync(path.join(root, 'package.json'), '{"version":"1.3.0-beta.4"}');
   assert.equal(managedBuildId(root), hash('{"version":"1.3.0-beta.4"}'));
-  fs.writeFileSync(path.join(root, 'orbit-bro-compatibility.json'), '{"schema":1}');
+  fs.writeFileSync(path.join(root, 'orbit-host-compatibility.json'), '{"schema":1}');
   assert.equal(managedBuildId(root), hash('{"schema":1}'));
 });

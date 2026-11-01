@@ -1,6 +1,6 @@
 # External host integration
 
-An explicitly selected host lets Orbit talk to a workspace such as [Bro](https://github.com/JustSuperHuman/bro-cli). Orbit owns realtime audio, provider credentials, microphone controls and its native character. The host owns session identity and durable work delivery. Audio never travels over the host protocol.
+An explicitly selected host lets Orbit talk to a workspace app. [Bro](https://github.com/JustSuperHuman/bro-cli) is the first one. Orbit owns realtime audio, provider credentials, microphone controls and its native character. The host owns session identity and durable work delivery. Audio never travels over the host protocol.
 
 Windows x64 is the current native attachment and managed-voice target. Ordinary Orbit retains its existing application identity, profile, updater, wake shortcut and default port. Native Swift sources and packaging are unchanged.
 
@@ -34,19 +34,19 @@ Use an absolute Windows path on Windows. The descriptor belongs to the current u
 
 | Setting | Ordinary Orbit | Explicitly selected host |
 | --- | --- | --- |
-| Profile | Existing `Orbit` profile | Separate `OrbitBroPreview` profile |
-| Windows app ID | `dev.orbit.voice` | `dev.justsuperhuman.orbit.bro-preview` |
+| Profile | Existing `Orbit` profile | Separate `OrbitCompanion` profile |
+| Windows app ID | `dev.orbit.voice` | `dev.orbit.voice.companion` |
 | Local UI port | `4317`, or development `PORT` | Available IPv4 loopback port |
 | Environment settings import | Existing behavior | Disabled, apart from the specific OpenAI policy below |
 | Wake shortcut | Existing startup registration | Off until explicitly configured |
 | In-app updates | Existing upstream behavior | Disabled, including manual checks |
-| Development profile override | `ORBIT_USER_DATA` | `ORBIT_BRO_PREVIEW_USER_DATA` |
+| Development profile override | `ORBIT_USER_DATA` | `ORBIT_COMPANION_USER_DATA` |
 
-Companion profile/identity names retain compatibility with Bro's existing preview. They apply only to an explicit host launch. Packaged launches ignore development profile overrides. Managed mode never changes startup-at-login or imports the ordinary Orbit profile.
+The companion identity is the same for every host, so moving between hosts keeps one companion profile. It applies only to an explicit host launch. Packaged launches ignore development profile overrides. Managed mode never changes startup-at-login or imports the ordinary Orbit profile.
 
 A conservative probe refuses a paired launch while `127.0.0.1:4317` is occupied. It does not authenticate to or terminate that process. A standalone runtime on a different port is outside this probe's detection. A second managed launch can open settings only for the same original canonical pairing path; it cannot adopt a differently paired process.
 
-Bro 2.1.22 deliberately accepts only its separately verified companion payload. Merging this source change does not make the ordinary upstream installer a registered Bro companion or bypass that validation. The [existing Windows preview](https://github.com/JustSuperHuman/orbit-voice/releases/tag/bro-preview-v1.3.0.1) remains the installation path for that Bro release. Upstream installer support requires a corresponding Bro compatibility update.
+A host decides which Orbit builds it launches. Bro, for example, launches only companion builds whose payload matches a compatibility manifest it verifies. Merging this change does not register the ordinary installer with any host or bypass a host's own checks.
 
 ## Protocol v1
 
@@ -129,19 +129,19 @@ Work that changes anything is not a host tool. It goes through `orchestrator.sub
 
 ### Managed lifecycle
 
-`--bro-managed` requires an explicit protected descriptor and starts the existing renderer hidden. The descriptor also contains a stable `lineage` and an `ownerEpoch` equal to `instanceId`. The native shell reports renderer readiness, phase, microphone state, provider preferences and credential-source metadata. It sends no credential material.
+`--host-managed` requires an explicit protected descriptor and starts the existing renderer hidden. The descriptor also contains a stable `lineage` and an `ownerEpoch` equal to `instanceId`. The native shell reports renderer readiness, phase, microphone state, provider preferences and credential-source metadata. It sends no credential material.
 
 Controls contain runtime/owner identities, an ID and a remaining lifetime. The renderer acknowledges an applied command, not receipt alone. Duplicate, expired or wrong-owner commands cannot restart audio. Startup, owner recovery and workspace results never start a conversation automatically. Closing advanced settings hides the same renderer while preserving an active conversation.
 
 Both native and renderer layers enforce the owner lease. Lease expiry stops audio. Quit waits for device release, reports intentional stop and exits. Replacing the original canonical descriptor is allowed only within the same lineage. In-flight old-owner operations and captures cannot acquire new authority.
 
-A verified Bro preview uses its compatibility-manifest digest as `buildId`. A source checkout without that optional file uses its package-metadata digest. This fallback does not relax the independent build checks in Bro's launcher.
+A build that ships an `orbit-host-compatibility.json` manifest reports that file's digest as `buildId`, so a host that verified the payload can recognize the running process. A source checkout without the optional file reports its package-metadata digest instead. The fallback does not relax any host's own build checks.
 
 ## Voice providers and credentials
 
 OpenAI Realtime is an optional adapter to Orbit's existing socket/audio runtime. It uses the GA WebSocket API, 24 kHz PCM, streaming audio/transcripts, function tools, server VAD and playback-clock truncation on interruption. Late tools from interrupted responses are suppressed. The native adapter filters provider metadata and redacts errors before forwarding them to the UI.
 
-Standalone Orbit retains its existing Claude/Grok startup choice. A managed companion uses OpenAI or Grok and keeps its preferences in `bro-managed-settings.json`. Account, provider, model and voice changes apply to the next conversation. They never trigger a paid preview or switch accounts after an authentication failure.
+Standalone Orbit retains its existing Claude/Grok startup choice. A managed companion uses OpenAI or Grok and keeps its preferences in `managed-settings.json`. Account, provider, model and voice changes apply to the next conversation. They never trigger a paid preview or switch accounts after an authentication failure.
 
 OpenAI source policies are saved-only, system-only and saved-otherwise-system. Standalone defaults to saved-only; explicit pairing defaults to saved-otherwise-system. A valid separately saved key wins in that mode. An unreadable saved store reports an error rather than silently switching billing accounts.
 
@@ -176,7 +176,7 @@ git diff --check
 
 Set `CI=true` when native desktop/input tests must remain skipped. The pull request records executed commands and counts. CI builds the typed UI, runs unit/sandboxed tests and native sidecar/parity matcher tests, then builds the standard Windows installer. The existing Mac job still compiles Orbit Native.
 
-`e2e:managed` needs no Bro checkout or running host. It starts the actual hidden Electron main, React audio owner and HTTP/voice bridge against a temporary protected loopback host. Fake devices and provider connections check startup silence, Start/Stop/Mute, avatar wake/unmute/stop, closing settings during voice, same-lineage owner handover, catalog recovery on the same provider socket and clean device release. External connections, desktop helpers and real clipboard writes are blocked. Pairing credentials are removed after the fixture.
+`e2e:managed` needs no host app or running workspace. It starts the actual hidden Electron main, React audio owner and HTTP/voice bridge against a temporary protected loopback host. Fake devices and provider connections check startup silence, Start/Stop/Mute, avatar wake/unmute/stop, closing settings during voice, same-lineage owner handover, catalog recovery on the same provider socket and clean device release. External connections, desktop helpers and real clipboard writes are blocked. Pairing credentials are removed after the fixture.
 
 Stage and Automatic harnesses use temporary profiles and their own hidden Electron compositor. They import no microphone/provider runtime and send no OS input. Their printed output directories contain renderer captures and state. The default fixture mode never inspects a user-owned window. Real HWND testing requires an explicitly supplied isolated host descriptor and expected PID through `--host-file` and `--expected-host-pid`.
 

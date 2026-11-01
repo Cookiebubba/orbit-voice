@@ -16,7 +16,7 @@ xai-key.bin
 anthropic-key.bin
 openai-key.bin
 *-key.bin.*.tmp
-/orbit-bro-compatibility.json
+/orbit-host-compatibility.json
 logs/
 
 # scratch

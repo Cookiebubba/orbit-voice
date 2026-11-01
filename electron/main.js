@@ -81,7 +81,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (_event, argv) => {
-    if (MANAGED || argv.includes('--bro-managed')) {
+    if (MANAGED || argv.includes('--host-managed')) {
       let same = false;
       try { const file = descriptorPath(argv, {}); same = MANAGED && !!file && fs.realpathSync(file) === trustedPairingPath; } catch {}
       if (!same) { logWarn('app', 'A differently paired launch was not adopted.'); return; }
@@ -168,7 +168,7 @@ function createMain() {
     icon: ICON,
     show: false,
     skipTaskbar: MANAGED,
-    webPreferences: { ...secureWebPreferences, additionalArguments: MANAGED ? ['--bro-managed-ui'] : [] },
+    webPreferences: { ...secureWebPreferences, additionalArguments: MANAGED ? ['--host-managed-ui'] : [] },
   });
   lockDown(main);
   main.loadURL(authUrl(process.argv.includes('--open-settings') ? 'settings' : 'main')); // signs the window in, then shows the UI
@@ -786,7 +786,7 @@ app.whenReady().then(async () => {
     }
   } catch (e) {
     logError('app', 'Bridge failed to start', e?.message);
-    if (MANAGED) return app.quit(); // bro reports readiness failure; hidden startup never steals focus
+    if (MANAGED) return app.quit(); // the host reports readiness failure; hidden startup never steals focus
     dialog.showErrorBox(
       'Orbit',
       e.code === 'EADDRINUSE' ? 'Port 4317 is already in use, probably by another copy of Orbit. Close it first.' : String(e.message || e),
