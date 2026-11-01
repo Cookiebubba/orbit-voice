@@ -156,6 +156,8 @@ npm run app
 
 Project layout: `src/` the local bridge, voice tools, session reader and watcher · `ui/` the React UI · `electron/` the Windows shell · `mac-swift/` Orbit Native, the Swift app · `native/mac/` the Mac accessibility helper · `parity/` the cases Orbit Native must pass, written from what the core does.
 
+An optional [external host integration](docs/EXTERNAL-HOST.md) connects Orbit to Bro through an authenticated local protocol. It includes isolated companion launches, managed voice controls, and Qubit workspace geometry. The guide covers setup, consent and recovery behavior, platform limits, and Bro's separately verified companion preview.
+
 ### Testing
 
 None of these touch the real Claude app, xAI or Anthropic, or your own settings.

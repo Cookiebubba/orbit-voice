@@ -592,7 +592,7 @@
       this.envSrc = env || null;
       const solids = (env && env.solids) || [];
       const G = this.ground;
-      this.solids = solids.filter((s) => s && s.w > 0 && s.h > 0).map((s) => ({ id: s.id, L: s.x, R: s.x + s.w, T: G - s.y, B: G - s.y - s.h, oneWay: !!(s.oneWay || s.kind === 'oneway') }));
+      this.solids = solids.filter((s) => s && s.w > 0 && s.h > 0).map((s) => ({ id: s.id, L: s.x, R: s.x + s.w, T: G - s.y, B: G - s.y - s.h, noTop: !!s.noTop, oneWay: !!(s.oneWay || s.kind === 'oneway') }));
       this._syncNav();
       return this;
     }
@@ -627,7 +627,10 @@
     /** Highest surface (height) under [x - hw, x + hw] that he could be standing on at height h. */
     _supportAt(x, hw, h) {
       let best = 0;
-      for (const s of this.solids) if (x + hw > s.L + 0.5 && x - hw < s.R - 0.5 && s.T <= h + this.side * 0.5 && s.T > best) best = s.T;
+      // Workspace ledges can be only a few pixels apart (pane bottom / next header). Do not
+      // magnetize a resting foot onto a different one above it. Standalone stepping is unchanged.
+      const rise = this.envSrc?.strictSupport ? 0.75 : this.side * 0.5;
+      for (const s of this.solids) if (!s.noTop && x + hw > s.L + 0.5 && x - hw < s.R - 0.5 && s.T <= h + rise && s.T > best) best = s.T;
       return best;
     }
     /** Free height above his head over [x1, x2] (Infinity if open sky). */
@@ -1064,7 +1067,7 @@
     /** Air contact with solids. Returns the highest top he's coming down onto (or the ground, 0). */
     _airCollide(px0, py0, ex, ey) {
       let level = 0;
-      const band = this.side * 0.14; // take-off squash/stretch never counts as hitting what he left
+      const band = this.envSrc?.strictSupport ? 0.5 : this.side * 0.14; // workspace tops stay distinct; standalone take-off squash tolerance is unchanged
       for (const o of this.solids) {
         if (!(this.cx + ex > o.L + 0.3 && this.cx - ex < o.R - 0.3)) continue;
         const bottom = this.cy - ey;
@@ -1075,7 +1078,7 @@
         // above it, not a hit on its side.)
         if (py0 - ey >= o.T - band || (this.leftFrom != null && this.leftFrom >= o.T - 0.5 && py0 >= o.T)) {
           // A landing when he comes down onto its top.
-          if (bottom <= o.T && o.T > level) level = o.T;
+          if (!o.noTop && bottom <= o.T && o.T > level) level = o.T;
           continue;
         }
         if (o.oneWay) continue; // passing up through a ledge: no contact

@@ -1,0 +1,152 @@
+# External host integration
+
+An explicitly selected host lets Orbit talk to a workspace such as [Bro](https://github.com/JustSuperHuman/bro-cli). Orbit owns realtime audio, provider credentials, microphone controls and its native character. The host owns session identity and durable work delivery. Audio never travels over the host protocol.
+
+Windows x64 is the current native attachment and managed-voice target. Ordinary Orbit retains its existing application identity, profile, updater, wake shortcut and default port. Native Swift sources and packaging are unchanged.
+
+## Review guide
+
+| Area | Entry points | Behavior |
+| --- | --- | --- |
+| Launch isolation | `electron/external-launch.js`, `electron/main.js` | Choose an isolated profile before the instance lock; preserve standalone defaults |
+| Host transport | `src/external-host.js` | Protected descriptor, bounded authenticated requests, pinned utterances, recovery without replay |
+| Voice tools | `src/external-tools.js`, `src/tools.js`, `src/agent.js` | Negotiate tools; preserve fresh user consent; reject unsupported desktop operations |
+| Managed voice | `electron/managed-runtime.js`, `ui/src/useManagedVoice.ts` | Reuse one renderer; enforce leases and expiring commands; release devices on Stop/Quit |
+| OpenAI provider | `src/openai-realtime.js`, `electron/openai-credentials.js`, `src/config.js` | Optional realtime adapter and native credential source policies |
+| Character | `electron/external-avatar.js`, `src/avatar-stage.js`, Qubit modules | Validate native identity/geometry and reuse navigation and throw physics |
+
+`npm run dist` builds the ordinary Orbit installer with upstream branding, version, publisher and shortcut name. Fork-specific distribution scripts and compatibility-manifest generation remain outside this change. Both dependency lockfiles retain upstream versions.
+
+## Build and launch
+
+```sh
+npm ci
+npm run build:ui
+```
+
+Ordinary development still uses `npm run app`. A host developer can select an existing protected descriptor explicitly:
+
+```sh
+npx --no-install electron . --external-host-file /absolute/path/to/connection.json --open-settings
+```
+
+Use an absolute Windows path on Windows. The descriptor belongs to the current user and points to an IPv4 loopback origin. Pass its path, never its token. Development launches also accept `ORBIT_EXTERNAL_HOST_FILE`; packaged launches require the flag.
+
+| Setting | Ordinary Orbit | Explicitly selected host |
+| --- | --- | --- |
+| Profile | Existing `Orbit` profile | Separate `OrbitBroPreview` profile |
+| Windows app ID | `dev.orbit.voice` | `dev.justsuperhuman.orbit.bro-preview` |
+| Local UI port | `4317`, or development `PORT` | Available IPv4 loopback port |
+| Environment settings import | Existing behavior | Disabled, apart from the specific OpenAI policy below |
+| Wake shortcut | Existing startup registration | Off until explicitly configured |
+| In-app updates | Existing upstream behavior | Disabled, including manual checks |
+| Development profile override | `ORBIT_USER_DATA` | `ORBIT_BRO_PREVIEW_USER_DATA` |
+
+Companion profile/identity names retain compatibility with Bro's existing preview. They apply only to an explicit host launch. Packaged launches ignore development profile overrides. Managed mode never changes startup-at-login or imports the ordinary Orbit profile.
+
+A conservative probe refuses a paired launch while `127.0.0.1:4317` is occupied. It does not authenticate to or terminate that process. A standalone runtime on a different port is outside this probe's detection. A second managed launch can open settings only for the same original canonical pairing path; it cannot adopt a differently paired process.
+
+Bro 2.1.22 deliberately accepts only its separately verified companion payload. Merging this source change does not make the ordinary upstream installer a registered Bro companion or bypass that validation. The [existing Windows preview](https://github.com/JustSuperHuman/orbit-voice/releases/tag/bro-preview-v1.3.0.1) remains the installation path for that Bro release. Upstream installer support requires a corresponding Bro compatibility update.
+
+## Protocol v1
+
+The local descriptor has this shape:
+
+```json
+{
+  "protocol": 1,
+  "instanceId": "host-instance-id",
+  "url": "http://127.0.0.1:12345",
+  "token": "random-host-generated-secret"
+}
+```
+
+Native startup rejects relative paths, symlinks, oversized files and insecure ownership/permissions. Windows validates the current-user ACL; Unix requires the current owner and mode `0600`. Redirects are rejected. Bearer credentials stay in the native transport closure and never enter renderer state, URLs, logs or model context. Response bodies and retained requests/results are bounded.
+
+All routes use the descriptor's exact origin and the `/orbit/v1` prefix:
+
+| Method | Route | Contract |
+| --- | --- | --- |
+| GET | `/host` | Protocol, capabilities, instance identity and bounded session/window snapshot |
+| POST | `/utterances` | `{id}`; return the session/generation pinned at speech onset |
+| POST | `/requests` | `{id, utteranceId, text}`; approved work with a stable ID |
+| GET | `/requests/:id` | Correlated status, progress, initial reply and accepted-task outcome |
+| POST | `/requests/:id/cancel` | Cancel one known queued request |
+| POST | `/focus` | `{sessionId}`; focus an advertised stable ID |
+| GET | `/events?after=<cursor>` | Ordered bounded hints; gaps trigger authoritative reads |
+| GET | `/tools` | Optional reviewed read-tool catalog |
+| POST | `/tools/read` | Optional catalog revision, tool/arguments and pinned utterance |
+| GET | `/stage?after=<revision>` | Optional latest-value geometry watch |
+| POST | `/runtime/heartbeat` | Optional managed status, acknowledgements and expiring controls |
+
+Required capabilities are `sessions.read`, `orchestrator.submit` and `requests.observe`. Focus, queued cancellation, avatar placement/stage/roaming, reviewed read tools and managed voice are negotiated separately. Session IDs and opaque generations identify targets; titles remain labels.
+
+### Input, consent and delivery
+
+The renderer emits an utterance ID before forwarding audio at a local speech onset. The native process latches that ID through `/utterances`. Provider item and response IDs retain the captured utterance, so changing tabs during speech cannot redirect a later transcript, tool call or draft confirmation.
+
+Draft text comes from captured user input. Sending requires a fresh clear yes after the draft, or an explicit send instruction in that same utterance. The request ID is allocated once. A transport failure leaves an observable uncertain request; reconnecting never automatically resends it or reuses its ID for changed content.
+
+`received` means transport receipt. `queued` or a later confirmed state means durable acceptance, which is separate from completion. Supported states are `received`, `queued`, `dispatched`, `completed`, `failed`, `cancelled` and `uncertain`. Initial coordinator replies and later accepted-task outcomes are delivered separately and deduplicated.
+
+Progress, session content and results are untrusted non-user data. Results enter the realtime conversation as correlated function-call outputs. They cannot authorize a send, answer a permission prompt or start new work. Unsupported Claude Desktop controls and generic app automation remain unavailable while a host is selected, including during disconnection. Stopping speech and cancelling one queued request are separate operations; the protocol exposes no terminal interruption.
+
+Within one companion process, request identities survive voice and transport reconnects. Orbit does not add an on-disk request journal or promise to rediscover every old spoken result after its own process restarts. The host's durable inbox remains authoritative.
+
+### Managed lifecycle
+
+`--bro-managed` requires an explicit protected descriptor and starts the existing renderer hidden. The descriptor also contains a stable `lineage` and an `ownerEpoch` equal to `instanceId`. The native shell reports renderer readiness, phase, microphone state, provider preferences and credential-source metadata. It sends no credential material.
+
+Controls contain runtime/owner identities, an ID and a remaining lifetime. The renderer acknowledges an applied command, not receipt alone. Duplicate, expired or wrong-owner commands cannot restart audio. Startup, owner recovery and workspace results never start a conversation automatically. Closing advanced settings hides the same renderer while preserving an active conversation.
+
+Both native and renderer layers enforce the owner lease. Lease expiry stops audio. Quit waits for device release, reports intentional stop and exits. Replacing the original canonical descriptor is allowed only within the same lineage. In-flight old-owner operations and captures cannot acquire new authority.
+
+A verified Bro preview uses its compatibility-manifest digest as `buildId`. A source checkout without that optional file uses its package-metadata digest. This fallback does not relax the independent build checks in Bro's launcher.
+
+## Voice providers and credentials
+
+OpenAI Realtime is an optional adapter to Orbit's existing socket/audio runtime. It uses the GA WebSocket API, 24 kHz PCM, streaming audio/transcripts, function tools, server VAD and playback-clock truncation on interruption. Late tools from interrupted responses are suppressed. The native adapter filters provider metadata and redacts errors before forwarding them to the UI.
+
+Standalone Orbit retains its existing Claude/Grok startup choice. A managed companion uses OpenAI or Grok and keeps its preferences in `bro-managed-settings.json`. Account, provider, model and voice changes apply to the next conversation. They never trigger a paid preview or switch accounts after an authentication failure.
+
+OpenAI source policies are saved-only, system-only and saved-otherwise-system. Standalone defaults to saved-only; explicit pairing defaults to saved-otherwise-system. A valid separately saved key wins in that mode. An unreadable saved store reports an error rather than silently switching billing accounts.
+
+The native resolver reads only `OPENAI_API_KEY`, in process, Windows user, then Windows machine order. Refresh is asynchronous, bounded and deduplicated; config reads use cached metadata. Keys never enter HTTP config, renderer state or logs. System keys are not copied into the profile. Removing a separately saved key leaves the system key untouched. Saved Electron credentials use native encryption with atomic file replacement.
+
+## Qubit and workspace geometry
+
+Desktop and attached modes reuse the original native Qubit/Buddy renderer, director, navigation, emotes, click-through behavior, pickup and throw physics. Host geometry grants no execution authority. Standalone placement remains independent of host selection.
+
+With `avatar.stage.v1`, Orbit validates the native HWND/PID, client origin, DPI, window epoch and bounded geometry revision. Surfaces are `solid` or `oneWay`, with an optional preferred surface. Missing, malformed, stale or mismatched geometry removes old colliders. Suspended/excluded regions hide the attached character rather than leaving invisible obstacles. Geometry transport is separate from voice and work delivery.
+
+`avatar.roam.v1` optionally allows Qubit to move between the host and one display's usable desktop area while retaining one native controller and one voice runtime. Dragging, walking and swept throws use the same physics. A host advertising `avatar.containment.v1` must explicitly grant `avatarPlacement:{schema:1,allowEscape:true}` before roaming is permitted. Missing permission keeps Qubit contained. Other selected avatars retain their existing placement.
+
+An outside character can survive host loss; stale host geometry cannot accept entry or supply support. Display loss or invalid DPI recovers the same character safely. Continuous cross-monitor flight and collision discovery in arbitrary other applications are outside this implementation.
+
+## Reproducing verification
+
+```sh
+npm ci
+npm run build:ui
+npm test
+npm run test:native
+npm run test:external-host
+npm run e2e:managed
+npm run e2e:avatar-stage
+npx --no-install electron scripts/avatar-auto-e2e.mjs
+git diff --check
+```
+
+Set `CI=true` when native desktop/input tests must remain skipped. The pull request records executed commands and counts. CI builds the typed UI, runs unit/sandboxed tests and native sidecar/parity matcher tests, then builds the standard Windows installer. The existing Mac job still compiles Orbit Native.
+
+`e2e:managed` needs no Bro checkout or running host. It starts the actual hidden Electron main, React audio owner and HTTP/voice bridge against a temporary protected loopback host. Fake devices and provider connections check startup silence, Start/Stop/Mute, closing settings during voice, same-lineage owner handover, catalog recovery on the same provider socket and clean device release. External connections, desktop helpers and real clipboard writes are blocked. Pairing credentials are removed after the fixture.
+
+Stage and Automatic harnesses use temporary profiles and their own hidden Electron compositor. They import no microphone/provider runtime and send no OS input. Their printed output directories contain renderer captures and state. The default fixture mode never inspects a user-owned window. Real HWND testing requires an explicitly supplied isolated host descriptor and expected PID through `--host-file` and `--expected-host-pid`.
+
+Production dependency audits at the upstream high-severity threshold pass. The unchanged UI dependency tree retains moderate `uuid` / `vosk-browser` advisories; this change does not upgrade or override that speech dependency.
+
+## Platform and acceptance limits
+
+Live microphone capture, paid-provider/account access and a complete speech-to-durable-work-to-spoken-result run are not established by simulated-device tests. Native stacking, real pointer pass-through, mixed-DPI displays, virtual desktops and monitor removal need manual acceptance. Renderer captures alone do not prove those behaviors.
+
+Native Swift host integration, macOS managed voice and continuous cross-monitor character flight are outside this change. Native Swift's existing profile, bundle identity, Keychain and updater remain unchanged. No macOS runtime acceptance has been performed on this Windows machine; Mac CI compilation is reported separately in the PR.

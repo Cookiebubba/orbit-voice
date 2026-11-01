@@ -1,7 +1,7 @@
 name: CI
 
 # Builds both apps on every push and pull request to main, so a broken build turns the run red (and
-# GitHub tells whoever pushed). Build only: the tests and the parity suite are run before work lands.
+# GitHub tells whoever pushed). Tests run before building the Windows installer.
 #   windows    the installer, exactly as a release builds it (npm run dist), kept for 7 days
 #   mac-swift  Orbit Native (mac-swift/, SwiftPM), every target: swift build
 # No secrets, read-only token, no credentials kept. Actions are pinned to commit SHAs (the tag each
@@ -40,8 +40,19 @@ jobs:
       - name: Install
         run: npm ci --no-audit --no-fund
 
-      - name: Build UI and installer
-        run: npm run dist
+      - name: Build UI
+        run: npm run build:ui
+
+      - name: Test
+        env:
+          CI: '1'
+        run: npm test
+
+      - name: Test native sidecar and parity matchers
+        run: npm run test:native
+
+      - name: Build installer
+        run: npm run fetch-model && npx --no-install electron-builder --win --publish never
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:

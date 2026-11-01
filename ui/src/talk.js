@@ -27,7 +27,8 @@ export function claudeInstall(platform) {
 /** Claude voice, or Grok voice with a key saved. */
 export function canTalk(config) {
   const engine = config?.settings?.voiceEngine;
-  if (engine === 'claude') return true;
+  if (engine === 'claude') return !config?.externalHost?.selected;
+  if (engine === 'openai') return config?.openai ? !!config.openai.available : !!config?.hasKey;
   return engine === 'grok' && !!config?.hasKey;
 }
 
@@ -44,7 +45,18 @@ export function screenFor(view) {
  * It clears by itself once the reason is gone (a key saved, Claude chosen, the models ready).
  */
 export function talkNotice(blocked, config, status) {
-  if (blocked === 'grok-key') return canTalk(config) ? null : { kind: 'grok-key', text: GROK_NEEDS_KEY };
+  if ((blocked === 'openai-key' || blocked === 'grok-key') && config?.settings?.voiceEngine === 'openai') {
+    if (canTalk(config)) return null;
+    const state = config?.openai;
+    const text = state?.error === 'saved-unreadable' ? 'Your saved OpenAI key could not be read. Replace or remove it in Settings. Orbit has not switched to a system key.'
+      : state?.pending ? 'Checking the system OpenAI key… Try again when it is ready in Settings.'
+      : state?.error ? 'The system OpenAI key could not be read or is invalid. Check your system environment, then refresh it in Settings.'
+      : state?.policy === 'system' ? 'No system OpenAI key is available. Refresh it in Settings, or choose a saved key.'
+      : state?.policy === 'saved-or-system' ? 'No saved or system OpenAI key is available. Refresh the system key or save a separate key in Settings.'
+      : 'OpenAI Realtime needs a key from your selected source. Save a separate key or choose the system key in Settings.';
+    return { kind: 'openai-key', text };
+  }
+  if (blocked === 'grok-key') return canTalk(config) ? null : { kind: 'grok-key', text: config?.externalHost?.selected ? 'Grok voice needs an xAI key. Add one in Settings, or choose OpenAI Realtime.' : GROK_NEEDS_KEY };
   if (blocked !== 'claude' || config?.settings?.voiceEngine !== 'claude' || !status) return null;
   if (!status.claudeFound) return { kind: 'claude-missing', text: CLAUDE_CODE_MISSING };
   if (status.signedIn === false) return { kind: 'claude-signed-out', text: CLAUDE_NOT_SIGNED_IN };

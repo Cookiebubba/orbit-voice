@@ -125,6 +125,11 @@ export function liftedStage({ area, strip, box = null, floor = 3 }) {
  */
 export function onStrip(stage, { x, y, half = 0 }) {
   if (!stage) return null;
+  if (stage.persistent) {
+    const support = stage.solids.find((s) => Math.abs(y - s.y) < 2.5 && x + half > s.x && x - half < s.x + s.w);
+    if (support) return support.id;
+    return Math.abs(y - stage.ground) < 2.5 ? 'floor' : null;
+  }
   const [sx1, sx2] = stage.stripX;
   if (x - half < sx1 - 1 || x + half > sx2 + 1) return null;
   // (On the box: any of his base over it, as his engine lets him rest on it.)
@@ -135,6 +140,10 @@ export function onStrip(stage, { x, y, half = 0 }) {
 
 /** A point on the strip's floor (stage px) nearest to x, for him to go back to. */
 export function nearestStripSpot(stage, x, half = 0) {
+  if (stage.persistent) {
+    const s = stage.solids.find((s) => s.id === stage.preferredSurfaceId && s.w > 2 * half + 4 && s.y > 2 * half) || stage.solids.find((s) => s.w > 2 * half + 4 && s.y > 2 * half);
+    return s ? { x: Math.min(s.x + s.w - half - 2, Math.max(s.x + half + 2, x)), y: s.y } : { x: Math.max(half, Math.min(stage.W - half, x)), y: stage.ground };
+  }
   const [sx1, sx2] = stage.stripX;
   const lo = Math.max(sx1 + half + 8, 0);
   const hi = Math.min(sx2 - half - 8, stage.W);

@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { PRESS, clampSpeed, liftedStage, nearestStripSpot, onStrip, pressKind, pushSample, throwVelocity } from '../ui/src/buddy/throw.js';
-import { THROW, createThrow, headBack } from '../ui/src/qubit/throw.js';
+import { THROW, bodyExtents, createThrow, headBack } from '../ui/src/qubit/throw.js';
 import { FLOOR, createDirector, sideFor } from '../ui/src/qubit/director.js';
 import { buddyBoundsFor, liftRectFor } from '../electron/buddy-geometry.js';
 
@@ -174,6 +174,66 @@ async function fly(q, th, st, secs, problems, label) {
   offB();
   return { landed, bounces };
 }
+
+test('stage throws: high-speed thin solid sides stop grown rotated bodies; one-way sides and undersides pass', () => {
+  function run(oneWay, underside = false) {
+    const q = E.create({ mount: null, width: 1000, height: 700, size: 36, floor: FLOOR, keepAlive: true });
+    q.brainT.play = q.brainT.stunt = Infinity;
+    const th = createThrow(q, { tune: { spinPerSide: 0, bounceMinS: 1000 } });
+    const solid = underside ? { id: 'header', x: 250, y: 250, w: 400, h: 3, oneWay } : { id: 'rail', x: 450, y: 100, w: 2, h: 450, oneWay };
+    th.setSolids([solid], { continuous: true });
+    const start = underside ? { x: 400, y: 380 } : { x: 300, y: 300 };
+    q.cx = start.x; q.cy = q.ground - start.y;
+    th.hold(start); th.release(underside ? { x: 0, y: -2160 } : { x: 2160, y: 0 });
+    q.sp.grow.snap(1.5); q.sp.stretch.snap(1.2); q.angle = 45; q.av = 0;
+    const ext = bodyExtents(q); assert.ok(ext.x > q.side / 2 && ext.y > q.side / 2);
+    let contacts = 0; q.on(underside ? 'bonk' : 'bump', () => contacts++);
+    for (let i = 0; i < 4; i++) q.update(0.05);
+    const result = { contacts, x: q.cx, y: q.ground - q.cy };
+    th.destroy(); q.destroy(); return result;
+  }
+  assert.ok(run(false).contacts > 0, 'solid rail catches the fast rotated outline');
+  assert.equal(run(true).contacts, 0, 'one-way rail has no side contact');
+  assert.ok(run(true).x > 500, 'one-way side can be crossed');
+  assert.ok(run(false, true).contacts > 0, 'solid header blocks its underside');
+  assert.equal(run(true, true).contacts, 0, 'one-way header can be jumped through');
+});
+
+test('stage throws: multiple real headers are valid resting places, midflight changes remove old colliders', async () => {
+  for (const oneWay of [false, true]) {
+    const q = E.create({ mount: null, width: 1000, height: 700, size: 36, floor: FLOOR, keepAlive: true });
+    const th = createThrow(q, { tune: { bounceMinS: 1000, spinPerSide: 0 } });
+    const solids = [{ id: 'left', x: 100, y: 300, w: 250, h: 12, oneWay }, { id: 'right', x: 450, y: 220, w: 400, h: 14, oneWay }];
+    const stage = { persistent: true, W: 1000, H: 700, ground: q.ground, solids, preferredSurfaceId: 'right' };
+    th.setSolids(solids, { continuous: true });
+    q.cx = 600; q.cy = q.ground - 80; th.hold({ x: 600, y: 80 }); th.release({ x: 0, y: 2160 });
+    let landed = null; th.on('land', (s) => landed = s);
+    // Replace the right header during flight without changing body position or velocity.
+    q.update(1 / 120);
+    const moved = [{ ...solids[1], y: 360 }];
+    const before = [q.cx, q.cy, q.vx, q.vy]; th.setSolids(moved, { continuous: true });
+    assert.deepEqual([q.cx, q.cy, q.vx, q.vy], before);
+    stage.solids = moved;
+    for (let i = 0; i < 1200 && !landed; i++) { q.update(1 / 120); await null; }
+    assert.ok(landed); assert.equal(Math.round(landed.y), 360, 'lands on new top, not removed old header');
+    assert.equal(onStrip(stage, { x: q.cx, y: q.ground - q.sy, half: bodyExtents(q).x }), 'right');
+    assert.equal(nearestStripSpot(stage, 600, bodyExtents(q).x).y, 360);
+    th.destroy(); q.destroy();
+  }
+});
+
+test('stage throws: descending below a nearby one-way top lands on the intended lower header, without support magnetism', async () => {
+  const q = E.create({ mount: null, width: 1000, height: 700, size: 36, floor: FLOOR, keepAlive: true });
+  const th = createThrow(q);
+  try {
+    th.setSolids([{ id: 'upper-bottom', x: 400, y: 351, w: 400, h: 1, oneWay: true }, { id: 'lower-header', x: 400, y: 360, w: 400, h: 34, oneWay: true }], { continuous: true });
+    q.cx = 600; q.cy = q.ground - (353 - 18);
+    th.hold({ x: 600, y: 353 - 18 }); th.release({ x: 0, y: 100 });
+    for (let i = 0; i < 600; i++) { q.update(1 / 120); await null; }
+    assert.equal(q.air, false);
+    assert.ok(Math.abs(q.ground - q.sy - 360) < 0.1);
+  } finally { th.destroy(); q.destroy(); }
+});
 
 test('thrown: real physics inside the work area, bounces, and he lands flat on a face of a real surface', async () => {
   const problems = [];
