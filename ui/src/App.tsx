@@ -15,6 +15,7 @@ import { createThrowSound } from "./throwSound.js";
 import { hotkeyLabel, postJson, useAppState, type Finished } from "./useAppState";
 import { useVoice, type Phase } from "./useVoice";
 import { useWakeWord } from "./useWakeWord";
+import { useManagedVoice } from "./useManagedVoice";
 import { canTalk, checkClaudeAgain, claudeVoiceReady, needsModelDownload, screenFor, talkNotice, type ClaudeVoiceReady, type TalkBlocked } from "./talk.js";
 import { InstallCommand, NotSignedInLine, SetupGuideLink, SignInStep } from "./components/ClaudeSetup";
 
@@ -35,15 +36,17 @@ export default function App() {
   const settings = app.config?.settings;
   const v = useVoice({ listenMode: settings?.listenMode ?? "always", halfDuplex: settings?.halfDuplex ?? false, volume: settings?.voiceVolume ?? DEFAULT_VOLUME });
   // Claude voice needs no key; Grok voice needs an xAI key (asked for inline, only when you try).
+  const managed = useManagedVoice(v, app.config);
   const talkable = canTalk(app.config);
   const hotkeyRef = useRef(() => {}); // the hotkey's (and the wake word's) action, set below
   // "Hey Orbit" / "Hey Grok": offline, and only while Grok is off or asleep. Same effect as the hotkey.
   const { status: wakeStatus, element: wakeFrame } = useWakeWord({
-    enabled: !!settings?.wakeWord && talkable && (v.phase === "off" || v.asleep),
+    enabled: !desktop?.managed && !!settings?.wakeWord && talkable && (v.phase === "off" || v.asleep),
     onWake: () => hotkeyRef.current(),
   });
   const wakeOn = wakeStatus === "listening";
-  const [view, setView] = useState<View>("main");
+  const [view, setView] = useState<View>(location.hash === '#settings' ? 'settings' : 'main');
+  useEffect(() => desktop?.onOpenSettings?.(() => setView('settings')), []);
   const [focusKey, setFocusKey] = useState(false); // Settings opened from the "needs an xAI key" notice
   // A try to talk that couldn't start: why, and (Claude voice) its readiness as last checked.
   const [blocked, setBlocked] = useState<TalkBlocked>(null);
@@ -76,7 +79,7 @@ export default function App() {
   // The bridge asks Grok to wake by itself ("Wake Grok to say it", or something you asked for is
   // ready). It checks the settings, spacing and hourly limit; this only connects if Grok is off.
   wakeRef.current = () => {
-    if (talkable) v.announce();
+    if (!desktop?.managed && talkable && managed.canStart()) v.announce();
   };
 
   /**
@@ -86,8 +89,10 @@ export default function App() {
    * saved one (just switched to Claude).
    */
   const tryTalk = async (go: () => void, engine = settings?.voiceEngine) => {
+    if (!managed.canStart()) return;
+    if (app.config?.externalHost && engine === 'claude') { setView('settings'); return; }
     if (engine !== "claude") {
-      if (!canTalk(app.config)) return setBlocked("grok-key");
+      if (!canTalk(app.config)) return setBlocked(engine === "openai" ? "openai-key" : "grok-key");
       setBlocked(null);
       return go();
     }
@@ -219,7 +224,7 @@ export default function App() {
   const screen = screenFor(view); // never a key screen: the main page shows with or without a key
   // The first-run onboarding ("How should Orbit talk?") stands in for the main page until it's done
   // or skipped (Settings and History still open from the title bar).
-  const onboarding = screen === "main" && onboardingShown(settings);
+  const onboarding = screen === "main" && !app.config.externalHost && onboardingShown(settings);
   // No floating orb (Settings -> Avatar): the title bar's button minimizes to the taskbar.
   const orbOff = settings?.showOrb === false && settings?.avatar !== "none";
   const startTalk = () => void tryTalk(() => v.start());
@@ -339,7 +344,7 @@ export default function App() {
                     )}
                     {notice.kind === "claude-missing" && <SetupGuideLink className={NOTICE_BUTTON} />}
                     <NoticeButton onClick={openSettings}>Open Settings</NoticeButton>
-                    {notice.kind === "grok-key" && <NoticeButton onClick={switchToClaude}>Use Claude voice</NoticeButton>}
+                    {(notice.kind === "grok-key" || notice.kind === "openai-key") && !app.config.externalHost?.selected && <NoticeButton onClick={switchToClaude}>Use Claude voice</NoticeButton>}
                     {notice.kind === "claude-models-error" && <NoticeButton onClick={startTalk}>Try again</NoticeButton>}
                   </div>
                 )}

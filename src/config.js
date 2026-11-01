@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import { isClaudeFile } from './brain.js';
 
 export const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -52,6 +53,11 @@ export const DEFAULTS = Object.freeze({
   // used) or 'grok' (xAI realtime, needs an xAI key). New installs start on Claude; installs from
   // before Claude was the default keep Grok (see engineFor).
   voiceEngine: 'claude',
+  openaiModel: 'gpt-realtime',
+  openaiVoice: 'cedar',
+  openaiKeySource: 'saved', // 'saved' | 'system' | 'saved-or-system'; only native pairing changes the default
+  previewHotkeyEnabled: false, // paired launches require explicit shortcut setup; standalone keeps its shortcut
+  externalAvatarMode: 'desktop', // Desktop / Stay with bro / Automatic, not a development switch
   claudeVoice: 0, // which of Kitten's 8 voices Claude voice speaks with (0–7)
   // The brain behind Claude voice: 'haiku' (fastest), 'sonnet', 'opus' or 'fable', and its effort.
   claudeVoiceModel: 'haiku',
@@ -120,9 +126,20 @@ const ENV_OVERRIDES = {
 };
 
 let configDir = PROJECT_ROOT;
+let managedConfig = false;
 let settings = { ...DEFAULTS };
 let secretStore = null;
 let brainSecretStore = null;
+let openaiSecretStore = null;
+let openaiCredentials = null;
+let openaiSaved = { state: 'absent' };
+let openaiEffective = null;
+let openaiStatus = null;
+let openaiRevision = 0;
+let openaiRefresh = null;
+let openaiEpoch = 0;
+let openaiDefaultSource = 'saved';
+const credentialListeners = new Set();
 const listeners = new Set();
 
 /** Plain-text .env store, used outside the desktop app. */
@@ -198,8 +215,20 @@ function sanitize(input) {
       case 'helperEngine':
         if (val === 'claude-code' || val === 'codex') out.helperEngine = val;
         break;
+      case 'openaiKeySource':
+        if (['saved', 'system', 'saved-or-system'].includes(val)) out[k] = val;
+        break;
+      case 'openaiModel':
+        if (['gpt-realtime', 'gpt-realtime-mini'].includes(val)) out[k] = val;
+        break;
+      case 'openaiVoice':
+        if (['alloy','ash','ballad','coral','echo','sage','shimmer','verse','marin','cedar'].includes(val)) out[k] = val;
+        break;
+      case 'externalAvatarMode':
+        if (val === 'desktop' || val === 'attached' || val === 'auto') out[k] = val;
+        break;
       case 'voiceEngine':
-        if (val === 'grok' || val === 'claude') out.voiceEngine = val;
+        if (['grok','claude','openai'].includes(val)) out.voiceEngine = val;
         break;
       case 'claudeVoice':
         if (Number.isInteger(val) && val >= 0 && val <= 7) out.claudeVoice = val;
@@ -220,6 +249,7 @@ function sanitize(input) {
       case 'avatarThrow':
       case 'avatarThrowSound':
       case 'onboarded':
+      case 'previewHotkeyEnabled':
         // Only a real yes or no (true/false, or their strings): anything else is ignored.
         if (typeof v === 'boolean' || v === 'true' || v === 'false') out[k] = val;
         break;
@@ -266,13 +296,20 @@ export { sanitize as sanitizeSettings };
  * Order: defaults → .env overrides in the project folder → settings.json in the config folder.
  * `firstRun`: settings a brand-new install starts with (the desktop app passes FIRST_RUN_SETTINGS).
  */
-export function initConfig({ dir, secrets, brainSecrets, firstRun = {} } = {}) {
+export function initConfig({ dir, secrets, brainSecrets, openaiSecrets, openaiCredentials: nativeOpenAI, pairedOpenAI = false, managed = false, importEnv = true, firstRun = {} } = {}) {
+  managedConfig = managed === true;
   configDir = dir || PROJECT_ROOT;
   fs.mkdirSync(configDir, { recursive: true });
   secretStore = secrets || envSecretStore(configDir);
   brainSecretStore = brainSecrets || envSecretStore(configDir, 'ANTHROPIC_API_KEY');
+  // Only the explicit native adapter may resolve OPENAI_API_KEY; importEnv never affects OpenAI.
+  openaiSecretStore = openaiSecrets || { get: () => '', set() { throw new Error('OpenAI credentials require the native encrypted secret store.'); } };
+  openaiCredentials = nativeOpenAI || null;
+  openaiDefaultSource = pairedOpenAI === true ? 'saved-or-system' : 'saved';
+  openaiEpoch++;
+  openaiRefresh = null;
 
-  const env = { ...readDotEnv(path.join(PROJECT_ROOT, '.env')), ...process.env };
+  const env = importEnv ? { ...readDotEnv(path.join(PROJECT_ROOT, '.env')), ...process.env } : {};
   const fromEnv = {};
   for (const [envName, key] of Object.entries(ENV_OVERRIDES)) if (env[envName] !== undefined) fromEnv[key] = env[envName];
 
@@ -284,7 +321,7 @@ export function initConfig({ dir, secrets, brainSecrets, firstRun = {} } = {}) {
   } catch {}
   // Before the avatar choice, the pixel buddy was an on/off switch: off means no avatar.
   if (fromFile && typeof fromFile === 'object' && fromFile.avatar === undefined && fromFile.buddy === false) fromFile.avatar = 'none';
-  settings = { ...DEFAULTS, ...sanitize(fromEnv), ...sanitize(fromFile) };
+  settings = { ...DEFAULTS, openaiKeySource: openaiDefaultSource, ...sanitize(fromEnv), ...sanitize(fromFile) };
 
   // First run of the desktop app on a machine that used the dev version: bring the key over.
   if (!secretStore.get() && env.XAI_API_KEY) secretStore.set(env.XAI_API_KEY.trim());
@@ -303,11 +340,32 @@ export function initConfig({ dir, secrets, brainSecrets, firstRun = {} } = {}) {
     Object.assign(settings, extra);
     Object.assign(first, extra);
   }
-  if (Object.keys(first).length) {
+  if (Object.keys(first).length && !managedConfig) {
     try {
       fs.writeFileSync(settingsFile, JSON.stringify(first, null, 2));
     } catch {}
   }
+  if (managedConfig) {
+    // Separate preferences: integration setup must not rewrite the standalone provider.
+    const file = path.join(configDir, 'bro-managed-settings.json');
+    let overlay = {};
+    try {
+      const stat = fs.statSync(file);
+      if (stat.size > 65536 || !stat.isFile()) throw new Error('invalid managed settings');
+      const savedManaged = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (!savedManaged || typeof savedManaged !== 'object' || Array.isArray(savedManaged)) throw new Error('invalid managed settings');
+      overlay = sanitize(savedManaged);
+      if (['voiceEngine', 'openaiKeySource', 'openaiModel', 'openaiVoice'].some((key) => Object.hasOwn(savedManaged, key) && savedManaged[key] !== overlay[key])) throw new Error('invalid managed provider preferences');
+    } catch (e) {
+      if (e.code !== 'ENOENT') throw new Error('Orbit’s managed settings need recovery. The file was preserved.');
+    }
+    settings = { ...settings, voiceEngine: ['openai', 'grok'].includes(saved) ? saved : 'openai',
+      wakeWord: false, announce: 'off', announceWake: false, wakeOnResults: false,
+      externalAvatarMode: 'attached', ...overlay };
+    if (!['openai', 'grok'].includes(settings.voiceEngine)) throw new Error('Choose a supported realtime provider for managed Orbit.');
+  }
+  readSavedOpenAI();
+  publishOpenAI();
   return settings;
 }
 
@@ -317,7 +375,7 @@ export function initConfig({ dir, secrets, brainSecrets, firstRun = {} } = {}) {
  * key already saved) stays on Grok; a new install starts on Claude, which needs no xAI key.
  */
 export function engineFor({ saved, hadFile = false, hasKey = false } = {}) {
-  if (saved === 'grok' || saved === 'claude') return saved;
+  if (['grok','claude','openai'].includes(saved)) return saved;
   return hadFile || hasKey ? 'grok' : 'claude';
 }
 
@@ -334,6 +392,7 @@ export function setSettingsWriter(fn) {
 /** Merge and save. Returns the keys that actually changed. */
 export function updateSettings(patch) {
   const clean = sanitize(patch);
+  if (managedConfig && clean.voiceEngine && !['openai', 'grok'].includes(clean.voiceEngine)) throw new Error('Managed Orbit requires a realtime provider.');
   const changed = Object.keys(clean).filter((k) => JSON.stringify(clean[k]) !== JSON.stringify(settings[k]));
   if (!changed.length) return [];
   settings = { ...settings, ...clean };
@@ -341,9 +400,15 @@ export function updateSettings(patch) {
   else {
     // The voice engine is always written out, even at its default, so the file says it was chosen
     // (an older file without it was a Grok install: see engineFor).
-    const toSave = Object.fromEntries(Object.entries(settings).filter(([k, v]) => k === 'voiceEngine' || JSON.stringify(v) !== JSON.stringify(DEFAULTS[k])));
-    fs.writeFileSync(path.join(configDir, 'settings.json'), JSON.stringify(toSave, null, 2));
+    const toSave = Object.fromEntries(Object.entries(settings).filter(([k, v]) => k === 'voiceEngine' || k === 'openaiKeySource' || JSON.stringify(v) !== JSON.stringify(DEFAULTS[k])));
+    const file = path.join(configDir, managedConfig ? 'bro-managed-settings.json' : 'settings.json');
+    const temporary = `${file}.${randomUUID()}.tmp`;
+    try {
+      fs.writeFileSync(temporary, JSON.stringify(toSave, null, 2), { mode: 0o600, flag: 'wx' });
+      fs.renameSync(temporary, file);
+    } finally { try { fs.unlinkSync(temporary); } catch {} }
   }
+  if (changed.includes('openaiKeySource')) publishOpenAI();
   for (const fn of listeners) fn(changed, getSettings());
   return changed;
 }
@@ -353,10 +418,11 @@ export function updateSettings(patch) {
  * listeners told what changed, as for updateSettings. Returns the keys that changed.
  */
 export function applyShellSettings(all) {
-  const next = { ...DEFAULTS, ...sanitize(all) };
+  const next = { ...DEFAULTS, openaiKeySource: openaiDefaultSource, ...sanitize(all) };
   const changed = Object.keys(next).filter((k) => JSON.stringify(next[k]) !== JSON.stringify(settings[k]));
   if (!changed.length) return [];
   settings = next;
+  if (changed.includes('openaiKeySource')) publishOpenAI();
   for (const fn of listeners) fn(changed, getSettings());
   return changed;
 }
@@ -373,3 +439,74 @@ export const keyStorageKind = () => secretStore?.kind || 'none';
 export const getBrainKey = () => (brainSecretStore ? brainSecretStore.get() : '') || '';
 export const setBrainKey = (key) => brainSecretStore.set(key);
 export const getConfigDir = () => configDir;
+// Saved state is read only at initialization, explicit refresh and save/remove, never per config read.
+function readSavedOpenAI() {
+  try {
+    if (typeof openaiSecretStore?.readState === 'function') {
+      const result = openaiSecretStore.readState();
+      if (result?.state === 'absent') openaiSaved = { state: 'absent' };
+      else if (result?.state === 'present' && typeof result.key === 'string' && /^sk-[A-Za-z0-9_-]{20,250}$/.test(result.key)) openaiSaved = { state: 'present', key: result.key };
+      else openaiSaved = { state: 'error' };
+    } else {
+      // Legacy in-memory/native-shell adapters. Electron's encrypted store MUST use readState:
+      // its historical get() swallowed decryption failures and cannot safely authorize fallback.
+      const key = openaiSecretStore?.get() || '';
+      openaiSaved = key ? { state: 'present', key } : { state: 'absent' };
+    }
+  } catch { openaiSaved = { state: 'error' }; }
+}
+
+function publishOpenAI() {
+  const policy = settings.openaiKeySource;
+  const system = openaiCredentials?.get() || null;
+  const systemStatus = openaiCredentials?.status() || { pending: false, error: null };
+  let effective = null;
+  let error = null;
+  if (policy !== 'system' && openaiSaved.state === 'error') error = 'saved-unreadable';
+  else if (policy !== 'system' && openaiSaved.state === 'present') effective = { key: openaiSaved.key, source: 'saved' };
+  else if (policy !== 'saved') {
+    effective = system;
+    error = systemStatus.error;
+  }
+  const accountChanged = openaiEffective?.key !== effective?.key || openaiEffective?.source !== effective?.source || openaiStatus?.policy !== policy;
+  if (accountChanged) openaiRevision++;
+  openaiEffective = effective;
+  const next = {
+    policy, savedPresent: openaiSaved.state !== 'absent', systemAvailable: !!system,
+    systemSource: system?.source || null, effectiveSource: effective?.source || null,
+    available: !!effective, pending: !!systemStatus.pending, error,
+    systemError: systemStatus.error || null,
+  };
+  const changed = JSON.stringify(next) !== JSON.stringify(openaiStatus);
+  openaiStatus = next;
+  if (changed || accountChanged) for (const fn of credentialListeners) fn(getOpenAIStatus());
+}
+
+/** Cached metadata only: safe for HTTP/events/renderer; hasOpenAIKey retains saved-presence meaning. */
+export const getOpenAIStatus = () => openaiStatus ? { ...openaiStatus } : null;
+export const getOpenAICredentialRevision = () => openaiRevision;
+/** The one synchronous credential snapshot a new conversation uses. Native/server only. */
+export const getOpenAIKey = () => openaiEffective?.key || '';
+export const onOpenAICredentialsChange = (fn) => { credentialListeners.add(fn); return () => credentialListeners.delete(fn); };
+export function setOpenAIKey(key) {
+  try { openaiSecretStore.set(key); }
+  catch { throw new Error('Could not update the saved OpenAI key. Check native encryption and try again.'); }
+  readSavedOpenAI();
+  publishOpenAI();
+  if (openaiSaved.state === 'error') throw new Error('Could not read the saved OpenAI key. Check native encryption and try again.');
+}
+
+export function refreshOpenAICredentials() {
+  if (openaiRefresh) return openaiRefresh;
+  readSavedOpenAI();
+  const epoch = openaiEpoch;
+  const native = openaiCredentials;
+  // refresh starts the bounded native work immediately; reads and voice connects only see its cache.
+  const work = native?.refresh() || Promise.resolve();
+  publishOpenAI();
+  openaiRefresh = Promise.resolve(work).catch(() => {}).then(() => {
+    if (epoch === openaiEpoch) publishOpenAI();
+    return getOpenAIStatus();
+  }).finally(() => { if (epoch === openaiEpoch) openaiRefresh = null; });
+  return openaiRefresh;
+}

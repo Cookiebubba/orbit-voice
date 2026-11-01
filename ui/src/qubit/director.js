@@ -24,6 +24,8 @@
 // prompt box (when known) a solid block whose top he stands on, and Claude's Send button (when
 // known) a spot on that top.
 
+import { bodyExtents } from './throw.js';
+
 export const FLOOR = 3; // px between the floor line and the strip's bottom edge
 export const QUIET_TO_IDLE_S = 8; // a call with nothing going on for this long: idle life takes over
 const SIDES = { 1: 26, 2: 36, 3: 50 }; // body side (px) per avatar size setting
@@ -139,9 +141,25 @@ export function baseState(v = {}, quietFor = 0) {
  * Where things are, for a strip W x H with the prompt box `box` and Send button `send` (strip px,
  * either may be null) and a body side `side`. Points are { x, y, onBox } with y the surface's y.
  */
-export function layout({ W, H, box, send, side }) {
+export function layout({ W, H, box, send, side, stage = null }) {
   const ground = H - FLOOR;
   const half = side / 2;
+  if (stage?.persistent) {
+    const solids = stage.solids;
+    const perches = solids.flatMap((s) => {
+      if (s.noTop || s.w < side * 1.6 || s.y < side * 1.2 || s.y >= ground) return [];
+      const lo = Math.max(half + 6, s.x + half + 2), hi = Math.min(W - half - 6, s.x + s.w - half - 2);
+      if (lo > hi) return [];
+      // Test headroom at the actual body, not over the entire header: narrow pane side walls
+      // near its ends must not disqualify a clear preferred perch in the middle.
+      const overhead = solids.filter((o) => o.id !== s.id && !o.oneWay && o.y < s.y && o.y + o.h > s.y - side * 1.2);
+      const xs = [s.x + s.w * 0.72, s.x + s.w / 2, lo, hi, ...overhead.flatMap((o) => [o.x - half - 2, o.x + o.w + half + 2])];
+      const x = xs.map((x) => Math.max(lo, Math.min(hi, x))).find((x) => !overhead.some((o) => o.x < x + half && o.x + o.w > x - half));
+      return x == null ? [] : [{ x, y: s.y, surface: s.id }];
+    });
+    const home = perches.find((p) => p.surface === stage.preferredSurfaceId) || perches[0] || { x: Math.max(half + 6, Math.min(W - half - 6, W * 0.82)), y: ground };
+    return { W, H, ground, side, persistent: true, automatic: !!stage.automatic, solids, preferredSurfaceId: stage.preferredSurfaceId, box: null, send: null, sendAt: null, onBox: null, home, confirm: home, watch: home, top: home.y };
+  }
   // A box he can stand on: wide enough, with room above it for him in the strip.
   const usable = box && box.w >= side * 1.6 && box.y > side * 1.2 && box.y < ground - 6 ? box : null;
   const floorX = (x) => Math.min(W - 8 - half, Math.max(8 + half, x));
@@ -426,9 +444,10 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
   const grown = () => q.sp.grow.t > 1.05;
   /** Which way to go (dir 'left' | 'right', else toward the side with more room) and how far there's room. */
   function room(dir) {
-    const half = side() / 2;
-    const lo = onTheBox() ? geo.box.x + half : 6 + half;
-    const hi = onTheBox() ? geo.box.x + geo.box.w - half : geo.W - 6 - half;
+    const half = bodyExtents(q).x;
+    const support = geo?.persistent && !q.air ? geo.solids.find((s) => Math.abs(geo.ground - q.sy - s.y) < 2 && q.cx + half > s.x && q.cx - half < s.x + s.w) : null;
+    const lo = support ? support.x + half : onTheBox() ? geo.box.x + half : 6 + half;
+    const hi = support ? support.x + support.w - half : onTheBox() ? geo.box.x + geo.box.w - half : geo.W - 6 - half;
     const left = q.cx - lo;
     const right = hi - q.cx;
     const d = dir === 'left' ? -1 : dir === 'right' ? 1 : right >= left ? 1 : -1;
@@ -522,7 +541,7 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
       case 'move': {
         const r = room(cmd.dir);
         const x = Math.max(r.lo, Math.min(r.hi, q.cx + r.d * side() * 3));
-        moveTo(onTheBox() ? g.onBox(x) : { x, y: g.ground, onBox: false }, { interrupt: !woke });
+        moveTo(onTheBox() ? g.onBox(x) : { x, y: g.persistent ? q.ground - q.sy : g.ground, onBox: false }, { interrupt: !woke });
         break;
       }
       case 'go_home':
@@ -566,13 +585,18 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
      * carried over from another stage (back from being thrown) and is already where he should be, so
      * nothing moves him or sends him back to his place.
      */
-    setGeometry({ W, H, box = null, send = null, side: S }, { keepBody = false } = {}) {
-      const next = layout({ W, H, box, send, side: S });
+    setGeometry({ W, H, box = null, send = null, side: S, stage = null }, { keepBody = false, manual = false } = {}) {
+      const next = layout({ W, H, box, send, side: S, stage });
       const prev = keepBody ? null : geo;
+      const ex = bodyExtents(q).x;
+      const support = prev?.persistent && !manual && !q.air ? prev.solids.find((s) => Math.abs(prev.ground - q.sy - s.y) < 2 && q.cx + ex > s.x && q.cx - ex < s.x + s.w) : null;
+      const nextSupport = support && next.solids.find((s) => s.id === support.id);
+      const footY = q.ground - q.sy, centerY = q.ground - q.cy;
       // Standing on the box when it moves (it grows with a long draft, shrinks after a send): he rides it.
       const onBox = prev?.box && !q.air && !q.pivot && Math.abs(q.sy - (prev.ground - prev.box.y)) < 1.5;
       if (q.W !== W || q.H !== H || q.floor !== FLOOR) {
         q.resize(W, H, FLOOR);
+        if (next.persistent) { q.cy = q.ground - centerY; q.sy = q.ground - footY; }
       }
       q.bounds = [6, W - 6];
       if (S && S !== q.S) {
@@ -590,9 +614,20 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
         q.abilityOverrides = { jumpUp };
         q.nav = null;
       }
-      if (prev && JSON.stringify(prev.box) !== JSON.stringify(next.box)) relocate = true;
+      if (next.automatic) relocate = false;
+      else if (prev && (JSON.stringify(prev.box) !== JSON.stringify(next.box) || next.persistent && JSON.stringify(prev.home) !== JSON.stringify(next.home))) relocate = true;
       geo = next;
-      q.setEnvironment({ solids: next.solids });
+      q.setEnvironment({ solids: next.solids, ...(next.persistent ? { strictSupport: true } : {}) });
+      if (support) {
+        // Stable identity carries the contact foot; disappearing/narrowed supports release naturally.
+        const dx = nextSupport ? nextSupport.x - support.x : 0;
+        if (nextSupport && (!next.automatic || nextSupport.oneWay === support.oneWay && Math.abs(nextSupport.w - support.w) < 1 && Math.abs(nextSupport.h - support.h) < 1) && q.cx + dx + ex > nextSupport.x && q.cx + dx - ex < nextSupport.x + nextSupport.w) {
+          q.cx += dx;
+          q.sy = next.ground - nextSupport.y;
+          q.cy = q.sy + bodyExtents(q).y;
+          if (q.pivot) q.pivot.px += dx;
+        } else { q.pivot = null; q.air = true; q.vy = 0; q.leftFrom = q.sy; }
+      }
       if (onBox && next.box) {
         const top = next.ground - next.box.y;
         if (Math.abs(top - q.sy) > 0.5 && q.cx > next.box.x && q.cx < next.box.x + next.box.w) {
@@ -620,7 +655,7 @@ export function createDirector(q, { seed = 1, reduceMotion = false, life: lifeTi
         q.air = true;
         q.vy = 0;
         q.vx = 0;
-        q.cy = Math.max(g.ground - g.top + q.side, q.H - FLOOR - q.side * 0.7);
+        q.cy = g.persistent ? g.ground - g.home.y + bodyExtents(q).y + 2 : Math.max(g.ground - g.top + q.side, q.H - FLOOR - q.side * 0.7);
         state = null;
         react = { kind: 'enter', mode: null, until: t + 0.9 };
         note('enter');

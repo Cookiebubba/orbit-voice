@@ -152,7 +152,7 @@
     let maxX = 0;
     (env.solids || []).forEach((s, i) => {
       if (!s || !(s.w > 0) || !(s.h > 0)) return;
-      solids.push({ id: s.id != null ? String(s.id) : 's' + i, kind: s.kind, oneWay: !!(s.oneWay || s.kind === 'oneway'), x1: s.x, y1: s.y, x2: s.x + s.w, y2: s.y + s.h });
+      solids.push({ id: s.id != null ? String(s.id) : 's' + i, kind: s.kind, noTop: !!s.noTop, oneWay: !!(s.oneWay || s.kind === 'oneway'), x1: s.x, y1: s.y, x2: s.x + s.w, y2: s.y + s.h });
       maxX = Math.max(maxX, s.x + s.w);
     });
     const floor = env.floor ?? env.height ?? BIG;
@@ -162,7 +162,7 @@
   function signature(env, ab) {
     const r = (v) => Math.round(v * 4) / 4;
     let s = `${r(env.left ?? 0)}|${r(env.width ?? -1)}|${r(env.floor ?? env.height ?? -1)}|${env.boundaryWalls ? 1 : 0}|${ab.bodyW}|${ab.bodyH}`;
-    for (const o of env.solids || []) if (o) s += `|${o.id}:${r(o.x)},${r(o.y)},${r(o.w)},${r(o.h)}${o.oneWay || o.kind === 'oneway' ? 'o' : ''}`;
+    for (const o of env.solids || []) if (o) s += `|${o.id}:${r(o.x)},${r(o.y)},${r(o.w)},${r(o.h)}${o.oneWay || o.kind === 'oneway' ? 'o' : ''}${o.noTop ? 'x' : ''}`;
     return s;
   }
   const overlapsOpen = (a1, a2, b1, b2) => a1 < b2 - EPS && a2 > b1 + EPS;
@@ -191,7 +191,7 @@
     const { floor, width, left } = G;
     if (floor < BIG) faces.push({ kind: 'floor', axis: 'h', c: floor, a: left, b: width, normal: [0, -1], own: '__ground', solidId: null, inset: 0 });
     for (const s of G.solids) {
-      if (s.y1 < floor - EPS) faces.push({ kind: 'top', axis: 'h', c: s.y1, a: s.x1, b: s.x2, normal: [0, -1], own: s.id, solidId: s.id, inset: ab.edgeInset });
+      if (!s.noTop && s.y1 < floor - EPS) faces.push({ kind: 'top', axis: 'h', c: s.y1, a: s.x1, b: s.x2, normal: [0, -1], own: s.id, solidId: s.id, inset: ab.edgeInset });
       if (s.oneWay) continue; // a ledge to land on, nothing to climb
       if (ab.climbWalls) {
         const yb = Math.min(s.y2, floor);

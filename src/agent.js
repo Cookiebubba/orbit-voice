@@ -17,6 +17,7 @@
 // turns), and every later session starts with it.
 
 import { getSetting } from './config.js';
+import { externalHost, hostInstructions } from './external-host.js';
 import { AVATAR_ACTIONS, AVATAR_NAMES, activeAvatar, actionsFor } from './avatar-commands.js';
 import { CUES } from './emote-cues.js';
 import { toolDefs } from './tools.js';
@@ -175,8 +176,8 @@ export function onScreen({ avatar = activeAvatar(), showOrb = getSetting('showOr
 export function agentContext(screen = onScreen()) {
   const { face, avatar, orb } = screen;
   const persona = face === 'orbit' ? ORBIT_PERSONA : `${PERSONAS[face]}${orb ? `\n${ORB_TOO}` : ''}`;
-  const anywhere = anywhereAvailable();
-  const instructions = [persona, core(), avatar ? avatarBody(avatar) : '', anywhere ? ANYWHERE_GUIDE : ''].filter(Boolean).join('\n\n');
+  const anywhere = !externalHost() && anywhereAvailable();
+  const instructions = [persona, externalHost() ? hostInstructions() : core(), avatar ? avatarBody(avatar) : '', anywhere ? ANYWHERE_GUIDE : ''].filter(Boolean).join('\n\n');
   const tools = toolDefs({ brainEnabled: getSetting('brainEnabled'), brainModel: getSetting('brainModel'), brainExplore: getSetting('brainExplore'), brainConnection: getSetting('brainConnection'), avatar, webSearch: getSetting('webSearch'), engine: getSetting('voiceEngine'), anywhere });
   return { face, avatar, orb, instructions, tools };
 }

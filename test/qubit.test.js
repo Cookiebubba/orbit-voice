@@ -90,6 +90,78 @@ function scene({ seed = 7, box = BOX, send = SEND, scale = 2, voice = { phase: '
 const onBox = (s) => Math.abs(s.q.sy - (s.dir.geometry.ground - BOX.y)) < 1.5 && !s.q.air;
 
 // ---------- pure parts ----------
+test('qubit stage: canonical multi-header solids, preferred perch, real nav and stable moving/deleted support', async () => {
+  const W = 1000, H = 600;
+  const solids = [{ id: 'left', x: 100, y: 300, w: 220, h: 14, oneWay: true }, { id: 'right', x: 360, y: 240, w: 300, h: 18, oneWay: true }, { id: 'rail', x: 800, y: 200, w: 20, h: 300, oneWay: false }];
+  const q = E.create({ mount: null, width: W, height: H, size: 36, floor: 3, mode: 'asleep', keepAlive: true });
+  const dir = createDirector(q, { seed: 4, life: DOZE_ON, reduceMotion: true });
+  const geo = (list = solids, preferredSurfaceId = 'left', height = H) => ({ W, H: height, side: 36, stage: { persistent: true, solids: list, preferredSurfaceId } });
+  try {
+    dir.setGeometry(geo()); dir.place();
+    assert.deepEqual(dir.geometry.solids, solids, 'headers are never stretched into columns');
+    assert.equal(dir.geometry.sendAt, null, 'no invented send target');
+    assert.equal(q.ground - q.sy, 300);
+    assert.equal(dir.geometry.home.surface, 'left');
+    const path = q.plan(500, 239); assert.ok(path?.length, 'existing nav reaches another header');
+    let arrived = null;
+    q.goTo(500, 239, { style: 'bold' }).then((v) => arrived = v);
+    for (let i = 0; i < 1200 && arrived === null; i++) { q.update(1 / 120); await null; }
+    assert.equal(arrived, true); assert.ok(Math.abs(q.ground - q.sy - 240) < 2);
+    const oldX = q.cx;
+    const moved = solids.map((s) => s.id === 'right' ? { ...s, x: s.x + 80, y: s.y + 35 } : s);
+    dir.setGeometry(geo(moved, 'right'));
+    assert.ok(Math.abs(q.cx - oldX - 80) < 0.01, 'stable support carries horizontal contact');
+    assert.equal(q.ground - q.sy, 275, 'stable support carries the foot vertically');
+    const resized = moved.map((s) => s.id === 'right' ? { ...s, y: s.y + 20 } : s);
+    dir.setGeometry(geo(resized, 'right', 650));
+    assert.equal(q.ground - q.sy, 295, 'viewport resize and support movement preserve client-local contact');
+    dir.setGeometry(geo(resized.filter((s) => s.id !== 'right'), 'left', 650));
+    assert.equal(q.air, true, 'removed support releases without a teleport or invisible collider');
+    for (let i = 0; i < 600; i++) { q.update(1 / 120); await null; }
+    assert.equal(q.sy, 0);
+  } finally { q.destroy(); }
+});
+
+test('qubit stage: pane endpoint walls do not reject a clear preferred header and nearby one-way tops do not steal contact', async () => {
+  const W = 1200, H = 831, y = 446.68572998046875;
+  const stage = { persistent: true, preferredSurfaceId: 'active-header', solids: [
+    { id: 'sidebar', x: 10, y: 234, w: 251, h: 32, oneWay: true },
+    { id: 'active-header', x: 740, y, w: 448, h: 34, oneWay: true },
+    { id: 'upper-bottom', x: 740, y: y - 9, w: 448, h: 1, oneWay: true },
+    { id: 'upper-left', x: 740, y: 78, w: 1, h: y - 9 - 78 },
+    { id: 'upper-right', x: 1187, y: 78, w: 1, h: y - 9 - 78 },
+    { id: 'sidebar-rail', x: 271, y: 0, w: 1, h: H },
+  ] };
+  const q = E.create({ mount: null, width: W, height: H, size: 36, floor: 3, keepAlive: true });
+  const dir = createDirector(q, { life: DOZE_ON });
+  try {
+    dir.setGeometry({ W, H, side: 36, stage });
+    assert.equal(dir.geometry.home.surface, 'active-header');
+    assert.equal(dir.geometry.preferredSurfaceId, 'active-header');
+    assert.ok(dir.geometry.home.x > 760 && dir.geometry.home.x < 1167);
+    dir.place({ entrance: true });
+    for (let i = 0; i < 360; i++) { q.update(1 / 120); dir.tick(1 / 120); await null; }
+    assert.equal(q.air, false);
+    assert.ok(Math.abs(q.ground - q.sy - y) < 0.1, 'contact stays on preferred header, not the one-way pane bottom 9px above it');
+    assert.equal(q.plan(190, 233), null, 'full-height solid rail honestly makes the sidebar route unreachable');
+  } finally { q.destroy(); }
+});
+
+test('qubit stage: manual flight survives a geometry change and support fitting uses actual grown extents', () => {
+  const q = E.create({ mount: null, width: 900, height: 600, size: 36, floor: 3, keepAlive: true });
+  const dir = createDirector(q, { reduceMotion: true });
+  const stage = { persistent: true, preferredSurfaceId: 'header', solids: [{ id: 'header', x: 200, y: 220, w: 350, h: 20, oneWay: true }] };
+  try {
+    dir.setGeometry({ W: 900, H: 600, side: 36, stage }); dir.place();
+    q.sp.grow.snap(1.5); q.angle = 35;
+    q.air = true; q.vx = 600; q.vy = 900;
+    const before = { x: q.cx, y: q.cy, vx: q.vx, vy: q.vy };
+    dir.setGeometry({ W: 900, H: 600, side: 36, stage: { ...stage, solids: [{ ...stage.solids[0], x: 300, y: 300 }] } }, { manual: true });
+    assert.deepEqual({ x: q.cx, y: q.cy, vx: q.vx, vy: q.vy }, before);
+    assert.equal(q.air, true);
+  } finally { q.destroy(); }
+});
+
 test('qubit: Orbit states map to his modes', () => {
   assert.equal(baseState({ phase: 'off' }), 'asleep');
   assert.equal(baseState({ phase: 'off', claudeWorking: true }), 'asleep');

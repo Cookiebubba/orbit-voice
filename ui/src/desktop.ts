@@ -13,6 +13,7 @@ export type HotkeyInfo = {
   accelerator: string;
   label: string;
   registered: boolean;
+  enabled?: boolean;
   defaultAccelerator: string;
   ok?: boolean;
   error?: string;
@@ -21,9 +22,15 @@ export type HotkeyInfo = {
 type DesktopApi = {
   /** process.platform of the desktop app ('win32', 'darwin', ...). */
   platform?: string;
+  managed?: boolean;
+  managedStatus?(status: { rendererReady: boolean; phase: Phase; microphone: string; muted: boolean; credentialAvailable: boolean; failure?: string | null }): void;
+  managedAck?(id: string, applied: boolean): void;
+  onManagedControl?(cb: (message: { id: string | null; expiresAt?: number; command: { kind: string; muted?: boolean; until?: number; ownerEpoch?: string } }) => void): () => void;
+  onOpenSettings?(cb: () => void): () => void;
   hotkey: {
     get(): Promise<HotkeyInfo>;
     set(accelerator: string): Promise<HotkeyInfo>;
+    enable?(enabled: boolean): Promise<HotkeyInfo>;
     suspend(suspended: boolean): Promise<void>;
   };
   minimize(): void;

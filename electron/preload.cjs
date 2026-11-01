@@ -4,6 +4,19 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('desktop', {
   // 'win32' | 'darwin' | 'linux': for platform-aware words (hotkey symbols, "Open at login").
   platform: process.platform,
+  managed: process.argv.includes('--bro-managed-ui'),
+  managedStatus: (status) => ipcRenderer.send('managed:status', status),
+  managedAck: (id, applied) => ipcRenderer.send('managed:ack', id, applied === true),
+  onManagedControl: (cb) => {
+    const fn = (_e, message) => cb(message);
+    ipcRenderer.on('managed:control', fn);
+    return () => ipcRenderer.removeListener('managed:control', fn);
+  },
+  onOpenSettings: (cb) => {
+    const fn = () => cb();
+    ipcRenderer.on('external:open-settings', fn);
+    return () => ipcRenderer.removeListener('external:open-settings', fn);
+  },
   minimize: () => ipcRenderer.send('win:minimize'),
   close: () => ipcRenderer.send('win:close'),
   sendOrbState: (s) => ipcRenderer.send('orb:state', s),
@@ -26,10 +39,17 @@ contextBridge.exposeInMainWorld('desktop', {
   // gets Orbit's state and says when the cursor is over it (so it can take clicks).
   buddyEvent: (name) => ipcRenderer.send('buddy:event', name),
   buddyHover: (on, held) => ipcRenderer.send('buddy:hover', !!on, !!held),
+  // A genuine avatar press starts a bounded native release/cursor watch; no input is injected.
+  buddyGesture: (message) => ipcRenderer.send('buddy:gesture', message && typeof message === 'object' ? { phase: message.phase, id: message.id, revision: message.revision } : null),
+  onBuddyGesture: (cb) => {
+    const fn = (_e, sample) => cb(sample);
+    ipcRenderer.on('buddy:gesture', fn);
+    return () => ipcRenderer.removeListener('buddy:gesture', fn);
+  },
   // A press on the avatar and what came of it ('click' | 'pickup' | 'ignored', and why), for the log.
   buddyPress: (outcome, why) => ipcRenderer.send('buddy:press', String(outcome), String(why || '')),
   // Where the avatar is drawn (its window's px), so its window takes the mouse there.
-  buddyHit: (r) => ipcRenderer.send('buddy:hit', r && typeof r === 'object' ? { x: +r.x, y: +r.y, w: +r.w, h: +r.h } : null),
+  buddyHit: (r) => ipcRenderer.send('buddy:hit', r && typeof r === 'object' ? { x: +r.x, y: +r.y, w: +r.w, h: +r.h, revision: r.revision === undefined ? 0 : r.revision } : null),
   // The real cursor near the avatar's window (screen px; null: away), polled by Orbit itself.
   onBuddyCursor: (cb) => {
     const fn = (_e, c) => cb(c);
@@ -91,6 +111,7 @@ contextBridge.exposeInMainWorld('desktop', {
   hotkey: {
     get: () => ipcRenderer.invoke('hotkey:get'),
     set: (accelerator) => ipcRenderer.invoke('hotkey:set', accelerator),
+    enable: (enabled) => ipcRenderer.invoke('hotkey:enable', !!enabled),
     suspend: (suspended) => ipcRenderer.invoke('hotkey:suspend', suspended),
   },
   updates: {

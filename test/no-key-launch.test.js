@@ -61,7 +61,7 @@ test('Grok without a key: the notice says so, plainly, and goes once it can talk
   // The page offers both ways out: Settings and Claude voice.
   const app = fs.readFileSync(path.join(ROOT, 'ui', 'src', 'App.tsx'), 'utf8');
   assert.match(app, /<NoticeButton onClick=\{openSettings\}>Open Settings<\/NoticeButton>/);
-  assert.match(app, /notice\.kind === "grok-key" && <NoticeButton onClick=\{switchToClaude\}>Use Claude voice<\/NoticeButton>/);
+  assert.match(app, /\(notice\.kind === "grok-key" \|\| notice\.kind === "openai-key"\) && !app\.config\.externalHost\?\.selected && <NoticeButton onClick=\{switchToClaude\}>Use Claude voice<\/NoticeButton>/);
 });
 
 test('Claude voice not ready: Claude Code missing, models downloading or failed', () => {

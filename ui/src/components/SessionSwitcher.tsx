@@ -49,11 +49,12 @@ export default function SessionSwitcher({
     };
   }, [open]);
 
-  const switchTo = async (title: string) => {
+  const switchTo = async (row: SessionRow) => {
+    const title = row.title;
     if (!canSwitch) return onAsk(title);
     setBusy(title);
     setError("");
-    const r = await postJson("/api/switch", { title });
+    const r = await postJson("/api/switch", { title, sessionId: row.id });
     const result = await r.json().catch(() => ({}));
     setBusy(null);
     if (r.ok) {
@@ -97,7 +98,7 @@ export default function SessionSwitcher({
               const working = s.working || workingTitles.has(s.title);
               return (
                 <div key={s.id + s.title} role="option" aria-selected={s.open} className="group flex items-center rounded-lg hover:bg-black/[0.04]">
-                  <button onClick={() => switchTo(s.title)} disabled={!!busy} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left" title={canSwitch ? "Open in Claude" : "Ask Grok about it"}>
+                  <button onClick={() => switchTo(s)} disabled={!!busy} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left" title={canSwitch ? "Open in Claude" : "Ask Grok about it"}>
                     <span className={cn("size-2 shrink-0 rounded-full", working ? "working-dot" : s.open ? "bg-fg" : "bg-black/15")} aria-label={working ? "Claude is working" : s.open ? "Open" : "Idle"} />
                     <span className="min-w-0 flex-1">
                       <span className={cn("block truncate text-[13px]", s.open ? "text-fg" : "text-fg")}>{busy === s.title ? "Opening…" : s.title}</span>

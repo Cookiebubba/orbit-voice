@@ -7,7 +7,7 @@ import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, n
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DEFAULTS, FIRST_RUN_SETTINGS, getSetting, onSettingsChange, updateSettings } from '../src/config.js';
+import { DEFAULTS, FIRST_RUN_SETTINGS, getSetting, getSettings, getOpenAIStatus, sanitizeSettings, onSettingsChange, updateSettings } from '../src/config.js';
 import { createClaudeWindowTracker } from './claude-window.js';
 import { helperRectToDip } from './buddy-geometry.js';
 import { DEFAULT_ANCHOR, anchorFor, isAnchor, orbPositionFor } from './orb-stick.js';
@@ -17,6 +17,13 @@ import { authUrl, hotkeyLabel, startServer, stopBackgroundWork } from '../src/se
 import { createUpdater } from './updater.js';
 import { createAvatar } from './avatar.js';
 import { createAvatarHost } from './avatar-host.js';
+import { createExternalAvatarBinding, createExternalAvatarSync } from './external-avatar.js';
+import { createEncryptedKeyStore } from './encrypted-key-store.js';
+import { createManagedRuntime, watchManagedDescriptor } from './managed-runtime.js';
+import { createOpenAICredentials } from './openai-credentials.js';
+import { checkStandaloneConflict } from './preview-runtime.js';
+import { externalLaunch, managedBuildId } from './external-launch.js';
+import { createExternalHost, readDescriptor, descriptorPath, selectExternalHost, externalHost } from '../src/external-host.js';
 import { createOrbitMouse } from './orbit-mouse.js';
 import { hideMouse, setMouseSink } from '../src/anywhere/mouse.js';
 import { contexts as anywhereContexts, wakeWith } from '../src/anywhere/index.js';
@@ -31,6 +38,8 @@ const PRELOAD = path.join(HERE, 'preload.cjs');
 const ICON = path.join(ROOT, 'assets', 'icon.png');
 const TRAY_ICON = path.join(ROOT, 'assets', 'tray.png');
 const ORB_SIZE = 128;
+const launch = externalLaunch({ packaged: app.isPackaged });
+const MANAGED = launch.managed;
 const START_HIDDEN = process.argv.includes('--background'); // used by "Start with Windows"
 const LOGIN_LABEL = 'Start with Windows';
 /** Started quietly (as the orb): "--background", from "Start with Windows". */
@@ -42,11 +51,11 @@ if (!app.isPackaged && process.env.GVB_FAKE_MIC) {
   app.commandLine.appendSwitch('use-fake-device-for-media-stream');
   app.commandLine.appendSwitch('use-file-for-fake-audio-capture', process.env.GVB_FAKE_MIC);
 }
-if (process.platform === 'win32') app.setAppUserModelId('dev.orbit.voice'); // Windows taskbar and notifications only
-app.setPath('userData', path.join(app.getPath('appData'), 'Orbit'));
+if (process.platform === 'win32') app.setAppUserModelId(launch.appId);
+app.setPath('userData', path.join(app.getPath('appData'), launch.profile));
 // Developer testing only (never in the installed app): a settings folder of its own, so a test run
 // never touches your real Orbit settings, keys or logs.
-if (!app.isPackaged && process.env.ORBIT_USER_DATA) app.setPath('userData', path.resolve(process.env.ORBIT_USER_DATA));
+if (launch.userDataOverride) app.setPath('userData', path.resolve(launch.userDataOverride));
 
 let main = null;
 let orb = null;
@@ -71,7 +80,16 @@ let quitting = false;
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => showMain());
+  app.on('second-instance', (_event, argv) => {
+    if (MANAGED || argv.includes('--bro-managed')) {
+      let same = false;
+      try { const file = descriptorPath(argv, {}); same = MANAGED && !!file && fs.realpathSync(file) === trustedPairingPath; } catch {}
+      if (!same) { logWarn('app', 'A differently paired launch was not adopted.'); return; }
+      if (!argv.includes('--open-settings')) return;
+    }
+    showMain();
+    if (argv.includes('--open-settings')) main?.webContents.send('external:open-settings');
+  });
 }
 
 /**
@@ -79,35 +97,7 @@ if (!app.requestSingleInstanceLock()) {
  * account). If that isn't available the key isn't saved, with a plain message instead of a crash.
  */
 function encryptedKeyStore(dir, name = 'xai-key.bin') {
-  const file = path.join(dir, name);
-  const system = 'Windows encryption';
-  const available = () => {
-    try {
-      return safeStorage.isEncryptionAvailable();
-    } catch {
-      return false;
-    }
-  };
-  return {
-    kind: available() ? 'windows-dpapi' : 'unavailable',
-    get() {
-      try {
-        return safeStorage.decryptString(fs.readFileSync(file));
-      } catch {
-        return '';
-      }
-    },
-    set(key) {
-      if (!available()) throw new Error(`${system} is not available, so the key was not saved.`);
-      let sealed;
-      try {
-        sealed = safeStorage.encryptString(key);
-      } catch {
-        throw new Error('Windows encryption failed, so the key was not saved.');
-      }
-      fs.writeFileSync(file, sealed);
-    },
-  };
+  return createEncryptedKeyStore({ dir, name, safeStorage });
 }
 
 /**
@@ -177,17 +167,23 @@ function createMain() {
     title: 'Orbit',
     icon: ICON,
     show: false,
-    webPreferences: secureWebPreferences,
+    skipTaskbar: MANAGED,
+    webPreferences: { ...secureWebPreferences, additionalArguments: MANAGED ? ['--bro-managed-ui'] : [] },
   });
   lockDown(main);
-  main.loadURL(authUrl('main')); // signs the window in, then shows the UI
-  main.once('ready-to-show', () => (startHidden() ? showOrb({ quiet: true }) : main.show()));
-  // Any way of minimizing (our button, taskbar click, Win+Down) turns into the orb.
-  main.on('minimize', () => showOrb());
+  main.loadURL(authUrl(process.argv.includes('--open-settings') ? 'settings' : 'main')); // signs the window in, then shows the UI
+  main.once('ready-to-show', () => {
+    if (MANAGED) { if (process.argv.includes('--open-settings')) showMain(); }
+    else if (startHidden()) showOrb({ quiet: true });
+    else main.show();
+  });
+  // Managed settings are optional; the same hidden renderer keeps owning audio.
+  main.on('minimize', () => MANAGED ? hideManaged() : showOrb());
   // Back from the taskbar (the orb off): Orbit is open again, as from the tray or the orb.
   main.on('restore', () => orbMode && showMain());
-  main.on('close', () => {
-    quitting = true;
+  main.on('close', (event) => {
+    if (MANAGED && !quitting) { event.preventDefault(); hideManaged(); }
+    else quitting = true;
   });
   main.on('closed', () => app.quit());
 }
@@ -230,7 +226,14 @@ function createOrb() {
  * new install starts that way, as Orbit Native has no orb), onto the taskbar like any app's window,
  * with the avatar standing in for the orb. `quiet` (started with Windows): hidden, in the tray.
  */
+function hideManaged() {
+  orbMode = false;
+  orb?.hide();
+  main?.setSkipTaskbar(true);
+  main?.hide();
+}
 function showOrb({ quiet = false } = {}) {
+  if (MANAGED) return hideManaged();
   orbMode = true;
   drag = null; // a click on the orb starts a "drag" that never ends; don't let it block the orb
   if (!orbAllowed()) {
@@ -251,6 +254,7 @@ function showMain() {
   claudeTracker.pause();
   orb?.hide();
   if (main.isMinimized()) main.restore();
+  if (MANAGED) main.setSkipTaskbar(false);
   main.show();
   main.focus();
 }
@@ -271,7 +275,7 @@ const claudeTracker = createClaudeWindowTracker({
     claude = s;
     anywhereContexts.setHomeWindow(s?.found ? s.hwnd : 0); // the Claude window is Orbit's home context
     placeOrb();
-    avatar?.onClaude(s);
+    if (!externalHost()) avatar?.onClaude(s);
     avatarHost.onFocus(); // (a window's Qubit never stands on the window home is on)
     watchBox();
   },
@@ -359,13 +363,17 @@ const avatarKind = () => (['buddy', 'qubit'].includes(getSetting('avatar')) ? ge
 const orbAllowed = () => getSetting('showOrb') !== false || !avatarKind();
 // Settings -> Avatar: click it to talk, and pick it up to throw it (its page reads these).
 const avatarPrefs = () => ({ clickTalk: getSetting('avatarClickTalk') !== false, throw: getSetting('avatarThrow') !== false, throwSound: getSetting('avatarThrowSound') !== false });
+let avatarPlacement = null;
 function setAvatar({ live = false } = {}) {
-  const kind = avatarKind();
+  const placement = externalHost() ? getSetting('externalAvatarMode') : 'standalone';
+  const attachedPlacement = !!externalHost() && ['attached', 'auto'].includes(placement);
+  const kind = attachedPlacement ? null : avatarKind();
   const size = getSetting('buddySize');
-  if (avatar && avatar.kind === kind) {
+  if (avatar && avatar.kind === kind && avatarPlacement === placement) {
     avatarHost.setKind(kind && !freeAvatar() ? kind : null, size);
     return avatar.setEnabled(true, size);
   }
+  avatarPlacement = placement;
   const old = avatar;
   avatar = null;
   // One avatar per place, at every moment: the old one fades out and its window closes first, and
@@ -383,6 +391,7 @@ function setAvatar({ live = false } = {}) {
       // No Claude window to live on (no window helper): along the bottom of the screen instead.
       free: freeAvatar(),
       prefs: avatarPrefs,
+      watchGesture: (id, cb) => focusTracker?.watchGesture?.(id, cb),
     });
     avatar = next;
     if (lastOrbState) avatarHost.onVoice(lastOrbState); // (home gets it, or rests while the talk is elsewhere)
@@ -392,16 +401,18 @@ function setAvatar({ live = false } = {}) {
     else up();
   }
   // The Qubits in other windows (Orbit anywhere) become the same avatar, or go.
-  avatarHost.setKind(kind && !freeAvatar() ? kind : null, size);
-  avatarHost.setEnabled(!!kind && !freeAvatar());
-  watchBox();
+  const guestKind = externalHost() ? (attachedPlacement ? avatarKind() : null) : kind && !freeAvatar() ? kind : null;
+  avatarHost.setKind(guestKind, size);
+  avatarHost.setEnabled(!!guestKind);
+  if (externalHost()) void externalAvatar.sync(externalHost().snapshot(), placement);
+  else watchBox();
 }
 
 /**
  * The avatar floats free when there's no Claude window tracker on this platform (only Windows has
  * one). ORBIT_FREE_AVATAR=1 forces it from source (developer testing: scripts/avatar-free-e2e.mjs).
  */
-const freeAvatar = () => (process.platform !== 'win32' && !fakeWindowHelper) || (!app.isPackaged && process.env.ORBIT_FREE_AVATAR === '1');
+const freeAvatar = () => externalHost() ? getSetting('externalAvatarMode') === 'desktop' : (process.platform !== 'win32' && !fakeWindowHelper) || (!app.isPackaged && process.env.ORBIT_FREE_AVATAR === '1');
 
 // What the user asks the avatar to do (the voice model's `avatar` tool and the fast path that skips
 // the model) goes to its window.
@@ -425,24 +436,37 @@ const avatarHost = createAvatarHost({
       info: (m) => logInfo('avatar', m),
       boxless: true,
       prefs: avatarPrefs,
+      watchGesture: (id, cb) => focusTracker?.watchGesture?.(id, cb),
     }),
   home: () => avatar,
   watch: (hwnds) => focusTracker?.watch(hwnds),
   current: () => focus.current,
   log: (m) => logInfo('avatar', m),
 });
-anywhereContexts.on((snap) => avatarHost.sync(snap));
+const externalAvatar = createExternalAvatarBinding({ avatarHost, tracker: () => focusTracker });
+const externalAvatarSync = createExternalAvatarSync({
+  binding: externalAvatar,
+  selected: () => !!externalHost(),
+  getMode: () => getSetting('externalAvatarMode'),
+  // The existing settings listener calls setAvatar, preserving the real character handover.
+  setMode: (externalAvatarMode) => updateSettings({ externalAvatarMode }),
+});
+anywhereContexts.on((snap) => { if (!externalHost()) avatarHost.sync(snap); });
+focus.on('gone', (hwnds) => {
+  if (externalHost() && hwnds.includes(Number(externalHost().snapshot()?.window?.handle))) externalAvatar.clear();
+});
 focus.on('change', () => avatarHost.onFocus());
 
 // The Claude window watcher runs while the orb sticks to Claude or an avatar is on.
 // (A free-floating avatar doesn't need it.)
-const needTracker = () => !!getSetting('orbStick') || (!!avatarKind() && !freeAvatar());
+const needTracker = () => !externalHost() && (!!getSetting('orbStick') || (!!avatarKind() && !freeAvatar()));
 onSettingsChange((changed) => {
   if (changed.includes('avatarClickTalk') || changed.includes('avatarThrow') || changed.includes('avatarThrowSound')) {
     avatar?.refresh();
     avatarHost.refresh();
   }
-  if (changed.includes('avatar') || changed.includes('buddySize')) setAvatar({ live: true });
+  if (changed.includes('avatar') || changed.includes('buddySize') || changed.includes('externalAvatarMode')) setAvatar({ live: true });
+  if (externalHost()) return; // no Claude-window attachment in selected-host mode
   if (changed.includes('showOrb') && !changed.includes('orbStick') && !changed.includes('avatar')) return placeOrb();
   if (!changed.includes('orbStick') && !changed.includes('avatar')) return;
   if (needTracker()) {
@@ -482,11 +506,11 @@ let fakeFocusHelper = null; // developer testing only: a stand-in for focus.ps1 
 let fakeDesktop = false; // developer testing only: never start the real helpers then
 let fakeUiaHelper = null; // developer testing only: a stand-in for uia.ps1
 function setFocusTracking() {
-  const want = getSetting('anywhere') !== false && (!fakeDesktop || !!fakeFocusHelper);
+  const want = (externalHost() || getSetting('anywhere') !== false) && (!fakeDesktop || !!fakeFocusHelper);
   if (want && !focusTracker) {
     focusTracker = startFocusTracking({ spawnHelper: fakeFocusHelper, onError: (m) => logWarn('focus', m), onWins: (wins) => avatarHost.onWins(wins) });
     // Reading other apps' windows (UI Automation): its helper starts on the first read.
-    if (!fakeDesktop || fakeUiaHelper) startUia({ spawnHelper: fakeUiaHelper, cacheDir: path.join(app.getPath('userData'), 'cache'), onError: (m) => logWarn('uia', m) });
+    if (!externalHost() && (!fakeDesktop || fakeUiaHelper)) startUia({ spawnHelper: fakeUiaHelper, cacheDir: path.join(app.getPath('userData'), 'cache'), onError: (m) => logWarn('uia', m) });
   } else if (!want && focusTracker) {
     focusTracker.stop();
     focusTracker = null;
@@ -497,13 +521,17 @@ onSettingsChange((changed) => changed.includes('anywhere') && setFocusTracking()
 
 // ---------- updates (GitHub Releases) ----------
 let updater = null; // created when the app is ready (the settings are loaded then)
+let managedRuntime = null;
+let trustedPairingPath = null;
+let stopDescriptorWatch = () => {};
 onSettingsChange((changed) => {
   if (changed.includes('autoUpdate')) updater?.setAuto(!!getSetting('autoUpdate'));
 });
 
 // ---------- tray ----------
-const loginEnabled = () => app.getLoginItemSettings({ args: ['--background'] }).openAtLogin;
+const loginEnabled = () => !MANAGED && app.getLoginItemSettings({ args: ['--background'] }).openAtLogin;
 function setLogin(enabled) {
+  if (MANAGED) return false;
   app.setLoginItemSettings({ openAtLogin: !!enabled, args: ['--background'] });
   refreshTray();
   return loginEnabled();
@@ -514,12 +542,11 @@ function refreshTray() {
   tray.setToolTip(`Orbit: ${hotkeyLabel(getSetting('wakeHotkey'))} to talk`);
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: 'Open Orbit', click: showMain },
+      { label: MANAGED ? 'Advanced Orbit settings' : 'Open Orbit', click: () => { showMain(); if (MANAGED) main?.webContents.send('external:open-settings'); } },
       { label: `Talk / sleep  (${hotkeyLabel(getSetting('wakeHotkey'))})`, click: () => main?.webContents.send('hotkey') },
+      ...(!MANAGED ? [{ type: 'separator' }, { label: LOGIN_LABEL, type: 'checkbox', checked: loginEnabled(), click: (item) => setLogin(item.checked) }] : []),
       { type: 'separator' },
-      { label: LOGIN_LABEL, type: 'checkbox', checked: loginEnabled(), click: (item) => setLogin(item.checked) },
-      { type: 'separator' },
-      { label: 'Quit Orbit', click: () => app.quit() },
+      { label: MANAGED ? 'Quit voice companion' : 'Quit Orbit', click: () => MANAGED ? managedRuntime?.quit() : app.quit() },
     ]),
   );
 }
@@ -554,6 +581,7 @@ const hotkeyInfo = (extra = {}) => ({
   label: hotkeyLabel(getSetting('wakeHotkey')),
   registered: !!activeHotkey,
   defaultAccelerator: DEFAULTS.wakeHotkey,
+  ...(launch.paired ? { enabled: !!getSetting('previewHotkeyEnabled') } : {}),
   ...extra,
 });
 
@@ -563,6 +591,21 @@ const handle = (channel, fn) => ipcMain.handle(channel, (e, ...args) => (fromUs(
 const on = (channel, fn) => ipcMain.on(channel, (e, ...args) => fromUs(e) && fn(...args));
 
 handle('hotkey:get', () => hotkeyInfo());
+handle('hotkey:enable', (enabled) => {
+  if (!launch.paired) return hotkeyInfo({ ok: false, error: 'Standalone Orbit keeps its wake shortcut enabled.' });
+  if (typeof enabled !== 'boolean') return hotkeyInfo({ ok: false, error: 'Choose whether to enable the shortcut.' });
+  if (!enabled) {
+    if (activeHotkey) globalShortcut.unregister(activeHotkey);
+    activeHotkey = null;
+    updateSettings({ previewHotkeyEnabled: false });
+  } else {
+    const accel = getSetting('wakeHotkey');
+    if (!registerHotkey(accel)) return hotkeyInfo({ ok: false, error: 'That shortcut is already in use. Choose another one.' });
+    activeHotkey = accel;
+    updateSettings({ previewHotkeyEnabled: true });
+  }
+  return hotkeyInfo({ ok: true });
+});
 handle('hotkey:set', (accel) => {
   if (typeof accel !== 'string' || !/^[\w+.-]{1,60}$/.test(accel)) return hotkeyInfo({ ok: false, error: 'No shortcut given.' });
   if (activeHotkey && activeHotkey !== accel) globalShortcut.unregister(activeHotkey);
@@ -571,7 +614,7 @@ handle('hotkey:set', (accel) => {
     return hotkeyInfo({ ok: false, error: 'Windows or another app is already using that shortcut. Try a different one.' });
   }
   activeHotkey = accel;
-  updateSettings({ wakeHotkey: accel });
+  updateSettings({ wakeHotkey: accel, previewHotkeyEnabled: true });
   refreshTray();
   return hotkeyInfo({ ok: true });
 });
@@ -588,9 +631,15 @@ handle('update:get', () => updater?.state() ?? { status: 'idle' });
 handle('update:check', () => updater?.check());
 handle('update:install', () => updater?.install());
 
-on('win:minimize', () => showOrb());
-on('win:close', () => app.quit());
+on('win:minimize', () => MANAGED ? hideManaged() : showOrb());
+on('win:close', () => MANAGED ? hideManaged() : app.quit());
 on('orb:restore', () => showMain());
+ipcMain.on('managed:status', (event, status) => {
+  if (MANAGED && fromUs(event) && event.sender === main?.webContents) managedRuntime?.update(status);
+});
+ipcMain.on('managed:ack', (event, id, applied) => {
+  if (MANAGED && fromUs(event) && event.sender === main?.webContents) managedRuntime?.acknowledge(id, applied);
+});
 on('orb:state', (s) => {
   orb?.webContents.send('orb:state', s);
   lastOrbState = s;
@@ -602,7 +651,7 @@ on('orb:state', (s) => {
     orbitMouse.prewarm();
   }
 });
-on('buddy:event', (name) => avatar?.event(name));
+on('buddy:event', (name) => (externalHost() ? avatarHost.active() : avatar)?.event(name));
 on('buddy:emote', (name) => avatarHost.active()?.emote(name));
 // From the avatar's own page (not one that is fading out after a switch).
 const avatarFor = (sender) => (avatar?.window && sender === avatar.window.webContents ? avatar : avatarHost.guestFor(sender));
@@ -614,6 +663,11 @@ ipcMain.on('buddy:hover', (e, over, held) => {
 ipcMain.on('buddy:press', (e, outcome, why) => {
   if (!fromUs(e)) return;
   avatarFor(e.sender)?.pressed(outcome, why);
+});
+// Active avatar gestures only: the native owner validates identity, frame and phase.
+ipcMain.on('buddy:gesture', (e, message) => {
+  if (!fromUs(e)) return;
+  avatarFor(e.sender)?.gesture?.(message);
 });
 ipcMain.on('buddy:hit', (e, r) => {
   if (!fromUs(e)) return;
@@ -627,7 +681,7 @@ ipcMain.on('buddy:talk', (e) => {
   const a = avatarFor(e.sender);
   if (!a) return;
   const hwnd = a.hostHwnd;
-  if (hwnd) {
+  if (hwnd && !externalHost()) {
     const known = focus.recent?.find?.((r) => Number(r.hwnd) === hwnd);
     wakeWith(known || (a === avatar ? { hwnd, kind: 'app', exe: 'claude.exe', cls: 'Chrome_WidgetWin_1', title: 'Claude' } : { hwnd, kind: 'app' }));
   }
@@ -684,10 +738,26 @@ app.whenReady().then(async () => {
   }
   try {
     const dir = app.getPath('userData');
+    if (launch.paired && await checkStandaloneConflict()) throw new Error('Another Orbit runtime (or an app on its standard port) is running. Close it before opening the companion. Orbit will not close it or change its startup settings.');
+    const descriptor = launch.descriptor;
+    if (MANAGED && !descriptor) throw new Error('Managed Orbit requires an explicit protected pairing file.');
+    if (descriptor) {
+      trustedPairingPath = fs.realpathSync(descriptor);
+      const client = createExternalHost({ descriptor: readDescriptor(descriptor), onSnapshot: (snap) => { void externalAvatarSync.sync(snap); }, onStage: (stage) => externalAvatar.stage(stage) });
+      selectExternalHost(client); // selected even if later disconnected: never falls back to Claude
+      await client.start();
+      if (MANAGED) stopDescriptorWatch = watchManagedDescriptor(trustedPairingPath, client);
+    }
     baseUrl = await startServer({
       configDir: dir,
       secrets: encryptedKeyStore(dir),
       brainSecrets: encryptedKeyStore(dir, 'anthropic-key.bin'),
+      openaiSecrets: encryptedKeyStore(dir, 'openai-key.bin'),
+      openaiCredentials: createOpenAICredentials(), // native-only cached system source, never copied to the profile
+      pairedOpenAI: !!externalHost(),
+      managed: MANAGED,
+      importEnv: launch.importEnv,
+      port: launch.port, // an explicitly selected host gets an available loopback port
       clipboard: (text) => clipboard.writeText(text),
       firstRun: FIRST_RUN_SETTINGS, // a brand-new install: Qubit, no orb, and the onboarding
       // Offline wake-word model: shipped next to the app (extraResources), or in the repo in dev.
@@ -707,6 +777,7 @@ app.whenReady().then(async () => {
     }
   } catch (e) {
     logError('app', 'Bridge failed to start', e?.message);
+    if (MANAGED) return app.quit(); // bro reports readiness failure; hidden startup never steals focus
     dialog.showErrorBox(
       'Orbit',
       e.code === 'EADDRINUSE' ? 'Port 4317 is already in use, probably by another copy of Orbit. Close it first.' : String(e.message || e),
@@ -719,21 +790,46 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionCheckHandler((wc, permission) => ALLOWED_PERMISSIONS.has(permission) && !!wc && isOurs(wc.getURL()));
   app.on('web-contents-created', (_e, wc) => wc.on('will-attach-webview', (ev) => ev.preventDefault()));
 
+  if (MANAGED) {
+    managedRuntime = createManagedRuntime({
+      host: externalHost(),
+      identity: { pid: process.pid, buildId: managedBuildId(ROOT) },
+      getSettings, getCredentials: getOpenAIStatus,
+      send: (message) => { if (main && !main.isDestroyed() && !main.webContents.isDestroyed()) main.webContents.send('managed:control', message); },
+      showSettings: () => { showMain(); main?.webContents.send('external:open-settings'); },
+      quit: () => app.quit(),
+      setPreferences: (p) => {
+        const patch = { voiceEngine: p.provider, voiceVolume: p.volume / 100, listenMode: p.listenMode,
+          ...(p.provider === 'openai' ? { openaiModel: p.model, openaiVoice: p.voice } : { model: p.model, voice: p.voice }) };
+        const clean = sanitizeSettings(patch);
+        if (Object.entries(patch).some(([key, value]) => clean[key] !== value)) throw new Error('Unsupported voice preferences');
+        updateSettings(clean);
+      },
+    });
+  }
   createMain();
   createOrb();
+  managedRuntime?.start();
+  if (externalHost()) {
+    setFocusTracking();
+    // The first snapshot arrived before initConfig; apply it only now, with the shell ready.
+    await externalAvatarSync.initialize(externalHost().snapshot());
+  }
   setAvatar();
   if (needTracker()) claudeTracker.start();
-  setFocusTracking();
+  if (!externalHost()) setFocusTracking();
   createTray();
   updater = createUpdater({
-    isPackaged: app.isPackaged,
+    isPackaged: app.isPackaged && launch.updatesAllowed,
     version: app.getVersion(),
     auto: !!getSetting('autoUpdate'),
     onChange: (state) => main?.webContents.send('update:state', state),
     log: { info: (m) => logInfo('update', m), warn: (m, d) => logWarn('update', m, d) },
   });
-  if (registerHotkey(getSetting('wakeHotkey'))) activeHotkey = getSetting('wakeHotkey');
-  else logWarn('hotkey', `Could not register ${getSetting('wakeHotkey')}; another app may be using it`);
+  if (launch.registerHotkey(getSettings())) {
+    if (registerHotkey(getSetting('wakeHotkey'))) activeHotkey = getSetting('wakeHotkey');
+    else logWarn('hotkey', `Could not register ${getSetting('wakeHotkey')}; another app may be using it`);
+  }
 
   if (process.env.GVB_SNAPSHOT_DIR && !app.isPackaged) {
     const { runSelfTest } = await import('./selftest.js');
@@ -743,6 +839,9 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   quitting = true;
+  stopDescriptorWatch();
+  managedRuntime?.stop();
+  externalHost()?.stop();
   stopBackgroundWork(); // second-brain questions kept past a hang-up stop with the app
   claudeTracker.stop();
   focusTracker?.stop();

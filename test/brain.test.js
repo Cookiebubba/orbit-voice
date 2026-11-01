@@ -89,7 +89,7 @@ test('finds claude.exe behind npm\x27s claude.cmd shim, or the copy inside the C
     fs.writeFileSync(p, '');
   }
   if (process.platform === 'win32') {
-    const found = findClaude('', { PATH: '', APPDATA: appData, LOCALAPPDATA: tmp('orbit-local-') });
+    const found = findClaude('', { PATH: '', APPDATA: appData, LOCALAPPDATA: tmp('orbit-local-') }, { homedir: tmp('orbit-home-') });
     assert.equal(found.source, 'claude-desktop');
     assert.match(found.path, /2\.1\.10[\\/]abc123[\\/]claude\.exe$/, 'newest version wins (numeric, not alphabetical)');
   }
