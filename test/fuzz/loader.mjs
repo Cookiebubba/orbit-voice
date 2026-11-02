@@ -3,6 +3,7 @@
 const FAKES = {
   '/src/desktop.js': new URL('./fake-desktop.mjs', import.meta.url).href,
   '/src/brain.js': new URL('./fake-brain.mjs', import.meta.url).href,
+  '/src/clipboard.js': new URL('./fake-clipboard.mjs', import.meta.url).href,
 };
 
 export async function resolve(specifier, context, nextResolve) {

@@ -34,25 +34,31 @@ export const THROW = Object.freeze({
 /** A ±180 wrap, for angles. */
 const wrap = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
 
+/** Physical rotated/grown/squashed outline, never the larger pointer hit target. */
+export function bodyExtents(q) {
+  const a = (q.angle + q._tilt()) * DEG;
+  const [hw, hh] = q._halfExtents();
+  return { x: hw * Math.abs(Math.cos(a)) + hh * Math.abs(Math.sin(a)), y: hh * Math.abs(Math.cos(a)) + hw * Math.abs(Math.sin(a)) };
+}
+
 export function createThrow(q, { tune = {} } = {}) {
   const T = { ...THROW, ...tune };
   let held = null; // { x, y, vx, vy, tx, ty, wv }  his centre (stage px) and its velocity, the target
   let flying = null; // { bounces, impact, since }
   let solids = []; // the stage's solids (setSolids), some of them ghosts until he's clear of them
   let ghosts = new Set();
+  let continuous = false; // optional workspace stages only; standalone throw timing stays unchanged
+  let automatic = false;
+  let forbidden = null;
   const listeners = { land: [], bounce: [], wall: [] };
   const emit = (k, d) => listeners[k].forEach((fn) => fn(d));
 
   const physics = q._physics.bind(q);
-  const ext = () => {
-    const a = (q.angle + q._tilt()) * DEG;
-    const [hw, hh] = q._halfExtents();
-    return { x: hw * Math.abs(Math.cos(a)) + hh * Math.abs(Math.sin(a)), y: hh * Math.abs(Math.cos(a)) + hw * Math.abs(Math.sin(a)) };
-  };
+  const ext = () => bodyExtents(q);
   const stageY = () => q.ground - q.cy; // his centre's stage y
 
   function applySolids() {
-    q.setEnvironment({ solids: solids.filter((s) => !ghosts.has(s.id)) });
+    q.setEnvironment({ solids: solids.filter((s) => !ghosts.has(s.id)), ...(continuous ? { strictSupport: true } : {}) });
   }
   /** Solids his body overlaps now (held over the prompt box, say): they don't count until he's clear. */
   function overlapping() {
@@ -66,10 +72,20 @@ export function createThrow(q, { tune = {} } = {}) {
 
   q._physics = (dt) => {
     if (held) return holdStep(dt);
-    if (!flying) return physics(dt);
+    if (!flying && !automatic) return physics(dt);
+    // Thin headers must not be skipped by a fast, rotated throw on a slow frame.
+    const n = continuous ? Math.min(128, Math.max(1, Math.ceil(dt * Math.max(Math.hypot(q.vx, q.vy) / Math.max(2, q.side * 0.2), 240)))) : 1;
+    for (let i = 0; i < n; i++) {
+      if (!flying) physics(dt / n);
+      else flightStep(dt / n);
+      if (automatic) { clearGhosts(); contain(); }
+    }
+  };
+  function flightStep(dt) {
     const before = { air: q.air, vx: q.vx, vy: q.vy, av: q.av };
     physics(dt);
-    if (ghosts.size && !overlapping().length) {
+    if (automatic) clearGhosts();
+    else if (ghosts.size && !overlapping().length) {
       ghosts = new Set();
       applySolids();
     }
@@ -93,7 +109,7 @@ export function createThrow(q, { tune = {} } = {}) {
     if (!q.air && !q.pivot) {
       const done = { impact: flying.impact, bounces: flying.bounces, x: q.cx, y: q.ground - q.sy, secs: q.t - flying.since };
       flying = null;
-      if (ghosts.size) {
+      if (ghosts.size && !automatic) {
         ghosts = new Set();
         applySolids();
       }
@@ -121,6 +137,38 @@ export function createThrow(q, { tune = {} } = {}) {
       hit = true;
     }
     if (hit) emit('wall', { x: q.cx });
+  }
+
+  function clearGhosts() {
+    if (!ghosts.size) return;
+    const e = ext(), y = stageY();
+    let changed = false;
+    for (const id of ghosts) {
+      const s = solids.find((s) => s.id === id);
+      if (!s || q.cx + e.x <= s.x || q.cx - e.x >= s.x + s.w || y + e.y < s.y - 1 || y - e.y > s.y + s.h) { ghosts.delete(id); changed = true; }
+    }
+    if (changed) applySolids();
+  }
+  let blocked = false;
+  function contain() {
+    if (!automatic) return;
+    const e = ext();
+    q.cx = clamp(q.cx, e.x, q.W - e.x);
+    q.cy = clamp(q.cy, e.y, q.ground - e.y);
+    blocked = false;
+    const r = forbidden, y = stageY();
+    if (r && q.cx + e.x > r.x && q.cx - e.x < r.x + r.w && y + e.y > r.y && y - e.y < r.y + r.h) {
+      // Invalid clients are not perches: recover beside/below, never onto an invented top.
+      const spots = [{ x: r.x - e.x - 1, y }, { x: r.x + r.w + e.x + 1, y }, { x: q.cx, y: r.y + r.h + e.y + 1 }]
+        .filter((p) => p.x >= e.x && p.x <= q.W - e.x && p.y >= e.y && p.y <= q.ground - e.y);
+      const p = spots.sort((a, b) => Math.hypot(a.x - q.cx, a.y - y) - Math.hypot(b.x - q.cx, b.y - y))[0];
+      if (!p) blocked = true;
+      else {
+        q.cx = p.x; q.cy = q.ground - p.y; q.pivot = null; q.air = true; q.sy = 0; q.vx = q.vy = 0;
+        if (held) { held.x = q.cx; held.y = p.y; }
+      }
+    }
+    if (held) { held.x = q.cx; held.y = stageY(); }
   }
 
   /** One held frame: the whole body follows the target; he swings a little with its speed. */
@@ -151,7 +199,7 @@ export function createThrow(q, { tune = {} } = {}) {
     h.x = clamp(h.x, e.x, q.W - e.x);
     h.y = clamp(h.y, e.y, q.ground - e.y);
     for (const sd of solids.length ? solids : (q.envSrc && q.envSrc.solids) || []) {
-      if (sd.oneWay || !(h.x + e.x > sd.x && h.x - e.x < sd.x + sd.w && h.y + e.y > sd.y && h.y - e.y < sd.y + sd.h)) continue;
+      if (ghosts.has(sd.id) || sd.noTop || sd.oneWay || !(h.x + e.x > sd.x && h.x - e.x < sd.x + sd.w && h.y + e.y > sd.y && h.y - e.y < sd.y + sd.h)) continue;
       const outs = [{ x: h.x, y: sd.y - e.y }];
       if (sd.x - e.x >= e.x) outs.push({ x: sd.x - e.x, y: h.y });
       if (sd.x + sd.w + e.x <= q.W - e.x) outs.push({ x: sd.x + sd.w + e.x, y: h.y });
@@ -165,6 +213,7 @@ export function createThrow(q, { tune = {} } = {}) {
     q.pivot = null;
     q.vx = h.vx;
     q.vy = -h.vy;
+    clearGhosts(); contain();
   }
 
   return {
@@ -206,13 +255,33 @@ export function createThrow(q, { tune = {} } = {}) {
       q.av = clamp(h.wv + (q.vx / q.side) * T.spinPerSide, -T.maxSpin, T.maxSpin);
       q.leftFrom = null;
       flying = { bounces: 0, impact: 0, since: q.t };
-      ghosts = new Set(overlapping());
+      ghosts = new Set([...(automatic ? ghosts : []), ...overlapping()]);
       if (ghosts.size) applySolids();
     },
     /** The stage's solids (stage px), with the ones he's inside left out until he's clear. */
-    setSolids(list) {
+    setSolids(list, { continuous: swept = false, automatic: auto = false, forbidden: excluded = null, preserveSupport = null } = {}) {
+      continuous = swept; automatic = auto; forbidden = excluded;
+      const old = new Map(solids.map((s) => [s.id, s]));
       solids = (list || []).slice();
-      applySolids();
+      if (automatic) {
+        const e = ext(), y = stageY();
+        for (const s of solids) {
+          if (s.noTop || s.id === preserveSupport || JSON.stringify(old.get(s.id)) === JSON.stringify(s)) continue;
+          if (q.cx + e.x > s.x && q.cx - e.x < s.x + s.w && y + e.y >= s.y - 1 && y - e.y < s.y + s.h) ghosts.add(s.id);
+        }
+      } else if (flying && continuous) for (const id of overlapping()) ghosts.add(id);
+      clearGhosts(); applySolids(); contain();
+      return solids.filter((s) => !ghosts.has(s.id));
+    },
+    get solids() { return solids.filter((s) => !ghosts.has(s.id)); },
+    get blocked() { return blocked; },
+    /** Safe DPI/topology recovery cancels interaction but retains this controller/engine. */
+    recover() {
+      held = flying = null; ghosts.clear();
+      q.pivot = null; q.air = true; q.sy = 0; q.vx = q.vy = q.av = 0;
+      for (const j of q.queue) j.resolve(false); q.queue = [];
+      if (q.task) q.task.cancelled = true;
+      contain();
     },
     /**
      * His stage moved under him (the window grew to the work area or shrank back to the strip): his

@@ -22,7 +22,11 @@ export type Settings = {
   webSearch: boolean;
   brainConnection: "claude-code" | "api-key";
   brainClaudePath: string;
-  voiceEngine: "grok" | "claude";
+  voiceEngine: "grok" | "claude" | "openai";
+  openaiModel: "gpt-realtime" | "gpt-realtime-mini";
+  openaiVoice: string;
+  openaiKeySource: "saved" | "system" | "saved-or-system";
+  externalAvatarMode: "desktop" | "attached" | "auto";
   claudeVoice: number;
   claudeVoiceModel: "haiku" | "sonnet" | "opus" | "fable";
   claudeVoiceEffort: "low" | "medium" | "high";
@@ -47,7 +51,8 @@ export type Settings = {
 };
 
 /** voiceWarming: Claude voice's speech is loading and warming up (a call started now waits for it). */
-export type AppConfig = { version: string; hasKey: boolean; keyStorage: string; settings: Settings; voiceWarming?: boolean };
+export type OpenAIStatus = { policy: Settings["openaiKeySource"]; savedPresent: boolean; systemAvailable: boolean; systemSource: "process" | "user" | "machine" | null; effectiveSource: "saved" | "process" | "user" | "machine" | null; available: boolean; pending: boolean; error: "saved-unreadable" | "system-invalid" | "system-read-failed" | null; systemError: "system-invalid" | "system-read-failed" | null };
+export type AppConfig = { version: string; hasKey: boolean; hasXaiKey?: boolean; hasOpenAIKey?: boolean; openai?: OpenAIStatus; externalHost?: { selected: boolean; connected: boolean; capabilities: string[]; name: string | null } | null; keyStorage: string; settings: Settings; voiceWarming?: boolean };
 export type Finished = { id: string; title: string; summary: string; at: number };
 
 export async function postJson(url: string, body: object) {
@@ -75,9 +80,19 @@ export function useAppState({ onFinished, onWake }: { onFinished: (f: Finished) 
 
   useEffect(reload, [reload]);
 
+  // A first config fetch can beat the native registry refresh (or its SSE event can beat config).
+  // Poll only cached metadata briefly while pending; never trigger another OS lookup here.
+  useEffect(() => {
+    if (!config?.openai?.pending) return;
+    let reads = 0;
+    const timer = setInterval(() => { reload(); if (++reads >= 12) clearInterval(timer); }, 500);
+    return () => clearInterval(timer);
+  }, [config?.openai?.pending, reload]);
+
   // Live events from the bridge (reconnects by itself if the connection drops).
   useEffect(() => {
     const es = new EventSource("/api/events");
+    es.onopen = reload; // reconnect also reconciles availability after an event-stream gap
     es.onmessage = (m) => {
       let evt: any;
       try {
@@ -90,6 +105,7 @@ export function useAppState({ onFinished, onWake }: { onFinished: (f: Finished) 
       // The bridge decides when Grok wakes by itself (spoken updates, results you asked for).
       else if (evt.type === "orbit.wake") wakeCb.current();
       else if (evt.type === "voice.warming") setConfig((c) => (c ? { ...c, voiceWarming: !!evt.warming } : c));
+      else if (evt.type === "openai.credentials") setConfig((c) => (c ? { ...c, openai: evt.openai, hasOpenAIKey: !!evt.openai.savedPresent, ...(c.settings.voiceEngine === "openai" ? { hasKey: !!evt.openai.available } : {}) } : c));
       else if (evt.type === "settings.changed") setConfig((c) => (c ? { ...c, settings: { ...c.settings, ...evt.settings, hotkeyLabel: hotkeyLabel(evt.settings.wakeHotkey) } } : c));
     };
     return () => es.close();
@@ -101,10 +117,11 @@ export function useAppState({ onFinished, onWake }: { onFinished: (f: Finished) 
     if (r.ok) {
       const settings = await r.json();
       setConfig((c) => (c ? { ...c, settings } : c));
+      if (patch.voiceEngine || patch.openaiKeySource) reload();
     }
   }, []);
 
-  return { config, failed, reload, claudeWorking, updateSettings, setHasKey: () => setConfig((c) => (c ? { ...c, hasKey: true } : c)) };
+  return { config, failed, reload, claudeWorking, updateSettings, setHasKey: reload };
 }
 
 const MAC_MODS: Record<string, string> = { Control: "⌃", Ctrl: "⌃", Alt: "⌥", Option: "⌥", Shift: "⇧", Command: "⌘", Cmd: "⌘", CommandOrControl: "⌘", CmdOrCtrl: "⌘", Super: "⌘", Meta: "⌘" };

@@ -29,6 +29,7 @@ const EXIT_PAD = 6; // ...and while it takes the mouse (so his edge doesn't flic
 
 export function createHoverPoller({ getCursor, getBounds, setIgnore, isLive = () => true, onCursor = () => {}, onMode = () => {}, onRunning = () => {}, onQuiet = () => {}, intervalMs = HOVER_POLL_MS, now = () => Date.now(), setTimer = setInterval, clearTimer = clearInterval } = {}) {
   let hit = null; // the avatar's rect in the window's px: { x, y, w, h }
+  let controls = [];
   let heardAt = 0; // the page's last word (a rect or the press state)
   let quiet = false; // logged that the page went quiet (once per quiet spell)
   let held = false; // a press or drag is under way (the page keeps the mouse for it)
@@ -61,7 +62,7 @@ export function createHoverPoller({ getCursor, getBounds, setIgnore, isLive = ()
       const lx = c.x - b.x;
       const ly = c.y - b.y;
       const pad = taking ? EXIT_PAD : PAD;
-      if (hit) over = lx >= hit.x - pad && lx <= hit.x + hit.w + pad && ly >= hit.y - pad && ly <= hit.y + hit.h + pad;
+      if (hit) over = [hit, ...controls].some((r) => lx >= r.x - pad && lx <= r.x + r.w + pad && ly >= r.y - pad && ly <= r.y + r.h + pad);
       // The cursor near his window: the page gets it (his eye follows it, with or without forwarding).
       const near = lx > -200 && ly > -200 && lx < b.width + 200 && ly < b.height + 200;
       const key = near ? `${Math.round(c.x)},${Math.round(c.y)}` : null;
@@ -91,6 +92,7 @@ export function createHoverPoller({ getCursor, getBounds, setIgnore, isLive = ()
     /** The avatar's rect in the window's px (null: nothing to hit). Sent on every move and as a heartbeat. */
     setHit(rect) {
       hit = rect && [rect.x, rect.y, rect.w, rect.h].every(Number.isFinite) && rect.w > 0 && rect.h > 0 ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h } : null;
+      controls = hit && Array.isArray(rect.controls) ? rect.controls.slice(0, 2).filter((r) => r && [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w > 0 && r.h > 0).map(({ x, y, w, h }) => ({ x, y, w, h })) : [];
       heard();
       decide();
     },
@@ -128,6 +130,7 @@ export function createHoverPoller({ getCursor, getBounds, setIgnore, isLive = ()
     reset() {
       taking = null;
       hit = null;
+      controls = [];
       held = false;
       offSince = null;
       heardAt = 0;

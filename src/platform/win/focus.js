@@ -26,6 +26,11 @@ export function createWinFocusTracker({ onFocus = () => {}, onSwitching = () => 
   let nextId = 1;
   let watching = []; // the windows Qubit is in, replayed after a restart
   const pending = new Map(); // id -> { resolve, timer }
+  let gesture = null, nextGesture = 1;
+  const cancelGesture = () => {
+    const g = gesture; gesture = null;
+    if (g) { clearTimeout(g.timer); try { child?.stdin.write('gesture 0 0\n'); } catch {} g.cb({ id: g.id, sequence: ++g.sequence, cancel: true }); }
+  };
 
   const onLine = (line) => {
     let j;
@@ -35,6 +40,16 @@ export function createWinFocusTracker({ onFocus = () => {}, onSwitching = () => 
       return; // a partial or stray line
     }
     if (!j || typeof j !== 'object') return;
+    if (j.gesture) {
+      const s = j.gesture, g = gesture;
+      if (!g || s.id !== g.token || !Number.isSafeInteger(s.sequence) || s.sequence <= g.sequence) return;
+      if (s.cancel || ![s.x, s.y].every(Number.isFinite) || typeof s.down !== 'boolean') return cancelGesture();
+      g.sequence = s.sequence;
+      clearTimeout(g.timer); g.timer = setTimeout(cancelGesture, 750); g.timer.unref?.();
+      g.cb({ id: g.id, sequence: g.sequence, x: s.x, y: s.y, down: s.down, ...(Number.isFinite(s.doubleClickMs) && s.doubleClickMs >= 50 && s.doubleClickMs <= 5000 ? { doubleClickMs: s.doubleClickMs } : {}) });
+      if (!s.down && gesture === g) { clearTimeout(g.timer); gesture = null; }
+      return;
+    }
     if (j.fg && typeof j.fg === 'object') return onFocus(Number.isFinite(j.idle) ? { ...j.fg, idle: j.idle } : j.fg);
     if (typeof j.switching === 'boolean') return onSwitching(j.switching);
     if (Array.isArray(j.gone)) return onGone(j.gone.filter(Number.isFinite));
@@ -69,6 +84,7 @@ export function createWinFocusTracker({ onFocus = () => {}, onSwitching = () => 
     }
     me.on('exit', (code) => {
       if (child === me) child = null;
+      cancelGesture();
       for (const [id, p] of pending) {
         clearTimeout(p.timer);
         p.resolve({ id, error: 'helper_exited' });
@@ -112,6 +128,7 @@ export function createWinFocusTracker({ onFocus = () => {}, onSwitching = () => 
     },
     stop() {
       stopped = true;
+      cancelGesture();
       try {
         child?.stdin.end();
       } catch {}
@@ -119,6 +136,21 @@ export function createWinFocusTracker({ onFocus = () => {}, onSwitching = () => 
         child?.kill();
       } catch {}
       child = null;
+    },
+    /** Read-only stream solely for an already-active avatar gesture; never replayed after failure. */
+    watchGesture(id, cb) {
+      cancelGesture();
+      if (!Number.isSafeInteger(id) || id <= 0 || typeof cb !== 'function') return () => {};
+      if (!child || stopped) { queueMicrotask(() => cb({ id, sequence: 1, cancel: true })); return () => {}; }
+      const g = { id, token: nextGesture++, sequence: 0, cb, timer: null };
+      gesture = g;
+      g.timer = setTimeout(cancelGesture, 750); g.timer.unref?.();
+      try { child.stdin.write(`gesture 0 ${g.token}\n`); } catch { cancelGesture(); }
+      return () => {
+        if (gesture !== g) return;
+        clearTimeout(g.timer); gesture = null;
+        try { child?.stdin.write('gesture 0 0\n'); } catch {}
+      };
     },
     /** One window, now (null if it's gone). */
     async describe(hwnd) {

@@ -13,6 +13,10 @@ settings.json
 !parity/oracle/fixtures/settings.json
 usage.json
 xai-key.bin
+anthropic-key.bin
+openai-key.bin
+*-key.bin.*.tmp
+/orbit-host-compatibility.json
 logs/
 
 # scratch

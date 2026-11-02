@@ -75,6 +75,8 @@ function bufToB64(buf: ArrayBuffer) {
 
 export function useVoice(options: VoiceOptions) {
   const [phase, setPhase] = useState<Phase>("off");
+  const [microphone, setMicrophone] = useState<"off" | "requesting" | "active" | "denied">("off");
+  const [failure, setFailure] = useState<"microphoneDenied" | "microphoneFailed" | "providerConnectionFailed" | null>(null);
   const [asleep, setAsleep] = useState(false);
   const [levels, setLevels] = useState({ input: 0, output: 0 });
   const [captions, setCaptions] = useState<Caption[]>([]);
@@ -111,6 +113,8 @@ export function useVoice(options: VoiceOptions) {
   // A sound of Orbit's own playing (the avatar's "Wheee!"): treated like Orbit's voice by the listening.
   const ownSoundUntil = useRef(0);
   const soundPlaying = () => Date.now() < ownSoundUntil.current;
+  const speechCaptureActive = useRef(false);
+  const replyAudioStart = useRef<number | null>(null);
   const playHead = useRef(0); // where the next chunk starts, on this call's AudioContext clock
   /** How long after it's scheduled audio really comes out (Bluetooth earbuds: 0.1–0.3 s). */
   const outLatency = () => {
@@ -185,9 +189,16 @@ export function useVoice(options: VoiceOptions) {
   };
 
   /** Open the microphone and start sending it (unless asleep). Needs the AudioContext from start(). */
+  function acceptingMicrophone() {
+    return !mutedRef.current && !asleepRef.current && announceRef.current?.stage !== 'speaking'
+      && !(opts.current.halfDuplex && (isPlaying() || soundPlaying()));
+  }
   const openMic = useCallback(async () => {
     const ac = ctx.current;
     if (!ac || mic.current) return;
+    // Latch before recording starts. A new local speech onset below latches each subsequent turn.
+    if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify({ type: 'ui.utterance_start', id: crypto.randomUUID() }));
+    setMicrophone("requesting");
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
@@ -195,6 +206,8 @@ export function useVoice(options: VoiceOptions) {
       stream.getTracks().forEach((tr) => tr.stop()); // hung up meanwhile
       return;
     }
+    mic.current = stream; // Stop also owns tracks while the worklet module is still loading
+    setMicrophone("active");
     if (!worklet.current) {
       await ac.audioWorklet.addModule("pcm-worklet.js");
       const node = new AudioWorkletNode(ac, "pcm-capture");
@@ -202,13 +215,19 @@ export function useVoice(options: VoiceOptions) {
       node.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
         // Not listening: asleep, a spoken update whose listening window isn't open, or
         // (half-duplex) Grok is talking and might hear itself.
-        const a = announceRef.current;
-        const deaf = mutedRef.current || asleepRef.current || (!!a && a.stage === "speaking") || (opts.current.halfDuplex && (isPlaying() || soundPlaying()));
+        const deaf = !acceptingMicrophone();
         const pcm = new Int16Array(e.data);
         let sum = 0;
         for (let i = 0; i < pcm.length; i++) sum += (pcm[i] / 0x8000) ** 2;
         inLevel.current = deaf ? 0 : Math.sqrt(sum / pcm.length);
-        if (inLevel.current > 0.02) lastLoudAt.current = Date.now();
+        if (inLevel.current > 0.02) {
+          const now = Date.now();
+          if (!speechCaptureActive.current && ws.current?.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({ type: 'ui.utterance_start', id: crypto.randomUUID() }));
+            speechCaptureActive.current = true;
+          }
+          lastLoudAt.current = now;
+        }
         if (!deaf && ws.current?.readyState === WebSocket.OPEN)
           ws.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: bufToB64(e.data) }));
       };
@@ -220,6 +239,7 @@ export function useVoice(options: VoiceOptions) {
     mic.current = stream;
     micSource.current = ac.createMediaStreamSource(stream);
     micSource.current.connect(worklet.current);
+    setMicrophone("active");
   }, []);
 
   /** Close the microphone device itself (not just stop sending). */
@@ -227,6 +247,7 @@ export function useVoice(options: VoiceOptions) {
     micSource.current?.disconnect();
     mic.current?.getTracks().forEach((tr) => tr.stop());
     micSource.current = mic.current = null;
+    setMicrophone("off");
     inLevel.current = 0;
   };
 
@@ -430,6 +451,7 @@ export function useVoice(options: VoiceOptions) {
     if (playHead.current > ac.currentTime + MAX_QUEUED_S) playHead.current = ac.currentTime;
     playHead.current = Math.max(playHead.current, ac.currentTime + 0.03);
     const at = playHead.current;
+    if (replyAudioStart.current === null) replyAudioStart.current = at;
     src.start(at);
     playHead.current += buffer.duration;
     // Wall-clock end of everything queued (see isPlaying), when it is actually heard.
@@ -514,10 +536,12 @@ export function useVoice(options: VoiceOptions) {
           }
           return;
         case "bridge.error":
+          setFailure("providerConnectionFailed");
           caption({ id: `err-${Date.now()}`, who: "error", text: evt.message });
           setErrorCount((n) => n + 1);
           return;
         case "bridge.closed":
+          setFailure("providerConnectionFailed");
           caption({ id: `err-${Date.now()}`, who: "error", text: `Grok disconnected${evt.reason ? `: ${evt.reason}` : "."}` });
           setErrorCount((n) => n + 1);
           return;
@@ -535,6 +559,9 @@ export function useVoice(options: VoiceOptions) {
           return;
         case "bridge.announce_ready":
           if (announceRef.current) Object.assign(announceRef.current, { ready: true, readyAt: Date.now() });
+          return;
+        case 'bridge.host_progress':
+          if (typeof evt.text === 'string') caption({ id: `host-progress-${evt.requestId}`, who: 'note', text: evt.text });
           return;
         case "bridge.session":
           setSessionTitle(evt.title);
@@ -608,6 +635,7 @@ export function useVoice(options: VoiceOptions) {
           return;
         case "response.created": {
           if (evt.response?.id) replyId.current = String(evt.response.id);
+          replyAudioStart.current = null;
           responding.current = true;
           const a = announceRef.current;
           if (a) {
@@ -645,12 +673,16 @@ export function useVoice(options: VoiceOptions) {
             const ac = ctx.current;
             const remainingS = ac && playing.current.size ? playHead.current - ac.currentTime + outLatency() : 0;
             if (letItFinish({ remainingS, replyDone: !responding.current })) audioStats.current.kept++;
-            else stopPlayback();
+            else {
+              if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify({ type: 'orbit.playback_interrupted', responseId: replyId.current, playedMs: ac && replyAudioStart.current !== null ? Math.max(0, (ac.currentTime - outLatency() - replyAudioStart.current) * 1000) : 0 }));
+              stopPlayback();
+            }
           }
           return;
         }
         case "input_audio_buffer.speech_stopped":
         case "input_audio_buffer.committed":
+          speechCaptureActive.current = false;
           setHearing(false);
           thinking.current = true;
           // "One question" mode: you've asked it, so close the mic; hang up once Grok has answered
@@ -726,12 +758,14 @@ export function useVoice(options: VoiceOptions) {
 
   /** Connect. `announce`: woken only to say what Claude finished (the mic stays closed for now). */
   const start = useCallback(async ({ announce = false }: { announce?: boolean } = {}) => {
-    if (ws.current) return;
+    if (ws.current || ctx.current) return !!ws.current;
+    let ac: AudioContext | null = null;
     setPhase("connecting");
+    setFailure(null);
     mutedRef.current = false; // every call starts with the mic live
     setMuted(false);
     try {
-      const ac = new AudioContext({ sampleRate: RATE });
+      ac = new AudioContext({ sampleRate: RATE });
       ctx.current = ac;
       // Playback is timed on this context's own clock, from 0.
       playHead.current = 0;
@@ -752,15 +786,20 @@ export function useVoice(options: VoiceOptions) {
       if (announce) announceRef.current = { stage: "speaking", startedAt: Date.now(), ready: false, readyAt: 0, grace: false };
       else await openMic();
     } catch (e: any) {
+      if (ctx.current !== ac) return false; // a newer call owns the device now
       caption({ id: `err-${Date.now()}`, who: "error", text: `Microphone problem: ${e.message}` });
       stop("mic_error");
-      return;
+      if (e?.name === "NotAllowedError") setMicrophone("denied");
+      setFailure(e?.name === "NotAllowedError" ? "microphoneDenied" : "microphoneFailed");
+      return false;
     }
+    if (!ac || ctx.current !== ac) return false; // Stop during a permission/worklet wait must not open a socket
 
     // ?announce=1: the bridge drops all mic audio until the listening window, and says the update.
     const sock = new WebSocket(`ws://${location.host}/voice${announce ? "?announce=1" : ""}`);
     ws.current = sock;
     sock.onmessage = (m) => {
+      if (ws.current !== sock) return;
       try {
         handle(JSON.parse(m.data));
       } catch (e) {
@@ -768,8 +807,9 @@ export function useVoice(options: VoiceOptions) {
       }
     };
     sock.onclose = () => {
-      if (ws.current === sock) stop("closed");
+      if (ws.current === sock) { setFailure("providerConnectionFailed"); stop("closed"); }
     };
+    return true;
   }, [caption, handle, stop]);
 
   // ~20 fps: work out the phase and the volume levels that drive the orb.
@@ -835,8 +875,19 @@ export function useVoice(options: VoiceOptions) {
     [sendText, start],
   );
 
+  const applyMute = (next: boolean) => {
+    mutedRef.current = next;
+    setMuted(next);
+    if (next) {
+      setHearing(false);
+      if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+    }
+  };
   return {
     phase,
+    microphone,
+    listening: microphone === "active" && acceptingMicrophone(),
+    failure,
     asleep,
     levels,
     captions,
@@ -863,15 +914,8 @@ export function useVoice(options: VoiceOptions) {
     sending,
     errorCount,
     /** Mute or unmute the mic for this call. Muting also drops any half-heard speech. */
-    toggleMute: () => {
-      const next = !mutedRef.current;
-      mutedRef.current = next;
-      setMuted(next);
-      if (next) {
-        setHearing(false);
-        if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
-      }
-    },
+    setMute: applyMute,
+    toggleMute: () => applyMute(!mutedRef.current),
     toggleSleep: hotkey,
     hotkey,
     /** A sound of Orbit's own is playing for `ms` (the avatar's throw sound): listened to like its voice. */

@@ -7,12 +7,15 @@ export type OrbSync = {
   pulseMe: boolean; pulseGrok: boolean; pulseAmount: number;
   // For the avatar: the mic is muted, a draft waits for a yes, a prompt is being sent.
   muted?: boolean; draft?: boolean; sending?: boolean;
+  microphone?: 'off' | 'requesting' | 'active' | 'denied';
+  listening?: boolean;
 };
 
 export type HotkeyInfo = {
   accelerator: string;
   label: string;
   registered: boolean;
+  enabled?: boolean;
   defaultAccelerator: string;
   ok?: boolean;
   error?: string;
@@ -21,9 +24,15 @@ export type HotkeyInfo = {
 type DesktopApi = {
   /** process.platform of the desktop app ('win32', 'darwin', ...). */
   platform?: string;
+  managed?: boolean;
+  managedStatus?(status: { rendererReady: boolean; phase: Phase; microphone: string; muted: boolean; credentialAvailable: boolean; failure?: string | null }): void;
+  managedAck?(id: string, applied: boolean): void;
+  onManagedControl?(cb: (message: { id: string | null; expiresAt?: number; command: { kind: string; muted?: boolean; until?: number; ownerEpoch?: string } }) => void): () => void;
+  onOpenSettings?(cb: () => void): () => void;
   hotkey: {
     get(): Promise<HotkeyInfo>;
     set(accelerator: string): Promise<HotkeyInfo>;
+    enable?(enabled: boolean): Promise<HotkeyInfo>;
     suspend(suspended: boolean): Promise<void>;
   };
   minimize(): void;
@@ -34,6 +43,7 @@ type DesktopApi = {
   onBuddyCommand?(cb: (c: { action: string; dir?: "left" | "right" }) => void): () => void;
   /** The avatar was clicked to talk (Settings -> Avatar -> Click your avatar to talk). */
   onAvatarTalk?(cb: () => void): () => void;
+  onAvatarVoice?(cb: (action: 'start' | 'stop') => void): () => void;
   /** An avatar's sound to play here ('throw': Qubit was thrown). */
   onAvatarSound?(cb: (name: string) => void): () => void;
   /** A feeling as the voice's words play (an emote cue), for the avatar. */

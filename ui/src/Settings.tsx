@@ -21,12 +21,12 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
   const s = config.settings;
   // The assistant's name in the text: Grok, or Orbit when Claude is the voice ("Claude" is the coder).
   const claude = s.voiceEngine === "claude";
-  const name = claude ? "Orbit" : "Grok";
+  const name = s.voiceEngine === 'grok' ? "Grok" : "Orbit";
   // Both voice lists up front, so switching engines opens the other card at its real size.
   useEffect(() => {
-    prefetchVoices("grok");
-    prefetchVoices("claude");
-  }, []);
+    if (!config.externalHost || s.voiceEngine === 'grok') prefetchVoices("grok");
+    if (!config.externalHost) prefetchVoices("claude");
+  }, [s.voiceEngine, !!config.externalHost]);
   return (
     <PillScroll className="flex flex-col px-5 pb-8">
       <button onClick={onClose} className="mb-3 flex items-center gap-1.5 self-start rounded-md py-1 pr-2 text-[13px] text-muted transition-colors hover:text-fg">
@@ -36,12 +36,13 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
       <p className="mt-2 mb-3 text-[12.5px] text-muted">Everything saves as soon as you change it.</p>
 
       <div className="flex flex-col">
+        {config.externalHost && <ExternalHostSection s={s} update={update} />}
         <VoiceEngineSection s={s} update={update} config={config} onKeySaved={onKeySaved} focusKey={focusKey} />
         {/* Each engine's own voice card: one closes as the other opens. */}
-        <Reveal show={!claude} gap={GAP}>
+        <Reveal show={s.voiceEngine === 'grok'} gap={GAP}>
           <VoiceSettings engine="grok" volume={s.voiceVolume} onVolume={(voiceVolume) => update({ voiceVolume })} />
         </Reveal>
-        <Reveal show={claude} gap={GAP}>
+        <Reveal show={claude && !config.externalHost} gap={GAP}>
           <VoiceSettings engine="claude" volume={s.voiceVolume} onVolume={(voiceVolume) => update({ voiceVolume })} />
         </Reveal>
 
@@ -77,7 +78,7 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
           </Section>
         </Reveal>
 
-        <Reveal show gap={GAP}>
+        <Reveal show={!config.externalHost} gap={GAP}>
           <Section title="When Claude finishes">
             <Segmented
               value={s.announce}
@@ -112,11 +113,11 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
           </Section>
         </Reveal>
 
-        <Reveal show gap={GAP}>
+        <Reveal show={!config.externalHost} gap={GAP}>
           <SecondBrainSection s={s} update={update} name={name} />
         </Reveal>
 
-        {desktop && (
+        {desktop && !config.externalHost && (
           <Reveal show gap={GAP}>
             <AnywhereSection s={s} update={update} name={name} />
           </Reveal>
@@ -132,13 +133,13 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
           <Reveal show gap={GAP}>
             <Section title="App">
               <StartWithWindows />
-              <Toggle
+              {!config.externalHost && <Toggle
                 className="mt-4"
                 checked={s.orbStick}
                 onChange={(orbStick) => update({ orbStick })}
                 label="Stick to Claude Code"
-                hint="The orb rides on the Claude window: it follows it around, stays on top of it, and hides while Claude is minimized. Drag the orb to choose its spot on the window." 
-              />
+                hint="The orb rides on the Claude window: it follows it around, stays on top of it, and hides while Claude is minimized. Drag the orb to choose its spot on the window."
+              />}
               <Toggle
                 className="mt-4"
                 checked={s.orbPulse}
@@ -167,7 +168,7 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
         )}
 
         {/* What Grok costs: xAI bills by the minute. Claude voice has no xAI cost. */}
-        <Reveal show={!claude} gap={GAP}>
+        <Reveal show={s.voiceEngine === 'grok'} gap={GAP}>
           <UsageSection costPerMinute={s.costPerMinute} update={update} />
         </Reveal>
 
@@ -183,6 +184,80 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
       </div>
     </PillScroll>
   );
+}
+
+function OpenAISettings({ s, update, config, onSaved }: { s: SettingsT; update: Update; config: AppConfig; onSaved: () => void }) {
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const credential = config.openai;
+  const sourceLabel = credential?.effectiveSource === 'saved' ? 'Using your Orbit-saved OpenAI key' : credential?.available ? 'Using system OpenAI key' : null;
+  const sourceStatus = credential?.error === 'saved-unreadable' ? 'Your saved key could not be read. Replace or remove it to continue. Orbit has not switched accounts.'
+    : sourceLabel || (credential?.pending ? 'Checking the system OpenAI key…' : credential?.error ? 'The system key could not be read or is not a valid OpenAI API key. Refresh it after updating your system environment.'
+    : s.openaiKeySource === 'saved' ? 'No OpenAI key saved in Orbit.' : s.openaiKeySource === 'system' ? 'No system OpenAI key found.' : 'No saved or system OpenAI key found.');
+  const refresh = async () => {
+    setRefreshing(true); setMessage('');
+    try {
+      const r = await postJson('/api/openai/refresh', {});
+      if (!r.ok) throw new Error();
+      onSaved();
+    } catch { setMessage('Could not refresh the system key. Try again.'); }
+    finally { setRefreshing(false); }
+  };
+  const save = async () => {
+    setBusy(true); setMessage('');
+    try {
+      const r = await postJson('/api/openai/key', { key: key.trim() });
+      const out = await r.json();
+      if (!r.ok) throw new Error(out.error || 'Could not save the key. Try again.');
+      setKey(''); onSaved(); setMessage(out.hasOpenAIKey ? 'Separate key saved with Windows encryption. Your source choice applies to the next conversation.' : 'Orbit-saved key removed. Your system key is unchanged.');
+    } catch (e: any) { setMessage(e.message || 'Could not save the key. Try again.'); }
+    finally { setBusy(false); }
+  };
+  return <div className="mt-3 space-y-3 text-[13px] text-muted">
+    <p>Live speech, interruptions and delegated work over one realtime connection. Audio goes to OpenAI only during a conversation; OpenAI bills this separately. Saving a key does not start the microphone or a paid test.</p>
+    <div className="space-y-2 rounded-lg border border-line p-3">
+      <label className="block" htmlFor="openai-source">Key source</label>
+      <select id="openai-source" className="h-9 w-full rounded-lg border border-line bg-soft px-2 text-fg focus-visible:ring-2" value={s.openaiKeySource} onChange={(e) => update({ openaiKeySource: e.target.value as SettingsT['openaiKeySource'] })}>
+        <option value="saved-or-system">Saved key, otherwise system key</option>
+        <option value="system">System key only</option>
+        <option value="saved">Orbit-saved key only</option>
+      </select>
+      <div className="flex items-start justify-between gap-3">
+        <p role="status" aria-live="polite" className="min-w-0">{sourceStatus}</p>
+        <button type="button" disabled={refreshing || credential?.pending} onClick={() => void refresh()} className="shrink-0 rounded-lg border border-line px-2.5 py-1 text-fg disabled:opacity-50 focus-visible:ring-2">{refreshing || credential?.pending ? 'Checking…' : 'Refresh'}</button>
+      </div>
+      <p className="text-[12px]">Source changes apply to your next conversation. A system key stays in your environment; Orbit does not copy or remove it.</p>
+    </div>
+    <label className="block">Model<select aria-label="OpenAI realtime model" className="mt-1 block w-full rounded-lg border border-line bg-soft p-2 text-fg" value={s.openaiModel} onChange={(e) => update({ openaiModel: e.target.value as SettingsT['openaiModel'] })}><option value="gpt-realtime">GPT Realtime</option><option value="gpt-realtime-mini">GPT Realtime mini</option></select></label>
+    <label className="block">Voice<select aria-label="OpenAI realtime voice" className="mt-1 block w-full rounded-lg border border-line bg-soft p-2 text-fg" value={s.openaiVoice} onChange={(e) => update({ openaiVoice: e.target.value })}>{['alloy','ash','ballad','coral','echo','sage','shimmer','verse','marin','cedar'].map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
+    <p>Model and voice changes apply to your next conversation. There is no automatic paid preview.</p>
+    <form onSubmit={(e) => { e.preventDefault(); void save(); }} className="space-y-2">
+      <label className="block" htmlFor="openai-key">Save a separate key</label>
+      <input id="openai-key" type="password" autoComplete="off" spellCheck={false} value={key} onChange={(e) => setKey(e.target.value)} placeholder={config.hasOpenAIKey ? 'Saved key is hidden' : 'sk-…'} className="h-9 w-full rounded-lg border border-line bg-soft px-3 text-fg focus-visible:ring-2" />
+      <div className="flex gap-2"><button disabled={busy || !key.trim()} className="rounded-lg bg-fg px-3 py-2 text-white disabled:opacity-50">{busy ? 'Saving…' : 'Save encrypted key'}</button>{config.hasOpenAIKey && <button type="button" disabled={busy || !!key} onClick={() => void save()} className="rounded-lg border border-line px-3 py-2 disabled:opacity-50">Remove saved key</button>}</div>
+    </form>
+    {message && <p role="status">{message}</p>}
+  </div>;
+}
+
+function ExternalHostSection({ s, update }: { s: SettingsT; update: Update }) {
+  const [host, setHost] = useState<{ connected: boolean; name?: string | null; capabilities: string[]; mode?: 'desktop' | 'attached' | null; avatarRoam?: { schema: 1; policy: 'auto' } | null } | null>(null);
+  useEffect(() => { let active = true; const refresh = () => fetch('/api/external-host').then((r) => r.json()).then((h) => { if (active) setHost(h); }).catch(() => { if (active) setHost(null); }); void refresh(); const timer = setInterval(refresh, 2000); return () => { active = false; clearInterval(timer); }; }, []);
+  const automatic = host?.capabilities.includes('avatar.roam.v1') && host.avatarRoam?.schema === 1 && host.avatarRoam.policy === 'auto';
+  const app = host?.name || 'your workspace';
+  const placement = automatic ? 'Automatic' : host?.mode === 'attached' ? `Stay with ${app}` : 'Desktop';
+  return <Section title="Connected workspace">
+    <p role="status" className="text-[13px] text-muted">{host?.connected ? `Connected to ${app}. Spoken work is handed to it, pinned to the session you were viewing when you started speaking.` : 'Your workspace app is disconnected. Reconnect from that app; Orbit will not switch to another backend or resend uncertain work.'}</p>
+    <p className="mt-2 text-[12.5px] text-muted">Results are spoken during an active conversation. This preview does not wake the microphone automatically for workspace results.</p>
+    {!host ? <p role="status" className="mt-3 text-[13px] text-muted">Checking character placement…</p> : host.mode === 'desktop' || host.mode === 'attached' ? <p role="status" className="mt-3 text-[13px] text-muted">Placement requested by {app}: <span className="font-medium text-fg">{placement}</span>. Change this in {app}.</p> : <div className="mt-3"><Segmented value={s.externalAvatarMode} onChange={(externalAvatarMode) => update({ externalAvatarMode })} options={[{ value: 'desktop', label: 'Desktop' }, ...(host.capabilities.includes('avatar.attached') ? [{ value: 'attached' as const, label: `Stay with ${app}` }] : [])]} /></div>}
+    <p className="mt-2 text-[12.5px] text-muted">{automatic
+      ? s.avatar === 'qubit'
+        ? 'Drag Qubit out to the desktop or back into the workspace. Walking and throws share the same world on one display; fresh workspace geometry is required to enter. Crossing does not restart your conversation.'
+        : 'Automatic movement is available for Qubit. Your selected avatar keeps its existing placement; choose Qubit to use workspace-to-desktop roaming.'
+      : `The same animated character walks, reacts and can be picked up and thrown. Desktop uses a bounded screen strip. Stay with ${app} follows its validated native window and hides when it is minimized.`}</p>
+  </Section>;
 }
 
 // ---------- building blocks ----------
@@ -349,7 +424,7 @@ function AvatarSection({ s, update, name }: { s: SettingsT; update: Update; name
       </Reveal>
       <Reveal show={avatar === "qubit"}>
         <p className="mt-2 text-[12px] leading-snug text-muted">
-          A square with one eye lives on your Claude window. He sleeps while {name} sleeps, wakes when you call, his eye stretches as you talk and opens with {name}'s voice. He waits by Send for your yes, stomps it, watches Claude work and celebrates when it's done. His colour shows what's going on.
+          Qubit sleeps while {name} sleeps, wakes when you call, and reacts as you talk. Double-click him to open settings. The mic indicator beside him shows when Orbit is listening; use Start or Stop to control voice.
         </p>
       </Reveal>
       <Reveal show={avatar === "none"}>
@@ -378,7 +453,7 @@ function AvatarSection({ s, update, name }: { s: SettingsT; update: Update; name
           checked={s.avatarThrow !== false}
           onChange={(avatarThrow) => update({ avatarThrow })}
           label="Throw your avatar"
-          hint={avatar === "qubit" ? "Press and hold Qubit to pick him up, drag him about inside his window and let go to throw him. He bounces off its edges, lands, shakes it off and carries on from where he landed." : "Press and hold the pixel buddy to pick it up, then drop it somewhere along the strip."}
+          hint={avatar === "qubit" ? "Drag Qubit to pick him up, then let go to throw him. With reduced motion, you can still move him; he drops without a throw." : "Press and hold the pixel buddy to pick it up, then drop it somewhere along the strip."}
         />
         <Reveal show={s.avatarThrow !== false && avatar === "qubit"}>
           <Toggle
@@ -464,11 +539,13 @@ const CLAUDE_CHECK_EVENT = "orbit:claude-check";
 /** Claude through your own Claude Code with speech models on this PC, or Grok (with an xAI key). */
 function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: SettingsT; update: Update; config: AppConfig; onKeySaved: () => void; focusKey: boolean }) {
   const [status, setStatus] = useState<ClaudeVoiceStatus | null>(null);
-  const refresh = () =>
-    fetch("/api/claude-voice")
+  const refresh = () => {
+    if (config.externalHost) return;
+    void fetch("/api/claude-voice")
       .then((r) => r.json())
       .then(setStatus)
       .catch(() => {});
+  };
   useEffect(() => {
     refresh();
   }, [s.voiceEngine]);
@@ -500,8 +577,8 @@ function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: Se
     if (r?.models) setStatus((st) => (st ? { ...st, models: r.models } : st));
     else refresh();
   };
-  const choose = (voiceEngine: "grok" | "claude") => {
-    update({ voiceEngine });
+  const choose = (voiceEngine: "grok" | "claude" | "openai") => {
+    update({ voiceEngine, ...(voiceEngine === 'openai' ? { onboarded: true } : {}) });
     if (voiceEngine === "claude" && status && status.models.state !== "ready" && status.models.state !== "downloading") download();
   };
 
@@ -513,14 +590,19 @@ function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: Se
         onChange={choose}
         options={[
           { value: "grok", label: "Grok" },
-          { value: "claude", label: "Claude (beta)" },
+          ...(!config.externalHost ? [{ value: "claude" as const, label: "Claude (beta)" }] : []),
+          ...(!isMac ? [{ value: "openai" as const, label: "OpenAI realtime" }] : []),
         ]}
       />
+      {config.externalHost && s.voiceEngine === 'claude' && <p role="status" className="mt-3 text-[13px] text-muted">Choose a realtime voice for this workspace. Your standalone preference is unchanged; Orbit will not start a local speech fallback.</p>}
+      <Reveal show={s.voiceEngine === 'openai'}>
+        <OpenAISettings s={s} update={update} config={config} onSaved={onKeySaved} />
+      </Reveal>
       <Reveal show={s.voiceEngine === "grok"}>
         <p className="mt-2 text-[12px] leading-snug text-muted">Grok's realtime voice, billed by xAI per minute.</p>
         <XaiKey config={config} onSaved={onKeySaved} focus={focusKey} />
       </Reveal>
-      <Reveal show={s.voiceEngine === "claude"}>
+      <Reveal show={s.voiceEngine === "claude" && !config.externalHost}>
         <p className="mt-2 text-[12px] leading-snug text-muted">
           Claude through your own Claude Code sign-in, with speech recognized and spoken on {thisComputer}. No xAI cost. Replies take a moment longer than Grok's.
         </p>
@@ -967,15 +1049,16 @@ const keyStorageLabel = (kind: string) =>
 
 /** Grok voice's xAI key: add one (or replace it). Only Grok needs it; Claude voice never does. */
 function XaiKey({ config, onSaved, focus }: { config: AppConfig; onSaved: () => void; focus: boolean }) {
-  const [open, setOpen] = useState(!config.hasKey);
+  const hasXaiKey = config.hasXaiKey ?? config.hasKey;
+  const [open, setOpen] = useState(!hasXaiKey);
   const [key, setKey] = useState("");
   const [msg, setMsg] = useState("");
   useEffect(() => {
-    if (!config.hasKey) setOpen(true);
-  }, [config.hasKey]);
+    if (!hasXaiKey) setOpen(true);
+  }, [hasXaiKey]);
   return (
     <div className="mt-3 text-[12px] leading-snug">
-      {config.hasKey ? (
+      {hasXaiKey ? (
         <div className="flex items-center gap-3">
           <p className="flex-1 text-muted">xAI key saved, {keyStorageLabel(config.keyStorage)}.</p>
           <button onClick={() => setOpen((o) => !o)} className="shrink-0 rounded-lg bg-soft px-2.5 py-1 text-[12px] font-medium text-ink transition-colors hover:bg-black/[0.08] hover:text-fg">
@@ -1032,7 +1115,7 @@ function AboutSection({ config }: { config: AppConfig }) {
     <Section title="About">
       <div className="space-y-1 text-[12.5px] text-muted">
         <div>Orbit {config.version} · open source (MIT)</div>
-        <div>xAI key (Grok voice only): {config.hasKey ? `saved, ${storage}` : "not set"}</div>
+        <div>xAI key (Grok voice only): {(config.hasXaiKey ?? config.hasKey) ? `saved, ${storage}` : "not set"}</div>
         <div className="pt-1 text-[11.5px] leading-snug text-faint">
           Not affiliated with xAI or Anthropic. Grok is a trademark of xAI; Claude is a trademark of Anthropic.
         </div>
@@ -1151,7 +1234,8 @@ function HotkeySection() {
 
   return (
     <Section title="Wake hotkey">
-      <p className="-mt-1 text-[12.5px] leading-relaxed text-muted">Works from any app: starts Grok when it's off, and puts it to sleep or wakes it when it's on.</p>
+      <p className="-mt-1 text-[12.5px] leading-relaxed text-muted">{info?.enabled !== undefined ? 'Works from any app. The companion starts with its shortcut off; enabling it does not start the microphone.' : 'Works from any app, even when Orbit is minimized.'}</p>
+      {info?.enabled !== undefined && desktop?.hotkey.enable && <Toggle className="mt-3" checked={info.enabled} label="Enable wake shortcut" hint="Use the saved shortcut to start or end a conversation. You can still use the talk button while this is off." onChange={async (enabled) => { const r = await desktop!.hotkey.enable!(enabled); setInfo(r); setMessage(r.ok ? { text: enabled ? 'Wake shortcut enabled. The microphone is still off until you start a conversation.' : 'Wake shortcut disabled.' } : { text: r.error || 'Could not change the shortcut.', bad: true }); }} />}
       <button
         data-hotkey-recorder
         onClick={() => {
@@ -1175,7 +1259,7 @@ function HotkeySection() {
         )}
       </div>
       {message && <p className={cn("mt-3 text-[12.5px] leading-snug", message.bad ? "text-amber-700" : "text-emerald-700")}>{message.text}</p>}
-      {info && !info.registered && !message && (
+      {info && info.enabled !== false && !info.registered && !message && (
         <p className="mt-3 text-[12.5px] leading-snug text-amber-700">This shortcut isn't active. Another app is probably using it. Pick a different one.</p>
       )}
     </Section>

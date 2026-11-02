@@ -1,7 +1,7 @@
 export type ClaudeVoiceReady = { claudeFound: boolean; signedIn?: boolean | null; models: { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string } };
-export type TalkBlocked = "grok-key" | "claude" | null;
-export type TalkNotice = { kind: "grok-key" | "claude-missing" | "claude-signed-out" | "claude-models" | "claude-models-error"; text: string };
-type ConfigLike = { hasKey: boolean; settings: { voiceEngine: "grok" | "claude" } } | null | undefined;
+export type TalkBlocked = "grok-key" | "openai-key" | "claude" | null;
+export type TalkNotice = { kind: "grok-key" | "openai-key" | "claude-missing" | "claude-signed-out" | "claude-models" | "claude-models-error"; text: string };
+type ConfigLike = { hasKey: boolean; openai?: { available: boolean; policy?: "saved" | "system" | "saved-or-system"; pending?: boolean; error?: string | null }; externalHost?: { selected: boolean } | null; settings: { voiceEngine: "grok" | "claude" | "openai" } } | null | undefined;
 
 export const GROK_NEEDS_KEY: string;
 export const CLAUDE_CODE_MISSING: string;

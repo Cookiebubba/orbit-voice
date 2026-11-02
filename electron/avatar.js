@@ -39,7 +39,7 @@
 
 import { BrowserWindow, screen } from 'electron';
 
-import { BUDDY_HEIGHT, boxInStrip, buddyBoundsFor, freeStripFor, helperRectToDip, liftRectFor, sendAtOffset, sendInStrip, sendOffsetFor, usableBox } from './buddy-geometry.js';
+import { BUDDY_HEIGHT, automaticStageFor, clientStageFor, boxInStrip, buddyBoundsFor, freeStripFor, helperRectToDip, liftRectFor, sendAtOffset, sendInStrip, sendOffsetFor, usableBox } from './buddy-geometry.js';
 import { isAvatarAction } from '../src/avatar-commands.js';
 import { createHoverPoller, rateLimitedLog } from './avatar-hover.js';
 import { cueName } from '../src/emote-cues.js';
@@ -54,7 +54,7 @@ const LEAVE_MS = 450; // the page's fade-out, and a little more
 let openWindows = 0; // avatar windows open right now (all avatars), for the log
 export const LIFT_MAX_QUIET_MS = 12_000; // lifted with no word from the page for this long: back to the strip
 
-export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, getDesktopInfo, log = () => {}, info: info_ = () => {}, free = false, boxless = false, onWindow = () => {}, prefs = () => ({}) }) {
+export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, getDesktopInfo, log = () => {}, info: info_ = () => {}, free = false, boxless = false, onWindow = () => {}, prefs = () => ({}), watchGesture = null }) {
   const K = AVATAR_KINDS[kind];
   if (!K) throw new Error(`unknown avatar ${kind}`);
   let win = null;
@@ -77,6 +77,20 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   let pendingEntrance = false;
   let lifted = null; // { area, strip } (DIPs) while the window covers the work area
   let liftTimer = null;
+  let stageEnabled = false, stageFrame = null, stageNative = null, persistentStage = null;
+  let automatic = false, roamOptions = null, activeDisplay = null, movementRevision = 0, movementKey = '', recovery = 0;
+  // The page's movement revision: Automatic stages carry the counter, every other placement reports 0.
+  // Comparing a contained page with the last Automatic counter dropped every hit and press after
+  // escape was turned off, leaving the window click-through until restart.
+  const pageRevision = () => (automatic ? movementRevision : 0);
+  let nativeGesture = null, lastGestureId = 0;
+  function finishGesture(cancel = true) {
+    const g = nativeGesture;
+    if (!g) return;
+    nativeGesture = null;
+    clearTimeout(g.timer); g.stop?.(); hover.setHeld(false);
+    if (cancel && win && !win.isDestroyed()) win.webContents.send('buddy:gesture', { id: g.id, revision: pageRevision(), sequence: ++g.sequence, cancel: true });
+  }
   let lastHit = null; // where the page last said it draws the avatar (window px), for debug()
   // Whether the window takes the mouse: the real cursor over the avatar (polled here, see
   // avatar-hover.js), or a press under way. Never only forwarded mouse moves. Logged when the polling
@@ -84,7 +98,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   const hoverLog = rateLimitedLog((m) => info_(m), { everyMs: 10_000 });
   // What a press on it came to, one line per outcome kind (rate-limited; only words from these lists).
   const PRESS_OUTCOMES = new Set(['click', 'pickup', 'ignored']);
-  const PRESS_WHY = new Set(['talk', 'poke', 'throw-off', 'too-long-for-a-click', 'drag', 'hold', 'leaving', 'press-already', 'not-on-him']);
+  const PRESS_WHY = new Set(['talk', 'poke', 'settings', 'throw-off', 'too-long-for-a-click', 'drag', 'hold', 'leaving', 'press-already', 'not-on-him']);
   const pressLog = rateLimitedLog((m) => info_(m), { everyMs: 5_000 });
   const pageErrLog = rateLimitedLog((m) => log(m), { everyMs: 30_000 });
   const modeListeners = new Set(); // onMouseMode's listeners (tests)
@@ -137,9 +151,10 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     });
     win.webContents.on('render-process-gone', (_ev, d) => {
       info_(`${kind}: its page stopped (${String(d?.reason || 'unknown').slice(0, 40)})`);
+      finishGesture();
       hover.reset(); // nothing to hit until a page says where he is again
     });
-    win.webContents.on('did-start-loading', () => hover.reset());
+    win.webContents.on('did-start-loading', () => { finishGesture(); lastGestureId = 0; hover.reset(); });
     openWindows++;
     const where = free ? 'along the screen' : boxless ? 'on another window' : 'on the Claude window';
     info_(`${kind}: avatar window opened ${where} (${openWindows} open)`);
@@ -178,6 +193,8 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       visible: visible(),
       bounds: stripBounds(),
       lift: lifted ? { area: lifted.area, strip: lifted.strip } : null,
+      stage: persistentStage,
+      stageEnabled,
       prefs: { clickTalk: p.clickTalk !== false, throw: p.throw !== false, throwSound: p.throwSound !== false },
     });
   };
@@ -198,6 +215,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   }
 
   function hide() {
+    finishGesture();
     clearInterval(boxTimer);
     boxTimer = null;
     drop({ quiet: true });
@@ -272,6 +290,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   }
 
   function lift() {
+    if (stageEnabled) return !!persistentStage; // a persistent stage has no temporary lift lease
     if (!win || win.isDestroyed() || !visible() || leaving) return false;
     if (!lifted) {
       const strip = win.getBounds();
@@ -309,7 +328,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   // The screen layout changed (a display added or removed, the Dock moved): re-place the strip.
   let screenHooked = false;
   function hookScreen() {
-    if (screenHooked || !free) return;
+    if (screenHooked || !free && !stageEnabled) return;
     screenHooked = true;
     const again = () => enabled && !leaving && place();
     for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, again);
@@ -318,12 +337,71 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
   /** Re-place (or hide) the strip for the current Claude window. */
   function place() {
     if (leaving) return;
+    if (automatic) {
+      if (!enabled) return hide();
+      hookScreen();
+      let displays;
+      try { displays = screen.getAllDisplays(); } catch { displays = [screen.getPrimaryDisplay()]; }
+      const usableDisplay = (d) => d && Number.isFinite(d.scaleFactor) && d.scaleFactor > 0 && d.workArea && [d.workArea.x, d.workArea.y, d.workArea.width, d.workArea.height].every(Number.isFinite) && d.workArea.width >= 80 && d.workArea.height >= 80;
+      let display = activeDisplay && displays.find((d) => d.id === activeDisplay.id);
+      if (activeDisplay && (!usableDisplay(display) || display.scaleFactor !== activeDisplay.scaleFactor)) {
+        // Topology/DPI recovery, not seamless cross-monitor flight. Same renderer, new safe pose.
+        finishGesture(); recovery++;
+        stageFrame = null; roamOptions = { ...roamOptions, eligible: false };
+        activeDisplay = null;
+      }
+      if (!activeDisplay) {
+        try { display = stageNative?.client ? screen.getDisplayMatching(helperRectToDip(screen, stageNative.client)) : screen.getPrimaryDisplay(); }
+        catch { display = screen.getPrimaryDisplay(); }
+      }
+      if (!usableDisplay(display)) {
+        display = [screen.getPrimaryDisplay(), ...displays].find(usableDisplay);
+        if (!display) { finishGesture(); return hide(); }
+      }
+      activeDisplay = { id: display.id, scaleFactor: display.scaleFactor };
+      let placed;
+      try { placed = automaticStageFor(screen, display, stageFrame, stageNative, roamOptions || {}); } catch {}
+      if (!placed) { finishGesture(); return hide(); }
+      ensure();
+      const key = JSON.stringify([placed.bounds, placed.geometry, recovery]);
+      if (key !== movementKey) { movementKey = key; movementRevision++; }
+      persistentStage = { ...placed.geometry, revision: movementRevision, origin: { x: placed.bounds.x, y: placed.bounds.y }, recovery };
+      stageEnabled = true;
+      const cur = win.getBounds(), b = placed.bounds;
+      if (JSON.stringify(cur) !== JSON.stringify(b)) win.setBounds(b);
+      lastBox = lastSend = null; boxKnown = true;
+      if (!win.isVisible()) { win.showInactive(); hover.start(); layer = null; }
+      // Transparent world; only the reported body hit target takes input, never the monitor.
+      setLayer('top');
+      send();
+      return;
+    }
     if (free) {
       if (!enabled) return hide();
       hookScreen();
       return placeFree();
     }
     if (!enabled || !claude?.found || claude.min) return hide();
+    if (stageEnabled) {
+      hookScreen();
+      let placed = null;
+      try { placed = clientStageFor(screen, stageFrame, stageNative); } catch {}
+      if (!placed) { persistentStage = null; send(); return hide(); }
+      ensure();
+      const changed = JSON.stringify(persistentStage) !== JSON.stringify(placed.geometry);
+      persistentStage = placed.geometry;
+      claudeDip = helperRectToDip(screen, stageNative.client);
+      const b = placed.bounds, cur = win.getBounds();
+      const moved = JSON.stringify(cur) !== JSON.stringify(b);
+      if (moved) win.setBounds(b);
+      lastBox = lastSend = null;
+      boxKnown = true;
+      const shown = !win.isVisible();
+      if (shown) { win.showInactive(); hover.start(); layer = null; }
+      setLayer(claude.front === 'other' ? `above:${claude.hwnd}` : 'top');
+      if (changed || moved || shown) send();
+      return;
+    }
     ensure();
     claudeDip = helperRectToDip(screen, claude);
     const b = buddyBoundsFor(claudeDip);
@@ -427,6 +505,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     /** Hand over: the page fades out, then the window closes. Resolves when it's gone. */
     leave() {
       if (leaving) return Promise.resolve();
+      finishGesture();
       drop({ quiet: true });
       leaving = true;
       enabled = false;
@@ -440,6 +519,27 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
           resolve();
         }, visible() ? LEAVE_MS : 0),
       );
+    },
+    /** Persistent Automatic owner; host region can disappear without hiding/destroying this window. */
+    onRoam(frame, native, options = {}) {
+      if (kind !== 'qubit') return;
+      if (!automatic) { drop({ quiet: true }); automatic = true; stageEnabled = true; }
+      stageFrame = frame; stageNative = native; roamOptions = options;
+      place();
+    },
+    /** Optional Qubit-only persistent client area, distinct from drag/throw lift. */
+    onStage(frame, native, on = false) {
+      if (automatic) { finishGesture(); automatic = false; activeDisplay = null; }
+      const nextEnabled = kind === 'qubit' && !!on;
+      if (nextEnabled && !stageEnabled) drop({ quiet: true });
+      stageEnabled = nextEnabled;
+      stageFrame = nextEnabled && frame && !frame.suspended && !frame.exclusions?.length ? frame : null;
+      stageNative = nextEnabled ? native : null;
+      if (!stageFrame) {
+        const had = persistentStage;
+        persistentStage = null;
+        if (had) send(); // clear the renderer's colliders even while the native window is hidden
+      }
     },
     /** The Claude window changed (from the tracker). Free-floating, it doesn't follow one. */
     onClaude(state) {
@@ -464,6 +564,8 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       if (!state || typeof state !== 'object') return;
       voice = {
         phase: state.phase,
+        microphone: state.microphone,
+        listening: state.listening,
         asleep: !!state.asleep,
         hearing: !!state.hearing,
         input: Number(state.input) || 0,
@@ -516,9 +618,42 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     refresh() {
       send();
     },
-    /** The page: the cursor is over the avatar, and whether it's held (a press or drag under way). */
+    /** Active-avatar-only read-only button/cursor reconciliation. Never starts a gesture itself. */
+    gesture(message) {
+      const m = message;
+      if (!m || !Number.isSafeInteger(m.id) || m.id <= 0 || m.revision !== pageRevision()) return false;
+      if (m.phase === 'update') { if (nativeGesture?.id !== m.id) return false; nativeGesture.renew?.(); return true; }
+      if (m.phase === 'end') { if (nativeGesture?.id === m.id) finishGesture(false); return true; }
+      if (m.phase !== 'begin' || m.id <= lastGestureId || !visible() || leaving || !lastHit) return false;
+      finishGesture(); lastGestureId = m.id;
+      const g = { id: m.id, sequence: 0, stop: null, timer: null };
+      nativeGesture = g;
+      const stale = () => { clearTimeout(g.timer); g.timer = setTimeout(() => { if (nativeGesture === g) finishGesture(); }, 900); g.timer.unref?.(); };
+      g.renew = stale;
+      stale(); hover.setHeld(true);
+      const unavailable = () => {
+        if (nativeGesture !== g) return;
+        g.stop?.(); g.stop = null; g.nativeLost = true;
+        win?.webContents.send('buddy:gesture', { id: g.id, revision: pageRevision(), sequence: ++g.sequence, trackingLost: true });
+        stale(); // only real DOM movement may renew a degraded gesture
+      };
+      const stop = watchGesture?.(m.id, (sample) => {
+        if (nativeGesture !== g) return;
+        if (sample?.cancel || !sample || ![sample.x, sample.y].every(Number.isFinite) || typeof sample.down !== 'boolean') return unavailable();
+        let p;
+        try { p = process.platform === 'win32' ? screen.screenToDipPoint({ x: sample.x, y: sample.y }) : sample; } catch { return finishGesture(); }
+        stale();
+        win?.webContents.send('buddy:gesture', { id: g.id, revision: pageRevision(), sequence: ++g.sequence, x: p.x, y: p.y, down: sample.down, doubleClickMs: sample.doubleClickMs });
+        if (!sample.down) finishGesture(false);
+      });
+      if (g.nativeLost || nativeGesture !== g) stop?.();
+      else g.stop = stop;
+      if (!watchGesture) unavailable();
+      return true;
+    },
+    /** Held heartbeats are not authority to renew a native gesture forever. */
     hover(on, held = false) {
-      hover.setPageHover(on, { held });
+      hover.setPageHover(on, { held: watchGesture && kind === 'qubit' ? !!nativeGesture : held });
     },
     /** The page: what a press on it came to (logged, rate-limited, fixed words only). */
     pressed(outcome, why) {
@@ -530,6 +665,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     },
     /** The page: where the avatar is drawn (window px), so the window takes the mouse over it. */
     hit(rect) {
+      if (rect && (rect.revision || 0) !== pageRevision()) return;
       lastHit = rect ? { ...rect } : null; // (for debug())
       hover.setHit(rect);
     },
@@ -569,6 +705,10 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
         bounds: win && !win.isDestroyed() ? win.getBounds() : null,
         strip: win && !win.isDestroyed() ? { ...stripBounds() } : null,
         lifted: !!lifted,
+        stageEnabled,
+        automatic,
+        movementRevision,
+        stage: persistentStage ? structuredClone(persistentStage) : null,
         liftArea: lifted ? { ...lifted.area } : null,
         host: claudeDip && claude?.found && !free ? { ...claudeDip } : null,
         hostHwnd: !free && claude?.found ? Number(claude.hwnd) || 0 : 0,
@@ -581,6 +721,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
       };
     },
     stop() {
+      finishGesture();
       clearInterval(boxTimer);
       clearTimeout(settleTimer);
       clearTimeout(liftTimer);

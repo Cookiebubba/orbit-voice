@@ -92,5 +92,52 @@ export function liftRectFor(host, workArea) {
   return { x: Math.round(x1), y: Math.round(y1), width: Math.round(x2 - x1), height: Math.round(y2 - y1) };
 }
 
+/** Persistent client stage in overlay CSS pixels. Clip to one usable work area, never outer chrome. */
+export function clientStageFor(screen, frame, native) {
+  if (!frame || frame.suspended || frame.exclusions?.length || !native?.client) return null;
+  const client = helperRectToDip(screen, native.client);
+  const area = liftRectFor(client, screen.getDisplayMatching(client).workArea);
+  if (!area) return null;
+  return { bounds: area, geometry: { persistent: true, W: area.width, H: area.height, ...projectStageSurfaces(frame, client, area) } };
+}
+
+/** One transform for client containment and Automatic; never invent a top at a clipped edge. */
+export function projectStageSurfaces(frame, client, area) {
+  const sx = client.width / frame.viewport.width, sy = client.height / frame.viewport.height;
+  if (![sx, sy].every((v) => Number.isFinite(v) && v > 0)) return { solids: [], preferredSurfaceId: null };
+  const solids = [];
+  for (const s of frame.surfaces) {
+    const r = s.rect;
+    const x = client.x - area.x + r.x * sx, y = client.y - area.y + r.y * sy;
+    const left = Math.max(0, x), right = Math.min(area.width, x + r.w * sx);
+    const bottom = Math.min(area.height, y + r.h * sy);
+    // Clipped-away tops are not new, invented perches at the monitor edge.
+    if (y < 0 || y >= area.height || right <= left || bottom <= y) continue;
+    solids.push({ id: s.id, x: left, y, w: right - left, h: bottom - y, oneWay: s.kind === 'oneWay' });
+  }
+  return { solids, preferredSurfaceId: solids.some((s) => s.id === frame.preferredSurfaceId) ? frame.preferredSurfaceId : null };
+}
+
+/** Full single-display world. A visible validated host is an interior region, not outer walls. */
+export function automaticStageFor(screen, display, frame, native, { identity = '', eligible = false } = {}) {
+  const area = display?.workArea;
+  if (!area || ![area.x, area.y, area.width, area.height, display.scaleFactor].every(Number.isFinite) || area.width < 80 || area.height < 80 || display.scaleFactor <= 0) return null;
+  let client = null;
+  try { if (native?.client) client = helperRectToDip(screen, native.client); } catch {}
+  // Never project another DPI/display's client into this world's coordinate system.
+  const sameDisplay = client && screen.getDisplayMatching(client)?.id === display.id && Math.abs(native.dpi / 96 - display.scaleFactor) < 0.02;
+  const region = client && liftRectFor(client, area);
+  const valid = !!(sameDisplay && eligible && frame && !frame.suspended && !frame.exclusions?.length && region);
+  const projected = valid ? projectStageSurfaces(frame, client, area) : { solids: [], preferredSurfaceId: null };
+  const prefix = (id) => `${identity}:${id}`;
+  return { bounds: { ...area }, geometry: {
+    persistent: true, automatic: true, W: area.width, H: area.height, displayId: display.id, scaleFactor: display.scaleFactor, identity,
+    hostRegion: region ? { x: region.x - area.x, y: region.y - area.y, w: region.width, h: region.height } : null,
+    eligible: valid,
+    solids: projected.solids.map((s) => ({ ...s, id: prefix(s.id) })),
+    preferredSurfaceId: projected.preferredSurfaceId ? prefix(projected.preferredSurfaceId) : null,
+  } };
+}
+
 /** How far Claude's visible prompt box reaches beyond its text field (DIPs). */
 export const BOX_PADDING = Object.freeze({ padX: 12, padTop: 14 });

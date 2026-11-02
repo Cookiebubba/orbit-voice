@@ -5,6 +5,8 @@
 // no on-screen Send button: approval is voice-only.
 
 import fs from 'node:fs';
+import { externalHost } from './external-host.js';
+import { createExternalToolRunner, externalToolDefs } from './external-tools.js';
 import path from 'node:path';
 import { listDesktopSessions, resolveSession, findSessionByTitle, findTranscript, readTranscriptTail, ago } from './sessions.js';
 import { answerPrompt, claudeApp, clearDesktop, fillDesktop, getDesktopInfo, getPendingPrompt, newSession, sendToDesktop, stopClaude, switchSession } from './desktop.js';
@@ -260,8 +262,9 @@ export const SEARCH_STATE = { xaiNative: true };
  * (`engine` 'grok': xAI's own tools; 'claude': search_web).
  */
 export function toolDefs(settings = { brainEnabled: getSetting('brainEnabled'), brainModel: getSetting('brainModel'), brainExplore: getSetting('brainExplore'), brainConnection: getSetting('brainConnection'), avatar: activeAvatar(), webSearch: getSetting('webSearch'), engine: getSetting('voiceEngine') }) {
+  if (externalHost()) return externalToolDefs([...TOOL_DEFS, ...(settings.avatar ? [avatarToolDef(settings.avatar)] : [])], externalHost());
   const base = !settings.brainEnabled ? TOOL_DEFS : [...TOOL_DEFS, brainToolDef(settings), ...(settings.brainConnection === 'api-key' ? [] : [SIGN_IN_TOOL_DEF])];
-  const search = !settings.webSearch ? [] : settings.engine !== 'claude' && SEARCH_STATE.xaiNative ? XAI_SEARCH_TOOLS.map((t) => ({ ...t })) : [SEARCH_TOOL_DEF];
+  const search = !settings.webSearch ? [] : settings.engine === 'grok' && SEARCH_STATE.xaiNative ? XAI_SEARCH_TOOLS.map((t) => ({ ...t })) : [SEARCH_TOOL_DEF];
   // Orbit anywhere: reading (and later acting in) other app windows, while it's on here.
   const anywhere = (settings.anywhere ?? anywhereAvailable()) ? ANYWHERE_TOOL_DEFS.map((t) => ({ ...t })) : [];
   const all = [...base, ...search, ...anywhere];
@@ -589,6 +592,7 @@ export function createToolRunner({
   //   them; hold({ question, run, controller, label }): take one over.
   brainHolder = null,
 }) {
+  if (externalHost()) return createExternalToolRunner({ host: externalHost(), notify, utteranceSince, recentUtterance, userWords, repliesSince, wordsNotSaid });
   let signInOfferedAt = 0; // when the second brain last reported Claude Code signed out
   let signInAskUsed = 0; // the `at` of the "yes" that already opened the sign-in
   let draft = null; // { id, text, targetTitle, targetNew, createdAt }

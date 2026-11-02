@@ -69,6 +69,14 @@ public static class OrbitFocus {
   [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr h);
   [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+  [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr h, ref POINT p);
+  [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
+  [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
+  [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
+  [DllImport("user32.dll")] static extern uint GetDoubleClickTime();
+  [DllImport("user32.dll")] static extern bool KillTimer(IntPtr h, UIntPtr id);
   [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr h, int index);
   [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out RECT r, int size);
   [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")] static extern int DwmGetInt(IntPtr h, int attr, out int v, int size);
@@ -120,7 +128,7 @@ public static class OrbitFocus {
   const uint WINEVENT_OUTOFCONTEXT = 0, WINEVENT_SKIPOWNPROCESS = 2;
   const uint GA_ROOT = 2, GA_ROOTOWNER = 3, GW_OWNER = 4;
   const int GWL_EXSTYLE = -20; const long WS_EX_TOOLWINDOW = 0x80, WS_EX_NOACTIVATE = 0x08000000;
-  const uint WM_QUIT = 0x0012, WM_APP_WATCH = 0x8001;
+  const uint WM_QUIT = 0x0012, WM_APP_WATCH = 0x8001, WM_APP_GESTURE = 0x8002;
   const uint EVENT_OBJECT_DESTROY = 0x8001, EVENT_OBJECT_HIDE = 0x8003, EVENT_OBJECT_LOCATIONCHANGE = 0x800B, EVENT_OBJECT_CLOAKED = 0x8017, EVENT_OBJECT_UNCLOAKED = 0x8018;
 
   static readonly WinEventProc onEvent = OnEvent; // kept in a field so it is never collected
@@ -155,8 +163,37 @@ public static class OrbitFocus {
     MSG m;
     while (GetMessage(out m, IntPtr.Zero, 0, 0) > 0) {
       if (m.hwnd == IntPtr.Zero && m.message == WM_APP_WATCH) { ApplyWatch(); continue; }
+      if (m.hwnd == IntPtr.Zero && m.message == WM_APP_GESTURE) { ApplyGesture(); continue; }
       TranslateMessage(ref m); DispatchMessage(ref m);
     }
+  }
+
+  // Only during one avatar gesture: current cursor and primary button HIGH bit, no hook/injection.
+  static readonly object gestureGate = new object();
+  static long wantedGesture, gestureId, gestureSequence;
+  static UIntPtr gestureTimer = UIntPtr.Zero;
+  static readonly TimerProc onGesture = OnGesture;
+  static void ApplyGesture() {
+    if (gestureTimer != UIntPtr.Zero) KillTimer(IntPtr.Zero, gestureTimer);
+    gestureTimer = UIntPtr.Zero;
+    lock (gestureGate) { gestureId = wantedGesture; }
+    gestureSequence = 0;
+    if (gestureId > 0) { gestureTimer = SetTimer(IntPtr.Zero, UIntPtr.Zero, 33, onGesture); OnGesture(IntPtr.Zero, 0, gestureTimer, 0); }
+  }
+  // PointerEvent.button==0 is logical primary, not necessarily physical left (SM_SWAPBUTTON=23).
+  public static int PrimaryMouseKey(bool swapped) { return swapped ? 2 : 1; }
+  static void OnGesture(IntPtr h, uint msg, UIntPtr timer, uint time) {
+    if (gestureId <= 0) return;
+    POINT p;
+    if (!GetCursorPos(out p)) {
+      Out("{\"gesture\":{\"id\":" + gestureId + ",\"sequence\":" + (++gestureSequence) + ",\"cancel\":true}}");
+      gestureId = 0;
+    } else {
+      bool down = (GetAsyncKeyState(PrimaryMouseKey(GetSystemMetrics(23) != 0)) & 0x8000) != 0;
+      Out("{\"gesture\":{\"id\":" + gestureId + ",\"sequence\":" + (++gestureSequence) + ",\"x\":" + p.X + ",\"y\":" + p.Y + ",\"down\":" + (down ? "true" : "false") + ",\"doubleClickMs\":" + GetDoubleClickTime() + "}}");
+      if (!down) gestureId = 0;
+    }
+    if (gestureId == 0 && gestureTimer != UIntPtr.Zero) { KillTimer(IntPtr.Zero, gestureTimer); gestureTimer = UIntPtr.Zero; }
   }
 
   // ---------------- watched windows (Qubit's) ----------------
@@ -203,9 +240,9 @@ public static class OrbitFocus {
       RECT r = Bounds(h);
       if (!first) sb.Append(',');
       first = false;
-      sb.Append("{\"hwnd\":").Append(h.ToInt64()).Append(",\"min\":").Append(IsIconic(h) ? "true" : "false")
+      sb.Append("{\"hwnd\":").Append(h.ToInt64()).Append(",\"pid\":").Append(Pid(h)).Append(",\"min\":").Append(IsIconic(h) ? "true" : "false")
         .Append(",\"cloaked\":").Append(Cloaked(h) ? "true" : "false")
-        .Append(",\"x\":").Append(r.L).Append(",\"y\":").Append(r.T).Append(",\"w\":").Append(r.R - r.L).Append(",\"h\":").Append(r.B - r.T).Append('}');
+        .Append(",\"x\":").Append(r.L).Append(",\"y\":").Append(r.T).Append(",\"w\":").Append(r.R - r.L).Append(",\"h\":").Append(r.B - r.T).Append(ClientGeometry(h)).Append('}');
     }
     sb.Append("]}");
     string s = sb.ToString();
@@ -273,6 +310,13 @@ public static class OrbitFocus {
     if (DwmGetWindowAttribute(h, 9, out r, Marshal.SizeOf(typeof(RECT))) != 0) GetWindowRect(h, out r);
     return r;
   }
+  // Called on both helper threads; both are per-monitor-v2 aware. No titlebar guesses.
+  static string ClientGeometry(IntPtr h) {
+    RECT c; POINT p = new POINT();
+    uint dpi = GetDpiForWindow(h);
+    if (!GetClientRect(h, out c) || !ClientToScreen(h, ref p)) return ",\"client\":null";
+    return ",\"client\":{\"x\":" + p.X + ",\"y\":" + p.Y + ",\"w\":" + (c.R-c.L) + ",\"h\":" + (c.B-c.T) + "},\"dpi\":" + (dpi == 0 ? 96 : dpi);
+  }
   static string Text(IntPtr h) { StringBuilder s = new StringBuilder(512); GetWindowText(h, s, 512); return s.ToString(); }
   static string Cls(IntPtr h) { StringBuilder s = new StringBuilder(256); GetClassName(h, s, 256); return s.ToString(); }
 
@@ -334,7 +378,7 @@ public static class OrbitFocus {
       .Append(",\"cloaked\":").Append(Cloaked(h) ? "true" : "false")
       .Append(",\"elevated\":").Append(pi[1])
       .Append(",\"x\":").Append(r.L).Append(",\"y\":").Append(r.T).Append(",\"w\":").Append(r.R - r.L).Append(",\"h\":").Append(r.B - r.T)
-      .Append(",\"dpi\":").Append(dpi == 0 ? 96 : dpi)
+      .Append(ClientGeometry(h))
       .Append('}');
     return sb.ToString();
   }
@@ -357,6 +401,7 @@ public static class OrbitFocus {
   }
 
   static void ReadCommands() {
+    SetThreadDpiAwarenessContext(new IntPtr(-4));
     string line;
     while ((line = Console.In.ReadLine()) != null) {
       string[] p = line.Trim().Split(' ');
@@ -373,6 +418,11 @@ public static class OrbitFocus {
           lock (watchGate) { wantWatch = want.ToArray(); }
           PostThreadMessage(loopThread, WM_APP_WATCH, IntPtr.Zero, IntPtr.Zero);
           Out("{\"id\":" + id + ",\"watching\":" + want.Count + "}");
+        } else if (p[0] == "gesture" && p.Length == 3) {
+          long g;
+          if (!long.TryParse(p[2], out g) || g < 0) g = 0;
+          lock (gestureGate) { wantedGesture = g; }
+          PostThreadMessage(loopThread, WM_APP_GESTURE, IntPtr.Zero, IntPtr.Zero);
         } else if (p[0] == "switch" && p.Length == 3) {
           long h;
           string r = long.TryParse(p[2], out h) ? Switch(new IntPtr(h)) : "\"error\":\"no_window\"";
