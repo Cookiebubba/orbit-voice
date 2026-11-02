@@ -1,5 +1,10 @@
 import { avatarVoiceStatus } from '../buddy/interactions.js';
 
+// Out of the way unless wanted: shown while the cursor is on him or on the bubble, while its
+// button has focus, and for a moment after the voice state actually changes.
+export const REVEAL_MS = 3000;
+export const LINGER_MS = 1500;
+
 // The same voice owner as Orbit's hotkey, with state from its actual microphone/audio gate.
 export function createVoiceControl({ desktop, parent = document.body }) {
   const style = document.createElement('style');
@@ -14,23 +19,28 @@ export function createVoiceControl({ desktop, parent = document.body }) {
   const slash = document.createElementNS(svg.namespaceURI, 'path'); slash.setAttribute('d', 'M3 3l18 18'); svg.append(slash);
   const button = document.createElement('button'); button.type = 'button';
   label.append(svg, text); box.append(label, button); parent.append(box);
-  let state = avatarVoiceStatus(), prior = '', measured = null;
+  let state = avatarVoiceStatus(), prior = '', measured = null, revealUntil = 0, over = false;
+  box.addEventListener('pointerenter', () => { over = true; });
+  box.addEventListener('pointerleave', () => { over = false; revealUntil = Math.max(revealUntil, performance.now() + LINGER_MS); });
   button.addEventListener('click', (event) => { event.stopPropagation(); if (state.action === 'settings') desktop?.buddySettings?.(); else desktop?.buddyVoice?.(state.action); });
   box.addEventListener('dblclick', (event) => event.stopPropagation());
   return {
-    hide() { box.hidden = true; },
-    update(voice, { x, y, radius, width, height, visible = true, held = false }) {
+    hide() { box.hidden = true; over = false; },
+    update(voice, { x, y, radius, width, height, visible = true, held = false, hovering = false, now = performance.now() }) {
       state = avatarVoiceStatus(voice);
       const key = JSON.stringify(state);
       if (key !== prior) {
+        if (prior) revealUntil = Math.max(revealUntil, now + REVEAL_MS); // a change, not the first state
         measured = null;
         prior = key; text.textContent = state.label; button.textContent = state.button;
         button.setAttribute('aria-label', state.action === 'settings' ? 'Open Orbit settings' : state.action === 'start' ? 'Start voice' : 'Stop voice');
         button.title = state.action === 'start' ? 'Start talking to Orbit' : state.action === 'stop' ? 'Stop voice and release the microphone' : 'Open Orbit settings';
         slash.style.display = state.listening ? 'none' : ''; box.dataset.listening = String(!!state.listening);
       }
-      box.hidden = !visible || held;
-      if (box.hidden) return null;
+      if (hovering) revealUntil = Math.max(revealUntil, now + LINGER_MS);
+      const wanted = over || now < revealUntil || box.matches(':focus-within');
+      box.hidden = !visible || held || !wanted;
+      if (box.hidden) { over = false; return null; }
       measured ||= { w: box.offsetWidth, h: box.offsetHeight };
       const { w, h } = measured;
       let left = x + radius + 8;

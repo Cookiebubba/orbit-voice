@@ -190,6 +190,15 @@ async function run() {
         await capture(`mic-${button.toLowerCase()}-${voice.phase}`);
       }
       checks.push('visible-mic-state-and-controls');
+      // Out of the way when nothing changes: hidden once its reveal ends, back while he's hovered.
+      await js('dispatchEvent(new MouseEvent("mouseleave"))'); // the presses above left the cursor on him
+      await waitFor(async () => (await control()).hidden === true, 'mic bubble stayed on screen without hover or a state change');
+      await js(`(()=>{const q=__qubit.q,x=q._rx??q.cx,y=q._ry??q.ground-q.cy;dispatchEvent(new MouseEvent('mousemove',{clientX:x,clientY:y,screenX:x,screenY:y}));})()`);
+      await waitFor(async () => (await control()).hidden === false, 'mic bubble did not appear on hover');
+      await capture('mic-on-hover');
+      await js('dispatchEvent(new MouseEvent("mouseleave"))');
+      await waitFor(async () => (await control()).hidden === true, 'mic bubble stayed after the cursor left');
+      checks.push('mic-bubble-on-hover-only');
       if (reducedMotion) assert.equal(await js('matchMedia("(prefers-reduced-motion: reduce)").matches'), true);
       if (interactionsOnly) { console.log(`PASS hidden interaction compositor${reducedMotion ? ' (reduced motion)' : ''}: ${checks.join(', ')}; captures ${output}`); return; }
       // Reachable walking shares the same floor/navigation across the open client boundary.

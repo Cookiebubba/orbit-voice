@@ -304,7 +304,7 @@ function sendHit(now = performance.now()) {
   const r = hitR();
   const x = q._rx ?? q.cx;
   const y = q._ry ?? q.ground - q.cy;
-  const control = voiceControl.update(st.voice, { x, y, radius: r, width: innerWidth, height: innerHeight, visible: st.visible && !th.blocked, held: !!press?.dragging });
+  const control = voiceControl.update(st.voice, { x, y, radius: r, width: innerWidth, height: innerHeight, visible: st.visible && !th.blocked, held: !!press?.dragging, hovering, now });
   const rect = { x: Math.round(x - r), y: Math.round(y - r), w: Math.round(2 * r), h: Math.round(2 * r), revision: revision(), controls: control ? [control] : [] };
   const key = JSON.stringify([rect, frame, th.blocked]);
   if (key !== hitSent || now - hitSentAt > 500) {
