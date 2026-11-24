@@ -233,14 +233,13 @@ test('the avatar tool: offered only while an avatar is on, and Grok\x27s call ru
 });
 
 test('switching avatars mid-call updates the live session: persona, body and tools, no restart', async () => {
-  updateSettings({ avatar: 'qubit', showOrb: false });
+  updateSettings({ avatar: 'qubit' });
   const p = await page();
   const conn = up;
   const cfg = () => got('session.update').at(-1).session;
   const updates = () => got('session.update').length;
   assert.match(cfg().instructions, /^Who you are:\n- You are Qubit/);
   assert.ok(!cfg().instructions.includes('You are Orbit'));
-  assert.ok(!cfg().instructions.includes('The glowing orb'));
   let n = updates();
   updateSettings({ avatar: 'buddy' });
   await wait(30);
@@ -256,23 +255,19 @@ test('switching avatars mid-call updates the live session: persona, body and too
   assert.ok(!cfg().tools.some((t) => t.name === 'avatar'));
   updateSettings({ avatar: 'qubit' });
   await wait(30);
-  n = updates();
-  updateSettings({ showOrb: true });
-  await wait(30);
-  assert.equal(updates(), n + 1, 'toggling the orb updates it too');
-  assert.match(cfg().instructions, /You are Qubit[\s\S]*The glowing orb on screen is the Orbit app/);
+  assert.match(cfg().instructions, /You are Qubit/);
   // The same call all along (no reconnect), and its job text unchanged.
   assert.equal(up, conn);
   assert.equal(conns.filter((c) => c.sock.readyState === WebSocket.OPEN).length, 1);
   assert.match(cfg().instructions, /call send_draft when their reply to the draft is any clear yes/);
   await p.bye();
   // The next call starts with what's on screen now.
-  updateSettings({ avatar: 'buddy', showOrb: false });
+  updateSettings({ avatar: 'buddy' });
   const p2 = await page();
   assert.notEqual(up, conn);
   assert.match(got('session.update')[0].session.instructions, /^Who you are:\n- You are Buddy/);
   await p2.bye();
-  updateSettings({ avatar: 'qubit', showOrb: true });
+  updateSettings({ avatar: 'qubit' });
 });
 
 test.after(() => {

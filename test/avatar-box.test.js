@@ -43,7 +43,7 @@ test('the tracker passes box reports on, and asks the helper to watch the box an
   t.watchBox(7); // the same again: not repeated
   t.burst();
   await tick();
-  assert.deepEqual(c.got, ['pause', 'box 7', 'burst']);
+  assert.deepEqual(c.got, ['box 7', 'burst']);
   const report = { hwnd: 7, rect: { x: 300, y: 700, w: 600, h: 24 }, win: { x: 0, y: 0, w: 1200, h: 800 } };
   c.say({ box: report });
   await tick();
@@ -55,7 +55,7 @@ test('the tracker passes box reports on, and asks the helper to watch the box an
   const c2 = h.spawned[1];
   assert.ok(c2, 'restarted');
   await tick();
-  assert.deepEqual(c2.got, ['pause', 'box 7']);
+  assert.deepEqual(c2.got, ['box 7']);
   t.watchBox(0);
   await tick();
   assert.equal(c2.got.at(-1), 'box 0');

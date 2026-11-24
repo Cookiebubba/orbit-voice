@@ -1,7 +1,7 @@
 // The avatar's window: a transparent, click-through strip along the bottom of the Claude window
-// (the same window the orb docks on), where the avatar lives. Two avatars use it, each with its own
+// (the one you were in last), where the avatar lives. Two avatars use it, each with its own
 // page: the pixel buddy (buddy.html) and Qubit (qubit.html). It follows the Claude window, sits just
-// above it in z-order like the orb (so other apps still cover both), and hides while Claude is
+// above it in z-order (so other apps still cover both), and hides while Claude is
 // minimized or not open (the page is told, so it can stop drawing).
 //
 // It also knows where Claude's prompt box is and tells the page, which turns the box's top edge into
@@ -459,7 +459,7 @@ export function createAvatar({ kind = 'buddy', url, webPreferences, lockDown, ge
     get boxWindow() {
       return !free && !boxless && !leaving && enabled && visible() && claude?.found && !claude.min ? claude.hwnd : 0;
     },
-    /** Orbit's voice state (as the orb gets it, plus a few things only the avatars use). */
+    /** Orbit's voice state. */
     onVoice(state) {
       if (!state || typeof state !== 'object') return;
       voice = {

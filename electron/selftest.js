@@ -1,11 +1,12 @@
 // Screenshot-based self-test, run with GVB_SNAPSHOT_DIR=<dir>. Saves pictures and a JSON
 // report into <dir>, then the app quits. Flags:
 //   GVB_SNAPSHOT_TALK=1      click "Start talking" first (pair with XAI_REALTIME_URL pointing at a fake server)
-//   GVB_SNAPSHOT_HOTKEY=1    after minimizing, press the real wake hotkey and picture the orb again
+//   GVB_SNAPSHOT_HOTKEY=1    after minimizing, press the real wake hotkey and report it
 //   GVB_SNAPSHOT_SETTINGS=1  open Settings, record Ctrl+Alt+K, press it for real, then reset
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { BrowserWindow } from 'electron';
 import { DEFAULTS, getSetting, updateSettings } from '../src/config.js';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -18,7 +19,7 @@ const toSendKeys = (accel) =>
     .map((p) => ({ Control: '^', CommandOrControl: '^', Alt: '%', Shift: '+' })[p] ?? p.toLowerCase())
     .join('');
 
-export async function runSelfTest({ dir, main, orb, globalShortcut, hits, showOrb }) {
+export async function runSelfTest({ dir, main, globalShortcut, hits }) {
   const js = (code) => main.webContents.executeJavaScript(code);
   const shot = async (win, name) => fs.writeFileSync(path.join(dir, name), (await win.webContents.capturePage()).toPNG());
   const report = {};
@@ -84,9 +85,11 @@ export async function runSelfTest({ dir, main, orb, globalShortcut, hits, showOr
     await js(`document.querySelector('button[aria-label="Settings"]').click()`);
     await wait(1200);
     await shot(main, 'view-settings-1.png');
-    await js(`[...document.querySelectorAll('span')].find(e => e.textContent.startsWith('Wake word'))?.scrollIntoView({ block: 'center' })`);
-    await wait(400);
+    await js(`document.querySelector('[data-tile="wake"]').click()`); // its room opens at the "Hey Orbit" row
+    await wait(700);
     await shot(main, 'view-settings-wake.png');
+    await js(`document.querySelector('.sheet-head button').click()`);
+    await wait(600);
     for (const [i, frac] of [[2, 0.45], [3, 1]]) {
       await js(`(() => { const el = [...document.querySelectorAll('div')].find(d => d.scrollHeight > d.clientHeight + 20 && getComputedStyle(d).overflowY === 'auto'); if (el) el.scrollTop = el.scrollHeight * ${frac}; })()`);
       await wait(500);
@@ -102,7 +105,9 @@ export async function runSelfTest({ dir, main, orb, globalShortcut, hits, showOr
     await js(`document.querySelector('button[aria-label="Settings"]').click()`);
     await wait(1000);
     await shot(main, 'settings.png');
-    await js(`document.querySelector('[data-hotkey-recorder]').scrollIntoView(); document.querySelector('[data-hotkey-recorder]').click()`);
+    await js(`document.querySelector('[data-room="listening"]').click()`); // the recorder is in that room
+    await wait(600);
+    await js(`document.querySelector('[data-hotkey-recorder]').click()`);
     await wait(400);
     for (const type of ['keyDown', 'keyUp']) main.webContents.sendInputEvent({ type, keyCode: 'K', modifiers: ['control', 'alt'] });
     await wait(1200);
@@ -127,14 +132,16 @@ export async function runSelfTest({ dir, main, orb, globalShortcut, hits, showOr
     await wait(3000);
   }
   await shot(main, 'main.png');
-  showOrb();
+  // Minimized, Orbit is on the taskbar, and nothing else opens in its place.
+  main.minimize();
   await wait(2500);
-  await shot(orb, 'orb.png');
-  report.orb = { visible: orb.isVisible(), onTop: orb.isAlwaysOnTop(), bounds: orb.getBounds(), mainVisible: main.isVisible() };
+  report.minimized = { minimized: main.isMinimized(), windows: BrowserWindow.getAllWindows().filter((w) => w.isVisible()).map((w) => w.getTitle()) };
   if (process.env.GVB_SNAPSHOT_HOTKEY) {
+    const before = hits();
     sendKeys(toSendKeys(getSetting('wakeHotkey')));
     await wait(1500);
-    await shot(orb, 'orb-after-hotkey.png');
+    report.minimized.hotkeyFired = hits() > before;
   }
+  main.restore();
   fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify(report, null, 2));
 }

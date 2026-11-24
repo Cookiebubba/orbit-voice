@@ -211,7 +211,7 @@ const USER_DATA = path.join(process.env.APPDATA, 'Orbit'); // main.js puts userD
 fs.mkdirSync(USER_DATA, { recursive: true });
 fs.writeFileSync(
   path.join(USER_DATA, 'settings.json'),
-  JSON.stringify({ avatar: AVATAR, orbStick: false, announce: 'speak', announceWake: true, wakeOnResults: true, brainEnabled: true, brainModel: 'auto', brainExplore: true, brainConnection: 'claude-code', brainClaudePath: FAKE_CLAUDE, wakeWord: false, autoUpdate: false, listenMode: 'always' }),
+  JSON.stringify({ avatar: AVATAR, announce: 'speak', announceWake: true, wakeOnResults: true, brainEnabled: true, brainModel: 'auto', brainExplore: true, brainConnection: 'claude-code', brainClaudePath: FAKE_CLAUDE, wakeWord: false, autoUpdate: false, listenMode: 'always' }),
 );
 // No real Claude Code on PATH, ever.
 process.env.PATH = [path.join(process.env.SystemRoot || 'C:\\Windows', 'System32'), process.env.SystemRoot || 'C:\\Windows'].join(path.delimiter);
@@ -826,7 +826,7 @@ async function checkBuddy() {
 }
 
 async function run() {
-  // Orbit's main window (not the orb), signed in, with its "Start talking" button.
+  // Orbit's main window, signed in, with its "Start talking" button.
   const found = await waitFor(() => (page = BrowserWindow.getAllWindows().find((w) => /^http:\/\/127\.0\.0\.1:\d+\/(#?)$/.test(w.webContents.getURL()))), 20_000);
   if (!found) throw new Error('Orbit\x27s main window never loaded (is the UI built? npm --prefix ui run build)');
   if (!(await waitFor(isOff, 20_000))) throw new Error('the page never showed Start talking');

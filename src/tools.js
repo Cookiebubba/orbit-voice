@@ -16,7 +16,7 @@ import { APP_TOOL_DEF, createAppControl } from './app-control.js';
 import { CHOICE_NAMES, decisionFrom, describePrompt } from './claude-prompt.js';
 import { logError, logInfo, logWarn, recentLog } from './log.js';
 import { MAX_CLIPBOARD_CHARS, writeClipboard } from './clipboard.js';
-import { getBrainKey, getSetting, updateSettings } from './config.js';
+import { getBrainKey, getSetting, updateSettings, webSearchOn } from './config.js';
 import { BRAIN_MODELS, askBrain, findClaude, openClaudeSignIn, searchWeb } from './brain.js';
 import { AVATAR_ACTIONS, AVATAR_NAMES, activeAvatar, actionsFor, avatarToolDef, isAvatarAction, runAvatarCommand } from './avatar-commands.js';
 import { withoutKnownCues } from './emote-cues.js';
@@ -191,7 +191,7 @@ export const TOOL_DEFS = [
     type: 'function',
     name: 'go_to_sleep',
     description:
-      'Stop listening to the microphone until the user wakes you with the hotkey or by clicking the orb. Call this when the user says "go to sleep", "stop listening", "sleep", "goodnight", "that\'s all", or similar.',
+      'Stop listening to the microphone until the user wakes you with the hotkey or from the Orbit window. Call this when the user says "go to sleep", "stop listening", "sleep", "goodnight", "that\'s all", or similar.',
     parameters: { type: 'object', properties: {}, required: [] },
   },
 ];
@@ -259,9 +259,10 @@ export const SEARCH_STATE = { xaiNative: true };
  * whose `avatar` tool is offered only while it's there. `webSearch`: search, as the engine does it
  * (`engine` 'grok': xAI's own tools; 'claude': search_web).
  */
-export function toolDefs(settings = { brainEnabled: getSetting('brainEnabled'), brainModel: getSetting('brainModel'), brainExplore: getSetting('brainExplore'), brainConnection: getSetting('brainConnection'), avatar: activeAvatar(), webSearch: getSetting('webSearch'), engine: getSetting('voiceEngine') }) {
+export function toolDefs(settings = { brainEnabled: getSetting('brainEnabled'), brainModel: getSetting('brainModel'), brainExplore: getSetting('brainExplore'), brainConnection: getSetting('brainConnection'), avatar: activeAvatar(), webSearch: webSearchOn(), engine: getSetting('voiceEngine') }) {
   const base = !settings.brainEnabled ? TOOL_DEFS : [...TOOL_DEFS, brainToolDef(settings), ...(settings.brainConnection === 'api-key' ? [] : [SIGN_IN_TOOL_DEF])];
-  const search = !settings.webSearch ? [] : settings.engine !== 'claude' && SEARCH_STATE.xaiNative ? XAI_SEARCH_TOOLS.map((t) => ({ ...t })) : [SEARCH_TOOL_DEF];
+  // Search needs the second brain: this holds whoever builds `settings`.
+  const search = !settings.brainEnabled || !settings.webSearch ? [] : settings.engine !== 'claude' && SEARCH_STATE.xaiNative ? XAI_SEARCH_TOOLS.map((t) => ({ ...t })) : [SEARCH_TOOL_DEF];
   // Orbit anywhere: reading (and later acting in) other app windows, while it's on here.
   const anywhere = (settings.anywhere ?? anywhereAvailable()) ? ANYWHERE_TOOL_DEFS.map((t) => ({ ...t })) : [];
   const all = [...base, ...search, ...anywhere];
@@ -1186,7 +1187,7 @@ export function createToolRunner({
       const apiKey = useKey ? getBrainKey() : '';
       if (useKey && !apiKey) return { error: 'The second brain is set to use an Anthropic API key, but none is saved. Add it in Orbit Settings.' };
       const claude = findClaude(getSetting('brainClaudePath'));
-      if (!claude) return { error: 'Claude Code was not found, so the second brain is unavailable. Orbit Settings → Second brain has its one-line install command (or set its path there).' };
+      if (!claude) return { error: 'Claude Code was not found, so the second brain is unavailable. Orbit Settings → Voice engine has its one-line install command (or set its path there).' };
 
       // The project and recent conversation of the Claude session that's open (or the one named).
       // Explore only ever reads the project of the session open in Claude: not a folder Grok
@@ -1260,7 +1261,8 @@ export function createToolRunner({
     },
 
     async search_web({ query } = {}) {
-      if (!getSetting('webSearch')) return { error: 'Web search is turned off in Orbit Settings.' };
+      if (!getSetting('brainEnabled')) return { error: 'Web search needs the second brain, which is turned off in Orbit Settings.' };
+      if (!webSearchOn()) return { error: 'Web search is turned off in Orbit Settings.' };
       const q = String(query || '').trim().slice(0, 1000);
       if (q.length < 3) return { error: 'Say what to search for.' };
       if (searchRun) return { error: 'Still searching. Wait for that answer first.' };
@@ -1273,7 +1275,7 @@ export function createToolRunner({
       const useKey = getSetting('brainConnection') === 'api-key';
       const apiKey = useKey ? getBrainKey() : '';
       const claude = findClaude(getSetting('brainClaudePath'));
-      if (!claude) return { error: 'Claude Code was not found, so web search is unavailable. Orbit Settings → Second brain has its one-line install command (or set its path there).' };
+      if (!claude) return { error: 'Claude Code was not found, so web search is unavailable. Orbit Settings → Voice engine has its one-line install command (or set its path there).' };
       searchRuns++;
       lastSearchAt = Date.now();
       const controller = new AbortController();

@@ -122,9 +122,9 @@ for (const q of QUESTIONS) {
   const stopped = ev.find((x) => x.e.type === 'input_audio_buffer.speech_stopped');
   const speechEnd = stopped ? stopped.at - (stopped.e.ended_ms_ago || 0) : Date.now();
   const firstAudio = ev.find((x) => x.e.type === 'response.output_audio.delta');
-  // The answer itself: the first audio of a reply that has words (not a reflex "One sec.").
+  // The answer itself: the first audio of a reply that has words.
   const answered = new Set(ev.filter((x) => x.e.type === 'response.output_audio_transcript.done' && x.e.transcript).map((x) => x.e.response_id));
-  const answerAudio = ev.find((x) => x.e.type === 'response.output_audio.delta' && answered.has(x.e.response_id) && !x.e.reflex);
+  const answerAudio = ev.find((x) => x.e.type === 'response.output_audio.delta' && answered.has(x.e.response_id));
   const heard = ev.find((x) => x.e.type === 'conversation.item.input_audio_transcription.completed');
   const said = ev.filter((x) => x.e.type === 'response.output_audio_transcript.done').map((x) => x.e.transcript).filter(Boolean);
   const tools = ev.filter((x) => x.e.type === 'bridge.tool').map((x) => x.e.name);

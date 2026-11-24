@@ -3,8 +3,8 @@ import type { Phase } from "./useVoice";
 
 export type OrbSync = {
   phase: Phase; input: number; output: number; asleep: boolean; hearing: boolean; claudeWorking: boolean;
-  // Voice "bump" (see orbLook.ts): with your voice, with Grok's, and how much.
-  pulseMe: boolean; pulseGrok: boolean; pulseAmount: number;
+  // Voice "bump" (see orbLook.ts), for Orbit Native's orb: with your voice, with Grok's, and how much.
+  pulseMe?: boolean; pulseGrok?: boolean; pulseAmount?: number;
   // For the avatar: the mic is muted, a draft waits for a yes, a prompt is being sent.
   muted?: boolean; draft?: boolean; sending?: boolean;
 };
@@ -28,7 +28,7 @@ type DesktopApi = {
   };
   minimize(): void;
   close(): void;
-  sendOrbState(s: OrbSync): void;
+  sendVoiceState(s: OrbSync): void;
   /** Tell the avatar (pixel buddy or Qubit) something happened. */
   buddyEvent?(name: "finished" | "draft" | "sent" | "error"): void;
   onBuddyCommand?(cb: (c: { action: string; dir?: "left" | "right" }) => void): () => void;
@@ -38,14 +38,13 @@ type DesktopApi = {
   onAvatarSound?(cb: (name: string) => void): () => void;
   /** A feeling as the voice's words play (an emote cue), for the avatar. */
   buddyEmote?(name: string): void;
-  onOrbState(cb: (s: OrbSync) => void): () => void;
-  onOrbAction(cb: (action: "toggle-sleep") => void): () => void;
-  orbRestore(): void;
-  orbAction(action: "toggle-sleep"): void;
-  /** Grok has the mic (for "mute my mic in other apps"). */
-  orbDragStart(): void;
-  orbDragMove(): void;
-  orbDragEnd(): void;
+  // The orb's page (OrbWindow.tsx): Orbit Native's orb only, from its page shim. This app has no orb.
+  onOrbState?(cb: (s: OrbSync) => void): () => void;
+  orbRestore?(): void;
+  orbAction?(action: "toggle-sleep"): void;
+  orbDragStart?(): void;
+  orbDragMove?(): void;
+  orbDragEnd?(): void;
   openLogs(): Promise<void>;
   startWithWindows: { get(): Promise<boolean>; set(enabled: boolean): Promise<boolean> };
   onHotkey(cb: () => void): () => void;
@@ -59,7 +58,7 @@ type DesktopApi = {
 
 /** The updater's state (electron/updater.js). */
 export type UpdateState = {
-  status: "dev" | "idle" | "checking" | "latest" | "downloading" | "ready" | "error";
+  status: "dev" | "off" | "idle" | "checking" | "latest" | "downloading" | "ready" | "error";
   version?: string;
   percent?: number;
   message?: string;

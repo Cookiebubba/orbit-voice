@@ -1,4 +1,4 @@
-// Opening Orbit never needs an xAI key: the main page (Qubit, the orb) always shows, new installs
+// Opening Orbit never needs an xAI key: the main page (Qubit) always shows, new installs
 // start on Claude voice (the user's own Claude plan), installs from before keep their engine, and
 // only a try to talk to Grok without a key says so, inline, with a way to Settings or to Claude.
 //   - ui/src/talk.js: what can talk, which screen shows, the inline notice

@@ -15,8 +15,8 @@ import { systemPrompt } from '../src/claude-voice.js';
 const mem = (v = '') => ({ kind: 'memory', get: () => v, set: (x) => (v = x) });
 initConfig({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-agent-')), secrets: mem(), brainSecrets: mem() });
 setAvatarSink(() => ({ ok: true })); // the desktop shell is there
-const ctx = (avatar, showOrb = true) => {
-  updateSettings({ avatar, showOrb });
+const ctx = (avatar) => {
+  updateSettings({ avatar });
   return agentContext();
 };
 const tool = (c) => c.tools.find((t) => t.name === 'avatar');
@@ -56,8 +56,8 @@ test('no avatar: Orbit is the face; nothing about any avatar is loaded', () => {
 });
 
 test('Qubit: his persona and body, his tool; Orbit\x27s persona is not loaded', () => {
-  for (const showOrb of [false, true]) {
-    const c = ctx('qubit', showOrb);
+  {
+    const c = ctx('qubit');
     assert.equal(c.face, 'qubit');
     assert.match(c.instructions, /^Who you are:\n- You are Qubit: a small square with one rectangular eye/);
     assert.ok(!c.instructions.includes('You are Orbit'), 'not Orbit\x27s persona');
@@ -67,13 +67,11 @@ test('Qubit: his persona and body, his tool; Orbit\x27s persona is not loaded', 
     for (const s of JOB) assert.ok(c.instructions.includes(s), s);
     const t = tool(c);
     assert.ok(t && t.parameters.properties.action.enum.includes('backflip'));
-    // The orb shown too: one line about it, still Qubit talking.
-    assert.equal(c.instructions.includes('The glowing orb on screen is the Orbit app'), showOrb, `showOrb ${showOrb}`);
   }
 });
 
 test('the pixel buddy: its own persona, body and tool', () => {
-  const c = ctx('buddy', false);
+  const c = ctx('buddy');
   assert.equal(c.face, 'buddy');
   assert.match(c.instructions, /^Who you are:\n- You are Buddy, the pixel buddy/);
   assert.ok(!/You are Orbit|Qubit/.test(c.instructions));
@@ -84,10 +82,10 @@ test('the pixel buddy: its own persona, body and tool', () => {
 });
 
 test('the job layer is the same text whatever the face, and comes after the persona', () => {
-  for (const [a, o] of [['none', true], ['qubit', false], ['qubit', true], ['buddy', true]]) {
-    const c = ctx(a, o);
+  for (const a of ['none', 'qubit', 'buddy']) {
+    const c = ctx(a);
     const i = c.instructions.indexOf(core());
-    assert.ok(i > 0, `${a}/${o}: the job is there in full`);
+    assert.ok(i > 0, `${a}: the job is there in full`);
     assert.ok(c.instructions.slice(0, i).startsWith('Who you are:'));
   }
   // And it still follows the second-brain settings.
@@ -101,7 +99,7 @@ test('the job layer is the same text whatever the face, and comes after the pers
 test('without the desktop shell (browser mode) there is no avatar on screen: Orbit', () => {
   updateSettings({ avatar: 'qubit' });
   setAvatarSink(null);
-  assert.deepEqual(onScreen(), { face: 'orbit', avatar: null, orb: true });
+  assert.deepEqual(onScreen(), { face: 'orbit', avatar: null });
   assert.equal(tool(agentContext()), undefined);
   setAvatarSink(() => ({ ok: true }));
   assert.equal(onScreen().face, 'qubit');
@@ -109,7 +107,7 @@ test('without the desktop shell (browser mode) there is no avatar on screen: Orb
 
 test('less to load when there is less on screen', () => {
   const none = ctx('none').instructions.length;
-  const qubit = ctx('qubit', false).instructions.length;
+  const qubit = ctx('qubit').instructions.length;
   const persona = (s) => s.slice(0, s.indexOf(core()));
   assert.ok(persona(ctx('none').instructions).length < 400, 'Orbit\x27s persona is a few lines');
   assert.ok(qubit > none, 'an avatar adds its body and tool');
@@ -117,7 +115,7 @@ test('less to load when there is less on screen', () => {
 });
 
 test('Claude voice gets the same layers in its system prompt, tools included', () => {
-  const q = ctx('qubit', false);
+  const q = ctx('qubit');
   const p = systemPrompt({ instructions: q.instructions, tools: q.tools });
   assert.match(p, /You are Qubit/);
   assert.match(p, /- avatar: Make Qubit/);
@@ -128,13 +126,23 @@ test('Claude voice gets the same layers in its system prompt, tools included', (
   assert.match(pn, /You are Orbit/);
 });
 
+test('nothing tells the voice about an orb, on any face, and no setting of it changes the context', () => {
+  for (const a of ['qubit', 'buddy', 'none']) {
+    const c = ctx(a);
+    assert.doesNotMatch(c.instructions, /\borb\b/i, a);
+    assert.doesNotMatch(JSON.stringify(c.tools), /\borb\b/i, a);
+    assert.equal(c.orb, undefined);
+  }
+  assert.ok(!CONTEXT_SETTINGS.includes('showOrb'));
+});
+
 test('the settings that change the context are the ones the live session is updated for', () => {
-  for (const k of ['avatar', 'showOrb', 'brainEnabled', 'brainModel', 'brainExplore', 'brainConnection', 'wakeOnResults']) assert.ok(CONTEXT_SETTINGS.includes(k), k);
+  for (const k of ['avatar', 'brainEnabled', 'brainModel', 'brainExplore', 'brainConnection', 'wakeOnResults']) assert.ok(CONTEXT_SETTINGS.includes(k), k);
 });
 
 test('Qubit\x27s emote cues: a short guide in his body layer only, after the job, naming exactly his cues', async () => {
   const { CUES } = await import('../src/emote-cues.js');
-  const q = ctx('qubit', false);
+  const q = ctx('qubit');
   const guide = q.instructions.split('\n').find((l) => l.startsWith('- Your face can show a feeling'));
   assert.ok(guide, 'the guide is there');
   assert.ok(q.instructions.indexOf(guide) > q.instructions.indexOf('Your body (Qubit'), 'in his body layer');
@@ -143,5 +151,5 @@ test('Qubit\x27s emote cues: a short guide in his body layer only, after the job
   assert.ok(guide.length < 520, `short (${guide.length} chars)`);
   assert.match(guide, /sparingly/);
   assert.match(guide, /never spoken or shown, and never go in prompts or tool arguments/);
-  for (const [a, o] of [['none', true], ['buddy', false]]) assert.ok(!/Your face can show a feeling|<happy>/.test(ctx(a, o).instructions), `not for ${a}`);
+  for (const a of ['none', 'buddy']) assert.ok(!/Your face can show a feeling|<happy>/.test(ctx(a).instructions), `not for ${a}`);
 });

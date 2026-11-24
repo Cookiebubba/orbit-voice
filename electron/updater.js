@@ -7,6 +7,9 @@
 // Off: nothing is checked until you press "Check now" (which then downloads what it finds).
 // Each download is checked against the SHA-512 in latest.yml before it's installed.
 //
+// A test build (electron/identity.js) passes `off`: electron-updater is never touched, nothing is
+// ever checked or fetched, so it can't update itself into real Orbit.
+//
 // Channels follow the installed version. A stable install (1.2.0) asks GitHub for its "latest"
 // release, which is never a prerelease, so it is never offered a beta. A beta install
 // (1.3.0-beta.1) reads the releases feed and takes the newest beta or stable above it, so it gets
@@ -34,11 +37,12 @@ export function describeUpdateError(message = '') {
 
 /**
  * state: { status, version?, percent?, message?, checkedAt? }
- * status: 'dev' (running from source: no updates) | 'idle' | 'checking' | 'latest' | 'downloading'
- *         | 'ready' (downloaded, installs on quit) | 'error'
+ * status: 'dev' (running from source: no updates) | 'off' (a test build: no updates, ever) | 'idle'
+ *         | 'checking' | 'latest' | 'downloading' | 'ready' (downloaded, installs on quit) | 'error'
  */
-export function createUpdater({ isPackaged, auto, version = '', onChange = () => {}, log = { info() {}, warn() {} }, updater = null }) {
-  let state = { status: isPackaged ? 'idle' : 'dev' };
+export function createUpdater({ isPackaged: packaged, off = false, auto, version = '', onChange = () => {}, log = { info() {}, warn() {} }, updater = null }) {
+  const isPackaged = packaged && !off;
+  let state = { status: off ? 'off' : isPackaged ? 'idle' : 'dev' };
   let timer = null;
   let firstTimer = null;
   // Created only in the installed app: reading it builds the updater, which needs a packaged app.

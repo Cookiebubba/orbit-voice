@@ -41,7 +41,7 @@ function scenes() {
   S.push([...open(), ...said('what is Claude doing'), { op: 'tick', ms: 400 }, ...reply('Claude is fixing the login bug. It should be done soon.'), { op: 'tick', ms: 100 }, { op: 'close' }]);
   // Words arriving in one chunk, a cue, and a long reply cut at commas.
   S.push([...open(), ...said('tell me a story'), out([text('<happy> Once upon a time, in a land far away from here and everything, there lived a very small cube. '), text('It hopped. <curious> Why? Nobody knew!')]), out([stop(), result()]), { op: 'close' }]);
-  // A tool call: a filler first, then the call.
+  // A tool call: nothing said first, then the call.
   S.push([...open(), ...said('what is my session'), out([text('<tool>{"name": "get_current_session", "arguments": {}}</tool>')]), out([stop(), result()]),
     { op: 'send', msg: { type: 'conversation.item.create', item: { type: 'function_call_output', call_id: 'call_REF', output: '{"open_in_app":"Fix the login bug"}' } } }, { op: 'send', msg: { type: 'response.create' } },
     ...reply('You are in Fix the login bug.'), { op: 'close' }]);
@@ -49,7 +49,7 @@ function scenes() {
   S.push([...open(), ...said('draft fix the tests'), out([text('Sure. <tool>{"name": "draft_prompt", "arguments": {"text": "Fix the tests."}}</tool> and more')]), out([stop(), result()]), { op: 'close' }]);
   // An XML call, read when the message ends.
   S.push([...open(), ...said('list them'), out([text('<invoke name="draft_prompt"><parameter name="text">Fix it.</parameter></invoke>')]), out([stop(), result()]), { op: 'close' }]);
-  // Slow to start: the slow filler after 1.5 s, then the words.
+  // Slow to start: silence until the words come.
   S.push([...open(), ...said('why is the build slow'), { op: 'tick', ms: 1600 }, ...reply('Because of the cache.'), { op: 'close' }]);
   // Sounds unfinished: held a moment, then more words join it.
   S.push([...open(), ...said('tell Claude that I would like to'), { op: 'tick', ms: 600 }, ...said('add tests'), ...reply('Okay.'), { op: 'close' }]);

@@ -138,11 +138,10 @@
     },
     thinking: {
       label: 'Thinking',
-      about: 'Superposition. His eye spins slowly through horizontal |0> and vertical |1>. He floats a few units off the ground while his whole colour drifts between violet and magenta.',
+      about: 'Superposition. His eye spins slowly through horizontal |0> and vertical |1>. He stays planted on the ground while his whole colour drifts between violet and magenta.',
       color: PALETTE.violet,
       eye: { w: 24, h: 8, x: 0, y: -18, rot: 0 },
       hueCycle: [286, 332, 0.45],
-      hover: 9,
       superpose: true,
       breathe: 0.006,
     },

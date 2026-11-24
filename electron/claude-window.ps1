@@ -3,19 +3,15 @@
 #
 # Claude can have several windows (the main one, sessions popped out into their own). This reports
 # all of them; Orbit picks the one to dock on (the one most recently in front, see
-# electron/claude-windows.js) and tells the helper which one to follow.
+# electron/claude-windows.js).
 #
-# It moves the orb itself, in the same instant, so the orb doesn't trail behind a dragged window.
-# (Going through Orbit first would add a pipe and an IPC hop to every step.) It also prints one
-# JSON line per change for Orbit, which handles showing, hiding and z-order:
+# It prints one JSON line per change for Orbit, which handles showing, hiding and z-order:
 #   {"wins":[{"hwnd":123,"min":false,"x":0,"y":0,"w":1200,"h":800},...],"fg":123,"front":"claude"|"orbit"|"other"}
 # wins: Claude's windows, highest in z-order first. fg: the Claude window in front (0 if none).
 # Coordinates are real screen pixels on every display (per-monitor DPI aware), excluding the
 # invisible resize border.
 #
 # Commands from Orbit on stdin, one per line:
-#   follow <orbHwnd> <claudeHwnd> <tl|tr|bl|br> <dx> <dy>   keep the orb at that spot on that window (DIPs)
-#   pause                                                  stop moving the orb (it's hidden or being dragged)
 #   box <claudeHwnd>                                       watch that window's prompt box (0: stop), for the avatar
 #   burst                                                  Orbit is about to type into (or clear) the box: look often for a moment
 #
@@ -45,7 +41,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
-public static class ClaudeFollow {
+public static class ClaudeWatch {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
   [StructLayout(LayoutKind.Sequential)] public struct MSG { public IntPtr hwnd; public uint message; public IntPtr wParam; public IntPtr lParam; public uint time; public int x; public int y; }
   public delegate void WinEventProc(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
@@ -59,7 +55,6 @@ public static class ClaudeFollow {
   [DllImport("user32.dll")] static extern IntPtr DispatchMessage(ref MSG m);
   [DllImport("user32.dll")] static extern UIntPtr SetTimer(IntPtr h, UIntPtr id, uint ms, TimerProc proc);
   [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr ctx);
-  [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr h);
   [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, IntPtr l);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
@@ -70,7 +65,6 @@ public static class ClaudeFollow {
   [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr h);
   [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
-  [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int hh, uint flags);
   [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out RECT r, int size);
   [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")] static extern int DwmGetInt(IntPtr h, int attr, out int v, int size);
 
@@ -78,7 +72,6 @@ public static class ClaudeFollow {
   const uint EVENT_OBJECT_DESTROY = 0x8001, EVENT_OBJECT_SHOW = 0x8002, EVENT_OBJECT_HIDE = 0x8003;
   const uint EVENT_OBJECT_LOCATIONCHANGE = 0x800B, EVENT_OBJECT_CLOAKED = 0x8017, EVENT_OBJECT_UNCLOAKED = 0x8018;
   const int OBJID_CARET = -8;
-  const uint SWP_NOSIZE = 0x1, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_NOOWNERZORDER = 0x200;
   const uint GA_ROOTOWNER = 3;
 
   // Delegates kept in static fields so the garbage collector never frees a callback Windows still holds.
@@ -93,13 +86,6 @@ public static class ClaudeFollow {
   static List<IntPtr> pidHooks = new List<IntPtr>();
   static string last = "";
   static int ticks;
-
-  // The spot Orbit asked for (set from the stdin thread).
-  static bool follow;
-  static IntPtr orb = IntPtr.Zero;
-  static IntPtr target = IntPtr.Zero; // the Claude window the orb is on
-  static string corner = "br";
-  static double dx = 24, dy = 140;
 
   public static void Run(int parentPid) {
     parent = parentPid;
@@ -125,23 +111,19 @@ public static class ClaudeFollow {
       if (idObject == OBJID_CARET) { if (boxHwnd != IntPtr.Zero) { carets++; boxSignal.Set(); } return; }
       if (idObject != 0 || !IsClaude(hwnd)) return; // only Claude's windows themselves, not carets etc.
       if (hwnd == boxHwnd) { winMoved = true; boxSignal.Set(); }
-      if (hwnd == target) Reposition();
       Emit();
     } else if (ev == EVENT_OBJECT_DESTROY || ev == EVENT_OBJECT_SHOW || ev == EVENT_OBJECT_HIDE) {
       // A Claude window closed or hid, or a new top-level one appeared (not a menu or tooltip).
       if (idObject != 0) return;
       if (ev == EVENT_OBJECT_SHOW ? (GetAncestor(hwnd, 2) != hwnd || GetWindow(hwnd, 4) != IntPtr.Zero) : !IsClaude(hwnd)) return;
       Refind();
-      Reposition();
       Emit();
     } else if (ev == EVENT_OBJECT_CLOAKED || ev == EVENT_OBJECT_UNCLOAKED) {
       Refind();
-      Reposition();
       Emit();
     } else if (ev == EVENT_SYSTEM_MINIMIZESTART || ev == EVENT_SYSTEM_MINIMIZEEND) {
       if (!IsClaude(hwnd)) return;
       if (hwnd == boxHwnd) boxSignal.Set();
-      if (hwnd == target) Reposition();
       Emit();
     } else {
       // Foreground changed. A Claude window not seen yet (just opened) is picked up now.
@@ -156,8 +138,7 @@ public static class ClaudeFollow {
       try { if (Process.GetProcessById(parent).HasExited) Environment.Exit(0); } catch (ArgumentException) { Environment.Exit(0); }
     }
     ticks++;
-    if (wins.Length == 0 || (target != IntPtr.Zero && (!IsWindow(target) || Cloaked(target))) || ticks % 3 == 0) Refind();
-    Reposition();
+    if (wins.Length == 0 || ticks % 3 == 0) Refind();
     Emit();
   }
 
@@ -165,14 +146,7 @@ public static class ClaudeFollow {
     string line;
     while ((line = Console.In.ReadLine()) != null) {
       string[] p = line.Trim().Split(' ');
-      if (p[0] == "follow" && p.Length == 6 && (p[3] == "tl" || p[3] == "tr" || p[3] == "bl" || p[3] == "br")) {
-        long o, w; double x, y;
-        if (!long.TryParse(p[1], out o) || !long.TryParse(p[2], out w) || !double.TryParse(p[4], NumberStyles.Float, CultureInfo.InvariantCulture, out x) || !double.TryParse(p[5], NumberStyles.Float, CultureInfo.InvariantCulture, out y)) continue;
-        lock (gate) { orb = new IntPtr(o); target = new IntPtr(w); corner = p[3]; dx = x; dy = y; follow = true; }
-        Reposition();
-      } else if (p[0] == "pause") {
-        lock (gate) { follow = false; }
-      } else if (p[0] == "box" && p.Length == 2) {
+      if (p[0] == "box" && p.Length == 2) {
         long w;
         if (long.TryParse(p[1], out w)) WatchBox(new IntPtr(w));
       } else if (p[0] == "stats") {
@@ -232,29 +206,6 @@ public static class ClaudeFollow {
     if (a.Length != b.Length) return false;
     for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;
     return true;
-  }
-
-  // Same rule as electron/orb-stick.js: a DIP distance from one corner, kept inside the window.
-  static void Reposition() {
-    IntPtr o, w; string c; double ax, ay;
-    lock (gate) { if (!follow) return; o = orb; w = target; c = corner; ax = dx; ay = dy; }
-    if (w == IntPtr.Zero || o == IntPtr.Zero || !IsWindow(o) || !IsWindow(w) || !IsClaude(w) || IsIconic(w)) return;
-    RECT cr = Bounds(w);
-    RECT ob; GetWindowRect(o, out ob);
-    int ow = ob.R - ob.L, oh = ob.B - ob.T;
-    double s = GetDpiForWindow(w) / 96.0;
-    if (s <= 0) s = 1;
-    double x = c[1] == 'r' ? cr.R - ax * s - ow : cr.L + ax * s;
-    double y = c[0] == 'b' ? cr.B - ay * s - oh : cr.T + ay * s;
-    x = Clamp(x, cr.L, cr.R - cr.L, ow);
-    y = Clamp(y, cr.T, cr.B - cr.T, oh);
-    int ix = (int)Math.Round(x), iy = (int)Math.Round(y);
-    if (ix != ob.L || iy != ob.T) SetWindowPos(o, IntPtr.Zero, ix, iy, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
-  }
-
-  static double Clamp(double v, int start, int length, int size) {
-    if (length <= size) return start + (length - size) / 2.0;
-    return Math.Min(Math.Max(v, start), start + length - size);
   }
 
   static void Emit() {
@@ -379,4 +330,4 @@ public static class ClaudeFollow {
 }
 '@
 
-[ClaudeFollow]::Run($ParentPid)
+[ClaudeWatch]::Run($ParentPid)

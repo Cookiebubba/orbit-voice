@@ -1,4 +1,5 @@
-// The tiny always-on-top orb shown while the main window is minimized.
+// Orbit Native's floating orb (mac-swift/Sources/OrbitOverlays/OrbController.swift runs this page).
+// The Windows app has no orb: nothing there opens this.
 // Click: open the main window. Drag: move it. Right-click: sleep / wake.
 import { useEffect, useRef, useState } from "react";
 import { Shdr29 } from "@/components/ui/shdr-29";
@@ -12,7 +13,7 @@ export default function OrbWindow() {
   useEffect(() => {
     document.documentElement.style.background = "transparent";
     document.body.style.background = "transparent";
-    return desktop?.onOrbState(setS);
+    return desktop?.onOrbState?.(setS);
   }, []);
 
   return (
@@ -22,23 +23,23 @@ export default function OrbWindow() {
         if (e.button !== 0) return;
         e.currentTarget.setPointerCapture(e.pointerId);
         drag.current = { x: e.screenX, y: e.screenY, moved: false };
-        desktop?.orbDragStart();
+        desktop?.orbDragStart?.();
       }}
       onPointerMove={(e) => {
         const d = drag.current;
         if (!d) return;
         if (Math.abs(e.screenX - d.x) + Math.abs(e.screenY - d.y) > 4) d.moved = true;
-        if (d.moved) desktop?.orbDragMove();
+        if (d.moved) desktop?.orbDragMove?.();
       }}
       onPointerUp={() => {
         const d = drag.current;
         drag.current = null;
-        if (d && !d.moved) desktop?.orbRestore();
-        else if (d) desktop?.orbDragEnd();
+        if (d && !d.moved) desktop?.orbRestore?.();
+        else if (d) desktop?.orbDragEnd?.();
       }}
       onContextMenu={(e) => {
         e.preventDefault();
-        desktop?.orbAction("toggle-sleep");
+        desktop?.orbAction?.("toggle-sleep");
       }}
       title="Orbit: click to open · drag to move · right-click to sleep or wake"
     >

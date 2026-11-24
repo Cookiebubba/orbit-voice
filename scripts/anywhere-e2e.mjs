@@ -91,21 +91,12 @@ dialog.showErrorBox = (title, msg) => fail('error dialog', msg);
 // Orbit's own windows stay hidden; only the avatars' strips show (on the off-screen fake Claude window).
 const isAvatar = (w) => /^Orbit (Qubit|buddy)$/.test(w.getTitle());
 const realShowInactive = BrowserWindow.prototype.showInactive;
-// The orb never really shows either; whether Orbit wants it showing is tracked here instead.
-const isOrb = (w) => /#orb$|view=orb/.test(w.webContents.getURL()); // its page renames the window, so go by the URL
-let orbShown = false;
 for (const m of ['show', 'showInactive', 'focus', 'moveTop', 'restore']) {
   const orig = BrowserWindow.prototype[m];
   BrowserWindow.prototype[m] = function (...a) {
-    if (isOrb(this) && (m === 'show' || m === 'showInactive')) orbShown = true;
     if (isAvatar(this)) return orig.apply(this, a);
   };
 }
-const origHide = BrowserWindow.prototype.hide;
-BrowserWindow.prototype.hide = function (...a) {
-  if (isOrb(this)) orbShown = false;
-  return origHide.apply(this, a);
-};
 
 // Whether the avatar's window takes the mouse (only while the cursor is on him).
 const ignoreCalls = [];
@@ -125,7 +116,7 @@ for (const [k, d] of [['APPDATA', 'appdata'], ['LOCALAPPDATA', 'local'], ['USERP
 app.setPath('appData', process.env.APPDATA);
 const USER_DATA = path.join(process.env.APPDATA, 'Orbit');
 fs.mkdirSync(USER_DATA, { recursive: true });
-fs.writeFileSync(path.join(USER_DATA, 'settings.json'), JSON.stringify({ avatar: 'qubit', buddySize: 2, orbStick: false, announce: 'chime', announceWake: false, wakeOnResults: false, brainEnabled: false, wakeWord: false, autoUpdate: false, listenMode: 'always', anywhere: true }));
+fs.writeFileSync(path.join(USER_DATA, 'settings.json'), JSON.stringify({ avatar: 'qubit', buddySize: 2, announce: 'chime', announceWake: false, wakeOnResults: false, brainEnabled: false, wakeWord: false, autoUpdate: false, listenMode: 'always', anywhere: true }));
 process.env.PATH = [path.join(process.env.SystemRoot || 'C:\\Windows', 'System32'), process.env.SystemRoot || 'C:\\Windows'].join(path.delimiter);
 delete process.env.ANTHROPIC_API_KEY;
 process.env.ORBIT_FAKE_DESKTOP = path.join(ROOT, 'test', 'e2e', 'fake-desktop.mjs');

@@ -107,21 +107,21 @@ dialog.showErrorBox = (title, msg) => fail('error dialog', msg);
 // Orbit's own windows stay hidden; only the avatars' strips show (on the off-screen fake Claude window).
 const isAvatar = (w) => /^Orbit (Qubit|buddy)$/.test(w.getTitle());
 const realShowInactive = BrowserWindow.prototype.showInactive;
-// The orb never really shows either; whether Orbit wants it showing is tracked here instead.
-const isOrb = (w) => /#orb$|view=orb/.test(w.webContents.getURL()); // its page renames the window, so go by the URL
-let orbShown = false;
+// There is no orb: anything that ever tries to show one fails the run (step 17b).
+const isOrb = (w) => /#orb$|view=orb/.test(w.webContents.getURL()) || / orb$/i.test(w.getTitle());
+let orbEverShown = false;
+// Minimizing never really happens either (it would put a hidden window on the taskbar): it's counted.
+let minimizes = 0;
+BrowserWindow.prototype.minimize = function () {
+  minimizes++;
+};
 for (const m of ['show', 'showInactive', 'focus', 'moveTop', 'restore']) {
   const orig = BrowserWindow.prototype[m];
   BrowserWindow.prototype[m] = function (...a) {
-    if (isOrb(this) && (m === 'show' || m === 'showInactive')) orbShown = true;
+    if (isOrb(this) && (m === 'show' || m === 'showInactive')) orbEverShown = true;
     if (isAvatar(this)) return orig.apply(this, a);
   };
 }
-const origHide = BrowserWindow.prototype.hide;
-BrowserWindow.prototype.hide = function (...a) {
-  if (isOrb(this)) orbShown = false;
-  return origHide.apply(this, a);
-};
 
 // The display his window is on, for a throw (avatar.js lift): a pretend work area around the fake
 // Claude window, far off screen, so a lifted window never covers a real screen.
@@ -187,7 +187,7 @@ const USER_DATA = path.join(process.env.APPDATA, 'Orbit');
 fs.mkdirSync(USER_DATA, { recursive: true });
 fs.writeFileSync(
   path.join(USER_DATA, 'settings.json'),
-  JSON.stringify({ avatar: 'qubit', buddySize: 2, orbStick: false, announce: 'chime', announceWake: false, wakeOnResults: false, brainEnabled: false, wakeWord: false, autoUpdate: false, listenMode: 'always' }),
+  JSON.stringify({ avatar: 'qubit', buddySize: 2, announce: 'chime', announceWake: false, wakeOnResults: false, brainEnabled: false, wakeWord: false, autoUpdate: false, listenMode: 'always' }),
 );
 process.env.PATH = [path.join(process.env.SystemRoot || 'C:\\Windows', 'System32'), process.env.SystemRoot || 'C:\\Windows'].join(path.delimiter);
 delete process.env.ANTHROPIC_API_KEY;
@@ -318,7 +318,7 @@ async function cpu(label, ms) {
 const MOTION = `(() => {
   const Q = window.__qubit, q = Q.q, d = Q.dir;
   if (window.__phys) return true;
-  const phys = window.__phys = { samples: 0, pops: 0, popAt: [], sink: 0, float: 0, bad: [], dts: [], geoAt: 0, label: '', paths: [], modes: [], bobPops: 0 };
+  const phys = window.__phys = { samples: 0, pops: 0, popAt: [], sink: 0, float: 0, bad: [], dts: [], geoAt: 0, label: '', paths: [] };
   q.on('path', (p) => { phys.paths.push([phys.label, Math.round(q.cx), p.path ? p.path.map((m) => m.type + ':' + Math.round(m.to.x)).join(' ') : 'none', Math.round(p.target.x)]); if (phys.paths.length > 60) phys.paths.shift(); });
   const sg = d.setGeometry;
   d.setGeometry = (g) => { phys.geoAt = performance.now(); return sg(g); };
@@ -333,16 +333,12 @@ const MOTION = `(() => {
       const D = Math.max(...cs.map((p) => Math.min(...phys.prev.map((o) => Math.hypot(p.x - o.x, p.y - o.y))))) * (1 / 60) / Math.max(dt, 1 / 240);
       const d1 = phys.d1 ?? 0, d0 = phys.d0 ?? 0;
       if (d1 > 2.5 && d1 > 3 * Math.max(d0, D, 0.3)) {
-        // A known engine issue, counted apart: leaving or entering "thinking" switches its hover bob
-        // (a sine of up to 2.4 px) on or off at once.
-        const bob = phys.modes.includes('thinking') && new Set(phys.modes).size > 1;
-        if (bob) phys.bobPops++;
-        else { phys.pops++; if (phys.popAt.length < 30) phys.popAt.push([phys.label, +d1.toFixed(1), q.mode, q.taskName, +(dt * 1000).toFixed(1)]); }
+        phys.pops++;
+        if (phys.popAt.length < 30) phys.popAt.push([phys.label, +d1.toFixed(1), q.mode, q.taskName, +(dt * 1000).toFixed(1)]);
       }
       phys.d0 = d1; phys.d1 = D;
     } else { phys.d0 = phys.d1 = 0; }
     phys.prev = cs;
-    phys.modes.push(q.mode); if (phys.modes.length > 4) phys.modes.shift();
     const low = Math.max(...cs.map((p) => p.y));
     const surface = q.ground - q.sy;
     const gap = surface - low; // + floating above it, - sunk into it
@@ -506,7 +502,7 @@ async function run() {
   await label('thinking');
   c.send({ type: 'input_audio_buffer.speech_stopped', item_id: 'u1' });
   c.send({ type: 'input_audio_buffer.committed', item_id: 'u1' });
-  await expectState('thinking (violet, hovering, eye spinning)', { state: 'thinking', mode: 'thinking' }, 3000);
+  await expectState('thinking (violet, on his floor, eye spinning)', { state: 'thinking', mode: 'thinking' }, 3000);
   await wait(900);
   await snap('thinking');
   await label('speaking');
@@ -797,7 +793,7 @@ async function run() {
 
   // Motion over the whole session.
   const phys = await qjs('({ ...window.__phys, prev: undefined, dts: undefined, frames: window.__phys.dts.length })');
-  out(`  motion: ${phys.samples} frames checked, pops ${phys.pops}, deepest sink ${phys.sink.toFixed(2)} px, highest float ${phys.float.toFixed(2)} px; known engine hover-bob snaps (into/out of thinking): ${phys.bobPops}`);
+  out(`  motion: ${phys.samples} frames checked, pops ${phys.pops}, deepest sink ${phys.sink.toFixed(2)} px, highest float ${phys.float.toFixed(2)} px`);
   check(phys.pops === 0, 'no single-frame jumps of his outline', JSON.stringify(phys.popAt));
   check(phys.bad.length === 0, 'never sinks into or floats above what he stands on (0.75 px)', JSON.stringify(phys.bad.slice(0, 10)));
 
@@ -830,9 +826,24 @@ async function run() {
   const hotkey16 = [...hotkeys.values()][0];
   const PRESS_HOLD = 420; // (ui/src/buddy/throw.js PRESS.holdMs)
   await pjs(`document.querySelector('button[aria-label="Settings"]').click()`);
-  await waitFor(() => pjs(`[...document.querySelectorAll('[role=radio]')].some((b) => b.textContent === 'Pixel buddy')`), 5000);
-  const pickAvatar = (name) => pjs(`(() => { const b = [...document.querySelectorAll('[role=radio]')].find((x) => x.textContent === ${JSON.stringify(name)}); b && b.click(); return !!b; })()`);
-  check(await pjs(`[...document.querySelectorAll('[role=radio]')].find((x) => x.textContent === 'Qubit')?.getAttribute('aria-checked') === 'true'`), 'Settings shows Qubit chosen');
+  await waitFor(() => pjs(`!!document.querySelector('.oset .tile')`), 5000);
+  // Settings: a room at a time, as a sheet. Each step opens the one it needs (a no-op if it's open).
+  const room = async (id) => {
+    if ((await pjs('window.__settings?.room')) === id) return;
+    await pjs(`document.querySelector('.sheet.open .sheet-head button')?.click()`);
+    await waitFor(() => pjs('!window.__settings?.room'), 2000);
+    await wait(520);
+    await pjs(`document.querySelector('${id === 'engine' ? '[data-tile="engine"]' : `[data-room="${id}"]`}').click()`);
+    await waitFor(() => pjs(`!!document.querySelector('[data-row]')`), 2000);
+  };
+  const clickIn = (row, name) => pjs(`(() => { const b = [...document.querySelectorAll('[data-row="${row}"] button')].find((x) => x.textContent === ${JSON.stringify(name)}); b && b.click(); return !!b; })()`);
+  const pickAvatar = async (name) => {
+    await room('presence');
+    if (name === 'None') return pjs(`document.querySelector('[data-row="noAvatar"] .sw').click()`);
+    return clickIn('avatar', name);
+  };
+  await room('presence');
+  check(await pjs(`document.querySelector('[data-row="avatar"] button[aria-pressed="true"]')?.textContent === 'Qubit'`), 'Settings shows Qubit chosen');
   // A picture of the Avatar section: Orbit's window shown for a moment, off screen.
   page.setPosition(-4200, 1200);
   realShowInactive.call(page);
@@ -855,7 +866,8 @@ async function run() {
     }, 10);
     return st;
   };
-  const pickEngine = (name) => pjs(`(() => { const b = [...document.querySelectorAll('[role=radio]')].find((x) => x.textContent === ${JSON.stringify(name)}); b && b.click(); return !!b; })()`);
+  await room('engine');
+  const pickEngine = (name) => clickIn('engine', name.replace(/ \(beta\)$/, ''));
   let smp = sampler();
   for (let i = 0; i < 6; i++) {
     await pickEngine('Grok');
@@ -919,7 +931,8 @@ async function run() {
   const logText = (() => { try { return fs.readFileSync(path.join(getConfigDir(), 'logs', 'orbit.log'), 'utf8'); } catch { return ''; } })();
   check(/avatar window opened/.test(logText) && /avatar window closed/.test(logText), 'the log says when avatar windows open and close');
   // Size: Big, live (he grows into it).
-  await pjs(`(() => { const b = [...document.querySelectorAll('[role=radio]')].find((x) => x.textContent === 'Big'); b && b.click(); })()`);
+  await room('presence');
+  await clickIn('size', 'Big');
   await expectState('Big: he grows to 50 px', { side: (v) => Math.abs(v - 50) < 0.5 }, 4000);
   await snap('size-big');
 
@@ -946,6 +959,7 @@ async function run() {
   await expectState('asleep again after that call', { state: 'asleep', mode: 'asleep', air: false }, 25_000);
   // With the setting off, a click is the little poke it used to be.
   const talkSwitch = (click) => pjs(`(() => { const b = document.querySelector('button[role=switch][aria-label="Click your avatar to talk"]'); if (b && ${!!click}) b.click(); return b ? b.getAttribute('aria-checked') : null; })()`);
+  await room('presence');
   check((await talkSwitch(false)) === 'true', 'Settings: "Click your avatar to talk" is there, on by default');
   await talkSwitch(true);
   check(await waitFor(async () => (await qjs('window.__qubit.state.prefs.clickTalk')) === false, 3000), 'off: his page hears it');
@@ -1099,6 +1113,7 @@ async function run() {
   await snap('after-throw');
   // Throw your avatar, off: a press and drag never picks him up.
   const throwSwitch = (click) => pjs(`(() => { const b = document.querySelector('button[role=switch][aria-label="Throw your avatar"]'); if (b && ${!!click}) b.click(); return b ? b.getAttribute('aria-checked') : null; })()`);
+  await room('presence');
   check((await throwSwitch(false)) === 'true', 'Settings: "Throw your avatar" is there, on by default');
   await throwSwitch(true);
   check(await waitFor(async () => (await qjs('window.__qubit.state.prefs.throw')) === false, 3000), 'off: his page hears it');
@@ -1512,25 +1527,24 @@ async function run() {
   check(/no word from its page for \d+ s .*keeping where it last was/.test(log17g), 'the log says when his page went quiet (and that Orbit kept his place)');
   fakeCursor = null;
 
-  out('17b. Show the orb (Settings -> Avatar)');
-  const savedOrb = () => JSON.parse(fs.readFileSync(path.join(USER_DATA, 'settings.json'), 'utf8')).showOrb;
-  const orbSwitch = (click) => pjs(`(() => { const b = document.querySelector('button[role=switch][aria-label="Show the orb"]'); if (b && ${!!click}) b.click(); return b ? b.getAttribute('aria-checked') : null; })()`);
-  check((await orbSwitch(false)) === 'true', 'the switch is there, on by default');
-  orbShown = false;
-  await pjs(`document.querySelector('button[aria-label="Shrink to orb"]').click()`);
-  check(await waitFor(() => orbShown, 3000), 'shrinking Orbit brings up the orb');
-  await orbSwitch(true);
-  check(await waitFor(() => !orbShown, 3000), 'off: the orb goes away');
-  check(qwin.isVisible(), 'Qubit stays, standing in for it');
-  check(await waitFor(() => savedOrb() === false, 2000), 'saved: showOrb false');
+  out('17b. No orb: minimizing goes to the taskbar, and Orbit stays reachable, avatar or not');
+  const orbWindows = () => BrowserWindow.getAllWindows().filter(isOrb).length;
+  await room('presence');
+  check(await pjs(`!document.querySelector('[aria-label="Show the orb"], [aria-label="Stick to Claude Code"], [aria-label="Pulse with your voice"]')`), 'no orb settings');
+  check(await pjs(`!document.querySelector('button[aria-label="Shrink to orb"]') && !!document.querySelector('button[aria-label="Minimize"]')`), 'the title bar\x27s button says Minimize');
+  check(orbWindows() === 0, 'no orb window exists');
+  const n17b = minimizes;
+  await pjs(`document.querySelector('button[aria-label="Minimize"]').click()`);
+  check(await waitFor(() => minimizes === n17b + 1, 3000), 'minimizing Orbit minimizes the window');
+  check(qwin.isVisible(), 'Qubit stays on the Claude window');
   await pickAvatar('None');
-  check(await waitFor(() => orbShown, 3000), 'with no avatar the orb always shows (something stays on screen)');
+  check(await waitFor(() => !avatarWin('qubit'), 3000), 'no avatar: his window goes');
+  await pjs(`document.querySelector('button[aria-label="Minimize"]').click()`);
+  check(await waitFor(() => minimizes === n17b + 2, 3000), 'with no avatar it still minimizes, with no orb in its place');
+  check(orbWindows() === 0 && !orbEverShown, 'and no orb window ever showed');
   await pickAvatar('Qubit');
-  check(await waitFor(() => (qwin = avatarWin('qubit')) && !orbShown, 4000), 'Qubit back: the orb goes away again');
+  check(await waitFor(() => (qwin = avatarWin('qubit')), 4000), 'Qubit back');
   await waitFor(() => qjs('!!(window.__qubit && window.__qubit.q)'), 5000);
-  await orbSwitch(true);
-  check(await waitFor(() => orbShown, 3000), 'on again: the orb comes back');
-  check(await waitFor(() => savedOrb() !== false, 2000), 'saved: showOrb on');
 
   out('18. Errors on any page');
   const relevant = consoleErrors.filter((e) => !/Failed to load resource.*(api\.x\.ai|x\.ai)/.test(e));

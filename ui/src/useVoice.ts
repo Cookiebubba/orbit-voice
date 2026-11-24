@@ -1,5 +1,5 @@
 // Mic -> bridge (-> Grok), Grok audio -> speakers, plus everything the UI shows:
-// phase (listening / thinking / speaking), live volume levels for the orb, history, draft.
+// phase (listening / thinking / speaking), live volume levels for the avatar, history, draft.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playChime, setChimeVolume } from "./sounds";
 import { letItFinish, releaseTail, volumeGain } from "./playback.js";
@@ -100,7 +100,7 @@ export function useVoice(options: VoiceOptions) {
   const lastActivity = useRef(0); // you spoke or typed
   const toolsRunning = useRef(0); // tool calls still running (a second-brain answer can take minutes)
   const analyser = useRef<AnalyserNode | null>(null);
-  const outBus = useRef<GainNode | null>(null); // every chunk of the voice, before the volume (the orb and avatar read this level)
+  const outBus = useRef<GainNode | null>(null); // every chunk of the voice, before the volume (the avatar reads this level)
   const volumeNode = useRef<GainNode | null>(null); // Settings → Voice → Volume, between outBus and the speakers
   const playing = useRef(new Set<AudioBufferSourceNode>());
   // When the queued audio should have finished, by the wall clock. "Still playing" is judged by
@@ -739,7 +739,7 @@ export function useVoice(options: VoiceOptions) {
       audioStats.current = { scheduled: 0, played: 0, firstLead: 0, maxLead: 0, chunks: 0, cut: 0, kept: 0 };
       playing.current.clear();
       if (ac.state === "suspended") void ac.resume();
-      // The voice -> outBus -> volume -> speakers. The level the orb and the avatar move with is read
+      // The voice -> outBus -> volume -> speakers. The level the avatar moves with is read
       // before the volume (an analyser on outBus), so they react the same however quiet it plays.
       outBus.current = ac.createGain();
       analyser.current = ac.createAnalyser();
@@ -772,7 +772,7 @@ export function useVoice(options: VoiceOptions) {
     };
   }, [caption, handle, stop]);
 
-  // ~20 fps: work out the phase and the volume levels that drive the orb.
+  // ~20 fps: work out the phase and the volume levels that drive the avatar.
   useEffect(() => {
     if (phase === "off") return;
     const buf = new Float32Array(512);
@@ -780,7 +780,7 @@ export function useVoice(options: VoiceOptions) {
     let inp = 0;
     const id = setInterval(() => {
       // Hung up (stop() has run) but React hasn't re-rendered yet: don't turn "off" back into
-      // "connecting" (that left the orb stuck on "Connecting…" after a hang-up).
+      // "connecting" (that left the status stuck on "Connecting…" after a hang-up).
       if (!ctx.current) return;
       if (analyser.current) {
         analyser.current.getFloatTimeDomainData(buf);
@@ -813,7 +813,7 @@ export function useVoice(options: VoiceOptions) {
   }, [options.volume]);
 
   /**
-   * Hotkey, orb click/right-click and "Hey Grok": start if asleep (hung up); otherwise go to sleep.
+   * Hotkey and "Hey Grok": start if asleep (hung up); otherwise go to sleep.
    * During a spoken update Grok started by itself, it hangs up right away (no goodbye to wait for).
    */
   const hotkey = useCallback(() => {

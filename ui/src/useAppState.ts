@@ -32,12 +32,7 @@ export type Settings = {
   avatarClickTalk: boolean;
   avatarThrow: boolean;
   avatarThrowSound: boolean;
-  showOrb: boolean;
   autoUpdate: boolean;
-  orbStick: boolean;
-  orbPulse: boolean;
-  orbPulseGrok: boolean;
-  orbPulseAmount: number;
   anywhere: boolean;
   anywhereVision: boolean;
   anywhereCdp: boolean;
@@ -47,7 +42,8 @@ export type Settings = {
 };
 
 /** voiceWarming: Claude voice's speech is loading and warming up (a call started now waits for it). */
-export type AppConfig = { version: string; hasKey: boolean; keyStorage: string; settings: Settings; voiceWarming?: boolean };
+/** appName, testBuild: this copy of the app (electron/identity.js), real Orbit or a test build beside it. */
+export type AppConfig = { version: string; appName?: string; testBuild?: boolean; hasKey: boolean; keyStorage: string; settings: Settings; voiceWarming?: boolean };
 export type Finished = { id: string; title: string; summary: string; at: number };
 
 export async function postJson(url: string, body: object) {

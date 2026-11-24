@@ -1,7 +1,6 @@
 // Runs claude-window.ps1, which reports Claude's windows whenever they change, picks the one the
-// orb docks on (see claude-windows.js) and reports that one ({ found, hwnd, min, front, x, y, w, h }
-// in real screen pixels). While following (see follow()), the helper moves the orb itself, on that
-// window. For the avatar it also watches that window's prompt box (watchBox(), burst()) and reports
+// avatar lives on (see claude-windows.js) and reports that one ({ found, hwnd, min, front, x, y, w, h }
+// in real screen pixels). For the avatar it also watches that window's prompt box (watchBox(), burst()) and reports
 // where it is (onBox). Restarts the helper if it dies, re-sending the last commands.
 
 import { spawn } from 'node:child_process';
@@ -19,22 +18,10 @@ export function createClaudeWindowTracker({ onChange, onBox = () => {}, onError 
   let child = null;
   let stopped = true;
   let restarts = [];
-  let command = 'pause'; // the last instruction, replayed after a restart
   const picker = createWindowPicker();
-  let current = { found: false }; // the window the orb docks on
-  let following = null; // { orbHwnd, anchor } while the helper moves the orb
+  let current = { found: false }; // the window the avatar lives on
   let boxCommand = null; // 'box <hwnd>' while the avatar wants the prompt box watched
 
-  const send = (line) => {
-    command = line;
-    try { child?.stdin.write(`${line}\n`); } catch { /* restarting; replayed on start */ }
-  };
-  const sendFollow = () => {
-    if (!following || !current.found) return;
-    const { orbHwnd, anchor } = following;
-    const line = `follow ${orbHwnd} ${current.hwnd} ${anchor.corner} ${anchor.dx} ${anchor.dy}`;
-    if (line !== command) send(line);
-  };
   /** One report line from the helper. */
   const onLine = (line) => {
     let s;
@@ -46,9 +33,7 @@ export function createClaudeWindowTracker({ onChange, onBox = () => {}, onError 
     if (s && s.box && typeof s.box === 'object') return onBox(s.box);
     if (!s || !Array.isArray(s.wins)) return;
     const next = picker.pick(s);
-    const moved = next.hwnd !== current.hwnd;
     current = next;
-    if (moved) sendFollow(); // onto the other window at once, before Orbit re-places the orb
     onChange(next);
   };
 
@@ -59,7 +44,6 @@ export function createClaudeWindowTracker({ onChange, onBox = () => {}, onError 
     child = fake || spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT, '-ParentPid', String(process.pid)], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     child.on('error', (e) => onError(`The Claude window watcher could not start: ${String(e?.message || e).slice(0, 160)}`));
     child.stdin.on('error', () => {});
-    child.stdin.write(`${command}\n`);
     if (boxCommand) child.stdin.write(`${boxCommand}\n`);
     let err = '';
     child.stderr?.on('data', (d) => { if (err.length < 4000) err += d; });
@@ -83,22 +67,10 @@ export function createClaudeWindowTracker({ onChange, onBox = () => {}, onError 
     },
     stop() {
       stopped = true;
-      command = 'pause';
-      following = null;
       boxCommand = null;
       current = { found: false };
       try { child?.kill(); } catch { /* already gone */ }
       child = null;
-    },
-    /** Keep the orb (native window handle) at this spot on the Claude window it docks on; the helper moves it. */
-    follow(orbHwnd, anchor) {
-      following = { orbHwnd, anchor };
-      sendFollow();
-    },
-    /** Stop moving the orb (hidden, free, or being dragged). */
-    pause() {
-      following = null;
-      if (command !== 'pause') send('pause');
     },
     /** Watch this Claude window's prompt box (0: stop): its rects come to onBox as it moves. */
     watchBox(hwnd) {
@@ -112,7 +84,7 @@ export function createClaudeWindowTracker({ onChange, onBox = () => {}, onError 
       if (!boxCommand) return;
       try { child?.stdin.write('burst\n'); } catch { /* restarting */ }
     },
-    /** The window the orb docks on (the Claude window you were in last). */
+    /** The window the avatar lives on (the Claude window you were in last). */
     get current() { return current; },
     get running() { return !stopped; },
   };

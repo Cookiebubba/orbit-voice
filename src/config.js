@@ -31,13 +31,7 @@ export const DEFAULTS = Object.freeze({
   wakeOnResults: true,
   costPerMinute: 0.08, // USD, xAI's published voice-agent rate at the time of writing
   model: 'grok-voice-latest',
-  orbPosition: null, // [x, y] of the floating orb
   autoUpdate: true, // check GitHub Releases at launch and every 6 h, download, install on quit
-  orbStick: false, // "Stick to Claude Code": the orb rides on the Claude window
-  orbPulse: false, // "Pulse with your voice": the orb grows very slightly as you speak
-  orbPulseGrok: false, // "Pulse with Grok's voice": the same while Grok speaks
-  orbPulseAmount: 0.05, // how much it grows at full volume: 0.01–0.1 (1–10%)
-  orbStickAnchor: null, // { corner: 'tl'|'tr'|'bl'|'br', dx, dy } in DIPs from that corner of the Claude window
   // Second brain: Grok can hand hard questions to Claude through the user's Claude Code.
   brainEnabled: true,
   brainModel: 'auto', // 'auto' = Grok picks Haiku, Sonnet or Opus per question; or always one of them
@@ -45,7 +39,9 @@ export const DEFAULTS = Object.freeze({
   brainConnection: 'claude-code', // 'claude-code' = the user's Claude login; 'api-key' = an Anthropic API key
   brainClaudePath: '', // '' = find Claude Code automatically
   // Web search for current facts: Grok uses xAI's own search tools; Claude voice a quick, isolated
-  // Claude Code run with only WebSearch and WebFetch (see searchWeb in brain.js).
+  // Claude Code run with only WebSearch and WebFetch (see searchWeb in brain.js). It needs the second
+  // brain: with brainEnabled off Orbit doesn't search, and this value is kept for when it's back on
+  // (see webSearchOn).
   webSearch: true,
   // The voice itself: 'claude' (local speech models + Claude Haiku through the user's own Claude
   // Code, so it runs on their Claude plan with no xAI key; models are downloaded when it's first
@@ -72,9 +68,6 @@ export const DEFAULTS = Object.freeze({
   avatarThrow: true,
   // ...and a "Wheee!" when he's really thrown (not a gentle put-down), at the voice volume.
   avatarThrowSound: true,
-  // The floating orb the main window minimizes into. With an avatar on it can be turned off: the
-  // avatar stands in for it and Orbit opens from the tray icon. (Without an avatar it always shows.)
-  showOrb: true,
   // "Orbit anywhere": Orbit follows the window you're in, in any app (window events, no polling),
   // so it can read it when you ask and Qubit can come along. Acting in other apps still asks.
   anywhere: true,
@@ -101,12 +94,11 @@ export const DEFAULTS = Object.freeze({
 });
 
 /**
- * What a brand-new install of the desktop app starts with on top of DEFAULTS (as Orbit Native's
- * Engine.firstRunSettings): Qubit, no floating orb (the window minimizes to the taskbar like any
- * app's) and the onboarding still to do. Written to its settings file at once, so they read as
+ * What a brand-new install of the desktop app starts with on top of DEFAULTS: Qubit, and the
+ * onboarding still to do. Written to its settings file at once, so they read as
  * chosen. An install with a settings file, or with an xAI key saved, keeps what it has.
  */
-export const FIRST_RUN_SETTINGS = Object.freeze({ avatar: 'qubit', showOrb: false, onboarded: false });
+export const FIRST_RUN_SETTINGS = Object.freeze({ avatar: 'qubit', onboarded: false });
 
 export const AVATARS = Object.freeze(['buddy', 'qubit', 'none']);
 
@@ -234,22 +226,11 @@ function sanitize(input) {
       case 'voiceVolume':
         if (Number.isFinite(val)) out.voiceVolume = Math.min(1, Math.max(0, Math.round(val * 100) / 100));
         break;
-      case 'orbPulseAmount':
-        if (Number.isFinite(val)) out.orbPulseAmount = Math.min(0.1, Math.max(0.01, Math.round(val * 1000) / 1000));
-        break;
-      case 'orbStickAnchor':
-        if (val === null || (val && ['tl', 'tr', 'bl', 'br'].includes(val.corner) && [val.dx, val.dy].every((n) => Number.isFinite(n) && n >= 0 && n <= 10000))) {
-          out.orbStickAnchor = val && { corner: val.corner, dx: Math.round(val.dx), dy: Math.round(val.dy) };
-        }
-        break;
       case 'anywhereUnderOrbit':
         if (Array.isArray(val)) out.anywhereUnderOrbit = [...new Set(val.filter((a) => typeof a === 'string' && /^[\w .()+-]{1,80}(\.exe)?$/i.test(a)).map((a) => a.toLowerCase()))].slice(0, 50);
         break;
       case 'anywhereMouseLeadMs':
         if (Number.isFinite(val)) out.anywhereMouseLeadMs = Math.min(600, Math.max(0, Math.round(val)));
-        break;
-      case 'orbPosition':
-        if (val === null || (Array.isArray(val) && val.length === 2 && val.every(Number.isFinite))) out.orbPosition = val && val.map(Math.round);
         break;
       default:
         if (typeof val === typeof DEFAULTS[k]) out[k] = val;
@@ -323,6 +304,8 @@ export function engineFor({ saved, hadFile = false, hasKey = false } = {}) {
 
 export const getSettings = () => ({ ...settings });
 export const getSetting = (k) => settings[k];
+/** Whether Orbit may search the web now: Settings -> Brain -> Search the web, under Second brain. */
+export const webSearchOn = (s = settings) => !!s.brainEnabled && !!s.webSearch;
 
 // A desktop shell that keeps settings.json itself (Orbit Native): it is told what changed here
 // instead of this module writing the file.

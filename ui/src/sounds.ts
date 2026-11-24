@@ -2,11 +2,15 @@
 import { DEFAULT_VOLUME, chimeLevel } from "./playback.js";
 let ctx: AudioContext | null = null;
 
-const NOTES: Record<"wake" | "sleep" | "done", number[]> = {
+export type Chime = "wake" | "sleep" | "done";
+const NOTES: Record<Chime, number[]> = {
   wake: [523.25, 783.99], // C5 → G5
   sleep: [783.99, 523.25], // G5 → C5
   done: [659.25, 783.99, 1046.5], // E5 → G5 → C6
 };
+
+/** When a chime has rung out enough for speech to follow it, seconds. */
+export const chimeLength = (kind: Chime) => (NOTES[kind].length - 1) * 0.12 + 0.3;
 
 // The chimes follow Orbit's voice volume (Settings → Voice), staying as loud relative to it as before.
 let chimeVolume = chimeLevel(DEFAULT_VOLUME);

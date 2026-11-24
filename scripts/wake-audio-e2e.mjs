@@ -3,7 +3,7 @@
 //
 // It doesn't start Orbit itself (no tray, hotkey or single-instance lock), so it never touches a
 // running Orbit: its own bridge on port 4391, a throwaway config, a fake Grok that speaks real
-// audio (a 1.5 s tone), and a hidden window like Orbit's in orb mode. First an ordinary call
+// audio (a 1.5 s tone), and a hidden window like Orbit's when started with Windows. First an ordinary call
 // lasting a few seconds, hung up with the Sleep button; then Claude "finishes", the bridge asks
 // the page to wake Grok, and the page reports at hang-up how much of Grok's audio it scheduled and
 // played, and how far ahead of its clock the first chunk was put. Prints the bridge's log lines

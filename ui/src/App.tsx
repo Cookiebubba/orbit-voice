@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 import History from "./components/History";
 import SessionSwitcher from "./components/SessionSwitcher";
 import { desktop } from "./desktop";
-import { PULSE_DEFAULT } from "./orbLook";
 import AvatarHero from "./hero/AvatarHero";
 import Settings from "./Settings";
 import Onboarding from "./Onboarding";
@@ -45,11 +44,17 @@ export default function App() {
   const wakeOn = wakeStatus === "listening";
   const [view, setView] = useState<View>("main");
   const [focusKey, setFocusKey] = useState(false); // Settings opened from the "needs an xAI key" notice
+  const [engineFirst, setEngineFirst] = useState(false); // ...or any notice about the voice's setup
   // A try to talk that couldn't start: why, and (Claude voice) its readiness as last checked.
   const [blocked, setBlocked] = useState<TalkBlocked>(null);
   const [claudeStatus, setClaudeStatus] = useState<ClaudeVoiceReady | null>(null);
   const claudeReady = useRef(false); // checked once per run: then calls start straight away
   const notice = talkNotice(blocked, app.config, claudeStatus);
+  // The window's own name: a test build says so everywhere you'd see it.
+  const appName = app.config?.appName ?? "Orbit";
+  useEffect(() => {
+    document.title = appName;
+  }, [appName]);
   const [typing, setTyping] = useState(false);
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -57,7 +62,6 @@ export default function App() {
   const tap = settings?.listenMode === "tap";
   const workingTitles = new Set(app.claudeWorking.map((w) => w.title));
   const claudeWorking = app.claudeWorking.length > 0;
-  const pulse = { pulseMe: !!settings?.orbPulse, pulseGrok: !!settings?.orbPulseGrok, pulseAmount: settings?.orbPulseAmount ?? PULSE_DEFAULT };
 
   // Claude finished a turn somewhere: chime, note it, and pop a system notification if we're not in front.
   finishedRef.current = (f) => {
@@ -162,22 +166,21 @@ export default function App() {
     if (v.errorCount) desktop?.buddyEvent?.("error");
   }, [v.errorCount]);
 
-  // Keep the floating orb (and the avatar) in sync with this window.
+  // Keep the avatar in sync with this window.
   const draftWaiting = !!v.draft;
   useEffect(() => {
-    desktop?.sendOrbState({ phase: v.phase, input: v.levels.input, output: v.levels.output, asleep: v.asleep, hearing: v.hearing, claudeWorking, muted: v.muted, draft: draftWaiting, sending: v.sending, ...pulse });
-  }, [v.phase, v.levels, v.asleep, v.hearing, claudeWorking, v.muted, draftWaiting, v.sending, pulse.pulseMe, pulse.pulseGrok, pulse.pulseAmount]);
+    desktop?.sendVoiceState({ phase: v.phase, input: v.levels.input, output: v.levels.output, asleep: v.asleep, hearing: v.hearing, claudeWorking, muted: v.muted, draft: draftWaiting, sending: v.sending });
+  }, [v.phase, v.levels, v.asleep, v.hearing, claudeWorking, v.muted, draftWaiting, v.sending]);
 
-  // Right-clicking the floating orb toggles sleep; the global hotkey starts / sleeps / wakes.
+  // The global hotkey starts / sleeps / wakes.
   const actions = useRef(v);
   actions.current = v;
-  // The hotkey (and the wake word, the orb): hung up, it starts a call (if one can start); in a
+  // The hotkey (and the wake word): hung up, it starts a call (if one can start); in a
   // call, it sleeps / wakes as before.
   hotkeyRef.current = () => {
     if (v.phase === "off") void tryTalk(() => actions.current.hotkey());
     else v.hotkey();
   };
-  useEffect(() => desktop?.onOrbAction((a) => a === "toggle-sleep" && hotkeyRef.current()), []);
   useEffect(() => desktop?.onHotkey(() => hotkeyRef.current()), []);
   // A click on the avatar: the wake word's own path (Orbit off or asleep). Already awake, the
   // avatar's little nod is all. Grok without a key: the notice on the main page says why.
@@ -220,11 +223,10 @@ export default function App() {
   // The first-run onboarding ("How should Orbit talk?") stands in for the main page until it's done
   // or skipped (Settings and History still open from the title bar).
   const onboarding = screen === "main" && onboardingShown(settings);
-  // No floating orb (Settings -> Avatar): the title bar's button minimizes to the taskbar.
-  const orbOff = settings?.showOrb === false && settings?.avatar !== "none";
   const startTalk = () => void tryTalk(() => v.start());
   const openSettings = () => {
     setFocusKey(notice?.kind === "grok-key");
+    setEngineFirst(true); // the key, Claude Code and the speech models all live in the Voice engine sheet
     setView("settings");
   };
   const switchToClaude = async () => {
@@ -252,7 +254,7 @@ export default function App() {
       {wakeFrame}
       {/* title bar: draggable in the desktop app (on a Mac the traffic lights sit at its left) */}
       <div className={cn("flex h-11 shrink-0 items-center gap-1.5 pr-1.5 [-webkit-app-region:drag]", "pl-4")}>
-        <span className="wordmark mr-1 text-[19px]">Orbit</span>
+        <span className="wordmark mr-1 shrink-0 text-[19px]">{appName}</span>
         <SessionSwitcher
           current={v.sessionTitle}
           workingTitles={workingTitles}
@@ -268,12 +270,20 @@ export default function App() {
           <TitleButton label="History" active={view === "history"} onClick={() => setView((x) => (x === "history" ? "main" : "history"))}>
             <HistoryIcon size={15} />
           </TitleButton>
-          <TitleButton label="Settings" active={view === "settings"} onClick={() => setView((x) => (x === "settings" ? "main" : "settings"))}>
+          <TitleButton
+            label="Settings"
+            active={view === "settings"}
+            onClick={() => {
+              setFocusKey(false);
+              setEngineFirst(false);
+              setView((x) => (x === "settings" ? "main" : "settings"));
+            }}
+          >
             <SettingsIcon size={15} />
           </TitleButton>
           {desktop && (
             <>
-              <TitleButton label={orbOff ? "Minimize" : "Shrink to orb"} onClick={() => desktop?.minimize()}>
+              <TitleButton label="Minimize" onClick={() => desktop?.minimize()}>
                 <Minus size={16} />
               </TitleButton>
               <TitleButton label="Quit" onClick={() => desktop?.close()} danger>
@@ -292,8 +302,13 @@ export default function App() {
           update={app.updateSettings}
           onKeySaved={app.setHasKey}
           focusKey={focusKey}
+          engineFirst={engineFirst}
+          live={on}
+          listening={on && !v.asleep && !v.muted}
+          ownSound={v.ownSound}
           onClose={() => {
             setFocusKey(false);
+            setEngineFirst(false);
             setView("main");
           }}
         />

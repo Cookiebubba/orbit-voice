@@ -14,7 +14,7 @@ export const PULSE_MIN = 0.01;
 export const PULSE_MAX = 0.1;
 export const PULSE_DEFAULT = 0.05;
 
-type Look = { claudeWorking: boolean; phase: Phase; asleep: boolean; pulseMe: boolean; pulseGrok: boolean; pulseAmount: number };
+type Look = { claudeWorking: boolean; phase: Phase; asleep: boolean; pulseMe?: boolean; pulseGrok?: boolean; pulseAmount?: number };
 
 /**
  * Param overrides for the orb, or undefined for its normal look. While Grok is on (connected and

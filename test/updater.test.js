@@ -24,6 +24,18 @@ test('running from source: status "dev", no checks, nothing to install', async (
   assert.deepEqual(seen, [], 'no state changes from source');
 });
 
+test('a test build: status "off", electron-updater never touched, nothing to check or install', async () => {
+  const seen = [];
+  const never = new Proxy({}, { get() { throw new Error('a test build must not touch the updater'); }, set() { throw new Error('a test build must not touch the updater'); } });
+  const u = createUpdater({ isPackaged: true, off: true, auto: true, updater: never, onChange: (s) => seen.push(s) });
+  assert.deepEqual(u.state(), { status: 'off' });
+  assert.deepEqual(await u.check(), { status: 'off' });
+  u.setAuto(true);
+  assert.equal(u.install(), false);
+  u.stop();
+  assert.deepEqual(seen, []);
+});
+
 // ---- channels: stable installs never see a beta; beta installs get later betas and stables
 
 import { createRequire } from 'node:module';
