@@ -1,6 +1,6 @@
 // Help for someone without Claude Code: the official install command for this computer (with
 // Copy), the sign-in step, and a link to Anthropic's setup page. Orbit never runs the installer;
-// it only shows the command. Used by the main page's notice and Settings → Second brain.
+// it only shows the command. Used by the main page's notice and Settings → Voice engine.
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";

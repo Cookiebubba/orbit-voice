@@ -7,7 +7,7 @@
 //
 // Phases:
 //   units  - pure functions: settings sanitizing, consent check, log scrubbing, session lookup,
-//            transcript parsing, second-brain args, orb anchoring, .env parsing, update errors
+//            transcript parsing, second-brain args, .env parsing, update errors
 //   tools  - the tool runner with random tool names and arguments (consent invariant included)
 //   http   - the bridge's HTTP API and static files with random methods, paths, headers, bodies
 //   voice  - the /voice WebSocket, both sides random: the page and a fake Grok
@@ -134,7 +134,6 @@ const { withoutSendTail } = await import('../../src/send-intent.js');
 const { decisionFrom } = await import('../../src/claude-prompt.js');
 const brain = await import('../../src/brain.js?real'); // the real parser (the loader fakes only askBrain's process)
 const continuity = await import('../../src/continuity.js');
-const stick = await import('../../electron/orb-stick.js');
 const updater = await import('../../electron/updater.js');
 const server = await import('../../src/server.js');
 // Short timings so windows and deadlines actually run out within a round.
@@ -249,15 +248,6 @@ function fuzzUnits() {
       }
     }
 
-    const win = { x: g.int(4000) - 2000, y: g.int(3000) - 1000, width: g.int(3000), height: g.int(2000) };
-    const anchor = g.chance(0.5) ? stick.DEFAULT_ANCHOR : g.value();
-    timed('units', 'isAnchor', anchor, () => stick.isAnchor(anchor));
-    if (stick.isAnchor(anchor)) {
-      const pos = timed('units', 'orbPositionFor', { win, anchor }, () => stick.orbPositionFor(win, anchor, 128));
-      if (pos && ![pos.x, pos.y].every(Number.isFinite)) fail('units', 'orbPositionFor not finite', { win, anchor });
-      const back = pos && timed('units', 'anchorFor', { win, pos }, () => stick.anchorFor(win, pos, 128));
-      if (back && !stick.isAnchor(back)) fail('units', 'anchorFor made an invalid anchor', { win, pos, back });
-    }
 
     const err = g.str(200);
     const msg = timed('units', 'describeUpdateError', err, () => updater.describeUpdateError(err));

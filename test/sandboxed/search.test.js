@@ -79,7 +79,11 @@ test('new words for each search, none from a notification, a cap, and the settin
   const { r: r2, say: say2 } = runner();
   await say2('search for it');
   assert.match((await search(r2, 'it')).error, /turned off/);
-  updateSettings({ webSearch: true });
+  updateSettings({ webSearch: true, brainEnabled: false });
+  const { r: r3, say: say3 } = runner();
+  await say3('search for it');
+  assert.match((await search(r3, 'it')).error, /needs the second brain/, 'Second brain off: no search, the saved value aside');
+  updateSettings({ brainEnabled: true });
   assert.equal(searches().length, 10);
 });
 
@@ -143,6 +147,15 @@ test('Grok\x27s session has xAI\x27s own web and X search; turning it off takes 
   assert.ok(!lastTools().some((n) => /search/.test(n)), 'the live session is updated');
   updateSettings({ webSearch: true });
   await wait(40);
+  assert.ok(lastTools().includes('web_search'));
+  // Second brain off takes search with it, live, and the saved value brings it back.
+  updateSettings({ brainEnabled: false });
+  await wait(40);
+  assert.ok(!lastTools().some((n) => /search/.test(n)), 'no xAI search with the second brain off');
+  assert.doesNotMatch(up.got.filter((g) => g.type === 'session.update').at(-1).session.instructions, /search the web instead of guessing/);
+  updateSettings({ brainEnabled: true });
+  await wait(40);
+  assert.ok(lastTools().includes('web_search'), 'back with the second brain');
   await p.bye();
 });
 

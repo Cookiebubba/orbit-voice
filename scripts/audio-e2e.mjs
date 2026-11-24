@@ -5,10 +5,10 @@
 // E2E_PORT), a throwaway config, a fake Grok this script drives itself, a hidden window, and a
 // stand-in for the Claude window (nothing reads or touches the real one). In the page, everything
 // that reaches the speakers is recorded (a tap on the AudioContext's destination), and what the
-// level meter for the orb and the avatar reads is noted. Synthetic tones only.
+// level meter for the avatar reads is noted. Synthetic tones only.
 //
 // 1. Volume: the voice plays at the gain the setting asks for (squared), changes live mid-call, and
-//    the level the orb and avatar move with is read before the volume.
+//    the level the avatar moves with is read before the volume.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -74,7 +74,7 @@ app.whenReady().then(run).catch((e) => {
 });
 
 // In the page, before the call starts: record what reaches the speakers (with the context clock),
-// and the loudest level the orb's meter reads.
+// and the loudest level the meter reads.
 const TAP = `(() => {
   if (window.__tap) return true;
   const tap = (window.__tap = { chunks: [], meter: 0, ctx: null });
@@ -128,7 +128,7 @@ async function run() {
   const a = await heard(t0, t0 + 1.5);
   check(Math.abs(a.pk - 0.5 * 0.25) < 0.02, 'at volume 50% the voice plays at gain 0.25', `peak ${a.pk.toFixed(3)}, want 0.125`);
   const meter = await js('window.__tap.meter');
-  check(meter > 0.3, 'the orb and avatar read the level before the volume', `meter ${meter.toFixed(3)}, the tone's RMS is 0.354`);
+  check(meter > 0.3, 'the avatar reads the level before the volume', `meter ${meter.toFixed(3)}, the tone's RMS is 0.354`);
   updateSettings({ voiceVolume: 1 });
   await wait(400);
   const t1 = await now();

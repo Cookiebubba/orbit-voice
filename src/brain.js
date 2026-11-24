@@ -264,7 +264,7 @@ export function askBrain({ question, model = 'sonnet', explore = false, cwd, con
   timeoutMs ??= BRAIN_MODELS[model]?.timeoutMs ?? 60_000;
   return new Promise((resolve) => {
     const exe = claudePath || findClaude()?.path;
-    if (!exe) return resolve({ ok: false, error: 'Claude Code is not installed (or not found), so the second brain is unavailable. Orbit Settings → Second brain has its one-line install command.' });
+    if (!exe) return resolve({ ok: false, error: 'Claude Code is not installed (or not found), so the second brain is unavailable. Orbit Settings → Voice engine has its one-line install command.' });
     if (explore && !(cwd && fs.existsSync(cwd))) explore = false;
 
     // Claude login by default; an API key only when the user chose that connection.
@@ -403,7 +403,7 @@ export function readSearch(value) {
 export function searchWeb({ query, claudePath, apiKey, signal, spawnImpl = spawn, timeoutMs = SEARCH_LIMITS.timeoutMs }) {
   return new Promise((resolve) => {
     const exe = claudePath || findClaude()?.path;
-    if (!exe) return resolve({ ok: false, error: 'Claude Code is not installed (or not found), so web search is unavailable. Orbit Settings → Second brain has its one-line install command.' });
+    if (!exe) return resolve({ ok: false, error: 'Claude Code is not installed (or not found), so web search is unavailable. Orbit Settings → Voice engine has its one-line install command.' });
     const env = childEnv(process.env);
     delete env.ANTHROPIC_API_KEY;
     delete env.ELECTRON_RUN_AS_NODE;
@@ -551,9 +551,9 @@ process.on('exit', () => { for (const c of live) killTree(c, true); });
 
 function describeFailure(text, code) {
   const t = String(text || '').trim();
-  if (/session expired|could not be refreshed|token.*expired/i.test(t)) return 'Claude Code\x27s sign-in has expired. Sign in again with Sign in under Settings → Second brain (or ask Grok to open it).';
+  if (/session expired|could not be refreshed|token.*expired/i.test(t)) return 'Claude Code\x27s sign-in has expired. Sign in again with Sign in under Settings → Voice engine (or ask Grok to open it).';
   if (/unknown option.*restricted/i.test(t)) return 'This Claude Code is too old for the second brain. Update Claude Code (run "claude update") and try again.';
-  if (/log ?in|authenticat|api key|unauthori[sz]ed|401/i.test(t)) return 'Claude Code is not signed in. Use Sign in under Settings → Second brain (or ask Grok to open it), or add an Anthropic API key there.';
+  if (/log ?in|authenticat|api key|unauthori[sz]ed|401/i.test(t)) return 'Claude Code is not signed in. Use Sign in under Settings → Voice engine (or ask Grok to open it), or add an Anthropic API key there.';
   if (/budget/i.test(t)) return 'The second brain hit its spending limit for one question.';
   if (/rate.?limit|usage limit|429|overloaded/i.test(t)) return 'Claude is rate-limited or busy right now. Try again in a bit.';
   return `The second brain failed${code ? ` (exit ${code})` : ''}${t ? `: ${t.split('\n')[0].slice(0, 200)}` : '.'}`;

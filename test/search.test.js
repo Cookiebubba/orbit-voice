@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { SEARCH_LIMITS, readSearch, searchArgs, searchWeb } from '../src/brain.js';
-import { initConfig, updateSettings } from '../src/config.js';
+import { getSetting, initConfig, updateSettings, webSearchOn } from '../src/config.js';
 import { SEARCH_STATE, SEARCH_TOOL_DEF, toolDefs } from '../src/tools.js';
 import { agentContext } from '../src/agent.js';
 
@@ -90,7 +90,7 @@ test('searchWeb: the question on stdin (never an argument), the structured answe
 
 test('each engine gets its own search, only while the setting is on', () => {
   initConfig({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-search-')) });
-  const names = (s) => toolDefs({ brainEnabled: false, webSearch: s.webSearch, engine: s.engine }).map((t) => t.name || t.type);
+  const names = (s) => toolDefs({ brainEnabled: true, webSearch: s.webSearch, engine: s.engine }).map((t) => t.name || t.type);
   assert.deepEqual(names({ webSearch: true, engine: 'grok' }).filter((n) => /search/.test(n)), ['web_search', 'x_search'], 'Grok: xAI\x27s own');
   assert.deepEqual(names({ webSearch: true, engine: 'claude' }).filter((n) => /search/.test(n)), ['search_web'], 'Claude voice: through Claude Code');
   assert.deepEqual(names({ webSearch: false, engine: 'grok' }).filter((n) => /search/.test(n)), []);
@@ -103,4 +103,28 @@ test('each engine gets its own search, only while the setting is on', () => {
   updateSettings({ webSearch: false });
   assert.ok(!/Web search/.test(agentContext().instructions));
   updateSettings({ webSearch: true });
+});
+
+test('web search depends on the second brain, and its saved value waits for it', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-search-'));
+  initConfig({ dir });
+  const searchNames = () => agentContext().tools.map((t) => t.name || t.type).filter((n) => /search/.test(n));
+  for (const engine of ['grok', 'claude']) {
+    updateSettings({ voiceEngine: engine, brainEnabled: true, webSearch: true });
+    assert.ok(searchNames().length, `${engine}: on with the brain on`);
+    assert.match(agentContext().instructions, /Web search/);
+    updateSettings({ brainEnabled: false });
+    assert.equal(webSearchOn(), false);
+    assert.deepEqual(searchNames().filter((n) => n !== 'ask_second_brain'), [], `${engine}: no search with the brain off`);
+    assert.ok(!/Web search/.test(agentContext().instructions), `${engine}: the model is not told it can search`);
+    assert.equal(getSetting('webSearch'), true, 'the saved value is left alone');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')).webSearch, undefined, 'still the default on disk: nothing rewrote it');
+    updateSettings({ brainEnabled: true });
+    assert.ok(searchNames().length, `${engine}: back with the brain`);
+    assert.equal(webSearchOn(), true);
+  }
+  // Whoever builds the settings for toolDefs, it holds there too.
+  assert.ok(!toolDefs({ brainEnabled: false, webSearch: true, engine: 'grok' }).some((t) => /search/.test(t.name || t.type)));
+  assert.ok(!toolDefs({ brainEnabled: false, webSearch: true, engine: 'claude' }).some((t) => /search/.test(t.name || t.type)));
+  updateSettings({ brainEnabled: true, webSearch: true });
 });

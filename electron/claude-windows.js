@@ -1,7 +1,7 @@
-// Which Claude window the orb docks on, when Claude has several (the main window, sessions popped
+// Which Claude window the avatar lives on, when Claude has several (the main window, sessions popped
 // out into their own). The one most recently in front: the foreground one, or the last Claude
 // window that was in front while another app is. If that one is minimized, the most recent one
-// that isn't; with every Claude window minimized, that first one (and the orb hides). Before any
+// that isn't; with every Claude window minimized, that first one. Before any
 // Claude window has been in front, the highest one in z-order (as desktop.ps1 picks it too).
 //
 // pick(state) takes the helper's report (see claude-window.ps1):

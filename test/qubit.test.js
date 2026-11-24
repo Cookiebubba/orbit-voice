@@ -16,6 +16,20 @@ await import('../ui/src/vendor/avatars/orbit-nav.js');
 await import('../ui/src/vendor/avatars/qubit-engine.js');
 const E = globalThis.QubitEngine;
 
+test('thinking keeps him on his floor: violet, eye spinning, and no hover or bob at all', () => {
+  const m = E.MODES.thinking;
+  assert.equal(m.hover, undefined);
+  assert.equal(m.superpose, true, 'his eye still spins');
+  assert.ok(m.hueCycle, 'his colour still drifts');
+  assert.ok(!Object.values(E.MODES).some((x) => x.hover), 'no mode floats');
+  const q = E.create({ mount: fakeEl(), width: 200, height: 200, size: 64, floor: 20, mode: 'idle' });
+  q.setMode('thinking', { instant: true });
+  for (let i = 0; i < 240; i++) q.update(1 / 60);
+  assert.equal(q.sp.hover.v, 0);
+  assert.equal(q.sp.hover.t, 0);
+  q.destroy?.();
+});
+
 /** Math.random, seeded (the engine's blinks, glances and flips use it). */
 function seeded(seed) {
   let a = seed >>> 0;

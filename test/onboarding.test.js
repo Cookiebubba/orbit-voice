@@ -26,29 +26,50 @@ const saved = (dir) => JSON.parse(fs.readFileSync(file(dir), 'utf8'));
 const launch = (dir, key = '') => initConfig({ dir, secrets: store(key), brainSecrets: store(''), firstRun: FIRST_RUN_SETTINGS });
 const st = (claudeFound, signedIn, state = 'idle', percent = 0, error = '') => ({ claudeFound, signedIn, mb: 120, models: { state, percent, error } });
 
-test('a new install starts on Qubit with no floating orb and the onboarding to do (as Orbit Native)', () => {
-  assert.deepEqual({ ...FIRST_RUN_SETTINGS }, { avatar: 'qubit', showOrb: false, onboarded: false });
+test('a new install starts on Qubit and the onboarding to do', () => {
+  assert.deepEqual({ ...FIRST_RUN_SETTINGS }, { avatar: 'qubit', onboarded: false });
   // The shared defaults are unchanged: an install from before, whose file leaves them out, keeps them.
   assert.equal(DEFAULTS.avatar, 'buddy');
-  assert.equal(DEFAULTS.showOrb, true);
   assert.equal(DEFAULTS.onboarded, true);
   const dir = tmp();
   const s = launch(dir);
   assert.equal(s.avatar, 'qubit');
-  assert.equal(s.showOrb, false);
   assert.equal(s.onboarded, false);
   assert.equal(s.voiceEngine, 'claude');
   // Written at once, so they read as chosen.
-  assert.deepEqual(saved(dir), { voiceEngine: 'claude', avatar: 'qubit', showOrb: false, onboarded: false });
+  assert.deepEqual(saved(dir), { voiceEngine: 'claude', avatar: 'qubit', onboarded: false });
   // The next launch is the same install: nothing is applied again.
   assert.deepEqual(launch(dir).avatar, 'qubit');
-  updateSettings({ avatar: 'buddy', showOrb: true });
+  updateSettings({ avatar: 'buddy' });
   assert.equal(launch(dir).avatar, 'buddy', 'a choice made afterwards stays');
-  assert.equal(getSettings().showOrb, true);
   // Without the desktop app's first-run settings (npm run web, the tests): as before.
   const plain = tmp();
   assert.equal(initConfig({ dir: plain, secrets: store(''), brainSecrets: store('') }).avatar, 'buddy');
   assert.deepEqual(saved(plain), { voiceEngine: 'claude' });
+});
+
+test('the orb is gone from the settings: an old file loads cleanly, ignores it and keeps the rest', () => {
+  const ORB = ['showOrb', 'orbStick', 'orbStickAnchor', 'orbPosition', 'orbPulse', 'orbPulseGrok', 'orbPulseAmount'];
+  for (const k of ORB) {
+    assert.equal(Object.hasOwn(DEFAULTS, k), false, `${k} in DEFAULTS`);
+    assert.equal(Object.hasOwn(FIRST_RUN_SETTINGS, k), false, `${k} in FIRST_RUN_SETTINGS`);
+  }
+  const dir = tmp();
+  const old = { voiceEngine: 'claude', voice: 'ara', speed: 1.5, avatar: 'none', buddySize: 1, anywhere: false, showOrb: false, orbStick: true, orbPulse: true, orbPulseGrok: true, orbPulseAmount: 0.02, orbPosition: [3294, 1237], orbStickAnchor: { corner: 'br', dx: 0, dy: 0 } };
+  fs.writeFileSync(file(dir), JSON.stringify(old, null, 2));
+  const s = launch(dir);
+  for (const k of ORB) assert.equal(s[k], undefined, k);
+  for (const k of ['voiceEngine', 'voice', 'speed', 'avatar', 'buddySize', 'anywhere']) assert.deepEqual(s[k], old[k], k);
+  assert.deepEqual(updateSettings({ showOrb: true, orbStick: false, orbPosition: [1, 2] }), [], 'nothing can set them');
+  updateSettings({ speed: 1.2 });
+  const after = saved(dir);
+  for (const k of ORB) assert.equal(after[k], undefined, `${k} written back`);
+  assert.equal(after.voice, 'ara');
+  assert.equal(after.speed, 1.2);
+  // Junk in them is no different.
+  const junk = tmp();
+  fs.writeFileSync(file(junk), JSON.stringify({ voiceEngine: 'claude', orbPosition: 'x', orbStickAnchor: { toString: 1 }, showOrb: { a: 1 }, orbPulseAmount: 'lots' }));
+  assert.equal(launch(junk).voiceEngine, 'claude');
 });
 
 test('existing installs keep every saved value and never see the onboarding', () => {
@@ -60,7 +81,6 @@ test('existing installs keep every saved value and never see the onboarding', ()
     assert.equal(s.onboarded, true, JSON.stringify(before));
     assert.equal(onboardingShown(s), false);
     assert.equal(s.avatar, before.avatar ?? 'buddy', 'the avatar it had');
-    assert.equal(s.showOrb, true, 'the orb it had');
     if (before.speed) assert.equal(s.speed, before.speed);
     assert.equal(fs.readFileSync(file(dir), 'utf8'), text, 'the file is not rewritten');
   }
@@ -220,11 +240,13 @@ test('the voice warms up at launch, and the main page says so meanwhile', () => 
   assert.match(read('ui', 'src', 'useAppState.ts'), /evt\.type === "voice\.warming"/);
 });
 
-test('with the orb off, shrinking Orbit puts it on the taskbar (a way back besides the tray)', () => {
+test('there is no orb window: minimizing puts Orbit on the taskbar, and the tray still opens it', () => {
   const main = read('electron', 'main.js');
   assert.match(main, /firstRun: FIRST_RUN_SETTINGS/);
-  assert.match(main, /if \(!orbAllowed\(\)\) \{\s*orb\.hide\(\);\s*if \(quiet\) main\.hide\(\);\s*else if \(!main\.isMinimized\(\)\) main\.minimize\(\);/);
-  assert.match(main, /main\.on\('restore', \(\) => orbMode && showMain\(\)\)/);
+  assert.match(main, /on\('win:minimize', \(\) => main\?\.minimize\(\)\)/);
+  assert.doesNotMatch(main, /authUrl\('orb'\)|createOrb\b|showOrb|\borb\b/, 'nothing here opens or mentions an orb');
+  assert.match(main, /main\.once\('ready-to-show', \(\) => startHidden\(\) \|\| main\.show\(\)\)/, 'started with Windows: only the tray icon');
+  assert.doesNotMatch(read('electron', 'preload.cjs'), /\borb|Orb[A-Z]|orb:/, 'and the page has no way to ask for one');
   assert.match(main, /tray\.on\('click', showMain\)/, 'the tray icon still opens it');
-  assert.match(read('ui', 'src', 'App.tsx'), /label=\{orbOff \? "Minimize" : "Shrink to orb"\}/);
+  assert.match(read('ui', 'src', 'App.tsx'), /<TitleButton label="Minimize" onClick=\{\(\) => desktop\?\.minimize\(\)\}>/);
 });

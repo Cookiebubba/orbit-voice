@@ -79,7 +79,7 @@ Settings → Orbit anywhere: **Let Grok work in the window you're in** (on by de
 
 ## Tests
 
-`npm test` (unit and sandboxed), `npm run fuzz`, `npm run e2e:avatar`, `npm run fuzz:e2e`, `npm run e2e:anywhere` and `npm run e2e:mouse` (Orbit's mouse on our own test windows; a real click through it only while nobody uses the PC, or with `ORBIT_TEST_FOCUS=1`). Real-window tests use our own test windows only (`test/e2e/FakeApp.cs`, WinForms and WPF) and take turns on the desktop (`test/e2e/desktop-lock.mjs`). Tests that move the foreground run only while nobody has used the PC for a minute (or with `ORBIT_TEST_FOCUS=1`).
+`npm test` (unit and sandboxed), `npm run fuzz`, `npm run e2e:avatar`, `npm run fuzz:e2e`, `npm run e2e:anywhere` and `npm run e2e:mouse` (Orbit's mouse on our own test windows; a real click through it only while nobody uses the PC, or with `ORBIT_TEST_FOCUS=1`). In `npm test` the real-window tests are opt-in: they are skipped unless `ORBIT_E2E=1` is set (and always in CI or with `ORBIT_SKIP_REAL_WINDOWS=1`). Real-window tests use our own test windows only (`test/e2e/FakeApp.cs`, WinForms and WPF) and take turns on the desktop (`test/e2e/desktop-lock.mjs`). Tests that move the foreground run only while nobody has used the PC for a minute (or with `ORBIT_TEST_FOCUS=1`).
 
 ## Manual checks (need your own apps or accounts)
 

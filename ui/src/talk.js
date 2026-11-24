@@ -2,7 +2,7 @@
 // talk.d.ts) so the tests run it in node.
 //
 // Claude voice runs on the user's own Claude Code sign-in (their Claude plan): no xAI key. Grok
-// voice needs an xAI key. The main page always shows (the avatar, the orb); a key is only asked
+// voice needs an xAI key. The main page always shows; a key is only asked
 // for, inline, when someone tries to talk to Grok without one.
 
 export const GROK_NEEDS_KEY = 'Grok voice needs an xAI key. Add one in Settings, or switch to Claude voice.';

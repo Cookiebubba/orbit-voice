@@ -1,0 +1,182 @@
+/* Settings: one home under the title bar, six rooms as sheets, and Qubit on top. Ink on white, and
+   Qubit is the only thing allowed colour (plus one live dot). Everything is scoped to .oset.
+   Sizes are for the 360 by 580 window: the title bar takes 44, so a full sheet's top edge is 66 below
+   ours (580 - 44 - 470). That edge stays put at any window height, and he stands on it. */
+.oset {
+  --paper: #ffffff;
+  --soft: #f4f4f5;
+  --fg: #0d0d0d;
+  --ink: #3d4148;
+  --muted: #6b7076;
+  --faint: #9a9ea4;
+  --line: rgba(0, 0, 0, .1);
+  --line-strong: rgba(0, 0, 0, .16);
+  --on-ink: #ffffff;
+  --on-ink-label: rgba(255, 255, 255, .62);
+  --on-ink-small: rgba(255, 255, 255, .65);
+  --on-ink-corner: rgba(255, 255, 255, .5);
+  --on-ink-well: rgba(255, 255, 255, .14);
+  --well: rgba(0, 0, 0, .06);
+  --hover: #ececee;
+  --switch-off: #d9d9dd;
+  --handle: rgba(0, 0, 0, .14);
+  --scrim: rgba(13, 13, 13, .28);
+  --live: oklch(0.78 0.13 205);
+  --live-ring: oklch(0.78 0.13 205 / .22);
+  --shadow-pop: 0 0 0 1px rgba(0, 0, 0, .1), 0 16px 32px -12px rgba(20, 22, 30, .3);
+  --shadow-sheet: 0 -10px 30px -12px rgba(0, 0, 0, .25);
+  --shadow-seg: 0 1px 2px rgba(0, 0, 0, .1);
+  --shadow-knob: 0 1px 2px rgba(0, 0, 0, .2);
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --spring: cubic-bezier(.16, 1, .3, 1);
+  --lift: 17px; /* his floor (83) up to a full sheet's top edge (66) */
+  --sheet-top: 66px;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--paper);
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.25;
+}
+.oset [hidden] { display: none !important; }
+.oset :focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.oset button { cursor: pointer; }
+.oset .ic { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+.oset .ic path.solid { fill: currentColor; stroke: none; fill-rule: evenodd; }
+
+/* the screen: the strip's paper is sticky, the grid scrolls under it */
+.oset .screen { position: absolute; inset: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; scroll-padding-top: 92px; scroll-padding-bottom: 12px; }
+.oset .screen-inner { padding: 0 12px 14px; display: grid; gap: 4px; position: relative; align-content: start; }
+.oset .qstrip { position: sticky; top: 0; z-index: 4; height: 84px; margin: 0 -12px 6px; background: var(--paper); }
+.oset .qstrip::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--line); }
+
+/* Qubit and his caption: pinned, above the scrim. He lifts with a full sheet, on the sheet's own curve. */
+.oset .qlive { position: absolute; z-index: 11; top: 0; left: 0; right: 0; height: 84px; padding: 10px 16px 0; display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 10px; align-items: end; pointer-events: none; transition: transform .42s var(--spring); }
+.oset .qstage { position: relative; width: 58px; height: 74px; }
+.oset .qmount, .oset .qbuddy { position: absolute; inset: 0; width: 58px; height: 74px; display: block; }
+.oset .qbuddy { image-rendering: pixelated; }
+.oset .qsay { padding-bottom: 12px; display: grid; gap: 3px; min-width: 0; }
+.oset .qsay .eyebrow { font-family: var(--mono); font-size: 9.5px; font-weight: 500; line-height: 1.6; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); transition: opacity .2s ease; }
+.oset .qsay p { margin: 0; font-size: 13px; line-height: 1.35; color: var(--fg); font-weight: 500; }
+.oset.band .qlive { transform: translateY(calc(var(--lift) * -1)); }
+.oset.band .qsay .eyebrow { opacity: 0; }
+
+.oset .room-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 4px 6px; border: 0; background: none; width: 100%; color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; border-radius: 6px; line-height: 1.3; }
+.oset .room-head:hover { color: var(--fg); }
+.oset .room-head .ic { width: 12px; height: 12px; stroke-width: 1.7; }
+.oset .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.oset .grid1 { display: grid; grid-template-columns: minmax(0, 1fr); }
+
+/* Rule 1: three kinds of tile. Black means on, nothing else is black. */
+.oset .tile { position: relative; text-align: left; border: 1px solid var(--line); background: var(--soft); border-radius: 16px; padding: 10px 11px; min-height: 66px; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 2px 9px; align-items: center; color: var(--fg); font: inherit; transition: background-color .22s ease-out, color .22s ease-out, border-color .22s ease-out, opacity .22s ease-out; user-select: none; }
+.oset .tile .well { grid-row: span 2; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--well); transition: background-color .22s ease-out; }
+.oset .tile .well .ic { width: 15px; height: 15px; stroke-width: 1.7; }
+.oset .tile .lbl { font-size: 11px; color: var(--muted); line-height: 1.2; align-self: end; transition: color .22s ease-out; }
+.oset .tile .val { font-size: 13px; font-weight: 600; line-height: 1.25; align-self: start; letter-spacing: -0.01em; display: flex; gap: 3px; min-width: 0; }
+.oset .tile .val .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.oset .tile .val .caret { color: var(--faint); font-weight: 500; flex: none; }
+.oset .tile.choice { background: var(--paper); border-color: var(--line-strong); }
+.oset .tile.on { background: var(--fg); border-color: var(--fg); color: var(--on-ink); }
+.oset .tile.on .lbl { color: var(--on-ink-label); }
+.oset .tile.on .well { background: var(--on-ink-well); }
+.oset .tile.needs { opacity: .4; }
+.oset .live { position: absolute; top: 12px; right: 12px; width: 7px; height: 7px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 3px var(--live-ring); animation: oset-live 1.8s ease-in-out infinite; }
+@keyframes oset-live { 50% { transform: scale(.7); opacity: .6; } }
+
+.oset .dial { position: relative; height: 44px; border-radius: 14px; background: var(--soft); border: 1px solid var(--line); overflow: hidden; margin-top: 6px; cursor: ew-resize; touch-action: pan-y; user-select: none; }
+.oset .dial .fill { position: absolute; inset: 0 auto 0 0; background: var(--fg); transition: width .12s linear; }
+.oset .dial .row { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; pointer-events: none; font-weight: 600; font-size: 12.5px; }
+.oset .dial .row span { color: var(--on-ink); mix-blend-mode: difference; display: inline-flex; gap: 8px; align-items: center; }
+.oset .dial .row span:last-child { font-family: var(--mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+.oset .dial .ic { width: 14px; height: 14px; stroke-width: 1.8; }
+.oset .dial input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; pointer-events: none; }
+.oset .dial:has(input:focus-visible) { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+.oset .seg3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 16px; background: var(--soft); border: 1px solid var(--line); }
+.oset .seg3 button { border: 0; border-radius: 12px; padding: 9px 4px; font: 600 12px/1.2 inherit; font-family: inherit; background: transparent; color: var(--muted); transition: background-color .22s ease-out, color .22s ease-out, transform .2s var(--spring); user-select: none; }
+.oset .seg3 button:active { transform: scale(.96); }
+.oset .seg3 button[aria-pressed="true"] { background: var(--fg); color: var(--on-ink); }
+
+.oset .sysrow { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; padding: 12px 4px 11px; border: 0; border-top: 1px solid var(--line); background: none; width: 100%; font-weight: 500; font-size: 12.5px; line-height: 1; color: var(--ink); }
+.oset .sysrow span:last-child { font-family: var(--mono); font-size: 11px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.oset .sysrow span:last-child::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+
+/* popover */
+.oset .pop { position: absolute; z-index: 3; background: var(--paper); border-radius: 14px; box-shadow: var(--shadow-pop); padding: 5px; display: grid; gap: 2px; width: 160px; transform-origin: top left; animation: oset-pop .22s var(--spring); }
+.oset .pop.right { transform-origin: top right; }
+.oset .pop.two { grid-template-columns: 1fr 1fr; width: 186px; }
+.oset .sheet .pop { z-index: 5; }
+@keyframes oset-pop { from { opacity: 0; transform: scale(.94) translateY(-4px); } }
+.oset .pop button { border: 0; background: transparent; text-align: left; padding: 8px 10px; border-radius: 9px; font-weight: 500; font-size: 13px; line-height: 1.25; color: var(--fg); display: grid; gap: 1px; }
+.oset .pop button small { font-size: 11px; color: var(--muted); font-weight: 400; line-height: 1.25; }
+.oset .pop button:hover, .oset .pop button:focus-visible { background: var(--soft); }
+.oset .pop button:focus-visible { outline-offset: -2px; }
+.oset .pop button[aria-selected="true"] { background: var(--fg); color: var(--on-ink); }
+.oset .pop button[aria-selected="true"] small { color: var(--on-ink-small); }
+
+/* sheet: full or half, nothing between. The scrim starts below the strip, so he stays undimmed. */
+.oset .scrim { position: absolute; inset: 0; background: linear-gradient(transparent 84px, var(--scrim) 84px); opacity: 0; pointer-events: none; transition: opacity .28s ease; z-index: 8; }
+.oset .scrim.open { opacity: 1; pointer-events: auto; }
+.oset .sheet { position: absolute; left: 0; right: 0; bottom: 0; height: calc(100% - var(--sheet-top)); background: var(--paper); border-radius: 18px 18px 0 0; z-index: 10; transform: translateY(105%); transition: transform .42s var(--spring); display: grid; grid-template-rows: auto minmax(0, 1fr); box-shadow: var(--shadow-sheet); overflow: hidden; }
+.oset .sheet.half { height: min(290px, calc(100% - var(--sheet-top))); }
+.oset .sheet.open { transform: none; }
+.oset .sheet-head { padding: 8px 16px 11px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 8px; border-bottom: 1px solid var(--line); }
+.oset .sheet-head .handle { grid-column: 1 / -1; justify-self: center; width: 36px; height: 4px; border-radius: 2px; background: var(--handle); margin-bottom: 6px; }
+.oset .sheet-head h4 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.6; }
+.oset .sheet-head button { border: 0; background: var(--fg); color: var(--on-ink); font-weight: 600; font-size: 12px; line-height: 1; padding: 7px 12px; border-radius: 999px; }
+.oset .sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 4px 16px 18px; scrollbar-width: none; }
+.oset .screen::-webkit-scrollbar, .oset .sheet-body::-webkit-scrollbar { display: none; } /* a native bar would take 15 px from the 360 px grid on Windows */
+.oset .srow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 12px 0; border-top: 1px solid var(--line); align-items: center; }
+.oset .room > .srow:first-child { border-top: 0; }
+.oset .srow .t { grid-column: 1; font-size: 13px; line-height: 1.6; font-weight: 600; color: var(--fg); display: flex; align-items: center; gap: 6px; min-width: 0; transition: opacity .22s ease-out; }
+.oset .srow .h { grid-column: 1; font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+.oset .srow .ctl { grid-row: 1 / span 2; grid-column: 2; display: flex; align-items: center; gap: 6px; transition: opacity .22s ease-out; }
+.oset .srow.indent { padding-left: 14px; border-left: 2px solid var(--soft); }
+.oset .srow.dim .t, .oset .srow.dim .ctl { opacity: .4; }
+.oset .srow.stack { grid-template-columns: minmax(0, 1fr); }
+.oset .srow.stack .ctl { grid-row: auto; grid-column: 1; margin-top: 8px; display: grid; }
+.oset .srow.stack .v { justify-self: start; }
+.oset .srow.stack .sseg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+.oset .srow .more { grid-column: 1 / -1; margin-top: 6px; display: grid; gap: 6px; font-size: 11.5px; line-height: 1.4; color: var(--muted); min-width: 0; }
+.oset .srow .more .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.oset .srow .more input { user-select: text; }
+.oset .bar { height: 4px; overflow: hidden; border-radius: 999px; background: var(--switch-off); }
+.oset .bar i { display: block; height: 100%; border-radius: inherit; background: var(--fg); transition: width .7s ease-out; }
+.oset .v { font: 400 11.5px/1.6 var(--mono); color: var(--ink); background: var(--soft); padding: 4px 8px; border-radius: 6px; white-space: nowrap; border: 0; text-decoration: none; }
+.oset button.v:hover, .oset a.v:hover { background: var(--hover); }
+.oset button.v:disabled { opacity: .5; cursor: default; }
+.oset .sw { width: 36px; height: 22px; border-radius: 999px; background: var(--switch-off); border: 0; position: relative; transition: background-color .22s ease-out, opacity .22s ease-out; padding: 0; flex: none; }
+.oset .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--paper); box-shadow: var(--shadow-knob); transition: transform .28s var(--spring); }
+.oset .sw[aria-checked="true"] { background: var(--fg); }
+.oset .sw[aria-checked="true"]::after { transform: translateX(14px); }
+.oset .sseg { display: inline-flex; background: var(--soft); border-radius: 9px; padding: 2px; gap: 2px; }
+.oset .sseg button { border: 0; background: transparent; font-weight: 500; font-size: 11.5px; line-height: 1; padding: 6px 9px; border-radius: 7px; color: var(--muted); white-space: nowrap; transition: background-color .22s ease-out, color .22s ease-out; }
+.oset .sseg button[aria-pressed="true"] { background: var(--paper); color: var(--fg); box-shadow: var(--shadow-seg); }
+.oset .keys { display: inline-flex; gap: 4px; align-items: center; }
+.oset .keyrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.oset .keybtn { border: 0; background: none; padding: 0; border-radius: 6px; display: inline-flex; min-height: 26px; align-items: center; font-weight: 500; font-size: 12px; line-height: 1.2; color: var(--ink); }
+.oset .keys kbd { font: 500 11px/1 var(--mono); border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 5px; padding: 5px 7px 6px; background: var(--paper); color: var(--fg); min-width: 24px; text-align: center; }
+.oset .linkish { border: 0; background: none; padding: 2px 0; font-size: 11.5px; line-height: 1.4; color: var(--muted); }
+.oset .linkish:hover { color: var(--fg); }
+.oset .beta { font: 400 9px/1.6 var(--mono); letter-spacing: .1em; border: 1px solid var(--line-strong); color: var(--muted); border-radius: 4px; padding: 1px 4px; }
+.oset .slider { display: inline-flex; gap: 8px; align-items: center; }
+.oset .track { position: relative; width: 92px; height: 6px; border-radius: 999px; background: var(--switch-off); touch-action: pan-y; cursor: ew-resize; }
+.oset .track::before { content: ""; position: absolute; inset: -12px -6px; }
+.oset .track i { position: absolute; inset: 0 auto 0 0; display: block; background: var(--fg); border-radius: inherit; }
+.oset .track input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; pointer-events: none; }
+.oset .track:has(input:focus-visible) { outline: 2px solid var(--fg); outline-offset: 4px; }
+.oset .srow [aria-disabled="true"], .oset .srow .track.off { cursor: default; }
+
+/* Rule 4: words that warn stay ink here (the shared Claude setup lines colour them elsewhere). */
+.oset .text-amber-700, .oset .text-red-600, .oset .text-emerald-700 { color: var(--fg); }
+
+@media (max-width: 339px) { /* a window narrower than the usual 360: the tile's value keeps its room */
+  .oset .tile { padding: 10px 9px; grid-template-columns: 24px minmax(0, 1fr); column-gap: 7px; }
+  .oset .tile .well { width: 24px; height: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .oset *, .oset *::before, .oset *::after { animation: none !important; transition-duration: .01ms !important; }
+}

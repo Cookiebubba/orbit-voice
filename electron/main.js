@@ -1,20 +1,20 @@
-// Desktop shell: a small frameless main window, a floating always-on-top orb that replaces
-// it while minimized, a tray icon, and the global hotkey. The bridge server runs in-process.
+// Desktop shell: a small frameless main window, a tray icon and the global hotkey. The bridge server
+// runs in-process. Minimized, the window is on the taskbar like any app's; the tray also opens it.
 //
 // This is Orbit for Windows. Orbit for Mac is Orbit Native (mac-swift/), a Swift app around the same
 // Node core.
-import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, safeStorage, screen, session, shell, Tray } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, safeStorage, session, shell, Tray } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEFAULTS, FIRST_RUN_SETTINGS, getSetting, onSettingsChange, updateSettings } from '../src/config.js';
 import { createClaudeWindowTracker } from './claude-window.js';
-import { helperRectToDip } from './buddy-geometry.js';
-import { DEFAULT_ANCHOR, anchorFor, isAnchor, orbPositionFor } from './orb-stick.js';
 import { getDesktopInfo, onPromptBoxWork, setDesktopDriver, setFrontWindowHint } from '../src/desktop.js';
 import { getLogDir, logError, logInfo, logWarn } from '../src/log.js';
 import { authUrl, hotkeyLabel, startServer, stopBackgroundWork } from '../src/server.js';
 import { createUpdater } from './updater.js';
+import { identityFor } from './identity.js';
+import { seedTestData } from './test-seed.js';
 import { createAvatar } from './avatar.js';
 import { createAvatarHost } from './avatar-host.js';
 import { createOrbitMouse } from './orbit-mouse.js';
@@ -30,28 +30,29 @@ const ROOT = path.resolve(HERE, '..');
 const PRELOAD = path.join(HERE, 'preload.cjs');
 const ICON = path.join(ROOT, 'assets', 'icon.png');
 const TRAY_ICON = path.join(ROOT, 'assets', 'tray.png');
-const ORB_SIZE = 128;
 const START_HIDDEN = process.argv.includes('--background'); // used by "Start with Windows"
 const LOGIN_LABEL = 'Start with Windows';
-/** Started quietly (as the orb): "--background", from "Start with Windows". */
+/** Started quietly (only the tray icon): "--background", from "Start with Windows". */
 const startHidden = () => START_HIDDEN;
 
-app.setName('Orbit');
+// Real Orbit, or a test build beside it (electron/identity.js): its name, data folder, port and hotkey.
+const identity = identityFor(JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')), { dev: !app.isPackaged && process.env.ORBIT_TEST_IDENTITY === '1' });
+
+app.setName(identity.name);
 // Developer testing only: feed a WAV file in as the microphone (never in the installed app).
 if (!app.isPackaged && process.env.GVB_FAKE_MIC) {
   app.commandLine.appendSwitch('use-fake-device-for-media-stream');
   app.commandLine.appendSwitch('use-file-for-fake-audio-capture', process.env.GVB_FAKE_MIC);
 }
-if (process.platform === 'win32') app.setAppUserModelId('dev.orbit.voice'); // Windows taskbar and notifications only
-app.setPath('userData', path.join(app.getPath('appData'), 'Orbit'));
+if (process.platform === 'win32') app.setAppUserModelId(identity.appId); // Windows taskbar and notifications only
+app.setPath('userData', path.join(app.getPath('appData'), identity.dataFolder));
 // Developer testing only (never in the installed app): a settings folder of its own, so a test run
 // never touches your real Orbit settings, keys or logs.
 if (!app.isPackaged && process.env.ORBIT_USER_DATA) app.setPath('userData', path.resolve(process.env.ORBIT_USER_DATA));
 
 let main = null;
-let orb = null;
 let avatar = null; // the avatar along the bottom of the Claude window: the pixel buddy or Qubit (see avatar.js)
-let lastOrbState = null; // Orbit's voice state, for an avatar that turns up later
+let lastVoiceState = null; // Orbit's voice state, for an avatar that turns up later
 let tray = null;
 let baseUrl = '';
 /** Is this URL Orbit's own page? An exact origin match: a prefix test would also accept
@@ -65,7 +66,6 @@ function isOurs(url) {
     return false;
   }
 }
-let drag = null; // { cursor, win } at drag start
 let quitting = false;
 
 if (!app.requestSingleInstanceLock()) {
@@ -174,189 +174,56 @@ function createMain() {
     minHeight: 480,
     frame: false, // the page draws its own title bar
     backgroundColor: '#ffffff', // the page is white (the website's look): no dark flash while it loads
-    title: 'Orbit',
+    title: identity.name,
     icon: ICON,
     show: false,
     webPreferences: secureWebPreferences,
   });
   lockDown(main);
   main.loadURL(authUrl('main')); // signs the window in, then shows the UI
-  main.once('ready-to-show', () => (startHidden() ? showOrb({ quiet: true }) : main.show()));
-  // Any way of minimizing (our button, taskbar click, Win+Down) turns into the orb.
-  main.on('minimize', () => showOrb());
-  // Back from the taskbar (the orb off): Orbit is open again, as from the tray or the orb.
-  main.on('restore', () => orbMode && showMain());
+  main.once('ready-to-show', () => startHidden() || main.show());
   main.on('close', () => {
     quitting = true;
   });
   main.on('closed', () => app.quit());
 }
 
-function orbStartPosition() {
-  const saved = getSetting('orbPosition');
-  const displays = screen.getAllDisplays();
-  if (saved && displays.some((d) => saved[0] >= d.workArea.x - 20 && saved[1] >= d.workArea.y - 20 && saved[0] < d.workArea.x + d.workArea.width && saved[1] < d.workArea.y + d.workArea.height)) {
-    return saved;
-  }
-  const { workArea } = screen.getPrimaryDisplay();
-  return [workArea.x + workArea.width - ORB_SIZE - 24, workArea.y + workArea.height - ORB_SIZE - 24];
-}
-
-function createOrb() {
-  orb = new BrowserWindow({
-    width: ORB_SIZE,
-    height: ORB_SIZE,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    maximizable: false,
-    minimizable: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    hasShadow: false,
-    show: false,
-    title: 'Orbit orb',
-    webPreferences: secureWebPreferences,
-  });
-  lockDown(orb);
-  orb.setAlwaysOnTop(true, 'screen-saver');
-  orbLayer = 'free';
-  orb.setPosition(...orbStartPosition());
-  orb.loadURL(authUrl('orb'));
-}
-
-/**
- * Shrink Orbit: into the floating orb, or, with the orb off (Settings -> Avatar -> Show the orb; a
- * new install starts that way, as Orbit Native has no orb), onto the taskbar like any app's window,
- * with the avatar standing in for the orb. `quiet` (started with Windows): hidden, in the tray.
- */
-function showOrb({ quiet = false } = {}) {
-  orbMode = true;
-  drag = null; // a click on the orb starts a "drag" that never ends; don't let it block the orb
-  if (!orbAllowed()) {
-    orb.hide();
-    if (quiet) main.hide();
-    else if (!main.isMinimized()) main.minimize(); // (its 'minimize' event comes back here: nothing more to do)
-    return;
-  }
-  main.hide();
-  if (getSetting('orbStick') && claude?.found) placeOrb();
-  else orb.showInactive();
-}
-
 function showMain() {
   if (!main) return;
-  orbMode = false;
-  drag = null;
-  claudeTracker.pause();
-  orb?.hide();
   if (main.isMinimized()) main.restore();
   main.show();
   main.focus();
 }
 
-// ---------- stick to Claude Code ----------
-// The orb rides on the Claude window: it follows moves and resizes at any display scaling, sits
-// just above Claude in z-order (topmost only while Claude or Orbit is in front, so other apps can
-// cover both), hides while Claude is minimized, and floats freely again when Claude isn't on
-// screen (closed, or on another virtual desktop). Dragging it picks a new spot on the window.
-let orbMode = false; // the orb is meant to be showing (the main window is hidden)
-let orbLayer = null; // 'free' | 'top' | 'above:<hwnd>'
-let claude = null; // the Claude window the orb docks on (the one you were in last): { found, hwnd, min, front, x, y, w, h } in screen pixels
-let claudeDip = null; // the Claude window in DIPs, when sticking
+// ---------- the Claude window ----------
+// The one you were in last: the avatar lives on it, and Grok's tools act on it. Watched by a helper
+// (claude-window.ps1) while there's an avatar on it.
+let claude = null; // { found, hwnd, min, front, x, y, w, h } in screen pixels
 let fakeWindowHelper = null; // developer testing only: a stand-in for claude-window.ps1 (see below)
 const claudeTracker = createClaudeWindowTracker({
   spawnHelper: () => fakeWindowHelper?.() || null,
   onChange: (s) => {
     claude = s;
     anywhereContexts.setHomeWindow(s?.found ? s.hwnd : 0); // the Claude window is Orbit's home context
-    placeOrb();
     avatar?.onClaude(s);
     avatarHost.onFocus(); // (a window's Qubit never stands on the window home is on)
     watchBox();
   },
   // Where Claude's prompt box is, the moment it moves (the avatar stands on it).
   onBox: (b) => avatar?.onBoxRect(b),
-  onError: (message) => logWarn('orb', message),
+  onError: (message) => logWarn('claude-window', message),
 });
 /** The helper watches the prompt box of the window the avatar is on, only while it shows. */
 const watchBox = () => claudeTracker.watchBox(avatar?.boxWindow || 0);
 // Orbit typing a draft in, clearing it or sending: the box grows or shrinks right then.
 onPromptBoxWork(() => claudeTracker.burst());
-const sticking = () => getSetting('orbStick') && !!claude?.found;
-// Grok's tools act on the same Claude window the orb is on (see src/desktop.ps1 -FrontHwnd).
+// Grok's tools act on the same Claude window (see src/desktop.ps1 -FrontHwnd).
 setFrontWindowHint(() => (claudeTracker.running && claude?.found ? claude.hwnd : 0));
-
-function setOrbBounds({ x, y }) {
-  const b = orb.getBounds();
-  // Always pass the size too: moving between displays with different scaling can otherwise
-  // leave the window resized.
-  if (b.x !== x || b.y !== y || b.width !== ORB_SIZE || b.height !== ORB_SIZE) orb.setBounds({ x, y, width: ORB_SIZE, height: ORB_SIZE });
-}
-
-function setOrbLayer(layer) {
-  if (layer === orbLayer) return;
-  orbLayer = layer;
-  if (layer === 'free' || layer === 'top') return orb.setAlwaysOnTop(true, 'screen-saver');
-  orb.setAlwaysOnTop(false);
-  try {
-    orb.moveAbove(`window:${claude.hwnd}:0`); // directly above Claude, under whatever covers it
-  } catch {
-    orb.setAlwaysOnTop(true, 'screen-saver');
-  }
-}
-
-function placeOrb() {
-  if (!orb || orb.isDestroyed() || drag) return;
-  if (!orbAllowed()) {
-    claudeTracker.pause();
-    orb.hide();
-    return;
-  }
-  if (!sticking()) {
-    claudeTracker.pause();
-    claudeDip = null;
-    if (orbLayer !== 'free') {
-      setOrbLayer('free');
-      const [x, y] = orbStartPosition();
-      setOrbBounds({ x, y });
-    }
-    if (orbMode && !orb.isVisible()) {
-      orb.showInactive();
-      orb.setAlwaysOnTop(true, 'screen-saver');
-    }
-    return;
-  }
-  claudeDip = helperRectToDip(screen, claude);
-  if (claude.min || !orbMode) {
-    claudeTracker.pause();
-    if (orb.isVisible()) orb.hide();
-    return;
-  }
-  const anchor = isAnchor(getSetting('orbStickAnchor')) ? getSetting('orbStickAnchor') : DEFAULT_ANCHOR;
-  if (!orb.isVisible()) {
-    setOrbBounds(orbPositionFor(claudeDip, anchor, ORB_SIZE)); // in place before it appears
-    orb.showInactive();
-    orbLayer = null; // z-order set while hidden may not stick: apply it again now that it shows
-  }
-  // From here the helper moves the orb itself the instant Claude moves (no trailing behind).
-  claudeTracker.follow(nativeHandle(orb), anchor);
-  setOrbLayer(claude.front === 'other' ? `above:${claude.hwnd}` : 'top');
-}
-
-/** A window's HWND as a decimal string (for the helper). */
-function nativeHandle(win) {
-  const buf = win.getNativeWindowHandle();
-  return buf.length >= 8 ? buf.readBigUInt64LE(0).toString() : String(buf.readUInt32LE(0));
-}
 
 // ---------- the avatar ----------
 // Settings -> Avatar: the pixel buddy, Qubit or none. Switching is live: the new one's window comes
 // up with an entrance while the old one fades out (see avatar.js).
 const avatarKind = () => (['buddy', 'qubit'].includes(getSetting('avatar')) ? getSetting('avatar') : null);
-// Settings -> Avatar -> Show the orb: with an avatar on, the orb can be turned off (the avatar stands
-// in for it). Without an avatar the orb always shows, so there is always something on screen.
-const orbAllowed = () => getSetting('showOrb') !== false || !avatarKind();
 // Settings -> Avatar: click it to talk, and pick it up to throw it (its page reads these).
 const avatarPrefs = () => ({ clickTalk: getSetting('avatarClickTalk') !== false, throw: getSetting('avatarThrow') !== false, throwSound: getSetting('avatarThrowSound') !== false });
 function setAvatar({ live = false } = {}) {
@@ -385,7 +252,7 @@ function setAvatar({ live = false } = {}) {
       prefs: avatarPrefs,
     });
     avatar = next;
-    if (lastOrbState) avatarHost.onVoice(lastOrbState); // (home gets it, or rests while the talk is elsewhere)
+    if (lastVoiceState) avatarHost.onVoice(lastVoiceState); // (home gets it, or rests while the talk is elsewhere)
     if (claude) next.onClaude(claude);
     const up = () => avatar === next && next.setEnabled(true, getSetting('buddySize'), { entrance: live });
     if (old) gone.then(up);
@@ -434,17 +301,15 @@ const avatarHost = createAvatarHost({
 anywhereContexts.on((snap) => avatarHost.sync(snap));
 focus.on('change', () => avatarHost.onFocus());
 
-// The Claude window watcher runs while the orb sticks to Claude or an avatar is on.
-// (A free-floating avatar doesn't need it.)
-const needTracker = () => !!getSetting('orbStick') || (!!avatarKind() && !freeAvatar());
+// The Claude window watcher runs while an avatar is on it. (A free-floating avatar doesn't need it.)
+const needTracker = () => !!avatarKind() && !freeAvatar();
 onSettingsChange((changed) => {
   if (changed.includes('avatarClickTalk') || changed.includes('avatarThrow') || changed.includes('avatarThrowSound')) {
     avatar?.refresh();
     avatarHost.refresh();
   }
   if (changed.includes('avatar') || changed.includes('buddySize')) setAvatar({ live: true });
-  if (changed.includes('showOrb') && !changed.includes('orbStick') && !changed.includes('avatar')) return placeOrb();
-  if (!changed.includes('orbStick') && !changed.includes('avatar')) return;
+  if (!changed.includes('avatar')) return;
   if (needTracker()) {
     claudeTracker.start();
     if (claude) avatar?.onClaude(claude);
@@ -453,7 +318,6 @@ onSettingsChange((changed) => {
     claude = null;
     avatar?.onClaude({ found: false });
   }
-  placeOrb();
 });
 
 // ---------- Orbit anywhere: Orbit's mouse ----------
@@ -511,15 +375,15 @@ function setLogin(enabled) {
 
 function refreshTray() {
   if (!tray) return;
-  tray.setToolTip(`Orbit: ${hotkeyLabel(getSetting('wakeHotkey'))} to talk`);
+  tray.setToolTip(`${identity.name}: ${hotkeyLabel(getSetting('wakeHotkey'))} to talk`);
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: 'Open Orbit', click: showMain },
+      { label: `Open ${identity.name}`, click: showMain },
       { label: `Talk / sleep  (${hotkeyLabel(getSetting('wakeHotkey'))})`, click: () => main?.webContents.send('hotkey') },
       { type: 'separator' },
       { label: LOGIN_LABEL, type: 'checkbox', checked: loginEnabled(), click: (item) => setLogin(item.checked) },
       { type: 'separator' },
-      { label: 'Quit Orbit', click: () => app.quit() },
+      { label: `Quit ${identity.name}`, click: () => app.quit() },
     ]),
   );
 }
@@ -553,7 +417,7 @@ const hotkeyInfo = (extra = {}) => ({
   accelerator: getSetting('wakeHotkey'),
   label: hotkeyLabel(getSetting('wakeHotkey')),
   registered: !!activeHotkey,
-  defaultAccelerator: DEFAULTS.wakeHotkey,
+  defaultAccelerator: identity.hotkey || DEFAULTS.wakeHotkey,
   ...extra,
 });
 
@@ -588,12 +452,10 @@ handle('update:get', () => updater?.state() ?? { status: 'idle' });
 handle('update:check', () => updater?.check());
 handle('update:install', () => updater?.install());
 
-on('win:minimize', () => showOrb());
+on('win:minimize', () => main?.minimize());
 on('win:close', () => app.quit());
-on('orb:restore', () => showMain());
-on('orb:state', (s) => {
-  orb?.webContents.send('orb:state', s);
-  lastOrbState = s;
+on('voice:state', (s) => {
+  lastVoiceState = s;
   avatarHost.onVoice(s); // the window the conversation is in gets it; the others rest
   orbitMouse.onVoice(s); // its colour and its pulse while Orbit speaks
   // Orbit woke: the mouse's windows get ready (hidden), so its first glide has its page loaded.
@@ -646,28 +508,6 @@ ipcMain.on('buddy:lift', (e, on) => {
   if (on && getSetting('avatarThrow') === false) return a.lift(false);
   a.lift(!!on);
 });
-on('orb:action', (a) => main?.webContents.send('orb:action', a));
-on('orb:drag-start', () => {
-  claudeTracker.pause(); // the user is moving the orb; the helper waits until they drop it
-  drag = { cursor: screen.getCursorScreenPoint(), win: orb.getPosition() };
-});
-on('orb:drag-move', () => {
-  if (!drag) return;
-  const c = screen.getCursorScreenPoint();
-  orb.setPosition(drag.win[0] + c.x - drag.cursor.x, drag.win[1] + c.y - drag.cursor.y);
-});
-on('orb:drag-end', () => {
-  drag = null;
-  if (sticking() && !claude.min && claudeDip) {
-    // Remember the spot relative to the nearest corner of the Claude window, then snap inside it.
-    const [x, y] = orb.getPosition();
-    updateSettings({ orbStickAnchor: anchorFor(claudeDip, { x, y }, ORB_SIZE) });
-    placeOrb();
-  } else {
-    updateSettings({ orbPosition: orb.getPosition() });
-  }
-});
-
 app.whenReady().then(async () => {
   if (quitting) return;
   // Developer testing only (never in the installed app): a stand-in for Claude's window, so an
@@ -675,7 +515,7 @@ app.whenReady().then(async () => {
   if (!app.isPackaged && process.env.ORBIT_FAKE_DESKTOP) {
     const fake = await import(pathToFileURL(path.resolve(process.env.ORBIT_FAKE_DESKTOP)).href);
     setDesktopDriver(fake.default || fake);
-    // ...and for the Claude window watcher too (the orb and the avatar follow its windows).
+    // ...and for the Claude window watcher too (the avatar follows its windows).
     fakeWindowHelper = (fake.default || fake).windowHelper || null;
     // ...and for the focus watcher (without one, tests run with no focus watcher at all).
     fakeFocusHelper = (fake.default || fake).focusHelper || null;
@@ -684,16 +524,23 @@ app.whenReady().then(async () => {
   }
   try {
     const dir = app.getPath('userData');
+    // A test build opens ready: real Orbit's settings and speech models, copied once, read-only there.
+    let seed = null;
+    if (identity.testBuild) seed = await seedTestData({ from: path.join(app.getPath('appData'), 'Orbit'), to: dir, hotkey: identity.hotkey });
     baseUrl = await startServer({
+      ...(identity.port && (app.isPackaged || !process.env.PORT) ? { port: identity.port } : {}),
+      appName: identity.name,
+      testBuild: identity.testBuild,
       configDir: dir,
       secrets: encryptedKeyStore(dir),
       brainSecrets: encryptedKeyStore(dir, 'anthropic-key.bin'),
       clipboard: (text) => clipboard.writeText(text),
-      firstRun: FIRST_RUN_SETTINGS, // a brand-new install: Qubit, no orb, and the onboarding
+      firstRun: FIRST_RUN_SETTINGS, // a brand-new install: Qubit and the onboarding
       // Offline wake-word model: shipped next to the app (extraResources), or in the repo in dev.
       models: app.isPackaged ? path.join(process.resourcesPath, 'models') : path.join(ROOT, 'resources', 'models'),
     });
     if (!app.isPackaged && process.env.ORBIT_FAKE_DESKTOP) logInfo('app', 'Developer mode: using a stand-in for the Claude window');
+    if (seed) logInfo('app', seed.seeded ? `Test build: copied real Orbit's settings${seed.models ? ' and speech models' : ''}` : `Test build: nothing copied (${seed.why})`);
     // Connectors (Orbit anywhere): sign-in tokens sealed on disk, sign-in pages in the browser (https only).
     setMcpShell({ store: encryptedMapStore(dir, 'mcp-tokens.bin'), openExternal: (u) => (/^https:\/\//.test(u) ? shell.openExternal(u) : Promise.reject(new Error('Only https sign-in pages open.'))) });
     // Apps under Orbit (src/anywhere/keeper.js): keepers are this program in its keeper mode
@@ -708,8 +555,8 @@ app.whenReady().then(async () => {
   } catch (e) {
     logError('app', 'Bridge failed to start', e?.message);
     dialog.showErrorBox(
-      'Orbit',
-      e.code === 'EADDRINUSE' ? 'Port 4317 is already in use, probably by another copy of Orbit. Close it first.' : String(e.message || e),
+      identity.name,
+      e.code === 'EADDRINUSE' ? `Port ${identity.port || 4317} is already in use, probably by another copy of ${identity.name}. Close it first.` : String(e.message || e),
     );
     return app.quit();
   }
@@ -720,13 +567,13 @@ app.whenReady().then(async () => {
   app.on('web-contents-created', (_e, wc) => wc.on('will-attach-webview', (ev) => ev.preventDefault()));
 
   createMain();
-  createOrb();
   setAvatar();
   if (needTracker()) claudeTracker.start();
   setFocusTracking();
   createTray();
   updater = createUpdater({
     isPackaged: app.isPackaged,
+    off: !identity.updates,
     version: app.getVersion(),
     auto: !!getSetting('autoUpdate'),
     onChange: (state) => main?.webContents.send('update:state', state),
@@ -737,7 +584,7 @@ app.whenReady().then(async () => {
 
   if (process.env.GVB_SNAPSHOT_DIR && !app.isPackaged) {
     const { runSelfTest } = await import('./selftest.js');
-    runSelfTest({ dir: process.env.GVB_SNAPSHOT_DIR, main, orb, globalShortcut, hits: () => hotkeyHits, showOrb }).finally(() => app.quit());
+    runSelfTest({ dir: process.env.GVB_SNAPSHOT_DIR, main, globalShortcut, hits: () => hotkeyHits }).finally(() => app.quit());
   }
 });
 

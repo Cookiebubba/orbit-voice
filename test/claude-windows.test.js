@@ -1,4 +1,4 @@
-// Which Claude window the orb docks on when Claude has several, from fake window reports (the
+// Which Claude window the avatar lives on when Claude has several, from fake window reports (the
 // shape electron/claude-window.ps1 prints). No real windows are looked at.
 
 import test from 'node:test';
@@ -30,7 +30,7 @@ test('a minimized window gives way to the most recent visible one; all minimized
   assert.equal(p.pick({ wins: [win(2), win(1), win(3, { min: true })], fg: 0, front: 'other' }).hwnd, 1);
   // 1 minimized too: 2, the only one left on screen.
   assert.equal(p.pick({ wins: [win(2), win(1, { min: true }), win(3, { min: true })], fg: 0, front: 'other' }).hwnd, 2);
-  // Every one minimized: the most recent one, reported minimized (Orbit hides the orb).
+  // Every one minimized: the most recent one, reported minimized (the avatar hides).
   const all = p.pick({ wins: [win(2, { min: true }), win(1, { min: true }), win(3, { min: true })], fg: 0, front: 'other' });
   assert.equal(all.hwnd, 3);
   assert.equal(all.min, true);
@@ -59,7 +59,7 @@ test('junk in a report is ignored', () => {
   assert.deepEqual(p.recent(), [], 'a foreground window that is not one of Claude\x27s');
 });
 
-test('the tracker follows the active window and moves the orb onto another one at once', async () => {
+test('the tracker follows the active window, and tells the helper nothing about moving anything', async () => {
   const lines = [];
   let out;
   const fakeHelper = () => {
@@ -80,18 +80,16 @@ test('the tracker follows the active window and moves the orb onto another one a
     await new Promise((r) => setImmediate(r));
   };
   await report({ wins: [win(1), win(2)], fg: 1, front: 'claude' });
-  t.follow('900', { corner: 'br', dx: 24, dy: 140 });
-  assert.equal(lines.at(-1), 'follow 900 1 br 24 140');
+  assert.equal(t.current.hwnd, 1);
   await report({ wins: [win(2), win(1)], fg: 2, front: 'claude' });
-  assert.equal(lines.at(-1), 'follow 900 2 br 24 140', 'onto the other window before Orbit re-places the orb');
   assert.equal(t.current.hwnd, 2);
+  assert.equal(t.follow, undefined);
+  assert.equal(t.pause, undefined);
   await report({ wins: [win(1), win(2)], fg: 0, front: 'other' });
   assert.equal(seen.at(-1).hwnd, 2);
   assert.equal(seen.at(-1).front, 'other');
-  t.pause();
-  assert.equal(lines.at(-1), 'pause');
   await report({ wins: [win(1)], fg: 1, front: 'claude' });
-  assert.equal(lines.at(-1), 'pause', 'nothing moves while paused');
+  assert.deepEqual(lines, [], 'no commands to the helper for any of this');
   await report('{not json');
   t.stop();
   assert.equal(t.current.found, false);

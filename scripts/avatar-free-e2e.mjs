@@ -108,7 +108,7 @@ const USER_DATA = path.join(process.env.APPDATA, 'Orbit');
 fs.mkdirSync(USER_DATA, { recursive: true });
 fs.writeFileSync(
   path.join(USER_DATA, 'settings.json'),
-  JSON.stringify({ avatar: 'qubit', buddySize: 2, orbStick: false, announce: 'chime', announceWake: false, wakeOnResults: false, brainEnabled: false, wakeWord: false, autoUpdate: false, listenMode: 'always' }),
+  JSON.stringify({ avatar: 'qubit', buddySize: 2, announce: 'chime', announceWake: false, wakeOnResults: false, brainEnabled: false, wakeWord: false, autoUpdate: false, listenMode: 'always' }),
 );
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.ORBIT_FAKE_DESKTOP;

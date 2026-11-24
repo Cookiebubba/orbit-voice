@@ -263,7 +263,7 @@ let baseUrl = '';
 
 /**
  * The one-time link that signs a window in: it sets the session cookie and redirects to the UI.
- * `view` is 'main', 'orb', or an avatar's strip along the Claude window: 'buddy' (the pixel buddy)
+ * `view` is 'main', 'orb' (Orbit Native's only: the Windows app has no orb), or an avatar's strip along the Claude window: 'buddy' (the pixel buddy)
  * or 'qubit'; or 'mouse' (Orbit's mouse, an overlay per display). Only the desktop shell (or the terminal, in browser mode) has it.
  */
 export function authUrl(view = 'main') {
@@ -287,7 +287,7 @@ function tokenMatches(value) {
  * The desktop app passes its own config folder and encrypted key store. Tests may pass a `watcher`
  * (anything with on/start/working) to feed in "Claude finished" events.
  */
-export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, brainSecrets, clipboard, models, watcher: injectedWatcher, speechInShell = false, firstRun } = {}) {
+export function startServer({ port = Number(process.env.PORT || 4317), appName = 'Orbit', testBuild = false, configDir, secrets, brainSecrets, clipboard, models, watcher: injectedWatcher, speechInShell = false, firstRun } = {}) {
   initConfig({ dir: configDir, secrets, brainSecrets, firstRun });
   if (clipboard) setClipboardWriter(clipboard);
   const modelsDir = models || path.join(PROJECT_ROOT, 'resources', 'models');
@@ -334,7 +334,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     logInfo(
       'voice',
       `Claude voice turn: you stopped → first audio ${total}`,
-      `end of turn ${s(m.heardAt, m.endedAt)}, speech to text ${s(m.textAt, m.heardAt)}${m.stt && m.stt !== 'moonshine' ? ` (${m.stt})` : ''}, Claude first word ${s(m.firstTokenAt, m.textAt)}, first audio ${s(m.firstAudioAt, m.firstTokenAt)}${m.fillerAt ? `, filler at ${s(m.fillerAt, m.endedAt)}` : ''}${m.tool ? `, tool ${m.tool}` : ''}, ${m.status}`,
+      `end of turn ${s(m.heardAt, m.endedAt)}, speech to text ${s(m.textAt, m.heardAt)}${m.stt && m.stt !== 'moonshine' ? ` (${m.stt})` : ''}, Claude first word ${s(m.firstTokenAt, m.textAt)}, first audio ${s(m.firstAudioAt, m.firstTokenAt)}${m.tool ? `, tool ${m.tool}` : ''}, ${m.status}`,
     );
   };
   // On macOS, ask the login shell for its PATH in the background first (an app opened from Finder
@@ -548,8 +548,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
   };
 
   onSettingsChange((changed, all) => {
-    const { orbPosition, orbStickAnchor, ...visible } = all;
-    broadcast({ type: 'settings.changed', changed, settings: visible });
+    broadcast({ type: 'settings.changed', changed, settings: all });
     // What the voice model is told follows these (src/agent.js): a live call gets it at once.
     if (changed.some((k) => ['voice', 'claudeVoice', 'claudeVoiceModel', 'claudeVoiceEffort', 'claudeVoiceStt', 'speed', 'wakeHotkey', ...CONTEXT_SETTINGS].includes(k))) {
       for (const s of liveSessions) s.pushConfig();
@@ -564,8 +563,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
   });
 
   const publicSettings = () => {
-    const { orbPosition, orbStickAnchor, ...rest } = getSettings();
-    return { ...rest, hotkeyLabel: wakeLabel() };
+    return { ...getSettings(), hotkeyLabel: wakeLabel() };
   };
 
   server = http.createServer((req, res) => {
@@ -640,6 +638,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         case 'GET /api/config':
           return sendJson(res, 200, {
             version: VERSION,
+            appName,
+            testBuild,
             hasKey: !!getApiKey(),
             keyStorage: keyStorageKind(),
             settings: publicSettings(),
@@ -659,10 +659,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
 
         case 'POST /api/settings': {
           const patch = await readJson(req);
-          // The hotkey and orb position belong to the desktop shell, which validates them itself.
+          // The hotkey belongs to the desktop shell, which validates it itself.
           delete patch.wakeHotkey;
-          delete patch.orbPosition;
-          delete patch.orbStickAnchor;
           updateSettings(patch);
           prewarmClaudeVoice();
           return sendJson(res, 200, publicSettings());
@@ -703,13 +701,15 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           return sendJson(res, 200, { voice: getSetting('voice'), speed: getSetting('speed'), ...LIMITS, voices: await listVoices(), engine: 'grok' });
 
         case 'POST /api/claude-voice/preview': {
-          // A short sample of one of Claude voice's voices, made on this PC (no network, no cost).
-          if (!modelsReady(voiceModelsDir)) return sendJson(res, 409, { error: 'Download the speech models first (Voice engine, above).' });
+          // A short sample of one of Claude voice's voices, made on this PC (no network, no cost). No
+          // call is needed. `text`: what to say instead, a short line (Qubit's in Settings).
+          if (!modelsReady(voiceModelsDir)) return sendJson(res, 409, { error: 'Download the speech models first (Settings → Voice engine).' });
           const body = await readJson(req);
           const sid = Number.isInteger(Number(body.voice)) && Number(body.voice) >= 0 && Number(body.voice) <= 7 ? Number(body.voice) : getSetting('claudeVoice');
           const speed = Math.min(LIMITS.maxSpeed, Math.max(LIMITS.minSpeed, Number(body.speed) || getSetting('speed')));
           const speech = await loadSpeech(voiceModelsDir);
-          const samples = await speech.speak("Hi, I'm Orbit. Tell me what you need, and I'll pass it on to Claude.", { speed, sid });
+          const line = typeof body.text === 'string' ? body.text.trim().slice(0, 200) : '';
+          const samples = await speech.speak(line || "Hi, I'm Orbit. Tell me what you need, and I'll pass it on to Claude.", { speed, sid });
           res.writeHead(200, { 'content-type': 'audio/wav', 'cache-control': 'no-store', ...SECURITY_HEADERS });
           return res.end(wavFile(samples, 24000));
         }
@@ -1576,7 +1576,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       toBrowser({ type: 'bridge.error', message: `xAI connection error: ${e.message}` });
     });
     upstream.on('close', (code, reason) => {
-      // Every end is logged: from the orb you can't see the window's error captions.
+      // Every end is logged: with the window minimized you can't see its error captions.
       const secs = Math.round((Date.now() - connectedAt) / 1000);
       const why = reason.toString();
       const micSecs = (stats.micBytes / 2 / 24000).toFixed(1); // pcm16 mono at 24 kHz

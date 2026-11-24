@@ -191,6 +191,31 @@ test('a reply is spoken piece by piece, and a tool call goes to the bridge and b
   sock.close();
 });
 
+test('no reflex: a tool call with no words, or a slow first word, is silence until there is something real to say', async () => {
+  const fc = fakeClaude((text, nth) => (nth === 1 ? ['<tool>{"name":"get_current_session","arguments":{}}</tool>'] : ['Claude is idle.']));
+  const speech = fakeSpeech();
+  const sock = createClaudeRealtime({ claudePath: 'claude', speech, spawnImpl: fc.spawnImpl });
+  const ev = collect(sock);
+  await opened(sock);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.deepEqual(speech.said, [], 'nothing is made at the start of a call');
+  sock.send(JSON.stringify({ type: 'session.update', session: { instructions: 'x', tools: [{ name: 'get_current_session', description: 'd', parameters: {} }] } }));
+  sock.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'where am I?' }] } }));
+  sock.send(JSON.stringify({ type: 'response.create' }));
+  await until(() => ev.some((e) => e.type === 'response.done'));
+  const call = ev.find((e) => e.type === 'response.function_call_arguments.done');
+  assert.equal(call.name, 'get_current_session');
+  assert.deepEqual(speech.said, [], 'the tool call says nothing');
+  assert.ok(!ev.some((e) => e.type === 'response.output_audio.delta'), 'and sends no audio');
+  sock.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: call.call_id, output: '{"ok":true}' } }));
+  sock.send(JSON.stringify({ type: 'response.create' }));
+  await until(() => ev.filter((e) => e.type === 'response.done').length === 2);
+  assert.deepEqual(speech.said, ['Claude is idle.'], 'the answer is the first thing heard');
+  assert.ok(ev.every((e) => !('reflex' in e)), 'no reflex field');
+  assert.ok(!Object.keys(await import('../src/claude-voice.js').then((m) => m.CLAUDE_VOICE)).includes('slowFillerMs'));
+  sock.close();
+});
+
 test('a call Haiku writes as XML instead still goes to the bridge, and none of it is spoken', async () => {
   const fc = fakeClaude(() => ['On it. <inv', 'oke name="draft_prompt">\n<parameter name="text">Add dark ', 'mode.</parameter>\n</invoke>']);
   const speech = fakeSpeech();
