@@ -1112,7 +1112,7 @@ function SpeechModelsRow({ status, onDownload }: { status: ClaudeVoiceStatus | n
     <Row
       id="speechModels"
       title="Speech models"
-      hint={m.state === "ready" ? "Speech models ready." : m.state === "downloading" ? `Downloading speech models… ${m.percent}%` : m.state === "error" ? `Download failed: ${m.error}` : `Needs about ${status.mb} MB of speech models, kept on ${thisComputer}.`}
+      hint={m.state === "ready" ? `Ready, kept on ${thisComputer}.` : m.state === "downloading" ? `Downloading speech models… ${m.percent}%` : m.state === "error" ? `Download failed: ${m.error}` : `Needs about ${status.mb} MB of speech models, kept on ${thisComputer}.`}
       more={
         m.state === "downloading" ? (
           <div className="bar">
@@ -1168,7 +1168,7 @@ function XaiKey({ config, onSaved, focus }: { config: AppConfig; onSaved: () => 
         <span className="flex items-center justify-between gap-3">
           <span>xAI key saved, {keyStorageLabel(config.keyStorage)}.</span>
           <button type="button" className="v" onClick={() => setOpen((o) => !o)}>
-            Replace
+            {open ? "Cancel" : "Replace"}
           </button>
         </span>
       ) : (
@@ -1407,7 +1407,7 @@ function ClaudeCodeRows({ s, apply, voice, refreshVoice, onDownload }: { s: Sett
       <Row
         id="claudeCode"
         title="Claude Code"
-        hint={!claude ? "Second brain uses it, even on the Grok voice." : status ? (status.found ? `Using ${where}.` : "Claude Code not found.") : ""}
+        hint={!claude ? "Second brain uses it, even on the Grok voice." : status ? (status.found ? `Using ${where}.` : `Claude Code isn't on ${thisComputer} yet. To install it, paste this into a terminal:`) : ""}
         more={
           <>
             {!!status?.found && signedIn !== null && (
@@ -1422,7 +1422,7 @@ function ClaudeCodeRows({ s, apply, voice, refreshVoice, onDownload }: { s: Sett
             )}
             {!!status && !status.found && (
               <>
-                <span>Claude Code isn't on {thisComputer} yet. To install it, paste this into a terminal:</span>
+                {!claude && <span>Claude Code isn't on {thisComputer} yet. To install it, paste this into a terminal:</span>}
                 <InstallCommand className="mt-1" />
                 <SignInStep className="mt-1" />
                 <span className="btns items-center">

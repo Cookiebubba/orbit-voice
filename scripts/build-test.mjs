@@ -14,7 +14,7 @@ import { ORBIT_TEST } from '../electron/identity.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-const version = `${pkg.version}-${process.argv[2] || 'settings.3'}`;
+const version = `${pkg.version}-${process.argv[2] || 'settings.4'}`;
 
 if (!fs.existsSync(path.join(ROOT, 'public', 'index.html'))) throw new Error('Build the UI first: npm --prefix ui run build');
 

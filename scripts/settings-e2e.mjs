@@ -512,7 +512,7 @@ async function run() {
   const claudeRows = await js(`[...document.querySelectorAll('.sheet [data-row]')].map((r) => r.dataset.row).join()`);
   check(claudeRows === 'engine,claudeCode,claudePath,speechModels', 'Claude: the engine, then Claude Code, its location and the speech models', claudeRows);
   check((await until(() => js(`/Signed in to Claude Code/.test(${q('[data-row="claudeCode"]')}.textContent)`))) === true, 'it knows Claude Code is signed in', await text('[data-row="claudeCode"]'));
-  check((await hintOf('speechModels')) === 'Speech models ready.', 'and the speech models are ready', await hintOf('speechModels'));
+  check((await hintOf('speechModels')) === 'Ready, kept on this PC.', 'and the speech models are ready', await hintOf('speechModels'));
   check(!(await js(`!!${q('[data-row="usage"]')}`)) && !(await js(`!!${q('[data-row="xaiKey"]')}`)), 'no xAI key or Usage on the Claude screen');
   check(!!(await js(`${q('[data-row="engine"] .beta')}`)), 'BETA stays with the engine');
   await shot('engine-claude');
@@ -527,7 +527,7 @@ async function run() {
   await setClaudePath('');
   await until(() => getSetting('brainClaudePath') === '');
   await openRoom('engine');
-  await until(() => js(`/Claude Code not found/.test(${q('[data-row="claudeCode"]')}?.textContent || '')`));
+  await until(() => js(`/Claude Code isn't on this PC yet/.test(${q('[data-row="claudeCode"]')}?.textContent || '')`));
   check(/irm https:\/\/claude\.ai\/install\.ps1/.test(await text('[data-row="claudeCode"]')), 'Claude Code missing: the install help is here', (await text('[data-row="claudeCode"]')).slice(0, 120));
   check(/Check again/.test(await text('[data-row="claudeCode"]')) && /Setup guide/.test(await text('[data-row="claudeCode"]')), 'with Check again and the setup guide');
   await js(`[...document.querySelectorAll('[data-row="claudeCode"] button')].find((b) => b.textContent === 'Check again').click()`);
