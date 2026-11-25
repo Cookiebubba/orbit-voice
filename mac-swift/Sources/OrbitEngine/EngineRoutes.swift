@@ -89,17 +89,23 @@ extension Engine {
       // engine's list (Settings shows both while switching between them).
       let engine = r.query("engine")
       var out: [String: JSONValue] = ["speed": config["speed"] ?? .null, "minSpeed": .number(Self.speedFloor), "maxSpeed": .number(Self.speedCeiling)]
-      if engine == "claude" || (engine != "grok" && config.string("voiceEngine") == "claude") {
+      let activeEng = engine ?? config.string("voiceEngine")
+      if activeEng == "claude" || activeEng == "gemini-cli" {
         let wantTts = r.query("tts") ?? config.string("claudeVoiceTts")
-        if wantTts == "kokoro-en" {
+        if wantTts == "kokoro-v1" {
+          out["voice"] = .string(JSTruthy.string(config["kokoroVoice"]))
+          out["voices"] = .array(VoiceModels.kokoroV1Voices.map(\.json))
+          out["engine"] = .string(activeEng)
+          out["tts"] = "kokoro-v1"
+        } else if wantTts == "kokoro-en" {
           out["voice"] = .string(JSTruthy.string(config["kokoroVoice"]))
           out["voices"] = .array(VoiceModels.kokoroEnVoices.map(\.json))
-          out["engine"] = "claude"
+          out["engine"] = .string(activeEng)
           out["tts"] = "kokoro-en"
         } else {
           out["voice"] = .string(JSTruthy.string(config["claudeVoice"]))
           out["voices"] = .array(Self.claudeVoices)
-          out["engine"] = "claude"
+          out["engine"] = .string(activeEng)
           out["tts"] = "kitten"
         }
       } else {

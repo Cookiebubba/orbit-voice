@@ -27,7 +27,8 @@ private let personaOptions: [(value: String, label: String, hint: String)] = [
 
 private let ttsPackOptions: [(value: String, label: String, hint: String)] = [
   ("kitten", "Kitten Nano", "Bundled local voice pack (8 voices)."),
-  ("kokoro-en", "Kokoro English — British & US", "Optional 98 MB download adding 11 British & US voices, including George (British male — Alfred) and Lewis."),
+  ("kokoro-en", "Kokoro v0.19", "98 MB British & US pack (George & Lewis)."),
+  ("kokoro-v1", "Kokoro v1.0 British RP", "126 MB upgraded British RP pack with lexicon-gb-en: Daniel (Refined Alfred), Lewis (Deep Butler), George & Fable."),
 ]
 
 private let geminiLiveVoices: [String] = ["Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"]
@@ -265,8 +266,9 @@ struct VoiceCard: View {
   @State private var volTask: Task<Void, Never>?
 
   var body: some View {
-    let claude = engine == "claude"
+    let claude = engine == "claude" || engine == "gemini-cli"
     let s = ctx.settings
+    let isKokoro = s.string("claudeVoiceTts") == "kokoro-en" || s.string("claudeVoiceTts") == "kokoro-v1"
     Group {
       if let list {
         SettingsSection(title: claude ? "Orbit's voice" : "Grok's voice", titleGap: 0) {
@@ -274,7 +276,7 @@ struct VoiceCard: View {
             .font(Theme.font(12.5)).foregroundStyle(Theme.muted).relaxed(12.5).padding(.top, 12)
           Text("Voice").font(Theme.font(12)).foregroundStyle(Theme.muted).padding(.top, 16).padding(.bottom, 6)
           HStack(spacing: 8) {
-            let currentVoice = claude ? (s.string("claudeVoiceTts") == "kokoro-en" ? String(s.int("kokoroVoice")) : String(s.int("claudeVoice"))) : s.string("voice")
+            let currentVoice = claude ? (isKokoro ? String(s.int("kokoroVoice")) : String(s.int("claudeVoice"))) : s.string("voice")
             voicePicker(list, current: currentVoice)
             Button(action: playPreview) {
               HStack(spacing: 6) {
@@ -359,9 +361,10 @@ struct VoiceCard: View {
     error = ""
     Task {
       let r: SettingChange
-      if engine == "claude" {
-        if ctx.settings.string("claudeVoiceTts") == "kokoro-en" {
-          r = await ctx.settings.set("kokoroVoice", .number(Double(id) ?? 9))
+      if engine == "claude" || engine == "gemini-cli" {
+        let pack = ctx.settings.string("claudeVoiceTts")
+        if pack == "kokoro-en" || pack == "kokoro-v1" {
+          r = await ctx.settings.set("kokoroVoice", .number(Double(id) ?? (pack == "kokoro-v1" ? 24 : 9)))
         } else {
           r = await ctx.settings.set("claudeVoice", .number(Double(id) ?? 0))
         }
@@ -400,7 +403,9 @@ struct VoiceCard: View {
     preview = "loading"
     error = ""
     let s = ctx.settings
-    let voice = engine == "claude" ? (s.string("claudeVoiceTts") == "kokoro-en" ? String(s.int("kokoroVoice")) : String(s.int("claudeVoice"))) : s.string("voice")
+    let isLocal = engine == "claude" || engine == "gemini-cli"
+    let pack = s.string("claudeVoiceTts")
+    let voice = isLocal ? ((pack == "kokoro-en" || pack == "kokoro-v1") ? String(s.int("kokoroVoice")) : String(s.int("claudeVoice"))) : s.string("voice")
     Task {
       do {
         let data = try await ctx.bridge.voicePreview(engine: engine, voice: voice, speed: speed ?? s.double("speed"))

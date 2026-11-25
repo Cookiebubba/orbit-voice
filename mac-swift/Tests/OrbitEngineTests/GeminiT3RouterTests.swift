@@ -448,7 +448,7 @@ final class GeminiT3RouterTests: XCTestCase {
     let invalid = EngineConfig.sanitize([
       "persona": "jarvis",
       "claudeVoiceTts": "piper",
-      "kokoroVoice": 11,
+      "kokoroVoice": 54,
     ])
     XCTAssertTrue(invalid.isEmpty, "invalid persona/TTS values must be dropped: \(invalid)")
     XCTAssertTrue(EngineConfig.sanitize(["kokoroVoice": -1]).isEmpty)
@@ -459,9 +459,11 @@ final class GeminiT3RouterTests: XCTestCase {
     XCTAssertEqual(SettingsSchema.sanitize("persona", "alfred"), "alfred")
     XCTAssertNil(SettingsSchema.sanitize("persona", "jarvis"))
     XCTAssertEqual(SettingsSchema.sanitize("claudeVoiceTts", "kokoro-en"), "kokoro-en")
+    XCTAssertEqual(SettingsSchema.sanitize("claudeVoiceTts", "kokoro-v1"), "kokoro-v1")
     XCTAssertNil(SettingsSchema.sanitize("claudeVoiceTts", "piper"))
     XCTAssertEqual(SettingsSchema.sanitize("kokoroVoice", 9), 9)
-    XCTAssertNil(SettingsSchema.sanitize("kokoroVoice", 11))
+    XCTAssertEqual(SettingsSchema.sanitize("kokoroVoice", 24), 24)
+    XCTAssertNil(SettingsSchema.sanitize("kokoroVoice", 54))
     XCTAssertNil(SettingsSchema.sanitize("kokoroVoice", -1))
   }
 
@@ -516,9 +518,10 @@ final class GeminiT3RouterTests: XCTestCase {
   }
 
   func testVoiceModelsKokoroTtsCatalogConfigAndReadiness() throws {
-    XCTAssertEqual(VoiceModels.ttsIds, ["kitten", "kokoro-en"])
+    XCTAssertEqual(VoiceModels.ttsIds, ["kitten", "kokoro-en", "kokoro-v1"])
     XCTAssertTrue(VoiceModels.ttsOk("kitten"))
     XCTAssertTrue(VoiceModels.ttsOk("kokoro-en"))
+    XCTAssertTrue(VoiceModels.ttsOk("kokoro-v1"))
     XCTAssertFalse(VoiceModels.ttsOk("piper"))
 
     let kokoro = try XCTUnwrap(VoiceModels.tts.first { $0.id == "kokoro-en" })

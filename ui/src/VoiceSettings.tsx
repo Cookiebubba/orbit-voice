@@ -18,7 +18,7 @@ async function post(url: string, body: object) {
 // Each engine's voice list, kept for the session: when Settings switches engines or local TTS
 // packs, the other card opens at its real size instead of growing out of a "Loading voices…" box.
 export type Engine = "grok" | "claude" | "gemini-cli" | "gemini-live";
-export type TtsPack = "kitten" | "kokoro-en";
+export type TtsPack = "kitten" | "kokoro-en" | "kokoro-v1";
 const cache: Record<string, VoiceState> = {};
 const cacheKey = (engine: Engine, tts: TtsPack = "kitten") => `${engine}:${tts}`;
 
@@ -46,7 +46,7 @@ export default function VoiceSettings({
   syncKey?: number;
 }) {
   const localSpeech = engine === "claude" || engine === "gemini-cli";
-  const isKokoro = localSpeech && tts === "kokoro-en";
+  const isKokoro = localSpeech && (tts === "kokoro-en" || tts === "kokoro-v1");
   const geminiLive = engine === "gemini-live";
   const key = cacheKey(engine, localSpeech ? tts : "kitten");
   const [state, setState] = useState<VoiceState | null>(cache[key] ?? null);

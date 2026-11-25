@@ -1130,7 +1130,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
         if (typeof s.instructions === 'string') instructions = s.instructions;
         if (Array.isArray(s.tools)) tools = s.tools;
         if (Number.isInteger(s.claude_voice) && s.claude_voice >= 0 && s.claude_voice <= 7) sid = s.claude_voice;
-        if (Number.isInteger(s.kokoro_voice) && s.kokoro_voice >= 0 && s.kokoro_voice <= 10) kokoroSid = s.kokoro_voice;
+        if (Number.isInteger(s.kokoro_voice) && s.kokoro_voice >= 0 && s.kokoro_voice <= 53) kokoroSid = s.kokoro_voice;
         if (typeof s.claude_tts === 'string') switchTts(s.claude_tts);
         const s2 = s.audio?.output?.speed;
         if (Number.isFinite(s2)) speed = s2;

@@ -117,6 +117,17 @@ public final class VoiceModels: @unchecked Sendable {
     KokoroVoiceOption(id: "0", name: "Default (US)", gender: "female", accent: "us", speaker: "af"),
   ]
 
+  public static let kokoroV1Voices: [KokoroVoiceOption] = [
+    KokoroVoiceOption(id: "24", name: "Daniel (British RP — Refined Alfred)", gender: "male", accent: "british", speaker: "bm_daniel"),
+    KokoroVoiceOption(id: "27", name: "Lewis (British — Deep Butler)", gender: "male", accent: "british", speaker: "bm_lewis"),
+    KokoroVoiceOption(id: "26", name: "George (British — Warm)", gender: "male", accent: "british", speaker: "bm_george"),
+    KokoroVoiceOption(id: "25", name: "Fable (British — Theatrical)", gender: "male", accent: "british", speaker: "bm_fable"),
+    KokoroVoiceOption(id: "20", name: "Alice (British)", gender: "female", accent: "british", speaker: "bf_alice"),
+    KokoroVoiceOption(id: "21", name: "Emma (British)", gender: "female", accent: "british", speaker: "bf_emma"),
+    KokoroVoiceOption(id: "22", name: "Isabella (British)", gender: "female", accent: "british", speaker: "bf_isabella"),
+    KokoroVoiceOption(id: "23", name: "Lily (British)", gender: "female", accent: "british", speaker: "bf_lily"),
+  ]
+
   public static let tts: [TtsChoice] = [
     TtsChoice(id: "kitten", label: "Kitten Nano (bundled)", bundled: true, download: nil, files: []),
     TtsChoice(
@@ -133,6 +144,21 @@ public final class VoiceModels: @unchecked Sendable {
       ),
       files: ["model.int8.onnx", "voices.bin", "tokens.txt"],
       voices: kokoroEnVoices
+    ),
+    TtsChoice(
+      id: "kokoro-v1",
+      label: "Kokoro v1.0 British RP (Daniel / Lewis / George / Fable)",
+      bundled: false,
+      download: SpeechModelFile(
+        id: "kokoro-v1",
+        file: "kokoro-int8-multi-lang-v1_0.tar.bz2",
+        dir: "kokoro-int8-multi-lang-v1_0",
+        url: "\(base)/tts-models/kokoro-int8-multi-lang-v1_0.tar.bz2",
+        sha256: "72c347230107ef8a31098ec4d468a605244beef5f1ed00db97efa13518800653",
+        size: 132_312_142
+      ),
+      files: ["model.int8.onnx", "voices.bin", "tokens.txt", "lexicon-gb-en.txt"],
+      voices: kokoroV1Voices
     ),
   ]
 
@@ -243,14 +269,17 @@ public final class VoiceModels: @unchecked Sendable {
     guard let id, id != "kitten", let c = ttsChoice(id), let d = c.download?.dir else {
       return ["kitten": paths(root: root)["tts"]!]
     }
-    return [
-      "kokoro": [
-        "model": j([d, "model.int8.onnx"]),
-        "voices": j([d, "voices.bin"]),
-        "tokens": j([d, "tokens.txt"]),
-        "dataDir": j([d, "espeak-ng-data"]),
-      ],
+    var kokoro: [String: JSONValue] = [
+      "model": j([d, "model.int8.onnx"]),
+      "voices": j([d, "voices.bin"]),
+      "tokens": j([d, "tokens.txt"]),
+      "dataDir": j([d, "espeak-ng-data"]),
     ]
+    if id == "kokoro-v1" {
+      kokoro["lexicon"] = j([d, "lexicon-gb-en.txt"])
+      kokoro["dictDir"] = j([d, "dict"])
+    }
+    return ["kokoro": .object(kokoro)]
   }
 
   /** Is this text-to-speech choice on disk and verified? (Kitten: with the rest of Claude voice.) */

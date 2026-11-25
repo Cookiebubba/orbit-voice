@@ -280,6 +280,17 @@ export const KOKORO_EN_VOICES = Object.freeze([
   Object.freeze({ id: '0', name: 'Default (US)', gender: 'female', accent: 'us', speaker: 'af' }),
 ]);
 
+export const KOKORO_V1_VOICES = Object.freeze([
+  Object.freeze({ id: '24', name: 'Daniel (British RP — Refined Alfred)', gender: 'male', accent: 'british', speaker: 'bm_daniel' }),
+  Object.freeze({ id: '27', name: 'Lewis (British — Deep Butler)', gender: 'male', accent: 'british', speaker: 'bm_lewis' }),
+  Object.freeze({ id: '26', name: 'George (British — Warm)', gender: 'male', accent: 'british', speaker: 'bm_george' }),
+  Object.freeze({ id: '25', name: 'Fable (British — Theatrical)', gender: 'male', accent: 'british', speaker: 'bm_fable' }),
+  Object.freeze({ id: '20', name: 'Alice (British)', gender: 'female', accent: 'british', speaker: 'bf_alice' }),
+  Object.freeze({ id: '21', name: 'Emma (British)', gender: 'female', accent: 'british', speaker: 'bf_emma' }),
+  Object.freeze({ id: '22', name: 'Isabella (British)', gender: 'female', accent: 'british', speaker: 'bf_isabella' }),
+  Object.freeze({ id: '23', name: 'Lily (British)', gender: 'female', accent: 'british', speaker: 'bf_lily' }),
+]);
+
 export const TTS_MODELS = Object.freeze({
   kitten: Object.freeze({ label: 'Kitten Nano (bundled)', bundled: true, mb: 0 }),
   'kokoro-en': Object.freeze({
@@ -292,6 +303,16 @@ export const TTS_MODELS = Object.freeze({
     files: ['model.int8.onnx', 'voices.bin', 'tokens.txt'],
     voices: KOKORO_EN_VOICES,
   }),
+  'kokoro-v1': Object.freeze({
+    label: 'Kokoro v1.0 British RP (Daniel / Lewis / George / Fable)',
+    file: 'kokoro-int8-multi-lang-v1_0.tar.bz2',
+    dir: 'kokoro-int8-multi-lang-v1_0',
+    url: `${BASE}/tts-models/kokoro-int8-multi-lang-v1_0.tar.bz2`,
+    sha256: '72c347230107ef8a31098ec4d468a605244beef5f1ed00db97efa13518800653',
+    size: 132312142,
+    files: ['model.int8.onnx', 'voices.bin', 'tokens.txt', 'lexicon-gb-en.txt'],
+    voices: KOKORO_V1_VOICES,
+  }),
 });
 export const TTS_IDS = Object.freeze(Object.keys(TTS_MODELS));
 export const ttsOk = (id) => typeof id === 'string' && Object.hasOwn(TTS_MODELS, id);
@@ -300,14 +321,17 @@ export const ttsOk = (id) => typeof id === 'string' && Object.hasOwn(TTS_MODELS,
 export function ttsModelConfig(root, id) {
   if (!ttsOk(id) || id === 'kitten') return { kitten: modelPaths(root).tts };
   const d = path.join(root, TTS_MODELS[id].dir);
-  return {
-    kokoro: {
-      model: path.join(d, 'model.int8.onnx'),
-      voices: path.join(d, 'voices.bin'),
-      tokens: path.join(d, 'tokens.txt'),
-      dataDir: path.join(d, 'espeak-ng-data'),
-    },
+  const cfg = {
+    model: path.join(d, 'model.int8.onnx'),
+    voices: path.join(d, 'voices.bin'),
+    tokens: path.join(d, 'tokens.txt'),
+    dataDir: path.join(d, 'espeak-ng-data'),
   };
+  if (id === 'kokoro-v1') {
+    cfg.lexicon = path.join(d, 'lexicon-gb-en.txt');
+    cfg.dictDir = path.join(d, 'dict');
+  }
+  return { kokoro: cfg };
 }
 
 /** Is this text-to-speech choice on disk and verified? */

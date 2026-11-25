@@ -36,10 +36,11 @@ test('personas: default vs Alfred catalog, validation, and Gemini Live accent gu
   assert.equal(PERSONA_PRESETS.alfred.recommended.geminiVoice, 'Charon');
 });
 
-test('voice-models: Kokoro English TTS pack catalog, speaker 9 (bm_george), config, and readiness', () => {
-  assert.deepEqual(TTS_IDS, ['kitten', 'kokoro-en']);
+test('voice-models: Kokoro English & v1.0 British RP TTS pack catalog, config, and readiness', () => {
+  assert.deepEqual(TTS_IDS, ['kitten', 'kokoro-en', 'kokoro-v1']);
   assert.equal(ttsOk('kitten'), true);
   assert.equal(ttsOk('kokoro-en'), true);
+  assert.equal(ttsOk('kokoro-v1'), true);
   assert.equal(ttsOk('unknown'), false);
 
   const george = KOKORO_EN_VOICES.find((v) => v.id === '9');

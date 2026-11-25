@@ -33,9 +33,9 @@ public enum Talk {
   /** The line under the install command: Claude Code runs on the user's own Claude sign-in. */
   public static let claudeSignInStep = "Then run claude once in a terminal and sign in with your Claude account."
 
-  /** Claude voice, or Grok voice with a key saved. */
+  /** Claude / Gemini CLI / Gemini Live voice, or Grok voice with a key saved. */
   public static func canTalk(engine: String?, hasKey: Bool) -> Bool {
-    if engine == "claude" { return true }
+    if engine == "claude" || engine == "gemini-cli" || engine == "gemini-live" { return true }
     return engine == "grok" && hasKey
   }
 

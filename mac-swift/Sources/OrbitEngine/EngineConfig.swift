@@ -226,7 +226,7 @@ public final class EngineConfig: @unchecked Sendable {
       case "claudeVoiceTts":
         if VoiceModels.ttsOk(val) { out[k] = val }
       case "kokoroVoice":
-        if isInteger(val), let n = val.doubleValue, n >= 0, n <= 10 { out[k] = val }
+        if isInteger(val), let n = val.doubleValue, n >= 0, n <= 53 { out[k] = val }
       case "claudeVoice":
         if isInteger(val), let n = val.doubleValue, n >= 0, n <= 7 { out[k] = val }
       case "claudeVoiceModel":

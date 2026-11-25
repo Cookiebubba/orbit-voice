@@ -259,7 +259,7 @@ function sanitize(input) {
         if (ttsOk(val)) out.claudeVoiceTts = val;
         break;
       case 'kokoroVoice':
-        if (Number.isInteger(val) && val >= 0 && val <= 10) out.kokoroVoice = val;
+        if (Number.isInteger(val) && val >= 0 && val <= 53) out.kokoroVoice = val;
         break;
       case 'claudeVoice':
         if (Number.isInteger(val) && val >= 0 && val <= 7) out.claudeVoice = val;

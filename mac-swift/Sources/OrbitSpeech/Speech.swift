@@ -80,6 +80,43 @@ public struct KokoroModelPaths: Sendable, Equatable {
   }
 }
 
+/** Where Kokoro v1.0 British RP lives under the speech models folder (src/voice-models.js TTS_MODELS['kokoro-v1']). */
+public struct KokoroV1ModelPaths: Sendable, Equatable {
+  public static let dirName = "kokoro-int8-multi-lang-v1_0"
+  public static let pinnedSha256 = "72c347230107ef8a31098ec4d468a605244beef5f1ed00db97efa13518800653"
+
+  public var dir: String
+  public var model: String
+  public var voices: String
+  public var tokens: String
+  public var dataDir: String
+  public var lexicon: String
+  public var dictDir: String
+  public var verifiedMarker: String
+
+  public init(root: URL) {
+    let base = root.appendingPathComponent(Self.dirName)
+    dir = base.path
+    model = base.appendingPathComponent("model.int8.onnx").path
+    voices = base.appendingPathComponent("voices.bin").path
+    tokens = base.appendingPathComponent("tokens.txt").path
+    dataDir = base.appendingPathComponent("espeak-ng-data").path
+    lexicon = base.appendingPathComponent("lexicon-gb-en.txt").path
+    dictDir = base.appendingPathComponent("dict").path
+    verifiedMarker = base.appendingPathComponent("verified.json").path
+  }
+
+  public func ready(requireVerified: Bool = true) -> Bool {
+    let fm = FileManager.default
+    guard [model, voices, tokens, lexicon].allSatisfy({ fm.fileExists(atPath: $0) }) else { return false }
+    if !requireVerified { return true }
+    guard let data = fm.contents(atPath: verifiedMarker),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let sha = obj["sha256"] as? String else { return false }
+    return sha == Self.pinnedSha256
+  }
+}
+
 /** Long speech split for Moonshine (src/stt-chunks.js): pieces of at most `maxSeconds`, each cut at
  *  the quietest 100 ms between half and all of the limit; pieces under 0.1 s dropped. */
 public enum SttChunks {
@@ -160,19 +197,22 @@ public final class SpeechVad {
   public func reset() { vad.reset() }
 }
 
-/** Moonshine (speech to text), Kitten (text to speech), and optional Kokoro English TTS, loaded once. */
+/** Moonshine (speech to text), Kitten (text to speech), and optional Kokoro English / v1.0 British RP TTS, loaded once. */
 public final class OrbitSpeech: @unchecked Sendable {
   public let paths: SpeechModelPaths
   public let kokoroPaths: KokoroModelPaths
+  public let kokoroV1Paths: KokoroV1ModelPaths
   private let threads: Int
   private let recognizer: SherpaOnnxOfflineRecognizer
   private let tts: SherpaOnnxOfflineTtsWrapper
   private var kokoroTts: SherpaOnnxOfflineTtsWrapper?
+  private var kokoroV1Tts: SherpaOnnxOfflineTtsWrapper?
   private let lock = NSLock()
 
   public init(root: URL, threads: Int = SpeechConfig.threads) throws {
     paths = SpeechModelPaths(root: root)
     kokoroPaths = KokoroModelPaths(root: root)
+    kokoroV1Paths = KokoroV1ModelPaths(root: root)
     self.threads = threads
     guard paths.ready(root: root) else { throw SpeechError.modelsMissing(root.path) }
     let moon = sherpaOnnxOfflineMoonshineModelConfig(encoder: paths.sttEncoder, mergedDecoder: paths.sttMergedDecoder)
@@ -185,6 +225,7 @@ public final class OrbitSpeech: @unchecked Sendable {
   }
 
   public var hasKokoro: Bool { lock.withLock { kokoroTts != nil } }
+  public var hasKokoroV1: Bool { lock.withLock { kokoroV1Tts != nil } }
 
   /** Lazily loads the optional Kokoro English TTS pack (British & US voices) if present on disk. */
   public func loadKokoro(requireVerified: Bool = true) throws {
@@ -204,6 +245,29 @@ public final class OrbitSpeech: @unchecked Sendable {
         maxNumSentences: 1
       )
       kokoroTts = SherpaOnnxOfflineTtsWrapper(config: &tc)
+    }
+  }
+
+  /** Lazily loads Kokoro v1.0 with British RP lexicon (bm_daniel=24, bm_fable=25, bm_george=26, bm_lewis=27). */
+  public func loadKokoroV1(requireVerified: Bool = true) throws {
+    try lock.withLock {
+      if kokoroV1Tts != nil { return }
+      guard kokoroV1Paths.ready(requireVerified: requireVerified) else {
+        throw SpeechError.kokoroMissing(kokoroV1Paths.dir)
+      }
+      let kokoro = sherpaOnnxOfflineTtsKokoroModelConfig(
+        model: kokoroV1Paths.model,
+        voices: kokoroV1Paths.voices,
+        tokens: kokoroV1Paths.tokens,
+        dataDir: kokoroV1Paths.dataDir,
+        dictDir: kokoroV1Paths.dictDir,
+        lexicon: kokoroV1Paths.lexicon
+      )
+      var tc = sherpaOnnxOfflineTtsConfig(
+        model: sherpaOnnxOfflineTtsModelConfig(kokoro: kokoro, numThreads: threads, provider: "cpu"),
+        maxNumSentences: 1
+      )
+      kokoroV1Tts = SherpaOnnxOfflineTtsWrapper(config: &tc)
     }
   }
 
@@ -236,6 +300,17 @@ public final class OrbitSpeech: @unchecked Sendable {
     return lock.withLock {
       guard let kokoroTts else { return [] }
       let a = kokoroTts.generate(text: text, sid: sid, speed: speed)
+      let s = a.samples
+      return Int(a.sampleRate) == SpeechConfig.inRate ? s : LinearResampler(from: Int(a.sampleRate), to: SpeechConfig.inRate).resample(s, flush: true)
+    }
+  }
+
+  /** Text → 24 kHz samples using Kokoro v1.0 British RP (default sid 24 = bm_daniel; 27 = bm_lewis). */
+  public func speakKokoroV1(_ text: String, sid: Int = 24, speed: Float = 1) throws -> [Float] {
+    if !hasKokoroV1 { try loadKokoroV1() }
+    return lock.withLock {
+      guard let kokoroV1Tts else { return [] }
+      let a = kokoroV1Tts.generate(text: text, sid: sid, speed: speed)
       let s = a.samples
       return Int(a.sampleRate) == SpeechConfig.inRate ? s : LinearResampler(from: Int(a.sampleRate), to: SpeechConfig.inRate).resample(s, flush: true)
     }

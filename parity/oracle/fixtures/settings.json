@@ -65617,7 +65617,9 @@
    "input": {
     "kokoroVoice": "0x10"
    },
-   "output": {}
+   "output": {
+    "kokoroVoice": 16
+   }
   },
   {
    "input": {
@@ -66497,7 +66499,9 @@
    "input": {
     "kokoroVoice": 11
    },
-   "output": {}
+   "output": {
+    "kokoroVoice": 11
+   }
   },
   {
    "input": {
@@ -72144,7 +72148,9 @@
      null
     ]
    },
-   "output": {}
+   "output": {
+    "kokoroVoice": 16
+   }
   },
   {
    "input": {

@@ -57,7 +57,7 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
   const isGeminiCli = s.voiceEngine === "gemini-cli";
   const isGeminiLive = s.voiceEngine === "gemini-live";
   const isLocalSpeech = isClaude || isGeminiCli;
-  const localTts: TtsPack = s.claudeVoiceTts === "kokoro-en" ? "kokoro-en" : "kitten";
+  const localTts: TtsPack = s.claudeVoiceTts === "kokoro-v1" ? "kokoro-v1" : s.claudeVoiceTts === "kokoro-en" ? "kokoro-en" : "kitten";
   const [voiceSync, setVoiceSync] = useState(0);
   // The assistant's name in the text: Grok, Gemini (Live), or Orbit for local-speech engines.
   const name = isGrok ? "Grok" : isGeminiLive ? "Gemini" : "Orbit";
@@ -862,7 +862,7 @@ function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: Ex
       refreshGemini();
     }
   };
-  const ttsPack: TtsPack = s.claudeVoiceTts === "kokoro-en" ? "kokoro-en" : "kitten";
+  const ttsPack: TtsPack = s.claudeVoiceTts === "kokoro-v1" ? "kokoro-v1" : s.claudeVoiceTts === "kokoro-en" ? "kokoro-en" : "kitten";
   const kokoroTts = (s.voiceEngine === "gemini-cli" ? geminiStatus?.tts?.["kokoro-en"] : status?.tts?.["kokoro-en"]) ?? status?.tts?.["kokoro-en"] ?? geminiStatus?.tts?.["kokoro-en"];
   const chooseTts = (claudeVoiceTts: TtsPack) => {
     update({ claudeVoiceTts });

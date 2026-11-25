@@ -125,8 +125,8 @@ public enum SettingsSchema {
     SettingSpec("routingDriftThreshold", .number(min: 0.5, max: 0.98, places: 2), 0.8, .hidden, "Drift threshold"),
     SettingSpec("routingQueueBusy", .bool, true, .app, "Queue prompts while busy"),
     SettingSpec("persona", .choice(["default", "alfred"]), "default", .voiceEngine, "Persona"),
-    SettingSpec("claudeVoiceTts", .choice(["kitten", "kokoro-en"]), "kitten", .voiceEngine, "Local voice pack"),
-    SettingSpec("kokoroVoice", .integer(min: 0, max: 10), 9, .voice, "Kokoro voice"),
+    SettingSpec("claudeVoiceTts", .choice(["kitten", "kokoro-en", "kokoro-v1"]), "kitten", .voiceEngine, "Local voice pack"),
+    SettingSpec("kokoroVoice", .integer(min: 0, max: 53), 9, .voice, "Kokoro voice"),
     // src/config.js's: the Windows app's first-run onboarding has been through. Orbit Native keeps its
     // own (onboarding.json); the setting is here so its settings are config.js's, key for key.
     SettingSpec("onboarded", .strictBool, true, .hidden, "Onboarded"),

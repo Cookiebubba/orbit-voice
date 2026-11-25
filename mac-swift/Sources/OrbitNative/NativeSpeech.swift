@@ -39,7 +39,11 @@ final class NativeLocalSpeech: LocalSpeechEngine, @unchecked Sendable {
       let loaded = Date()
       _ = speech.speak("Okay.", sid: 0, speed: 1)
       var kokoroNote = ""
-      if speech.kokoroPaths.ready() {
+      if speech.kokoroV1Paths.ready() {
+        try? speech.loadKokoroV1()
+        _ = try? speech.speakKokoroV1("Very good, sir.", sid: 24, speed: 1)
+        if speech.hasKokoroV1 { kokoroNote = ", Kokoro v1.0 British RP ready" }
+      } else if speech.kokoroPaths.ready() {
         try? speech.loadKokoro()
         _ = try? speech.speakKokoro("Very good.", sid: 9, speed: 1)
         if speech.hasKokoro { kokoroNote = ", Kokoro British English ready" }

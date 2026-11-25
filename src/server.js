@@ -44,7 +44,7 @@ import { createPromptQueue } from './router/queue.js';
 import { createT3Target } from './targets/t3-code.js';
 import { hotkeyLabel as platformHotkeyLabel, primeLoginShellPath } from './platform/system.js';
 import { createClaudeRealtime, keepSpare, loadRecognizer, loadSpeech, loadTts, speechLoaded, stopClaudeVoice, systemPrompt } from './claude-voice.js';
-import { KOKORO_EN_VOICES, TTS_MODELS, downloadModels, downloadStatus, downloadStt, downloadTts, modelsReady, STT_MODELS, sttOk, sttReady, sttStatus, ttsOk, ttsReady, ttsStatus, VOICE_MODELS_MB } from './voice-models.js';
+import { KOKORO_EN_VOICES, KOKORO_V1_VOICES, TTS_MODELS, downloadModels, downloadStatus, downloadStt, downloadTts, modelsReady, STT_MODELS, sttOk, sttReady, sttStatus, ttsOk, ttsReady, ttsStatus, VOICE_MODELS_MB } from './voice-models.js';
 import { PERSONA_PRESETS, personaOk } from './personas.js';
 import { setClipboardWriter } from './clipboard.js';
 import { createContinuity, quoteSafe } from './continuity.js';
@@ -804,6 +804,9 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           if (want === 'gemini-live') return sendJson(res, 200, { voice: getSetting('geminiVoice'), speed: getSetting('speed'), ...LIMITS, voices: GEMINI_LIVE_VOICE_LIST, engine: 'gemini-live' });
           if (want === 'claude' || want === 'gemini-cli') {
             const wantTts = url.searchParams.get('tts') || getSetting('claudeVoiceTts');
+            if (wantTts === 'kokoro-v1') {
+              return sendJson(res, 200, { voice: String(getSetting('kokoroVoice')), speed: getSetting('speed'), ...LIMITS, voices: KOKORO_V1_VOICES, engine: want, tts: 'kokoro-v1' });
+            }
             if (wantTts === 'kokoro-en') {
               return sendJson(res, 200, { voice: String(getSetting('kokoroVoice')), speed: getSetting('speed'), ...LIMITS, voices: KOKORO_EN_VOICES, engine: want, tts: 'kokoro-en' });
             }
@@ -904,11 +907,12 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           const wantTts = body.tts || getSetting('claudeVoiceTts');
           const speed = Math.min(LIMITS.maxSpeed, Math.max(LIMITS.minSpeed, Number(body.speed) || getSetting('speed')));
           const isAlfred = getSetting('persona') === 'alfred';
-          if (wantTts === 'kokoro-en') {
-            if (!ttsReady(voiceModelsDir, 'kokoro-en')) return sendJson(res, 409, { error: 'Download Kokoro English first (Settings → Voice engine).' });
-            const sid = Number.isInteger(Number(body.voice)) && Number(body.voice) >= 0 && Number(body.voice) <= 10 ? Number(body.voice) : getSetting('kokoroVoice');
-            const kokoro = await loadTts(voiceModelsDir, 'kokoro-en');
-            const line = isAlfred || sid === 9 || sid === 10
+          if (wantTts === 'kokoro-en' || wantTts === 'kokoro-v1') {
+            if (!ttsReady(voiceModelsDir, wantTts)) return sendJson(res, 409, { error: `Download ${TTS_MODELS[wantTts]?.label || wantTts} first (Settings → Voice engine).` });
+            const maxSid = wantTts === 'kokoro-v1' ? 53 : 10;
+            const sid = Number.isInteger(Number(body.voice)) && Number(body.voice) >= 0 && Number(body.voice) <= maxSid ? Number(body.voice) : getSetting('kokoroVoice');
+            const kokoro = await loadTts(voiceModelsDir, wantTts);
+            const line = isAlfred || sid === 9 || sid === 10 || (sid >= 24 && sid <= 27)
               ? 'Good evening, sir. Alfred at your service — everything across your threads is in order.'
               : "Hi, I'm Orbit. Tell me what you need, and I'll handle it.";
             const samples = await kokoro.speak(line, { speed, sid });

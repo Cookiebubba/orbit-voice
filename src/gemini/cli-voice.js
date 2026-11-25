@@ -575,7 +575,7 @@ export function createGeminiCliRealtime({
       response_id: t.id,
       item_id: t.itemId,
       delta: pcmB64,
-      ...(text ? { text, voice: { sid, speed } } : {}),
+      ...(text ? { text, voice: { sid: activeVoiceSid(), tts: ttsWant, speed } } : {}),
       ...(reflex ? { reflex: true } : {}),
       ...(emote ? { emote: { name: emote } } : {}),
     });
@@ -854,7 +854,7 @@ export function createGeminiCliRealtime({
         if (Array.isArray(s.tools)) tools = s.tools;
         const v = Number.isInteger(s.gemini_voice) ? s.gemini_voice : s.claude_voice;
         if (Number.isInteger(v) && v >= 0 && v <= 7) sid = v;
-        if (Number.isInteger(s.kokoro_voice) && s.kokoro_voice >= 0 && s.kokoro_voice <= 10) kokoroSid = s.kokoro_voice;
+        if (Number.isInteger(s.kokoro_voice) && s.kokoro_voice >= 0 && s.kokoro_voice <= 53) kokoroSid = s.kokoro_voice;
         if (typeof s.claude_tts === 'string') switchTts(s.claude_tts);
         const s2 = s.audio?.output?.speed;
         if (Number.isFinite(s2)) speed = s2;
