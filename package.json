@@ -16,6 +16,7 @@
   "scripts": {
     "app": "electron .",
     "web": "node src/server.js",
+    "t3:bridge": "node scripts/t3-bridge.mjs",
     "build:ui": "npm --prefix ui ci --no-audit --no-fund && npm --prefix ui run build",
     "icons": "electron scripts/make-icons.mjs",
     "icons:mac": "electron scripts/make-icons.mjs --mac",

@@ -18,5 +18,6 @@ logs/
 # scratch
 .tmp-*
 
-# offline wake-word model (fetched + checksum-verified by scripts/fetch-model.mjs)
+# offline wake-word & local speech models (fetched + checksum-verified on demand)
 resources/
+claude-voice-models/
