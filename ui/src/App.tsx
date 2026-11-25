@@ -311,6 +311,32 @@ export default function App() {
               onActivate={() => (!on ? startTalk() : v.endWake() || (v.asleep && v.wake()))}
             />
             <div className="mt-5 text-[16px] font-semibold tracking-[-0.02em]">{status}</div>
+            {on && !v.asleep && (
+              <div className="mt-2 flex flex-col items-center gap-1.5">
+                <div className="flex items-center gap-2 rounded-full bg-soft px-3 py-1 text-[11.5px] text-ink">
+                  <Mic size={12} className={v.muted ? "text-red-500" : v.levels.input > 0.08 ? "text-emerald-600" : "text-muted"} />
+                  <select
+                    aria-label="Microphone"
+                    value={v.micId}
+                    onChange={(e) => void v.selectMic(e.target.value)}
+                    className="max-w-[200px] cursor-pointer truncate bg-transparent text-[11.5px] text-fg outline-none"
+                  >
+                    <option value="">{v.activeMicLabel ? `Default (${v.activeMicLabel})` : "Default microphone"}</option>
+                    {v.mics.map((m) => (
+                      <option key={m.deviceId} value={m.deviceId}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="h-1.5 w-12 overflow-hidden rounded-full bg-black/10" title="Live microphone level">
+                    <div
+                      className={cn("h-full transition-[width] duration-75", v.levels.input > 0.08 ? "bg-emerald-500" : "bg-amber-400")}
+                      style={{ width: `${Math.min(100, Math.round(v.levels.input * 100))}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
             {warming ? (
               <div className="mt-1.5 text-center font-mono text-[11px] leading-snug text-muted">Getting Orbit's voice ready…</div>
             ) : (

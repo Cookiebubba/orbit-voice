@@ -87,6 +87,17 @@ export function useVoice(options: VoiceOptions) {
   const [errorCount, setErrorCount] = useState(0); // errors shown (a tool that failed, a failed send, Grok's errors)
   const mutedRef = useRef(false);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
+  const [mics, setMics] = useState<{ deviceId: string; label: string }[]>([]);
+  const [micId, setMicId] = useState<string>(() => {
+    try {
+      return localStorage.getItem("orbit.micDeviceId") || "";
+    } catch {
+      return "";
+    }
+  });
+  const micIdRef = useRef(micId);
+  micIdRef.current = micId;
+  const [activeMicLabel, setActiveMicLabel] = useState<string>("");
 
   const ws = useRef<WebSocket | null>(null);
   const ctx = useRef<AudioContext | null>(null);
@@ -184,17 +195,52 @@ export function useVoice(options: VoiceOptions) {
     announceRef.current = null;
   };
 
+  const refreshMics = useCallback(async () => {
+    try {
+      const devs = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devs
+        .filter((d) => d.kind === "audioinput" && d.deviceId && d.deviceId !== "default" && d.deviceId !== "communications")
+        .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Microphone ${i + 1}` }));
+      setMics(inputs);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    void refreshMics();
+    const md = navigator.mediaDevices;
+    if (!md?.addEventListener) return;
+    const onChange = () => void refreshMics();
+    md.addEventListener("devicechange", onChange);
+    return () => md.removeEventListener("devicechange", onChange);
+  }, [refreshMics]);
+
   /** Open the microphone and start sending it (unless asleep). Needs the AudioContext from start(). */
-  const openMic = useCallback(async () => {
+  const openMic = useCallback(async (overrideDeviceId?: string) => {
     const ac = ctx.current;
     if (!ac || mic.current) return;
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
+    const wanted = overrideDeviceId !== undefined ? overrideDeviceId : micIdRef.current;
+    const baseAudio: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: wanted ? { ...baseAudio, deviceId: { exact: wanted } } : baseAudio,
+      });
+    } catch (e: any) {
+      if (wanted && (e?.name === "OverconstrainedError" || e?.name === "NotFoundError")) {
+        // Saved device was unplugged: fall back cleanly to default
+        setMicId("");
+        try { localStorage.removeItem("orbit.micDeviceId"); } catch {}
+        stream = await navigator.mediaDevices.getUserMedia({ audio: baseAudio });
+      } else {
+        throw e;
+      }
+    }
     if (ctx.current !== ac) {
       stream.getTracks().forEach((tr) => tr.stop()); // hung up meanwhile
       return;
     }
+    setActiveMicLabel(stream.getAudioTracks()[0]?.label || "");
+    void refreshMics();
     if (!worklet.current) {
       await ac.audioWorklet.addModule("pcm-worklet.js");
       const node = new AudioWorkletNode(ac, "pcm-capture");
@@ -220,7 +266,7 @@ export function useVoice(options: VoiceOptions) {
     mic.current = stream;
     micSource.current = ac.createMediaStreamSource(stream);
     micSource.current.connect(worklet.current);
-  }, []);
+  }, [refreshMics]);
 
   /** Close the microphone device itself (not just stop sending). */
   const closeMic = () => {
@@ -229,6 +275,25 @@ export function useVoice(options: VoiceOptions) {
     micSource.current = mic.current = null;
     inLevel.current = 0;
   };
+
+  /** Switch to another microphone (hot-swaps live if a call is active). */
+  const selectMic = useCallback(async (nextId: string) => {
+    setMicId(nextId);
+    micIdRef.current = nextId;
+    try {
+      if (nextId) localStorage.setItem("orbit.micDeviceId", nextId);
+      else localStorage.removeItem("orbit.micDeviceId");
+    } catch {}
+    if (ctx.current && mic.current) {
+      closeMic();
+      try {
+        await openMic(nextId);
+        if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+      } catch (e: any) {
+        caption({ id: `err-${Date.now()}`, who: "error", text: micProblem(e) });
+      }
+    }
+  }, [openMic, caption]);
 
   /** Close the mic right away (Grok can still finish what it's saying). */
   const muteMic = () => {
@@ -881,5 +946,9 @@ export function useVoice(options: VoiceOptions) {
     sendText,
     ask,
     note: (text: string) => caption({ id: `note-${Date.now()}`, who: "note", text }),
+    mics,
+    micId,
+    activeMicLabel,
+    selectMic,
   };
 }
