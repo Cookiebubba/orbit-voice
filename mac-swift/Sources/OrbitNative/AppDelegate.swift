@@ -189,6 +189,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       startHidden: LoginLaunch.wasOpenedAtLogin || CommandLine.arguments.contains(CoreRecovery.relaunchArgument)
     )
     let u = OrbitUI(bridge: BridgeClient(endpoints: e), voice: voice, hotkey: hotkeys, options: options)
+    if let cfg = engine?.config {
+      let b = cfg.string("targetBackend")
+      let t3Active = b == "t3-code" || (b == "auto" && !cfg.string("t3Endpoint").isEmpty)
+      u.onboarding.accessibilityRequired = !t3Active
+    }
     u.onQuit = { NSApp.terminate(nil) }
     u.onMinimize = { [weak self] in self?.events.add("window.minimize") }
     u.onHotkeyChanged = { [weak self] accel in self?.saveShellSettings(["wakeHotkey": .string(accel)]) }

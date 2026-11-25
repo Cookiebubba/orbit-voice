@@ -64,7 +64,7 @@ struct VoiceEngineSection: View {
         Hint(text: "Grok's realtime voice, billed by xAI per minute.").padding(.top, 8)
         XaiKeyField(ctx: ctx)
       } else if engine == "gemini-cli" {
-        Hint(text: "Gemini through your own Gemini CLI sign-in, with speech recognized and spoken on \(thisComputer). No xAI cost.").padding(.top, 8)
+        Hint(text: "Gemini through your Google / Antigravity subscription, with speech recognized and spoken locally on \(thisComputer). No API key or Claude needed.").padding(.top, 8)
         FieldLabel(text: "Gemini model")
         Segmented(value: s.string("geminiVoiceModel"), options: geminiVoiceModelOptions) { save(s, "geminiVoiceModel", .string($0)) }
         FieldLabel(text: "Speech to text")
@@ -272,7 +272,8 @@ struct VoiceCard: View {
     let isKokoro = s.string("claudeVoiceTts") == "kokoro-en" || s.string("claudeVoiceTts") == "kokoro-v1"
     Group {
       if let list {
-        SettingsSection(title: claude ? "Orbit's voice" : "Grok's voice", titleGap: 0) {
+        let title = s.string("persona") == "alfred" ? "Alfred's voice" : (claude ? "Orbit's voice" : "Grok's voice")
+        SettingsSection(title: title, titleGap: 0) {
           Text(claude ? "Spoken on \(thisComputer). Pick one by ear with Preview. Changes apply right away." : "Changes apply right away, even mid-conversation.")
             .font(Theme.font(12.5)).foregroundStyle(Theme.muted).relaxed(12.5).padding(.top, 12)
           Text("Voice").font(Theme.font(12)).foregroundStyle(Theme.muted).padding(.top, 16).padding(.bottom, 6)
@@ -436,17 +437,28 @@ struct SecondBrainSection: View {
   @FocusState private var pathFocused: Bool
 
   var body: some View {
-    let s = ctx.settings, name = s.assistantName
+    let s = ctx.settings, name = s.displayAssistantName, eng = s.string("voiceEngine"), isGemBrain = s.isGeminiBrain
+    let brainLabel = isGemBrain ? "Gemini" : "Claude"
     let showAdvanced = advanced ?? !s.string("brainClaudePath").isEmpty
+    let searchHint: String = {
+      if eng == "gemini-cli" || isGemBrain {
+        return "For current facts (the latest versions, news, docs), \(name) looks them up instead of guessing: a quick search through your Gemini / Antigravity CLI. What pages say is never taken as an instruction."
+      }
+      if eng == "gemini-live" {
+        return "For current facts (the latest versions, news, docs), \(name) looks them up with Google Search grounding. What pages say is never taken as an instruction."
+      }
+      if eng == "claude" {
+        return "For current facts (the latest versions, news, docs), \(name) looks them up instead of guessing: a quick search through your Claude Code that can only search and read web pages. What pages say is never taken as an instruction."
+      }
+      return "For current facts (the latest versions, news, docs), \(name) looks them up instead of guessing, with xAI's own web and X search. What pages say is never taken as an instruction."
+    }()
     SettingsSection(title: "Second brain") {
-      ToggleRow(label: "Let \(name) ask Claude when a question is hard", hint: "For deep questions, or questions about the code in your current project, \(name) quietly asks Claude and tells you the answer. Only a short note appears when Claude reads your project.", isOn: s.bool("brainEnabled")) { save(s, "brainEnabled", .bool($0)) }
-      ToggleRow(label: "Let \(name) search the web", hint: s.string("voiceEngine") == "claude"
-        ? "For current facts (the latest versions, news, docs), \(name) looks them up instead of guessing: a quick search through your Claude Code that can only search and read web pages. What pages say is never taken as an instruction."
-        : "For current facts (the latest versions, news, docs), \(name) looks them up instead of guessing, with xAI's own web and X search. What pages say is never taken as an instruction.", isOn: s.bool("webSearch")) { save(s, "webSearch", .bool($0)) }.padding(.top, 16)
+      ToggleRow(label: "Let \(name) ask \(brainLabel) when a question is hard", hint: "For deep questions, or questions about the code in your current project, \(name) quietly asks \(brainLabel) and tells you the answer. Only a short note appears when \(brainLabel) reads your project.", isOn: s.bool("brainEnabled")) { save(s, "brainEnabled", .bool($0)) }
+      ToggleRow(label: "Let \(name) search the web", hint: searchHint, isOn: s.bool("webSearch")) { save(s, "webSearch", .bool($0)) }.padding(.top, 16)
       if s.bool("brainEnabled") {
         FieldLabel(text: "Provider")
         Segmented(value: s.string("brainProvider"), options: [.init(value: "claude", label: "Claude"), .init(value: "gemini", label: "Gemini")]) { save(s, "brainProvider", .string($0)) }
-        Hint(text: s.string("brainProvider") == "gemini" ? "Routes hard questions through Gemini CLI or your Gemini API key." : "Routes hard questions through Claude Code or your Anthropic API key.").padding(.top, 8)
+        Hint(text: s.string("brainProvider") == "gemini" ? "Routes hard questions through your Gemini / Antigravity subscription or Gemini API key." : "Routes hard questions through Claude Code or your Anthropic API key.").padding(.top, 8)
         if s.string("brainProvider") == "gemini" {
           FieldLabel(text: "Gemini model")
           Segmented(value: s.string("geminiVoiceModel"), options: geminiVoiceModelOptions) { save(s, "geminiVoiceModel", .string($0)) }
@@ -600,8 +612,9 @@ struct HotkeySection: View {
 
   var body: some View {
     let _ = ctx.shellRevision
+    let name = ctx.settings.displayAssistantName
     SettingsSection(title: "Wake hotkey") {
-      Text("Works from any app: starts Grok when it's off, and puts it to sleep or wakes it when it's on.")
+      Text("Works from any app: starts \(name) when it's off, and puts it to sleep or wakes it when it's on.")
         .font(Theme.font(12.5)).foregroundStyle(Theme.muted).relaxed(12.5).padding(.top, -4)
       Button(action: { message = nil; recording ? stop() : record() }) {
         Group {

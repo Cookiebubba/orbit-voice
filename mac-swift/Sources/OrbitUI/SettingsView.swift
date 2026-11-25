@@ -54,33 +54,43 @@ struct SettingsView: View {
 struct ListeningSection: View {
   let s: SettingsModel
   var body: some View {
-    let name = s.assistantName, claude = name == "Orbit", hk = s.hotkeyLabel, wake = s.bool("wakeWord")
+    let name = s.displayAssistantName, local = s.string("voiceEngine") != "grok", hk = s.hotkeyLabel, wake = s.bool("wakeWord")
     SettingsSection(title: "Listening") {
       Segmented(value: s.string("listenMode"), options: [.init(value: "always", label: "Always on"), .init(value: "tap", label: "One question at a time")]) { save(s, "listenMode", .string($0)) }
       Hint(text: s.string("listenMode") == "always"
-        ? "\(name) hears you until you say \"go to sleep\" or press \(hk). Then it hangs up\(claude ? "" : ", so nothing is billed,") until you press \(hk)\(wake ? " or say “Hey Orbit”" : "") again."
+        ? "\(name) hears you until you say \"go to sleep\" or press \(hk). Then it hangs up\(local ? "" : ", so nothing is billed,") until you press \(hk)\(wake ? " or say “Hey Orbit”" : "") again."
         : "Press \(hk)\(wake ? " or say “Hey Orbit”" : ""), ask one question, and \(name) hangs up after answering (it waits up to a minute if a prompt needs your yes). Nothing in the background gets picked up.",
         size: 12.5).padding(.top, 8)
       ToggleRow(label: "Don't listen while \(name) is talking", hint: "Turn on if you use speakers instead of headphones, so \(name) doesn't hear itself. You can't interrupt it then.", isOn: s.bool("halfDuplex")) { save(s, "halfDuplex", .bool($0)) }.padding(.top, 16)
-      ToggleRow(label: "Wake word: say “Hey Orbit” (or “Hey Grok”)", hint: "Starts \(name) hands-free after it has gone to sleep. Recognized entirely on \(thisComputer) by a small offline speech model: no audio leaves your computer and it costs nothing. Each wake starts a fresh conversation.", isOn: wake) { save(s, "wakeWord", .bool($0)) }.padding(.top, 16)
+      ToggleRow(label: "Wake word: say “Hey Orbit”", hint: "Starts \(name) hands-free after it has gone to sleep. Recognized entirely on \(thisComputer) by a small offline speech model: no audio leaves your computer and it costs nothing. Each wake starts a fresh conversation.", isOn: wake) { save(s, "wakeWord", .bool($0)) }.padding(.top, 16)
     }
   }
 }
 
-// MARK: - When Claude finishes
+// MARK: - When a thread / Claude finishes
 
 struct FinishesSection: View {
   let s: SettingsModel
   var body: some View {
-    let name = s.assistantName, claude = name == "Orbit", mode = s.string("announce")
-    SettingsSection(title: "When Claude finishes") {
+    let name = s.displayAssistantName, eng = s.string("voiceEngine"), t3 = s.isT3Target, mode = s.string("announce")
+    let wakeCost = eng == "gemini-cli"
+      ? " Each wake uses your Gemini subscription."
+      : eng == "gemini-live"
+        ? " Each wake uses a few seconds of Gemini Live API time."
+        : eng == "claude"
+          ? " Each wake uses a little of your Claude plan."
+          : " Each wake bills a few seconds of xAI time."
+    SettingsSection(title: t3 ? "When a thread finishes" : "When Claude finishes") {
       Segmented(value: mode, options: [.init(value: "speak", label: "\(name) tells me"), .init(value: "chime", label: "Chime only"), .init(value: "off", label: "Off")]) { save(s, "announce", .string($0)) }
-      Hint(text: mode == "off" ? "Orbit won't tell you when Claude finishes."
-        : "Orbit watches your recent Claude sessions. When Claude finishes a task you get a chime and a notification\(mode == "speak" ? ", and if \(name) is on, it says what Claude did." : ".")",
+      Hint(text: mode == "off"
+        ? "Orbit won't tell you when \(t3 ? "a T3 thread" : "Claude") finishes."
+        : t3
+          ? "Orbit watches your T3 Code threads across local and SSH projects. When a thread finishes you get a chime and a notification\(mode == "speak" ? ", and if \(name) is on, it summarizes what finished." : ".")"
+          : "Orbit watches your recent Claude sessions. When Claude finishes a task you get a chime and a notification\(mode == "speak" ? ", and if \(name) is on, it says what Claude did." : ".")",
         size: 12.5).padding(.top, 8)
       if mode == "speak" {
-        ToggleRow(label: "Wake \(name) to say it", hint: "While \(name) is asleep, it connects just long enough to tell you, then listens for 3 seconds in case you want something. The mic opens only after it has spoken; press the hotkey to stop it.\(claude ? " Each wake uses a little of your Claude plan." : " Each wake bills a few seconds of xAI time.")", isOn: s.bool("announceWake")) { save(s, "announceWake", .bool($0)) }.padding(.top, 16)
-        ToggleRow(label: "Wake \(name) when something you asked for is ready", hint: "When Claude finishes a prompt \(name) sent for you, or the second brain answers after you hung up (a question still running then keeps going), \(name) wakes to tell you. At most 6 wakes an hour.", isOn: s.bool("wakeOnResults")) { save(s, "wakeOnResults", .bool($0)) }.padding(.top, 16)
+        ToggleRow(label: "Wake \(name) to say it", hint: "While \(name) is asleep, it connects just long enough to tell you, then listens for 3 seconds in case you want something. The mic opens only after it has spoken; press the hotkey to stop it.\(wakeCost)", isOn: s.bool("announceWake")) { save(s, "announceWake", .bool($0)) }.padding(.top, 16)
+        ToggleRow(label: "Wake \(name) when something you asked for is ready", hint: "When \(t3 ? "a thread" : "Claude") finishes a prompt \(name) sent for you, or the second brain answers after you hung up (a question still running then keeps going), \(name) wakes to tell you. At most 6 wakes an hour.", isOn: s.bool("wakeOnResults")) { save(s, "wakeOnResults", .bool($0)) }.padding(.top, 16)
       }
     }
   }
@@ -160,13 +170,13 @@ struct MacPermissionsSection: View {
   var body: some View {
     let m = ctx.onboarding
     SettingsSection(title: "Mac permissions", titleGap: 12) {
-      ForEach(OnboardingModel.items) { item in
+      ForEach(m.displayItems) { item in
         let on = m.isOn(item.step)
         HStack(alignment: .top, spacing: 12) {
           Circle().fill(on ? Theme.emerald500 : item.needed ? Theme.amber500 : Theme.line).frame(width: 8, height: 8).padding(.top, 5).accessibilityHidden(true)
           VStack(alignment: .leading, spacing: 2) {
             (Text(item.label).font(Theme.font(13, .medium)).foregroundStyle(Theme.fg)
-              + Text("  " + (on ? "On" : item.needed ? "Off: needed" : "Off")).font(Theme.font(11.5)).foregroundStyle(Theme.muted))
+              + Text("  " + (on ? "On" : item.needed ? "Off: needed" : "Optional")).font(Theme.font(11.5)).foregroundStyle(Theme.muted))
             Text(item.why).font(Theme.font(11.5)).foregroundStyle(Theme.muted).snug(11.5).fixedSize(horizontal: false, vertical: true)
           }
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -176,7 +186,7 @@ struct MacPermissionsSection: View {
         }
         .padding(.vertical, 8)
       }
-      if ctx.helperPresent == false {
+      if ctx.helperPresent == false && !ctx.settings.isT3Target {
         Hint(text: "Orbit's helper for the Claude app is missing from this copy of Orbit. Reinstall Orbit to use the Claude app by voice.", size: 11.5, color: Theme.amber700).padding(.top, 8)
       }
       Hint(text: "“Turn on” shows macOS's own question, or opens System Settings → Privacy & Security at the right place: switch Orbit on there. Screen Recording takes effect after Orbit restarts.", size: 11.5, color: Theme.faint).padding(.top, 8)
@@ -188,22 +198,27 @@ struct MacPermissionsSection: View {
 
 struct AnywhereSection: View {
   let s: SettingsModel
-  /** ui/src/mouse/shape.js PREVIEW (the engine's own colours). */
-  static let preview: [(label: String, lch: (Double, Double, Double))] = [
-    ("Listening", (0.78, 0.13, 205)), ("Thinking", (0.62, 0.22, 300)), ("Speaking", (0.8, 0.15, 78)), ("Watching Claude", (0.7, 0.14, 42)), ("Resting", (0.63, 0.2, 272)),
-  ]
   var body: some View {
-    let name = s.assistantName, on = s.bool("anywhere")
+    let name = s.displayAssistantName, on = s.bool("anywhere"), t3 = s.isT3Target, gem = s.isGeminiBrain
+    let preview: [(label: String, lch: (Double, Double, Double))] = [
+      ("Listening", (0.78, 0.13, 205)), ("Thinking", (0.62, 0.22, 300)), ("Speaking", (0.8, 0.15, 78)), (t3 ? "Watching threads" : "Watching Claude", (0.7, 0.14, 42)), ("Resting", (0.63, 0.2, 272)),
+    ]
     let apps = (s["anywhereUnderOrbit"]?.arrayValue ?? []).compactMap(\.stringValue)
     SettingsSection(title: "Orbit anywhere") {
-      ToggleRow(label: "Let \(name) work in the window you're in", hint: "In any app, not just Claude: ask \"what does this say?\" and \(name) reads that window; ask it to type something or press a button and it does, without touching your mouse or keyboard. Sending, posting, deleting and buying always ask first. Only when you ask, never in password managers, banking, private browsing or sign-in windows, and what a window says is never taken as an instruction.", isOn: on) { save(s, "anywhere", .bool($0)) }
+      ToggleRow(label: "Let \(name) work in the window you're in", hint: "In any app\(t3 ? "" : ", not just Claude"): ask \"what does this say?\" and \(name) reads that window; ask it to type something or press a button and it does, without touching your mouse or keyboard. Sending, posting, deleting and buying always ask first. Only when you ask, never in password managers, banking, private browsing or sign-in windows, and what a window says is never taken as an instruction.", isOn: on) { save(s, "anywhere", .bool($0)) }
       if on {
-        ToggleRow(label: "Let Claude see windows", hint: "When you ask \(name) to look at a window (a picture, a chart), a picture of that one window goes to Claude through your Claude Code. Off: looking stays on \(thisComputer), reading only the text in it.", isOn: s.bool("anywhereVision")) { save(s, "anywhereVision", .bool($0)) }.padding(.top, 16)
+        ToggleRow(
+          label: "Let \(gem ? "Gemini" : "Claude") see windows",
+          hint: gem
+            ? "When you ask \(name) to look at a window (a picture, a chart), a picture of that one window goes to Gemini through your Gemini / Antigravity CLI. Off: looking stays on \(thisComputer), reading only the text in it."
+            : "When you ask \(name) to look at a window (a picture, a chart), a picture of that one window goes to Claude through your Claude Code. Off: looking stays on \(thisComputer), reading only the text in it.",
+          isOn: s.bool("anywhereVision")
+        ) { save(s, "anywhereVision", .bool($0)) }.padding(.top, 16)
         ToggleRow(label: "Also use apps' own debugging ports", hint: "Only for an app you started yourself with --remote-debugging-port. Usually not needed: for apps that only notice real typing (Discord, OpenCode), \(name) asks (every time) to restart them under its own control instead.", isOn: s.bool("anywhereCdp")) { save(s, "anywhereCdp", .bool($0)) }.padding(.top, 16)
         ToggleRow(label: "Show Orbit's mouse", hint: "A second cursor of \(name)'s own, in its colours: it shows you where to click when you ask how to do something, and moves to whatever \(name) works on in a window. It never moves or clicks with your mouse.", isOn: s.bool("anywhereMouse")) { save(s, "anywhereMouse", .bool($0)) }.padding(.top, 16)
         if s.bool("anywhereMouse") {
           FlowRow(spacing: 16, lineSpacing: 6) {
-            ForEach(Self.preview, id: \.label) { p in
+            ForEach(preview, id: \.label) { p in
               HStack(spacing: 6) {
                 ArrowShape().fill(oklch(p.lch.0, p.lch.1, p.lch.2)).frame(width: 13, height: 20)
                 Text(p.label).font(Theme.font(11.5)).foregroundStyle(Theme.muted)
@@ -300,14 +315,15 @@ struct AppSection: View {
 struct AvatarSection: View {
   let s: SettingsModel
   var body: some View {
-    let name = s.assistantName, avatar = s.string("avatar")
+    let name = s.displayAssistantName, avatar = s.string("avatar"), t3 = s.isT3Target
+    let targetWin = t3 ? "your screen" : "your Claude window"
     SettingsSection(title: "Avatar") {
       Segmented(value: avatar, options: [.init(value: "buddy", label: "Pixel buddy"), .init(value: "qubit", label: "Qubit"), .init(value: "none", label: "None")]) { save(s, "avatar", .string($0)) }
       Hint(text: avatar == "buddy"
-        ? "A little pixel character lives along the bottom of your Claude window. It naps while \(name) sleeps, listens and talks with it, hops onto the prompt box, carries your drafts in and stomps Send. Click it, or pick it up and drop it."
+        ? "A little pixel character lives along the bottom of \(targetWin). It naps while \(name) sleeps, listens and talks with it, and celebrates when work wraps up. Click it, or pick it up and drop it."
         : avatar == "qubit"
-          ? "A square with one eye lives on your Claude window. He sleeps while \(name) sleeps, wakes when you call, his eye stretches as you talk and opens with \(name)'s voice. He waits by Send for your yes, stomps it, watches Claude work and celebrates when it's done. His colour shows what's going on."
-          : "Nothing on your Claude window.").padding(.top, 8)
+          ? "A square with one eye lives on \(targetWin). He sleeps while \(name) sleeps, wakes when you call, his eye stretches as you talk and opens with \(name)'s voice. His colour shows what's going on."
+          : "No avatar overlay shown.").padding(.top, 8)
       if avatar != "none" {
         let who = avatar == "qubit" ? "Qubit" : "the pixel buddy"
         Text("Size").font(Theme.font(12)).foregroundStyle(Theme.muted).padding(.top, 12).padding(.bottom, 6)

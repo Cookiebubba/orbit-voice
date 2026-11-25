@@ -57,10 +57,12 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
   const isGeminiCli = s.voiceEngine === "gemini-cli";
   const isGeminiLive = s.voiceEngine === "gemini-live";
   const isLocalSpeech = isClaude || isGeminiCli;
+  const isT3 = s.targetBackend === "t3-code" || (s.targetBackend !== "claude-desktop" && !!s.t3Endpoint);
+  const isGeminiBrain = s.brainProvider === "gemini" || isGeminiCli || isGeminiLive;
   const localTts: TtsPack = s.claudeVoiceTts === "kokoro-v1" ? "kokoro-v1" : s.claudeVoiceTts === "kokoro-en" ? "kokoro-en" : "kitten";
   const [voiceSync, setVoiceSync] = useState(0);
-  // The assistant's name in the text: Grok, Gemini (Live), or Orbit for local-speech engines.
-  const name = isGrok ? "Grok" : isGeminiLive ? "Gemini" : "Orbit";
+  // The assistant's name in the text: Alfred (when active), Grok, Gemini (Live), or Orbit for local-speech engines.
+  const name = s.persona === "alfred" ? "Alfred" : isGrok ? "Grok" : isGeminiLive ? "Gemini" : "Orbit";
   // Prefetch all voice lists up front, so switching engines or local TTS packs opens at its real size.
   useEffect(() => {
     prefetchVoices("grok");
@@ -140,7 +142,7 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
         </Reveal>
 
         <Reveal show gap={GAP}>
-          <Section title="When Claude finishes">
+          <Section title={isT3 ? "When a thread finishes" : "When Claude finishes"}>
             <Segmented
               value={s.announce}
               onChange={(announce) => patchSettings({ announce })}
@@ -152,8 +154,10 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
             />
             <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
               {s.announce === "off"
-                ? "Orbit won't tell you when Claude finishes."
-                : `Orbit watches your recent Claude sessions. When Claude finishes a task you get a chime and a ${isMac ? "" : "Windows "}notification${s.announce === "speak" ? `, and if ${name} is on, it says what Claude did.` : "."}`}
+                ? `Orbit won't tell you when ${isT3 ? "a T3 thread" : "Claude"} finishes.`
+                : isT3
+                  ? `Orbit watches your T3 Code threads across local and SSH projects. When a thread finishes you get a chime and a ${isMac ? "" : "Windows "}notification${s.announce === "speak" ? `, and if ${name} is on, it summarizes what finished.` : "."}`
+                  : `Orbit watches your recent Claude sessions. When Claude finishes a task you get a chime and a ${isMac ? "" : "Windows "}notification${s.announce === "speak" ? `, and if ${name} is on, it says what Claude did.` : "."}`}
             </p>
             <Reveal show={s.announce === "speak"}>
               <Toggle
@@ -161,14 +165,14 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
                 checked={s.announceWake}
                 onChange={(announceWake) => patchSettings({ announceWake })}
                 label={`Wake ${name} to say it`}
-                hint={`While ${name} is asleep, it connects just long enough to tell you, then listens for 3 seconds in case you want something. The mic opens only after it has spoken; press the hotkey to stop it.${isClaude ? " Each wake uses a little of your Claude plan." : isGeminiCli ? " Each wake uses your Gemini CLI quota." : isGeminiLive ? " Each wake uses a few seconds of Gemini Live API time." : " Each wake bills a few seconds of xAI time."}`}
+                hint={`While ${name} is asleep, it connects just long enough to tell you, then listens for 3 seconds in case you want something. The mic opens only after it has spoken; press the hotkey to stop it.${isClaude ? " Each wake uses a little of your Claude plan." : isGeminiCli ? " Each wake uses your Gemini subscription." : isGeminiLive ? " Each wake uses a few seconds of Gemini Live API time." : " Each wake bills a few seconds of xAI time."}`}
               />
               <Toggle
                 className="mt-4"
                 checked={s.wakeOnResults}
                 onChange={(wakeOnResults) => patchSettings({ wakeOnResults })}
                 label={`Wake ${name} when something you asked for is ready`}
-                hint={`When Claude finishes a prompt ${name} sent for you, or the second brain answers after you hung up (a question still running then keeps going), ${name} wakes to tell you. At most 6 wakes an hour.`}
+                hint={`When ${isT3 ? "a thread" : "Claude"} finishes a prompt ${name} sent for you, or the second brain answers after you hung up (a question still running then keeps going), ${name} wakes to tell you. At most 6 wakes an hour.`}
               />
             </Reveal>
           </Section>
@@ -184,7 +188,7 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
 
         {desktop && (
           <Reveal show gap={GAP}>
-            <AnywhereSection s={s} update={patchSettings} name={name} />
+            <AnywhereSection s={s} update={patchSettings} name={name} isT3={isT3} isGeminiBrain={isGeminiBrain} />
           </Reveal>
         )}
 
@@ -252,22 +256,22 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
 }
 
 // ---------- building blocks ----------
-function AnywhereSection({ s, update, name }: { s: ExtendedSettings; update: Update; name: string }) {
+function AnywhereSection({ s, update, name, isT3, isGeminiBrain }: { s: ExtendedSettings; update: Update; name: string; isT3: boolean; isGeminiBrain: boolean }) {
   return (
     <Section title="Orbit anywhere">
       <Toggle
         checked={s.anywhere}
         onChange={(anywhere) => update({ anywhere })}
         label={`Let ${name} work in the window you're in`}
-        hint={`In any app, not just Claude: ask "what does this say?" and ${name} reads that window; ask it to type something or press a button and it does, without touching your mouse or keyboard. Sending, posting, deleting and buying always ask first. Only when you ask, never in password managers, banking, private browsing or sign-in windows, and what a window says is never taken as an instruction.`}
+        hint={`In any app${isT3 ? "" : ", not just Claude"}: ask "what does this say?" and ${name} reads that window; ask it to type something or press a button and it does, without touching your mouse or keyboard. Sending, posting, deleting and buying always ask first. Only when you ask, never in password managers, banking, private browsing or sign-in windows, and what a window says is never taken as an instruction.`}
       />
       <Reveal show={s.anywhere}>
         <Toggle
           className="mt-4"
           checked={s.anywhereVision}
           onChange={(anywhereVision) => update({ anywhereVision })}
-          label="Let Claude see windows"
-          hint={`When you ask ${name} to look at a window (a picture, a chart), a picture of that one window goes to Claude through your Claude Code. Off: looking stays on ${thisComputer}, reading only the text in it.`}
+          label={`Let ${isGeminiBrain ? "Gemini" : "Claude"} see windows`}
+          hint={`When you ask ${name} to look at a window (a picture, a chart), a picture of that one window goes to ${isGeminiBrain ? "Gemini through your Gemini / Antigravity CLI" : "Claude through your Claude Code"}. Off: looking stays on ${thisComputer}, reading only the text in it.`}
         />
         <Toggle
           className="mt-4"

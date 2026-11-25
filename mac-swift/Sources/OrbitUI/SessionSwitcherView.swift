@@ -8,10 +8,11 @@ struct SessionSwitcherButton: View {
   @Binding var open: Bool
   @State private var over = false
   var body: some View {
+    let t3 = ctx.settings.isT3Target
     Button(action: { open.toggle() }) {
       HStack(spacing: 4) {
         if !ctx.app.claudeWorking.isEmpty { WorkingDot() }
-        Text(ctx.voice.sessionTitle ?? "Sessions").font(Theme.font(12)).lineLimit(1).truncationMode(.tail)
+        Text(ctx.voice.sessionTitle ?? (t3 ? "Threads" : "Sessions")).font(Theme.font(12)).lineLimit(1).truncationMode(.tail)
         Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
       }
       .foregroundStyle(over || open ? Theme.fg : Theme.muted)
@@ -22,8 +23,8 @@ struct SessionSwitcherButton: View {
     }
     .buttonStyle(.plain)
     .onHover { over = $0 }
-    .help("Switch Claude session")
-    .accessibilityLabel("Switch Claude session")
+    .help(t3 ? "Switch T3 thread" : "Switch Claude session")
+    .accessibilityLabel(t3 ? "Switch T3 thread" : "Switch Claude session")
     .accessibilityValue(ctx.voice.sessionTitle ?? "")
   }
 }
@@ -41,8 +42,9 @@ struct SessionSwitcherPanel: View {
   var shown: [SessionRow] { (rows ?? []).filter { filter.isEmpty || $0.title.localizedCaseInsensitiveContains(filter) } }
 
   var body: some View {
+    let t3 = ctx.settings.isT3Target
     VStack(spacing: 0) {
-      TextField("", text: $filter, prompt: Text("Find a session…").foregroundStyle(Theme.faint))
+      TextField("", text: $filter, prompt: Text(t3 ? "Find a thread…" : "Find a session…").foregroundStyle(Theme.faint))
         .textFieldStyle(.plain).font(Theme.font(12.5)).foregroundStyle(Theme.fg)
         .focused($focused)
         .padding(.horizontal, 10).frame(height: 32)
@@ -54,7 +56,7 @@ struct SessionSwitcherPanel: View {
         ScrollView {
           VStack(spacing: 0) {
             if rows == nil { Text("Loading…").font(Theme.font(12.5)).foregroundStyle(Theme.faint).frame(maxWidth: .infinity, alignment: .leading).padding(10) }
-            if rows != nil && shown.isEmpty { Text("No sessions found.").font(Theme.font(12.5)).foregroundStyle(Theme.faint).frame(maxWidth: .infinity, alignment: .leading).padding(10) }
+            if rows != nil && shown.isEmpty { Text(t3 ? "No threads found." : "No sessions found.").font(Theme.font(12.5)).foregroundStyle(Theme.faint).frame(maxWidth: .infinity, alignment: .leading).padding(10) }
             ForEach(shown) { s in row(s) }
           }
           .padding(4)

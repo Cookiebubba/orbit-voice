@@ -312,7 +312,7 @@ export const T3_TOOL_DEFS = Object.freeze([
 ]);
 
 export function toolDefs(settings = { brainEnabled: getSetting('brainEnabled'), brainModel: getSetting('brainModel'), brainExplore: getSetting('brainExplore'), brainConnection: getSetting('brainConnection'), brainProvider: getSetting('brainProvider'), avatar: activeAvatar(), webSearch: getSetting('webSearch'), engine: getSetting('voiceEngine'), t3Active: false }) {
-  const base = !settings.brainEnabled ? TOOL_DEFS : [...TOOL_DEFS, brainToolDef(settings), ...(settings.brainConnection === 'api-key' || settings.brainProvider === 'gemini' ? [] : [SIGN_IN_TOOL_DEF])];
+  const base = !settings.brainEnabled ? TOOL_DEFS : [...TOOL_DEFS, brainToolDef(settings), ...(settings.brainConnection === 'api-key' || settings.brainProvider === 'gemini' || String(settings.engine || '').startsWith('gemini') ? [] : [SIGN_IN_TOOL_DEF])];
   const isGeminiLive = settings.engine === 'gemini-live';
   const search = !settings.webSearch ? [] : settings.engine === 'grok' && SEARCH_STATE.xaiNative ? XAI_SEARCH_TOOLS.map((t) => ({ ...t })) : isGeminiLive ? [] : [SEARCH_TOOL_DEF];
   // Orbit anywhere: reading (and later acting in) other app windows, while it's on here.

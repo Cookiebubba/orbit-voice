@@ -203,6 +203,9 @@ extension AppDelegate {
       v?.handleBridgeEvent(evt)
       if evt["type"]?.stringValue == "settings.changed" {
         self?.syncLocalSpeech()
+        if let u = self?.ui {
+          u.onboarding.accessibilityRequired = !u.settings.isT3Target
+        }
         let keys = evt["changed"]?.arrayValue?.compactMap(\.stringValue) ?? []
         self?.overlays?.settingsChanged(keys)
       }
