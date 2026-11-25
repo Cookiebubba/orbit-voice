@@ -415,13 +415,13 @@ public final class VoiceController: ObservableObject {
       if self.socketGen == gen { self.socket = nil }
       self.session.socketClosed(generation: gen)
     }
-    let claude = settings.voiceEngine == "claude"
+    let localVoice = settings.voiceEngine == "claude" || settings.voiceEngine == "gemini-cli"
     Task { [weak self] in
       guard let self else { return }
-      // Local speech for this call: Claude voice with the app's own speech models (waiting for them
-      // if they're loading right now).
-      var engine = claude ? self.localSpeech : nil
-      if claude, engine == nil, let loading = self.localSpeechLoading {
+      // Local speech for this call: Claude or Gemini CLI voice with the app's own speech models
+      // (waiting for them if they're loading right now).
+      var engine = localVoice ? self.localSpeech : nil
+      if localVoice, engine == nil, let loading = self.localSpeechLoading {
         engine = await loading()
         if let engine, self.localSpeech == nil { self.localSpeech = engine }
       }
@@ -445,7 +445,7 @@ public final class VoiceController: ObservableObject {
     localActive = true
     engine.reset()
     let r = LocalSpeechRelay(
-      speak: { text, sid, speed, done in engine.say(text, sid: sid, speed: speed, done: done) },
+      speakWithTts: { text, tts, sid, speed, done in engine.say(text, tts: tts, sid: sid, speed: speed, done: done) },
       deliver: { [weak self] t in DispatchQueue.main.async { MainActor.assumeIsolated { self?.session.socketMessage(generation: gen, t) } } })
     relay = r
     engine.onStarted = { [weak self] in

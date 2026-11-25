@@ -156,6 +156,14 @@ public final class OnboardingModel {
   public private(set) var completedOnce: Bool
   /** The voice step is still to do (shown before the permissions). */
   public private(set) var voicePending: Bool
+  /** False when using T3 Code (talks over local bridge instead of macOS Accessibility for Claude Desktop). */
+  public var accessibilityRequired: Bool = true {
+    didSet {
+      guard accessibilityRequired != oldValue else { return }
+      finishIfDone()
+      onNeededChange?(needed)
+    }
+  }
 
   @ObservationIgnored public private(set) var probe: PermissionProbe
   @ObservationIgnored private let store: OnboardingStore
@@ -186,12 +194,12 @@ public final class OnboardingModel {
    */
   public var step: OnboardingStep {
     if state.mic != .granted && !skipped.contains(.mic) { return .mic }
-    if !state.ax && !skipped.contains(.ax) { return .ax }
+    if accessibilityRequired && !state.ax && !skipped.contains(.ax) { return .ax }
     return .done
   }
 
   /** A required permission is missing (restricted mic can't be fixed here, so it doesn't count). */
-  public var requiredMissing: Bool { (state.mic != .granted && state.mic != .restricted) || !state.ax }
+  public var requiredMissing: Bool { (state.mic != .granted && state.mic != .restricted) || (accessibilityRequired && !state.ax) }
 
   /** Should the onboarding be on screen? First launch, or a required permission missing, and a step left. */
   public var needed: Bool { voicePending || (step != .done && (!completedOnce || requiredMissing)) }
@@ -247,9 +255,19 @@ public final class OnboardingModel {
     }
   }
 
+  /** Items adjusted for the active target (Accessibility is optional when using T3 Code). */
+  public var displayItems: [Item] {
+    guard !accessibilityRequired else { return Self.items }
+    return [
+      Item(step: .mic, label: "Microphone", why: "To hear you (and for the offline “Hey Orbit”).", needed: true),
+      Item(step: .ax, label: "Accessibility", why: "Optional with T3 Code. Only needed for Orbit Anywhere (working inside other app windows) or Claude Desktop.", needed: false),
+      Item(step: .screen, label: "Screen Recording", why: "Only to look at a window when you ask (“what's on this chart?”). Everything else works without it.", needed: false),
+    ]
+  }
+
   /** The main screen's banner while a needed permission is off (MacPermissionsBanner), else nil. */
   public var bannerText: (missing: [Item], text: String)? {
-    let missing = Self.items.filter { $0.needed && !isOn($0.step) }
+    let missing = displayItems.filter { $0.needed && !isOn($0.step) }
     guard let first = missing.first else { return nil }
     return (missing, "Orbit needs \(missing.map(\.label).joined(separator: " and ")) \(first.step == .ax ? "to use the Claude app for you." : "to hear you.")")
   }

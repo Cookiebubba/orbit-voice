@@ -1,0 +1,335 @@
+{
+  "description": "Labeled routing and topic-drift evaluation benchmark for src/router/",
+  "now": 1700000000000,
+  "sessions": {
+    "orbit": {
+      "id": "sess_orbit",
+      "title": "Smart routing and prompt queue",
+      "project": "orbit-voice",
+      "cwd": "/repo/orbit-voice",
+      "branch": "feat/gemini-t3-routing",
+      "status": "idle",
+      "waiting": false,
+      "lastFocusedAt": 1699999940000,
+      "lastActivityAt": 1699999940000,
+      "recentFiles": [
+        "src/router/ranker.js",
+        "src/router/queue.js",
+        "src/watcher.js"
+      ],
+      "lastMessages": [
+        "Added attention weights for titleMatch, fileMatch, and waitingBonus",
+        "Make sure takeNextIfReady never fires while waiting is true"
+      ],
+      "recentCommits": [
+        "feat: add router ranker",
+        "fix: debounce watcher state"
+      ]
+    },
+    "payments": {
+      "id": "sess_payments",
+      "title": "Stripe webhook retries",
+      "project": "payments-api",
+      "cwd": "/repo/payments-api",
+      "branch": "feat/webhook-backoff",
+      "status": "idle",
+      "waiting": false,
+      "lastFocusedAt": 1699999100000,
+      "lastActivityAt": 1699999200000,
+      "recentFiles": [
+        "src/billing.ts",
+        "src/webhooks/retry.ts",
+        "test/webhooks.spec.ts"
+      ],
+      "lastMessages": [
+        "Should I use option one Redis or option two Postgres for the retry queue?",
+        "Stripe idempotency keys prevent duplicate invoice charges"
+      ],
+      "recentCommits": [
+        "feat: webhook exponential backoff",
+        "fix: invoice idempotency check"
+      ]
+    },
+    "mobile": {
+      "id": "sess_mobile",
+      "title": "iOS offline sync cache",
+      "project": "ios-companion",
+      "cwd": "/repo/ios-companion",
+      "branch": "fix/sqlite-cache",
+      "status": "idle",
+      "waiting": false,
+      "lastFocusedAt": 1699996400000,
+      "lastActivityAt": 1699996400000,
+      "recentFiles": [
+        "Sources/Sync/OfflineStore.swift",
+        "Sources/Auth/KeychainManager.swift"
+      ],
+      "lastMessages": [
+        "Migrated CoreData cache to SQLite WAL mode for offline sync"
+      ],
+      "recentCommits": [
+        "fix: prevent keychain deadlock on launch"
+      ]
+    },
+    "docs": {
+      "id": "thr_docs",
+      "threadId": "thr_docs",
+      "title": "API reference migration",
+      "project": "developer-docs",
+      "worktreePath": "/repo/developer-docs",
+      "gitBranch": "chore/openapi-v3",
+      "status": "idle",
+      "waiting": false,
+      "updatedAt": "2023-11-14T21:40:00.000Z",
+      "recentFiles": [
+        "openapi/spec.yaml",
+        "docs/authentication.mdx"
+      ],
+      "lastMessages": [
+        "Generated OpenAPI 3.1 examples for the OAuth endpoints"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "route-01-explicit-file-payments",
+      "kind": "route",
+      "query": "fix the null pointer check in billing.ts",
+      "sessions": ["orbit", "payments", "mobile"],
+      "activeId": "sess_orbit",
+      "expect": { "bestId": "sess_payments", "suggestNew": false }
+    },
+    {
+      "id": "route-02-explicit-file-swift",
+      "kind": "route",
+      "query": "check OfflineStore.swift for the WAL checkpoint bug",
+      "sessions": ["orbit", "payments", "mobile"],
+      "activeId": "sess_orbit",
+      "expect": { "bestId": "sess_mobile", "suggestNew": false }
+    },
+    {
+      "id": "route-03-spoken-dot-filename",
+      "kind": "route",
+      "query": "open ranker dot js and check the softmax confidence",
+      "sessions": ["orbit", "payments", "mobile"],
+      "activeId": "sess_payments",
+      "expect": { "bestId": "sess_orbit", "suggestNew": false }
+    },
+    {
+      "id": "route-04-explicit-project-name",
+      "kind": "route",
+      "query": "in payments-api log the retry attempt count",
+      "sessions": ["orbit", "payments", "mobile"],
+      "activeId": "sess_orbit",
+      "expect": { "bestId": "sess_payments", "suggestNew": false }
+    },
+    {
+      "id": "route-05-explicit-t3-thread-file",
+      "kind": "route",
+      "query": "update openapi/spec.yaml with the new error schema",
+      "sessions": ["orbit", "payments", "docs"],
+      "activeId": "sess_orbit",
+      "expect": { "bestId": "thr_docs", "suggestNew": false }
+    },
+    {
+      "id": "route-06-title-match-webhook",
+      "kind": "route",
+      "query": "add jitter to the Stripe webhook retries",
+      "sessions": ["orbit", "payments", "mobile"],
+      "activeId": "sess_orbit",
+      "expect": { "bestId": "sess_payments", "suggestNew": false }
+    },
+    {
+      "id": "route-07-message-overlap-idempotency",
+      "kind": "route",
+      "query": "verify duplicate invoice charges are blocked by idempotency keys",
+      "sessions": ["orbit", "payments", "mobile"],
+      "activeId": "sess_orbit",
+      "expect": { "bestId": "sess_payments", "suggestNew": false }
+    },
+    {
+      "id": "route-08-commit-overlap-keychain",
+      "kind": "route",
+      "query": "did the keychain deadlock fix also cover background launch?",
+      "sessions": ["orbit", "payments", "mobile"],
+      "activeId": "sess_orbit",
+      "expect": { "bestId": "sess_mobile", "suggestNew": false }
+    },
+    {
+      "id": "route-09-bare-followup-active",
+      "kind": "route",
+      "query": "yes, go ahead",
+      "sessions": ["orbit", "payments", "mobile"],
+      "activeId": "sess_orbit",
+      "recentInteractedIds": ["sess_orbit", "sess_payments", "sess_mobile"],
+      "expect": { "bestId": "sess_orbit", "suggestNew": false }
+    },
+    {
+      "id": "route-10-bare-followup-run-tests",
+      "kind": "route",
+      "query": "run the tests",
+      "sessions": ["orbit", "payments", "mobile"],
+      "activeId": "sess_orbit",
+      "recentInteractedIds": ["sess_orbit", "sess_payments", "sess_mobile"],
+      "expect": { "bestId": "sess_orbit", "suggestNew": false }
+    },
+    {
+      "id": "route-11-bare-followup-waiting-spoken",
+      "kind": "route",
+      "query": "go with option two",
+      "sessions": ["orbit", "payments", "mobile"],
+      "overrides": { "payments": { "waiting": true, "status": "waiting" } },
+      "activeId": "sess_orbit",
+      "lastSpokenId": "sess_payments",
+      "lastSpokenAt": 1699999985000,
+      "expect": { "bestId": "sess_payments", "suggestNew": false }
+    },
+    {
+      "id": "route-12-bare-followup-permission-allow",
+      "kind": "route",
+      "query": "allow it",
+      "sessions": ["orbit", "payments", "mobile"],
+      "overrides": { "mobile": { "waiting": true, "status": "waiting" } },
+      "activeId": "sess_orbit",
+      "lastSpokenId": "sess_mobile",
+      "lastSpokenAt": 1699999990000,
+      "expect": { "bestId": "sess_mobile", "suggestNew": false }
+    },
+    {
+      "id": "route-13-recently-spoken-without-waiting",
+      "kind": "route",
+      "query": "looks good, commit that",
+      "sessions": ["orbit", "payments", "mobile"],
+      "activeId": "sess_orbit",
+      "lastSpokenId": "sess_payments",
+      "lastSpokenAt": 1699999992000,
+      "recentInteractedIds": ["sess_orbit", "sess_payments", "sess_mobile"],
+      "expect": { "bestId": "sess_payments", "suggestNew": false }
+    },
+    {
+      "id": "route-14-explicit-new-project",
+      "kind": "route",
+      "query": "start a new project from scratch for a markdown slide deck tool",
+      "sessions": ["orbit", "payments", "mobile"],
+      "activeId": "sess_orbit",
+      "expect": { "bestId": null, "suggestNew": true }
+    },
+    {
+      "id": "route-15-fresh-session-signal",
+      "kind": "route",
+      "query": "open a fresh session to explore terraform modules for AWS ECS",
+      "sessions": ["orbit", "payments", "mobile"],
+      "activeId": "sess_orbit",
+      "expect": { "bestId": null, "suggestNew": true }
+    },
+    {
+      "id": "route-16-stale-sessions-unrelated-prompt",
+      "kind": "route",
+      "query": "build a python script that parses bank statements and exports monthly spending summaries",
+      "sessions": ["orbit", "payments", "mobile"],
+      "nowOffsetMs": 14400000,
+      "activeId": "sess_orbit",
+      "expect": { "bestId": null, "suggestNew": true }
+    },
+    {
+      "id": "route-17-ambiguous-similar-titles",
+      "kind": "route",
+      "query": "fix the failing tests",
+      "customSessions": [
+        { "id": "s_api", "title": "Fix API tests", "project": "backend", "lastFocusedAt": 1699999940000 },
+        { "id": "s_ui", "title": "Fix UI tests", "project": "frontend", "lastFocusedAt": 1699999940000 }
+      ],
+      "recentInteractedIds": [],
+      "expect": { "ambiguous": true, "suggestNew": false }
+    },
+    {
+      "id": "route-18-no-sessions-suggests-new",
+      "kind": "route",
+      "query": "create a small Express healthcheck endpoint",
+      "customSessions": [],
+      "expect": { "bestId": null, "suggestNew": true }
+    },
+    {
+      "id": "route-19-t3-thread-title-match",
+      "kind": "route",
+      "query": "finish the OpenAPI v3 API reference migration",
+      "sessions": ["orbit", "payments", "docs"],
+      "activeId": "sess_orbit",
+      "expect": { "bestId": "thr_docs", "suggestNew": false }
+    },
+    {
+      "id": "route-20-add-new-test-is-not-new-project",
+      "kind": "route",
+      "query": "add a new test for queue.js expiration",
+      "sessions": ["orbit", "payments", "mobile"],
+      "activeId": "sess_payments",
+      "expect": { "bestId": "sess_orbit", "suggestNew": false }
+    },
+    {
+      "id": "drift-01-other-file-mention",
+      "kind": "drift",
+      "prompt": "fix the backoff jitter in src/webhooks/retry.ts",
+      "active": "orbit",
+      "others": ["payments", "mobile"],
+      "expect": { "drifted": true, "suggestedId": "sess_payments", "suggestNew": false }
+    },
+    {
+      "id": "drift-02-other-project-mention",
+      "kind": "drift",
+      "prompt": "in ios-companion fix the offline sync race condition",
+      "active": "orbit",
+      "others": ["payments", "mobile"],
+      "expect": { "drifted": true, "suggestedId": "sess_mobile", "suggestNew": false }
+    },
+    {
+      "id": "drift-03-new-work-shift",
+      "kind": "drift",
+      "prompt": "start a brand new project from scratch for a terminal Pomodoro timer",
+      "active": "orbit",
+      "others": ["payments", "mobile"],
+      "expect": { "drifted": true, "suggestedId": null, "suggestNew": true }
+    },
+    {
+      "id": "drift-04-no-drift-bare-followup",
+      "kind": "drift",
+      "prompt": "sounds good, run the tests",
+      "active": "orbit",
+      "others": ["payments", "mobile"],
+      "expect": { "drifted": false }
+    },
+    {
+      "id": "drift-05-no-drift-same-session-file",
+      "kind": "drift",
+      "prompt": "clamp maxPerSession in queue.js so negative numbers fall back to 5",
+      "active": "orbit",
+      "others": ["payments", "mobile"],
+      "expect": { "drifted": false }
+    },
+    {
+      "id": "drift-06-no-drift-incidental-cross-ref-long",
+      "kind": "drift",
+      "prompt": "In orbit-voice let us refine the router ranker weights so file matches win reliably. Earlier in payments-api we noticed that aggressive recency decay caused stale sessions to drop cleanly, so let us keep a similar decay curve here and verify it with fixtures.",
+      "active": "orbit",
+      "others": ["payments", "mobile"],
+      "extractedSubject": "Refine orbit-voice router ranker weights and decay curve with fixtures",
+      "expect": { "drifted": false }
+    },
+    {
+      "id": "drift-07-true-drift-long-prompt",
+      "kind": "drift",
+      "prompt": "Before we continue here I just got paged about production invoice retries failing silently whenever Redis times out, so we urgently need to inspect payments-api billing.ts and patch the retry loop before the next billing cycle starts.",
+      "active": "orbit",
+      "others": ["payments", "mobile"],
+      "extractedSubject": "Patch silent invoice retry failure on Redis timeout in payments-api billing.ts",
+      "expect": { "drifted": true, "suggestedId": "sess_payments", "suggestNew": false }
+    },
+    {
+      "id": "drift-08-no-drift-general-feature-in-active",
+      "kind": "drift",
+      "prompt": "add clearer JSDoc comments to the exported helper functions",
+      "active": "orbit",
+      "others": ["payments", "mobile"],
+      "expect": { "drifted": false }
+    }
+  ]
+}

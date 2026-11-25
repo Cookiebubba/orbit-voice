@@ -24,10 +24,11 @@ export function claudeInstall(platform) {
   return { where: platform === 'darwin' ? 'Terminal' : 'a terminal', command: 'curl -fsSL https://claude.ai/install.sh | bash' };
 }
 
-/** Claude voice, or Grok voice with a key saved. */
+/** Claude / Gemini CLI voice, Grok with xAI key, or Gemini Live with Gemini key. */
 export function canTalk(config) {
   const engine = config?.settings?.voiceEngine;
-  if (engine === 'claude') return true;
+  if (engine === 'claude' || engine === 'gemini-cli') return true;
+  if (engine === 'gemini-live') return !!config?.hasGeminiKey;
   return engine === 'grok' && !!config?.hasKey;
 }
 

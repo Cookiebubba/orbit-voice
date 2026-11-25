@@ -36,6 +36,10 @@ public enum SettingKind: Sendable, Equatable {
   case token(pattern: String, maxLength: Int, lowercase: Bool)
   /** brainClaudePath: "" or an absolute local path to claude. */
   case claudePath
+  /** geminiPath: "" or an absolute local path to gemini. */
+  case geminiPath
+  /** t3Endpoint: "" or a loopback http(s) URL (< 200 chars). */
+  case loopbackURL
   /** anywhereUnderOrbit: program names. */
   case appList
   /** orbPosition / orbStickAnchor: the shell's own, not sent through /api/settings. */
@@ -92,7 +96,7 @@ public enum SettingsSchema {
     SettingSpec("brainConnection", .choice(["claude-code", "api-key"]), "claude-code", .secondBrain, "Connection"),
     SettingSpec("brainClaudePath", .claudePath, "", .secondBrain, "Claude Code location"),
     SettingSpec("webSearch", .bool, true, .secondBrain, "Let Grok search the web"),
-    SettingSpec("voiceEngine", .choice(["grok", "claude"]), "claude", .voiceEngine, "Voice engine"),
+    SettingSpec("voiceEngine", .choice(["grok", "claude", "gemini-cli", "gemini-live"]), "claude", .voiceEngine, "Voice engine"),
     SettingSpec("claudeVoice", .integer(min: 0, max: 7), 0, .voice, "Voice"),
     SettingSpec("claudeVoiceModel", .choice(["haiku", "sonnet", "opus", "fable"]), "haiku", .voiceEngine, "Brain"),
     SettingSpec("claudeVoiceEffort", .choice(["low", "medium", "high"]), "low", .voiceEngine, "Effort"),
@@ -109,7 +113,20 @@ public enum SettingsSchema {
     SettingSpec("anywhereUnderOrbit", .appList, [], .anywhere, "Apps under Grok"),
     SettingSpec("anywhereMouse", .bool, true, .anywhere, "Show Orbit's mouse"),
     SettingSpec("anywhereMouseLeadMs", .number(min: 0, max: 600, places: 0), 220, .hidden, "Mouse lead (ms)"),
-    SettingSpec("helperEngine", .choice(["claude-code", "codex"]), "claude-code", .hidden, "Helper engine"),
+    SettingSpec("helperEngine", .choice(["claude-code", "gemini", "codex"]), "claude-code", .hidden, "Helper engine"),
+    SettingSpec("geminiVoice", .choice(["Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"]), "Aoede", .voice, "Gemini voice"),
+    SettingSpec("geminiVoiceModel", .choice(["gemini-3.8-flash-low", "gemini-4-neon-low", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"]), "gemini-2.5-flash", .voiceEngine, "Gemini CLI model"),
+    SettingSpec("geminiLiveModel", .token(pattern: "^(?i)gemini-[a-z0-9._-]+$", maxLength: 79, lowercase: false), "gemini-2.5-flash-native-audio-preview-12-2025", .voiceEngine, "Gemini Live model"),
+    SettingSpec("geminiPath", .geminiPath, "", .voiceEngine, "Gemini CLI location"),
+    SettingSpec("brainProvider", .choice(["claude", "gemini"]), "claude", .secondBrain, "Provider"),
+    SettingSpec("targetBackend", .choice(["auto", "claude-desktop", "t3-code"]), "auto", .app, "Target backend"),
+    SettingSpec("t3Endpoint", .loopbackURL, "", .app, "T3 Code endpoint"),
+    SettingSpec("routingDriftGuard", .bool, true, .app, "Topic drift heads-up"),
+    SettingSpec("routingDriftThreshold", .number(min: 0.5, max: 0.98, places: 2), 0.8, .hidden, "Drift threshold"),
+    SettingSpec("routingQueueBusy", .bool, true, .app, "Queue prompts while busy"),
+    SettingSpec("persona", .choice(["default", "alfred"]), "default", .voiceEngine, "Persona"),
+    SettingSpec("claudeVoiceTts", .choice(["kitten", "kokoro-en", "kokoro-v1"]), "kitten", .voiceEngine, "Local voice pack"),
+    SettingSpec("kokoroVoice", .integer(min: 0, max: 53), 9, .voice, "Kokoro voice"),
     // src/config.js's: the Windows app's first-run onboarding has been through. Orbit Native keeps its
     // own (onboarding.json); the setting is here so its settings are config.js's, key for key.
     SettingSpec("onboarded", .strictBool, true, .hidden, "Onboarded"),
@@ -182,8 +199,17 @@ public enum SettingsSchema {
       guard let s = text(value) else { return nil }
       if s.isEmpty { return "" }
       let bad = s.unicodeScalars.contains { $0.value < 32 || "\"<>|?*".unicodeScalars.contains($0) }
-      guard s.count < 400, s.hasPrefix("/"), !s.hasPrefix("//"), !bad, matches((s as NSString).lastPathComponent, "^(?i)claude(\\.exe)?$") else { return nil }
+      guard (s as NSString).length < 400, s.hasPrefix("/"), !s.hasPrefix("//"), !s.hasPrefix("\\"), !bad, matches((s as NSString).lastPathComponent, "^(?i)claude(\\.exe)?$") else { return nil }
       return .string(s)
+    case .geminiPath:
+      guard let s = text(value) else { return nil }
+      if s.isEmpty { return "" }
+      let bad = s.unicodeScalars.contains { $0.value < 32 || "\"<>|?*".unicodeScalars.contains($0) }
+      guard (s as NSString).length < 400, s.hasPrefix("/"), !s.hasPrefix("//"), !s.hasPrefix("\\"), !bad, matches((s as NSString).lastPathComponent, "^(?i)(?:gemini|agy)(\\.exe)?$") else { return nil }
+      return .string(s)
+    case .loopbackURL:
+      guard let s = text(value), let clean = sanitizeLoopbackURL(s) else { return nil }
+      return .string(clean)
     case .appList:
       guard let arr = value.arrayValue else { return nil }
       var seen = [String]()
@@ -196,6 +222,34 @@ public enum SettingsSchema {
     case .object:
       return value // checked by the shell that owns it
     }
+  }
+
+  /**
+   * Matches src/config.js t3Endpoint sanitization: "" stays "", otherwise an http(s) URL (< 200 chars)
+   * on a loopback host (`127.0.0.1` or `localhost`, matching `new URL(val).hostname`), normalized to
+   * `origin + pathname` without trailing slashes.
+   */
+  public static func sanitizeLoopbackURL(_ raw: String) -> String? {
+    if raw.isEmpty { return "" }
+    guard (raw as NSString).length < 200 else { return nil }
+    var trimmed = raw
+    while let first = trimmed.unicodeScalars.first, first.value <= 0x20 { trimmed.removeFirst() }
+    while let last = trimmed.unicodeScalars.last, last.value <= 0x20 { trimmed.removeLast() }
+    trimmed.removeAll { $0 == "\t" || $0 == "\n" || $0 == "\r" }
+    guard let comps = URLComponents(string: trimmed),
+          let scheme = comps.scheme?.lowercased(),
+          scheme == "http" || scheme == "https",
+          let host = comps.host?.lowercased(),
+          !host.isEmpty,
+          host == "127.0.0.1" || host == "localhost" else {
+      return nil
+    }
+    if let port = comps.port, port < 0 || port > 65535 { return nil }
+    let defaultPort = scheme == "http" ? 80 : 443
+    let portStr = comps.port.flatMap { $0 == defaultPort ? nil : ":\($0)" } ?? ""
+    var path = comps.percentEncodedPath
+    while path.hasSuffix("/") { path.removeLast() }
+    return "\(scheme)://\(host)\(portStr)\(path)"
   }
 
   // MARK: - Hotkey label (src/platform/system.js hotkeyLabel, on a Mac)

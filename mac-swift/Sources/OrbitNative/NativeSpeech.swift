@@ -38,8 +38,18 @@ final class NativeLocalSpeech: LocalSpeechEngine, @unchecked Sendable {
       let speech = try OrbitSpeech(root: root)
       let loaded = Date()
       _ = speech.speak("Okay.", sid: 0, speed: 1)
+      var kokoroNote = ""
+      if speech.kokoroV1Paths.ready() {
+        try? speech.loadKokoroV1()
+        _ = try? speech.speakKokoroV1("Very good, sir.", sid: 24, speed: 1)
+        if speech.hasKokoroV1 { kokoroNote = ", Kokoro v1.0 British RP ready" }
+      } else if speech.kokoroPaths.ready() {
+        try? speech.loadKokoro()
+        _ = try? speech.speakKokoro("Very good.", sid: 9, speed: 1)
+        if speech.hasKokoro { kokoroNote = ", Kokoro British English ready" }
+      }
       let ms = { (a: Date, b: Date) in Int((b.timeIntervalSince(a) * 1000).rounded()) }
-      log("on-device speech in Swift ready (sherpa-onnx \(OrbitSpeech.libraryVersion)): models loaded in \(ms(t0, loaded)) ms, voice warmed up in \(ms(loaded, Date())) ms")
+      log("on-device speech in Swift ready (sherpa-onnx \(OrbitSpeech.libraryVersion)): models loaded in \(ms(t0, loaded)) ms, voice warmed up in \(ms(loaded, Date())) ms\(kokoroNote)")
       let s = NativeLocalSpeech(speech: speech)
       s.log = log
       return s
@@ -65,11 +75,15 @@ final class NativeLocalSpeech: LocalSpeechEngine, @unchecked Sendable {
   }
 
   func say(_ text: String, sid: Int, speed: Double, done: @escaping ([Float]) -> Void) {
+    say(text, tts: "kitten", sid: sid, speed: speed, done: done)
+  }
+
+  func say(_ text: String, tts: String, sid: Int, speed: Double, done: @escaping ([Float]) -> Void) {
     nonisolated(unsafe) let handOver = done // (called once, from the speaker's own queue)
     let asked = Date()
     let stats = self.stats
     stats.update { $0.asked += 1 }
-    speaker.say(text, sid: sid, speed: Float(speed)) { samples in
+    speaker.say(text, tts: tts, sid: sid, speed: Float(speed)) { samples in
       let ms = Int((Date().timeIntervalSince(asked) * 1000).rounded())
       stats.update { s in
         s.made += 1

@@ -310,7 +310,45 @@ export default function App() {
               label={heroLabel}
               onActivate={() => (!on ? startTalk() : v.endWake() || (v.asleep && v.wake()))}
             />
-            <div className="mt-5 text-[16px] font-semibold tracking-[-0.02em]">{status}</div>
+            <div className="mt-5 text-[16px] font-semibold tracking-[-0.02em]">{v.hearing ? "Hearing you…" : status}</div>
+            {on && !v.asleep && (
+              <div className="mt-2 flex flex-col items-center gap-1.5">
+                <div className="flex items-center gap-2 rounded-full bg-soft px-3 py-1 text-[11.5px] text-ink">
+                  <Mic size={12} className={v.muted ? "text-red-500" : v.hearing ? "text-emerald-600" : v.levels.input > 0.08 ? "text-emerald-600" : "text-muted"} />
+                  <select
+                    aria-label="Microphone"
+                    value={v.micId}
+                    onChange={(e) => void v.selectMic(e.target.value)}
+                    className="max-w-[180px] cursor-pointer truncate bg-transparent text-[11.5px] text-fg outline-none"
+                  >
+                    <option value="">{v.activeMicLabel ? `Default (${v.activeMicLabel})` : "Default microphone"}</option>
+                    {v.mics.map((m) => (
+                      <option key={m.deviceId} value={m.deviceId}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="h-1.5 w-12 overflow-hidden rounded-full bg-black/10" title="Live microphone level">
+                    <div
+                      className={cn("h-full transition-[width] duration-75", v.levels.input > 0.08 ? "bg-emerald-500" : "bg-amber-400")}
+                      style={{ width: `${Math.min(100, Math.round(v.levels.input * 100))}%` }}
+                    />
+                  </div>
+                  <span className="w-7 text-right font-mono text-[10px] text-muted">{v.micPeakPct}%</span>
+                  <button
+                    type="button"
+                    onClick={() => void v.toggleRawMic()}
+                    title={v.rawMic ? "Raw mic ON (bypasses macOS/Chrome echo-cancellation attenuation). Click to enable AEC." : "Echo cancellation ON. Click for Raw mic if your level stays near 0–1%."}
+                    className={cn(
+                      "rounded-full px-1.5 py-0.5 font-mono text-[10px] transition-colors",
+                      v.rawMic ? "bg-emerald-600/15 text-emerald-700" : "bg-black/[0.06] text-muted hover:text-fg",
+                    )}
+                  >
+                    {v.rawMic ? "Raw" : "AEC"}
+                  </button>
+                </div>
+              </div>
+            )}
             {warming ? (
               <div className="mt-1.5 text-center font-mono text-[11px] leading-snug text-muted">Getting Orbit's voice ready…</div>
             ) : (

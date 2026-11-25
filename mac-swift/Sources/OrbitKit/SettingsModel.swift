@@ -83,8 +83,16 @@ public final class SettingsModel {
   public func int(_ key: String) -> Int { Int(double(key)) }
   public func string(_ key: String) -> String { values[key]?.stringValue ?? SettingsSchema.byKey[key]?.defaultValue.stringValue ?? "" }
   public var hotkeyLabel: String { string("hotkeyLabel") }
-  /** The assistant's name in the text: Grok, or Orbit when Claude is the voice. */
-  public var assistantName: String { string("voiceEngine") == "claude" ? "Orbit" : "Grok" }
+  /** The assistant's name in the text: Grok, or Orbit when Claude or Gemini is the voice. */
+  public var assistantName: String { string("voiceEngine") == "grok" ? "Grok" : "Orbit" }
+  /** Display name in settings/UI copy: Alfred when the Alfred persona is active, else assistantName. */
+  public var displayAssistantName: String { string("persona") == "alfred" ? "Alfred" : assistantName }
+  public var isGeminiVoice: Bool { string("voiceEngine").hasPrefix("gemini") }
+  public var isT3Target: Bool {
+    let b = string("targetBackend")
+    return b == "t3-code" || (b == "auto" && !string("t3Endpoint").isEmpty)
+  }
+  public var isGeminiBrain: Bool { string("brainProvider") == "gemini" || isGeminiVoice }
 
   // MARK: changing
 

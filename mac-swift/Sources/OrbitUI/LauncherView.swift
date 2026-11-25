@@ -159,7 +159,9 @@ struct MainContent: View {
         if !working.isEmpty {
           HStack(spacing: 6) {
             WorkingDot()
-            Text(working.count == 1 ? "Claude is working in \(working[0].title)" : "Claude is working in \(working.count) sessions")
+            Text(s.isT3Target
+              ? (working.count == 1 ? "Working in \(working[0].title)" : "Working in \(working.count) threads")
+              : (working.count == 1 ? "Claude is working in \(working[0].title)" : "Claude is working in \(working.count) sessions"))
               .font(Theme.font(12)).foregroundStyle(Theme.ink).lineLimit(1).truncationMode(.tail)
           }
           .padding(.top, 8)
@@ -167,7 +169,7 @@ struct MainContent: View {
         VStack(spacing: 4) {
           let recent = CaptionList.recent(v.captions)
           ForEach(Array(recent.enumerated()), id: \.element.id) { i, c in
-            Text(c.who == .sent ? "Sent to Claude ✓ \(c.text)" : c.text)
+            Text(c.who == .sent ? (s.isT3Target ? "Sent ✓ \(c.text)" : "Sent to Claude ✓ \(c.text)") : c.text)
               .font(Theme.font(13))
               .foregroundStyle(captionColor(c, last: i == recent.count - 1))
               .multilineTextAlignment(.center)
@@ -184,7 +186,7 @@ struct MainContent: View {
 
       if ctx.typing && on {
         HStack(spacing: 0) {
-          TextField("", text: $text, prompt: Text(s.string("voiceEngine") == "claude" ? "Type to Orbit…" : "Type to Grok…").foregroundStyle(Theme.faint))
+          TextField("", text: $text, prompt: Text(s.string("persona") == "alfred" ? "Type to Alfred…" : (s.string("voiceEngine") == "grok" ? "Type to Grok…" : "Type to Orbit…")).foregroundStyle(Theme.faint))
             .textFieldStyle(.plain).font(Theme.font(13)).foregroundStyle(Theme.fg)
             .focused($focused)
             .onSubmit(send)

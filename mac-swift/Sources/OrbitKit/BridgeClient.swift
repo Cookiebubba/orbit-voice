@@ -77,11 +77,13 @@ public struct ClaudeVoiceStatus: Sendable, Equatable {
   public var mb: Int
   public var claudeFound: Bool
   public var stt: [String: DownloadState]
+  public var tts: [String: DownloadState]
   public init(json: JSONValue) {
     models = DownloadState(json: json["models"])
     mb = json["mb"]?.intValue ?? 0
     claudeFound = json["claudeFound"]?.boolValue ?? false
     stt = (json["stt"]?.objectValue ?? [:]).mapValues { DownloadState(json: $0) }
+    tts = (json["tts"]?.objectValue ?? [:]).mapValues { DownloadState(json: $0) }
   }
 }
 
@@ -281,9 +283,9 @@ public actor BridgeClient {
 
   public func voices(engine: String) async throws -> VoiceList { VoiceList(json: try await get("/api/voice", query: [URLQueryItem(name: "engine", value: engine)])) }
 
-  /** A spoken sample (audio bytes): Grok's through xAI, Claude voice's made on this Mac. */
+  /** A spoken sample (audio bytes): Grok's through xAI, local voice's (Claude / Gemini CLI) made on this Mac. */
   public func voicePreview(engine: String, voice: String, speed: Double) async throws -> Data {
-    let path = engine == "claude" ? "/api/claude-voice/preview" : "/api/voice/preview"
+    let path = (engine == "claude" || engine == "gemini-cli") ? "/api/claude-voice/preview" : "/api/voice/preview"
     let (data, http) = try await send("POST", path, json: ["voice": .string(voice), "speed": .number(speed)])
     guard http.statusCode == 200 else {
       let v = (try? JSONValue.parse(data)) ?? .null
@@ -296,6 +298,9 @@ public actor BridgeClient {
   public func claudeVoiceDownload() async throws -> DownloadState { DownloadState(json: try await post("/api/claude-voice/download")["models"]) }
   public func sttDownload(_ id: String) async throws -> [String: DownloadState] {
     (try await post("/api/claude-voice/stt-download", ["id": .string(id)])["stt"]?.objectValue ?? [:]).mapValues { DownloadState(json: $0) }
+  }
+  public func ttsDownload(_ id: String) async throws -> [String: DownloadState] {
+    (try await post("/api/claude-voice/tts-download", ["id": .string(id)])["tts"]?.objectValue ?? [:]).mapValues { DownloadState(json: $0) }
   }
 
   public func brain() async throws -> BrainStatus { BrainStatus(json: try await get("/api/brain")) }

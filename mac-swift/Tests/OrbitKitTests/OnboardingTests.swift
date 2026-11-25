@@ -167,4 +167,18 @@ final class OnboardingTests: XCTestCase {
     m2.skipAll()
     XCTAssertFalse(m2.needed)
   }
+
+  func testAccessibilityOptionalWhenUsingT3Code() {
+    let (m, _, _) = model(PermissionState(mic: .granted, ax: false, screen: false))
+    XCTAssertEqual(m.step, .ax)
+    XCTAssertTrue(m.requiredMissing)
+    XCTAssertNotNil(m.bannerText)
+
+    m.accessibilityRequired = false
+    XCTAssertEqual(m.step, .done)
+    XCTAssertFalse(m.requiredMissing)
+    XCTAssertFalse(m.needed)
+    XCTAssertNil(m.bannerText, "T3 Code mode never nags for Claude Accessibility")
+    XCTAssertEqual(m.displayItems.first(where: { $0.step == .ax })?.needed, false)
+  }
 }

@@ -281,6 +281,8 @@ public final class ClaudeRealtime: @unchecked Sendable {
     public var claudePath: String?
     public var speed: Double = 1
     public var sid: Int = 0
+    public var tts = "kitten"
+    public var kokoroSid: Int = 9
     public var model = "haiku"
     public var effort = "low"
     public var stt = "moonshine"
@@ -308,6 +310,8 @@ public final class ClaudeRealtime: @unchecked Sendable {
   var model: String
   var effort: String
   var sid: Int
+  var tts: String
+  var kokoroSid: Int
   var speed: Double
   let localSpeech: Bool
 
@@ -370,6 +374,8 @@ public final class ClaudeRealtime: @unchecked Sendable {
     model = ClaudeRealtime.models.contains(o.model) ? o.model : "haiku"
     effort = ClaudeRealtime.efforts.contains(o.effort) ? o.effort : "low"
     sid = o.sid
+    tts = VoiceModels.ttsOk(o.tts) ? o.tts : "kitten"
+    kokoroSid = o.kokoroSid
     speed = o.speed
     localSpeech = o.localSpeech
   }
@@ -505,7 +511,8 @@ public final class ClaudeRealtime: @unchecked Sendable {
     var o: [String: JSONValue] = ["type": "response.output_audio.delta", "response_id": .string(t.id), "item_id": .string(t.itemId), "delta": ""]
     if !text.isEmpty {
       o["text"] = .string(text)
-      o["voice"] = ["sid": .number(Double(sid)), "speed": .number(speed)]
+      let activeSid = tts == "kokoro-en" ? kokoroSid : sid
+      o["voice"] = ["sid": .number(Double(activeSid)), "tts": .string(tts), "speed": .number(speed)]
     }
     if reflex { o["reflex"] = true }
     if let emote { o["emote"] = ["name": .string(emote)] }
@@ -789,6 +796,8 @@ public final class ClaudeRealtime: @unchecked Sendable {
       if case .str(let ins)? = s["instructions"] { instructions = ins }
       if case .arr(let ts)? = s["tools"] { tools = ts }
       if case .num(let v)? = s["claude_voice"], v.rounded(.towardZero) == v, v >= 0, v <= 7 { sid = Int(v) }
+      if case .num(let v)? = s["kokoro_voice"], v.rounded(.towardZero) == v, v >= 0, v <= 10 { kokoroSid = Int(v) }
+      if case .str(let t)? = s["claude_tts"], VoiceModels.ttsOk(t) { tts = t }
       if case .num(let v)? = s["audio"]?["output"]?["speed"], v.isFinite { speed = v }
       if case .str(let m)? = s["claude_model"], ClaudeRealtime.models.contains(m) { model = m }
       if case .str(let e)? = s["claude_effort"], ClaudeRealtime.efforts.contains(e) { effort = e }

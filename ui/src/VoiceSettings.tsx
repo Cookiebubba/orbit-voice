@@ -1,5 +1,7 @@
-// Voice + speaking speed, for either engine. Changes save right away and apply mid-conversation.
-// Grok: xAI's voices, previewed through xAI. Claude voice: Kitten's 8 voices, previewed on this PC.
+// Voice + speaking speed, for any voice engine. Changes save right away and apply mid-conversation.
+// Grok: xAI's voices, previewed through xAI. Claude / Gemini CLI: Kitten's 8 voices or Kokoro
+// English's 11 British & US voices, previewed on this PC. Gemini Live: Google's prebuilt native
+// voices, applied directly in call.
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -13,21 +15,42 @@ async function post(url: string, body: object) {
   return fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 }
 
-// Each engine's voice list, kept for the session: when Settings switches engines, the other card
-// opens at its real size instead of growing out of a "Loading voices…" box.
-type Engine = "grok" | "claude";
-const cache: Partial<Record<Engine, VoiceState>> = {};
-export function prefetchVoices(engine: Engine) {
-  return fetch(`/api/voice?engine=${engine}`)
+// Each engine's voice list, kept for the session: when Settings switches engines or local TTS
+// packs, the other card opens at its real size instead of growing out of a "Loading voices…" box.
+export type Engine = "grok" | "claude" | "gemini-cli" | "gemini-live";
+export type TtsPack = "kitten" | "kokoro-en" | "kokoro-v1";
+const cache: Record<string, VoiceState> = {};
+const cacheKey = (engine: Engine, tts: TtsPack = "kitten") => `${engine}:${tts}`;
+
+export function prefetchVoices(engine: Engine, tts: TtsPack = "kitten") {
+  const local = engine === "claude" || engine === "gemini-cli";
+  const url = local ? `/api/voice?engine=${engine}&tts=${tts}` : `/api/voice?engine=${engine}`;
+  const key = cacheKey(engine, tts);
+  return fetch(url)
     .then((r) => (r.ok ? r.json() : null))
-    .then((s: VoiceState | null) => (s ? (cache[engine] = s) : null))
+    .then((s: VoiceState | null) => (s ? (cache[key] = s) : null))
     .catch(() => null);
 }
 
-export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME, onVolume }: { engine?: Engine; volume?: number; onVolume?: (v: number) => void }) {
-  const claude = engine === "claude";
-  const [state, setState] = useState<VoiceState | null>(cache[engine] ?? null);
-  const [speed, setSpeed] = useState(cache[engine]?.speed ?? 1);
+export default function VoiceSettings({
+  engine = "grok",
+  tts = "kitten",
+  volume = DEFAULT_VOLUME,
+  onVolume,
+  syncKey,
+}: {
+  engine?: Engine;
+  tts?: TtsPack;
+  volume?: number;
+  onVolume?: (v: number) => void;
+  syncKey?: number;
+}) {
+  const localSpeech = engine === "claude" || engine === "gemini-cli";
+  const isKokoro = localSpeech && (tts === "kokoro-en" || tts === "kokoro-v1");
+  const geminiLive = engine === "gemini-live";
+  const key = cacheKey(engine, localSpeech ? tts : "kitten");
+  const [state, setState] = useState<VoiceState | null>(cache[key] ?? null);
+  const [speed, setSpeed] = useState(cache[key]?.speed ?? 1);
   const [preview, setPreview] = useState<"idle" | "loading" | "playing">("idle");
   const [error, setError] = useState("");
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -44,27 +67,53 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
   };
 
   useEffect(() => {
-    prefetchVoices(engine).then((s) => {
+    let active = true;
+    const effectiveTts: TtsPack = localSpeech ? tts : "kitten";
+    const k = cacheKey(engine, effectiveTts);
+    setError("");
+    setPreview("idle");
+    setState(cache[k] ?? null);
+    if (cache[k]) setSpeed(cache[k].speed);
+    prefetchVoices(engine, effectiveTts).then((s) => {
+      if (!active) return;
       if (!s) return setError("Couldn't load voice settings.");
       setState(s);
       setSpeed(s.speed);
     });
     return () => {
+      active = false;
       audio.current?.pause();
       clearTimeout(saveTimer.current);
       clearTimeout(volTimer.current);
     };
-  }, []);
+  }, [engine, tts, localSpeech, syncKey]);
 
   const save = async (change: { voice?: string; speed?: number }) => {
     setError("");
-    const body = claude && change.voice !== undefined ? { claudeVoice: Number(change.voice) } : change;
+    const body =
+      change.voice !== undefined
+        ? isKokoro
+          ? { kokoroVoice: Number(change.voice) }
+          : localSpeech
+            ? { claudeVoice: Number(change.voice) }
+            : geminiLive
+              ? { geminiVoice: change.voice }
+              : change
+        : change;
     const r = await post("/api/settings", body);
     if (r.ok) {
       const saved = await r.json();
+      const savedVoice = isKokoro
+        ? String(saved.kokoroVoice)
+        : localSpeech
+          ? String(saved.claudeVoice)
+          : geminiLive
+            ? String(saved.geminiVoice)
+            : saved.voice;
+      const k = cacheKey(engine, localSpeech ? tts : "kitten");
       setState((s) => {
-        const next = s ? { ...s, voice: claude ? String(saved.claudeVoice) : saved.voice, speed: saved.speed } : s;
-        if (next) cache[engine] = next;
+        const next = s ? { ...s, voice: savedVoice, speed: saved.speed } : s;
+        if (next) cache[k] = next;
         return next;
       });
     } else setError("Couldn't save that setting.");
@@ -77,6 +126,7 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
   };
 
   const playPreview = async () => {
+    if (geminiLive) return;
     if (preview === "playing") {
       audio.current?.pause();
       setPreview("idle");
@@ -85,7 +135,8 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
     setPreview("loading");
     setError("");
     try {
-      const r = await post(claude ? "/api/claude-voice/preview" : "/api/voice/preview", { voice: state?.voice, speed });
+      const payload = isKokoro ? { voice: state?.voice, speed, tts: "kokoro-en" } : { voice: state?.voice, speed };
+      const r = await post(localSpeech ? "/api/claude-voice/preview" : "/api/voice/preview", payload);
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Preview failed.");
       const url = URL.createObjectURL(await r.blob());
       audio.current?.pause();
@@ -122,9 +173,13 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
 
   return (
     <section className="border-t border-line pt-5">
-      <h3 className="eyebrow">{claude ? "Orbit's voice" : "Grok's voice"}</h3>
+      <h3 className="eyebrow">{localSpeech ? "Orbit's voice" : geminiLive ? "Gemini's voice" : "Grok's voice"}</h3>
       <p className="mt-3 text-[12.5px] leading-relaxed text-muted">
-        {claude ? `Spoken on ${thisComputer}. Pick one by ear with Preview. Changes apply right away.` : "Changes apply right away, even mid-conversation."}
+        {localSpeech
+          ? `Spoken on ${thisComputer}${isKokoro ? " with Kokoro English" : ""}. Pick one by ear with Preview. Changes apply right away.`
+          : geminiLive
+            ? "Gemini Live native voices apply directly when you start a call."
+            : "Changes apply right away, even mid-conversation."}
       </p>
 
       <label className="mt-4 mb-1.5 block text-[12px] text-muted">Voice</label>
@@ -150,14 +205,16 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
         </div>
         <button
           onClick={playPreview}
-          aria-label={preview === "playing" ? "Stop preview" : "Preview voice"}
-          title={preview === "playing" ? "Stop preview" : "Preview this voice"}
-          className="flex h-10 items-center gap-1.5 rounded-xl bg-fg px-3.5 text-[13px] font-medium text-white transition-colors hover:bg-[#2b2b2b]"
+          disabled={geminiLive}
+          aria-label={geminiLive ? "Preview unavailable for Gemini Live" : preview === "playing" ? "Stop preview" : "Preview voice"}
+          title={geminiLive ? "Gemini Live voices apply directly in call" : preview === "playing" ? "Stop preview" : "Preview this voice"}
+          className="flex h-10 items-center gap-1.5 rounded-xl bg-fg px-3.5 text-[13px] font-medium text-white transition-colors hover:bg-[#2b2b2b] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {preview === "loading" ? <Loader2 size={14} className="animate-spin" /> : preview === "playing" ? <Square size={12} /> : <Play size={13} />}
           {preview === "playing" ? "Stop" : "Preview"}
         </button>
       </div>
+      {geminiLive && <p className="mt-1.5 text-[11.5px] leading-snug text-faint">Voice preview isn't available for Gemini Live; your selection applies directly in call.</p>}
 
       <div className="mt-5 mb-1.5 flex items-baseline justify-between">
         <label className="text-[12px] text-muted">Talking speed</label>

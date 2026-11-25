@@ -62,7 +62,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
    */
   static func claudeVoiceChosen(profile: URL) -> Bool {
     guard let data = try? Data(contentsOf: profile.appendingPathComponent("settings.json")) else { return true }
-    return (try? JSONValue.parse(data))?["voiceEngine"]?.stringValue == "claude"
+    let eng = (try? JSONValue.parse(data))?["voiceEngine"]?.stringValue
+    return eng == "claude" || eng == "gemini-cli"
   }
 
   // MARK: the core
@@ -87,8 +88,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     eng.firstRunSettings = ["avatar": "qubit"]
     eng.loadSettings()
     engine = eng
-    // (Not loading yet, if the file said otherwise: the settings now say Claude voice.)
-    if config.speechInApp, eng.config.string("voiceEngine") == "claude" { startSpeechLoad() }
+    // (Not loading yet, if the file said otherwise: the settings now say Claude or Gemini CLI voice.)
+    let ve = eng.config.string("voiceEngine")
+    if config.speechInApp, ve == "claude" || ve == "gemini-cli" { startSpeechLoad() }
     if config.testing, ProcessInfo.processInfo.environment["ORBIT_SWIFT_VOICE"] == "1" { enableSwiftVoice(eng) }
     // The core behind it, on a free port of its own (only the engine talks to it).
     guard let corePort = FreePort.pick() else { return fail("Orbit could not find a free local port for its core.") }
@@ -187,6 +189,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       startHidden: LoginLaunch.wasOpenedAtLogin || CommandLine.arguments.contains(CoreRecovery.relaunchArgument)
     )
     let u = OrbitUI(bridge: BridgeClient(endpoints: e), voice: voice, hotkey: hotkeys, options: options)
+    if let cfg = engine?.config {
+      let b = cfg.string("targetBackend")
+      let t3Active = b == "t3-code" || (b == "auto" && !cfg.string("t3Endpoint").isEmpty)
+      u.onboarding.accessibilityRequired = !t3Active
+    }
     u.onQuit = { NSApp.terminate(nil) }
     u.onMinimize = { [weak self] in self?.events.add("window.minimize") }
     u.onHotkeyChanged = { [weak self] accel in self?.saveShellSettings(["wakeHotkey": .string(accel)]) }

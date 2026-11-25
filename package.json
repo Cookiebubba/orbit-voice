@@ -16,6 +16,7 @@
   "scripts": {
     "app": "electron .",
     "web": "node src/server.js",
+    "t3:bridge": "node scripts/t3-bridge.mjs",
     "build:ui": "npm --prefix ui ci --no-audit --no-fund && npm --prefix ui run build",
     "icons": "electron scripts/make-icons.mjs",
     "icons:mac": "electron scripts/make-icons.mjs --mac",
@@ -41,7 +42,8 @@
     "latency:claude-voice": "node scripts/claude-voice-latency.mjs",
     "eval:intent": "node scripts/intent-eval.mjs",
     "eval:listen": "node scripts/listen-eval.mjs",
-    "eval:emote": "node scripts/emote-eval.mjs"
+    "eval:emote": "node scripts/emote-eval.mjs",
+    "eval:route": "node scripts/route-eval.mjs"
   },
   "engines": {
     "node": ">=20"

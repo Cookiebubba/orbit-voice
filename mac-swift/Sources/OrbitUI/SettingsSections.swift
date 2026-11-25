@@ -20,6 +20,31 @@ private let sttOptions: [(value: String, label: String, hint: String)] = [
   ("parakeet-v2", "Accurate", "Parakeet 0.6B: the most accurate, about 1 word in 8 even when mumbling, about 0.3 s slower per sentence. A 460 MB download. Recommended if you mumble."),
 ]
 
+private let personaOptions: [(value: String, label: String, hint: String)] = [
+  ("default", "Orbit (Default)", "Calm, plain-spoken companion."),
+  ("alfred", "Alfred — British Chief of Staff", "Aristocratic British chief of staff — dry wit, calm precision, gets things done. Pairs best with Kokoro English (George) or Gemini Live."),
+]
+
+private let ttsPackOptions: [(value: String, label: String, hint: String)] = [
+  ("kitten", "Kitten Nano", "Bundled local voice pack (8 voices)."),
+  ("kokoro-en", "Kokoro v0.19", "98 MB British & US pack (George & Lewis)."),
+  ("kokoro-v1", "Kokoro v1.0 British RP", "126 MB upgraded British RP pack with lexicon-gb-en: Daniel (Refined Alfred), Lewis (Deep Butler), George & Fable."),
+]
+
+private let geminiLiveVoices: [String] = ["Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"]
+
+private let geminiVoiceModelOptions: [Segmented.Option] = [
+  .init(value: "gemini-3.8-flash-low", label: "3.8 Flash"),
+  .init(value: "gemini-4-neon-low", label: "4 Neon"),
+  .init(value: "gemini-2.5-flash", label: "2.5 Flash"),
+  .init(value: "gemini-2.5-pro", label: "2.5 Pro"),
+]
+
+private let geminiLiveModelOptions: [Segmented.Option] = [
+  .init(value: "gemini-2.5-flash-native-audio-preview-12-2025", label: "2.5 Native Audio"),
+  .init(value: "gemini-2.0-flash-live-001", label: "2.0 Flash Live"),
+]
+
 struct VoiceEngineSection: View {
   @Bindable var ctx: UIContext
   @State private var status: ClaudeVoiceStatus?
@@ -29,10 +54,50 @@ struct VoiceEngineSection: View {
     let s = ctx.settings
     let engine = s.string("voiceEngine")
     SettingsSection(title: "Voice engine") {
-      Segmented(value: engine, options: [.init(value: "grok", label: "Grok"), .init(value: "claude", label: "Claude (beta)")]) { choose($0) }
+      Segmented(value: engine, options: [
+        .init(value: "grok", label: "Grok"),
+        .init(value: "claude", label: "Claude"),
+        .init(value: "gemini-cli", label: "Gemini CLI"),
+        .init(value: "gemini-live", label: "Gemini Live"),
+      ]) { choose($0) }
       if engine == "grok" {
         Hint(text: "Grok's realtime voice, billed by xAI per minute.").padding(.top, 8)
         XaiKeyField(ctx: ctx)
+      } else if engine == "gemini-cli" {
+        Hint(text: "Gemini through your Google / Antigravity subscription, with speech recognized and spoken locally on \(thisComputer). No API key or Claude needed.").padding(.top, 8)
+        FieldLabel(text: "Gemini model")
+        Segmented(value: s.string("geminiVoiceModel"), options: geminiVoiceModelOptions) { save(s, "geminiVoiceModel", .string($0)) }
+        FieldLabel(text: "Speech to text")
+        Segmented(value: s.string("claudeVoiceStt"), options: sttOptions.map { .init(value: $0.value, label: $0.label) }) { chooseStt($0) }
+        Hint(text: "\(sttOptions.first { $0.value == s.string("claudeVoiceStt") }?.hint ?? "") All on \(thisComputer).").padding(.top, 8)
+        sttStatus
+        localVoicePackPicker
+      } else if engine == "gemini-live" {
+        Hint(text: "Gemini Live realtime multimodal voice over WebSocket, using your Gemini API key.").padding(.top, 8)
+        FieldLabel(text: "Gemini voice")
+        Menu {
+          ForEach(geminiLiveVoices, id: \.self) { v in
+            Button(v) { save(s, "geminiVoice", .string(v)) }
+          }
+        } label: {
+          HStack {
+            Text(s.string("geminiVoice")).font(Theme.font(13)).foregroundStyle(Theme.fg)
+            Spacer()
+            Image(systemName: "chevron.down").font(.system(size: 11)).foregroundStyle(Theme.muted)
+          }
+          .padding(.horizontal, 12)
+          .frame(height: 40)
+          .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.soft))
+          .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
+          .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .accessibilityLabel("Gemini voice")
+        .accessibilityValue(s.string("geminiVoice"))
+        FieldLabel(text: "Live model")
+        Segmented(value: s.string("geminiLiveModel"), options: geminiLiveModelOptions) { save(s, "geminiLiveModel", .string($0)) }
       } else {
         Hint(text: "Claude through your own Claude Code sign-in, with speech recognized and spoken on \(thisComputer). No xAI cost. Replies take a moment longer than Grok's.").padding(.top, 8)
         FieldLabel(text: "Brain")
@@ -45,11 +110,49 @@ struct VoiceEngineSection: View {
         Segmented(value: s.string("claudeVoiceStt"), options: sttOptions.map { .init(value: $0.value, label: $0.label) }) { chooseStt($0) }
         Hint(text: "\(sttOptions.first { $0.value == s.string("claudeVoiceStt") }?.hint ?? "") All on \(thisComputer). (Grok hears you on xAI's side: this is for Claude voice only.)").padding(.top, 8)
         sttStatus
+        localVoicePackPicker
         modelsStatus
       }
+      personaPicker
     }
     .task(id: engine) { await refresh() }
     .onDisappear { poll?.cancel() }
+  }
+
+  @ViewBuilder private var personaPicker: some View {
+    let s = ctx.settings
+    let current = s.string("persona")
+    FieldLabel(text: "Persona")
+    Segmented(value: current, options: personaOptions.map { .init(value: $0.value, label: $0.label) }) { save(s, "persona", .string($0)) }
+    Hint(text: personaOptions.first { $0.value == current }?.hint ?? "").padding(.top, 8)
+  }
+
+  @ViewBuilder private var localVoicePackPicker: some View {
+    let s = ctx.settings
+    let current = s.string("claudeVoiceTts")
+    FieldLabel(text: "Local voice pack")
+    Segmented(value: current, options: ttsPackOptions.map { .init(value: $0.value, label: $0.label) }) { chooseTts($0) }
+    Hint(text: "\(ttsPackOptions.first { $0.value == current }?.hint ?? "") All on \(thisComputer).").padding(.top, 8)
+    ttsStatus
+  }
+
+  @ViewBuilder private var ttsStatus: some View {
+    let id = ctx.settings.string("claudeVoiceTts")
+    if id != "kitten", let st = status?.tts[id], st.state != "ready" {
+      if st.state == "downloading" {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Downloading… \(st.percent)% (Kitten Nano speaks until it's ready)").font(Theme.font(12)).foregroundStyle(Theme.ink)
+          ProgressBar(percent: st.percent)
+        }
+        .padding(.top, 6)
+      } else {
+        HStack(spacing: 12) {
+          Hint(text: st.state == "error" ? "Download failed: \(st.error)" : "Needs a \(st.mb) MB download. Kitten Nano speaks until then.", color: st.state == "error" ? Theme.amber700 : Theme.muted)
+          Button(st.state == "error" ? "Retry" : "Download") { downloadTts(id) }.buttonStyle(PillButtonStyle(kind: .dark, size: 12, hPad: 10, vPad: 4, radius: 8))
+        }
+        .padding(.top, 6)
+      }
+    }
   }
 
   @ViewBuilder private var sttStatus: some View {
@@ -97,7 +200,9 @@ struct VoiceEngineSection: View {
   private func refresh() async {
     status = try? await ctx.bridge.claudeVoice()
     // While models download, check progress every second.
-    let downloading = status?.models.state == "downloading" || (status?.stt.values.contains { $0.state == "downloading" } ?? false)
+    let downloading = status?.models.state == "downloading"
+      || (status?.stt.values.contains { $0.state == "downloading" } ?? false)
+      || (status?.tts.values.contains { $0.state == "downloading" } ?? false)
     poll?.cancel()
     if downloading {
       poll = Task {
@@ -121,8 +226,16 @@ struct VoiceEngineSection: View {
     }
   }
 
+  private func chooseTts(_ id: String) {
+    Task {
+      await ctx.settings.set("claudeVoiceTts", .string(id))
+      if id != "kitten", let st = status?.tts[id], st.state != "ready", st.state != "downloading" { downloadTts(id) }
+    }
+  }
+
   private func download() { Task { _ = try? await ctx.bridge.claudeVoiceDownload(); await refresh() } }
   private func downloadStt(_ id: String) { Task { _ = try? await ctx.bridge.sttDownload(id); await refresh() } }
+  private func downloadTts(_ id: String) { Task { _ = try? await ctx.bridge.ttsDownload(id); await refresh() } }
 }
 
 struct ProgressBar: View {
@@ -154,16 +267,19 @@ struct VoiceCard: View {
   @State private var volTask: Task<Void, Never>?
 
   var body: some View {
-    let claude = engine == "claude"
+    let claude = engine == "claude" || engine == "gemini-cli"
     let s = ctx.settings
+    let isKokoro = s.string("claudeVoiceTts") == "kokoro-en" || s.string("claudeVoiceTts") == "kokoro-v1"
     Group {
       if let list {
-        SettingsSection(title: claude ? "Orbit's voice" : "Grok's voice", titleGap: 0) {
+        let title = s.string("persona") == "alfred" ? "Alfred's voice" : (claude ? "Orbit's voice" : "Grok's voice")
+        SettingsSection(title: title, titleGap: 0) {
           Text(claude ? "Spoken on \(thisComputer). Pick one by ear with Preview. Changes apply right away." : "Changes apply right away, even mid-conversation.")
             .font(Theme.font(12.5)).foregroundStyle(Theme.muted).relaxed(12.5).padding(.top, 12)
           Text("Voice").font(Theme.font(12)).foregroundStyle(Theme.muted).padding(.top, 16).padding(.bottom, 6)
           HStack(spacing: 8) {
-            voicePicker(list, current: claude ? String(s.int("claudeVoice")) : s.string("voice"))
+            let currentVoice = claude ? (isKokoro ? String(s.int("kokoroVoice")) : String(s.int("claudeVoice"))) : s.string("voice")
+            voicePicker(list, current: currentVoice)
             Button(action: playPreview) {
               HStack(spacing: 6) {
                 if preview == "loading" { ProgressView().controlSize(.mini).tint(.white) } else { Image(systemName: preview == "playing" ? "stop.fill" : "play.fill").font(.system(size: 10)) }
@@ -209,7 +325,7 @@ struct VoiceCard: View {
         }
       }
     }
-    .task {
+    .task(id: "\(engine)|\(s.string("claudeVoiceTts"))") {
       do { list = try await ctx.bridge.voices(engine: engine) } catch { self.error = "Couldn't load voice settings." }
     }
     .onDisappear { player.stop(); saveTask?.cancel() }
@@ -246,7 +362,17 @@ struct VoiceCard: View {
   private func pick(_ id: String) {
     error = ""
     Task {
-      let r = engine == "claude" ? await ctx.settings.set("claudeVoice", .number(Double(id) ?? 0)) : await ctx.settings.set("voice", .string(id))
+      let r: SettingChange
+      if engine == "claude" || engine == "gemini-cli" {
+        let pack = ctx.settings.string("claudeVoiceTts")
+        if pack == "kokoro-en" || pack == "kokoro-v1" {
+          r = await ctx.settings.set("kokoroVoice", .number(Double(id) ?? (pack == "kokoro-v1" ? 24 : 9)))
+        } else {
+          r = await ctx.settings.set("claudeVoice", .number(Double(id) ?? 0))
+        }
+      } else {
+        r = await ctx.settings.set("voice", .string(id))
+      }
       if case .saved = r {} else { error = "Couldn't save that setting." }
     }
   }
@@ -279,7 +405,9 @@ struct VoiceCard: View {
     preview = "loading"
     error = ""
     let s = ctx.settings
-    let voice = engine == "claude" ? String(s.int("claudeVoice")) : s.string("voice")
+    let isLocal = engine == "claude" || engine == "gemini-cli"
+    let pack = s.string("claudeVoiceTts")
+    let voice = isLocal ? ((pack == "kokoro-en" || pack == "kokoro-v1") ? String(s.int("kokoroVoice")) : String(s.int("claudeVoice"))) : s.string("voice")
     Task {
       do {
         let data = try await ctx.bridge.voicePreview(engine: engine, voice: voice, speed: speed ?? s.double("speed"))
@@ -309,14 +437,33 @@ struct SecondBrainSection: View {
   @FocusState private var pathFocused: Bool
 
   var body: some View {
-    let s = ctx.settings, name = s.assistantName
+    let s = ctx.settings, name = s.displayAssistantName, eng = s.string("voiceEngine"), isGemBrain = s.isGeminiBrain
+    let brainLabel = isGemBrain ? "Gemini" : "Claude"
     let showAdvanced = advanced ?? !s.string("brainClaudePath").isEmpty
+    let searchHint: String = {
+      if eng == "gemini-cli" || isGemBrain {
+        return "For current facts (the latest versions, news, docs), \(name) looks them up instead of guessing: a quick search through your Gemini / Antigravity CLI. What pages say is never taken as an instruction."
+      }
+      if eng == "gemini-live" {
+        return "For current facts (the latest versions, news, docs), \(name) looks them up with Google Search grounding. What pages say is never taken as an instruction."
+      }
+      if eng == "claude" {
+        return "For current facts (the latest versions, news, docs), \(name) looks them up instead of guessing: a quick search through your Claude Code that can only search and read web pages. What pages say is never taken as an instruction."
+      }
+      return "For current facts (the latest versions, news, docs), \(name) looks them up instead of guessing, with xAI's own web and X search. What pages say is never taken as an instruction."
+    }()
     SettingsSection(title: "Second brain") {
-      ToggleRow(label: "Let \(name) ask Claude when a question is hard", hint: "For deep questions, or questions about the code in your current project, \(name) quietly asks Claude and tells you the answer. Only a short note appears when Claude reads your project.", isOn: s.bool("brainEnabled")) { save(s, "brainEnabled", .bool($0)) }
-      ToggleRow(label: "Let \(name) search the web", hint: s.string("voiceEngine") == "claude"
-        ? "For current facts (the latest versions, news, docs), \(name) looks them up instead of guessing: a quick search through your Claude Code that can only search and read web pages. What pages say is never taken as an instruction."
-        : "For current facts (the latest versions, news, docs), \(name) looks them up instead of guessing, with xAI's own web and X search. What pages say is never taken as an instruction.", isOn: s.bool("webSearch")) { save(s, "webSearch", .bool($0)) }.padding(.top, 16)
+      ToggleRow(label: "Let \(name) ask \(brainLabel) when a question is hard", hint: "For deep questions, or questions about the code in your current project, \(name) quietly asks \(brainLabel) and tells you the answer. Only a short note appears when \(brainLabel) reads your project.", isOn: s.bool("brainEnabled")) { save(s, "brainEnabled", .bool($0)) }
+      ToggleRow(label: "Let \(name) search the web", hint: searchHint, isOn: s.bool("webSearch")) { save(s, "webSearch", .bool($0)) }.padding(.top, 16)
       if s.bool("brainEnabled") {
+        FieldLabel(text: "Provider")
+        Segmented(value: s.string("brainProvider"), options: [.init(value: "claude", label: "Claude"), .init(value: "gemini", label: "Gemini")]) { save(s, "brainProvider", .string($0)) }
+        Hint(text: s.string("brainProvider") == "gemini" ? "Routes hard questions through your Gemini / Antigravity subscription or Gemini API key." : "Routes hard questions through Claude Code or your Anthropic API key.").padding(.top, 8)
+        if s.string("brainProvider") == "gemini" {
+          FieldLabel(text: "Gemini model")
+          Segmented(value: s.string("geminiVoiceModel"), options: geminiVoiceModelOptions) { save(s, "geminiVoiceModel", .string($0)) }
+          ToggleRow(label: "Read the current project", hint: "Gemini may read the files of the current project in read-only mode to answer.", isOn: s.bool("brainExplore")) { save(s, "brainExplore", .bool($0)) }.padding(.top, 16)
+        } else {
         FieldLabel(text: "Model")
         Segmented(value: s.string("brainModel"), options: [.init(value: "auto", label: "\(name) picks"), .init(value: "haiku", label: "Haiku"), .init(value: "sonnet", label: "Sonnet"), .init(value: "opus", label: "Opus")]) { save(s, "brainModel", .string($0)) }
         Hint(text: s.string("brainModel") == "auto" ? "\(name) chooses per question: Haiku for quick lookups, Sonnet for most code questions, Opus only for hard problems." : "Every question goes to \(s.string("brainModel").capitalizedFirst).").padding(.top, 8)
@@ -389,6 +536,7 @@ struct SecondBrainSection: View {
             Hint(text: "Leave empty to find it automatically. Otherwise, the full path to claude.", size: 11.5, color: Theme.faint)
           }
           .padding(.top, 8)
+        }
         }
       }
     }
@@ -464,8 +612,9 @@ struct HotkeySection: View {
 
   var body: some View {
     let _ = ctx.shellRevision
+    let name = ctx.settings.displayAssistantName
     SettingsSection(title: "Wake hotkey") {
-      Text("Works from any app: starts Grok when it's off, and puts it to sleep or wakes it when it's on.")
+      Text("Works from any app: starts \(name) when it's off, and puts it to sleep or wakes it when it's on.")
         .font(Theme.font(12.5)).foregroundStyle(Theme.muted).relaxed(12.5).padding(.top, -4)
       Button(action: { message = nil; recording ? stop() : record() }) {
         Group {

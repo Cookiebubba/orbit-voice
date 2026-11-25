@@ -5738,6 +5738,7 @@
        "text": "Claude is fixing the login bug.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -5767,6 +5768,7 @@
        "text": "It should be done soon.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -5996,6 +5998,7 @@
        "text": "Once upon a time,",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        },
        "emote": {
@@ -6013,6 +6016,7 @@
        "text": "in a land far away from here and everything, there lived a very small cube.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -6027,6 +6031,7 @@
        "text": "It hopped.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -6041,6 +6046,7 @@
        "text": "Why?",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        },
        "emote": {
@@ -6073,6 +6079,7 @@
        "text": "Nobody knew!",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -6261,6 +6268,7 @@
        "text": "One sec.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        },
        "reflex": true
@@ -6371,6 +6379,7 @@
        "text": "You are in Fix the login bug.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -6554,6 +6563,7 @@
        "text": "Sure.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -6763,6 +6773,7 @@
        "text": "One sec.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        },
        "reflex": true
@@ -6963,6 +6974,7 @@
        "text": "One moment.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        },
        "reflex": true
@@ -6998,6 +7010,7 @@
        "text": "Because of the cache.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -7253,6 +7266,7 @@
        "text": "Okay.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -7461,6 +7475,7 @@
        "text": "Go on.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -7658,6 +7673,7 @@
        "text": "Here is the first thing,",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -7808,6 +7824,7 @@
        "text": "Stopped.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -8300,6 +8317,7 @@
        "text": "A backflip.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -8465,6 +8483,7 @@
        "text": "Claude finished.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -8764,6 +8783,7 @@
        "text": "Second answer.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -8966,6 +8986,7 @@
        "text": "Hi.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -9147,6 +9168,7 @@
        "text": "I am Orbit.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -9281,6 +9303,7 @@
        "text": "I am Qubit.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -9533,6 +9556,7 @@
        "text": "Hello.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -9735,6 +9759,7 @@
        "text": "Hi.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -10060,6 +10085,7 @@
        "text": "Hi.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -10241,6 +10267,7 @@
        "text": "Still Orbit.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -11074,6 +11101,7 @@
        "text": "Hi there.",
        "voice": {
         "sid": 5,
+        "tts": "kitten",
         "speed": 0.8
        }
       }
@@ -11271,6 +11299,7 @@
        "text": "Done!",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -11477,6 +11506,7 @@
        "text": "One sec.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        },
        "reflex": true
@@ -11691,6 +11721,7 @@
        "text": "Quick answer.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -11888,6 +11919,7 @@
        "text": "See this at a link and code.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -11917,6 +11949,7 @@
        "text": "Then HEAD tilde 1.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }
@@ -12301,6 +12334,7 @@
        "text": "Hi.",
        "voice": {
         "sid": 2,
+        "tts": "kitten",
         "speed": 1.1
        }
       }

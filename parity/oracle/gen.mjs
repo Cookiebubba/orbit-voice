@@ -21,6 +21,7 @@ import { voiceFixtures } from './voice.mjs';
 import { toolsFixtures } from './tools.mjs';
 import { claudeVoiceFixtures } from './claudevoice.mjs';
 import { relayFixtures } from './relay.mjs';
+import { routerFixtures } from './router.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const FIXTURES = path.join(HERE, 'fixtures');
@@ -45,14 +46,23 @@ const plain = (v) => (v === undefined ? null : JSON.parse(JSON.stringify(v)));
 
 const VALUES = [
   true, false, 'true', 'false', '', ' ', '  1.5 ', '1.5', '2', '0x10', '0b11', '1e3', '.5', '5.', '+1', '-1', 'abc', '1,5', 'Infinity', '\t7\n',
-  0, 1, -1, 0.5, 0.004, 0.0049, 0.005, 0.0051, 0.123456, 1.005, 1.2, 1.234567, 1.5, 1.55, 2, 2.5, 3, 3.7, 7, 8, 10, 599.5, 600.4, 601, 10000, 10001, 1e21, -0.5,
+  0, 1, -1, 0.49, 0.495, 0.5, 0.504, 0.505, 0.8, 0.805, 0.974, 0.975, 0.98, 0.984, 0.985, 0.99,
+  0.004, 0.0049, 0.005, 0.0051, 0.123456, 1.005, 1.2, 1.234567, 1.5, 1.55, 2, 2.5, 3, 3.7, 7, 8, 10, 599.5, 600.4, 601, 10000, 10001, 1e21, -0.5,
+  '0.4', '0.75', '0.999',
   null, [], [1, 2], [1.6, 2.4], [1, 2, 3], ['1', 2], [Infinity], {}, { toString: 1 },
   { corner: 'tl', dx: 1.5, dy: 2.5 }, { corner: 'br', dx: 0, dy: 10000 }, { corner: 'xx', dx: 1, dy: 1 }, { corner: 'tr', dx: -1, dy: 1 }, { corner: 'bl', dx: '5', dy: 5 },
   ['Discord.exe', 'discord.exe', 'Slack', 'bad/name', 'my app (beta)', 'x'.repeat(81), 5, 'A+B.exe'],
   'eve', 'EVE', 'Rex_2', 'bad voice', 'a'.repeat(40), 'a'.repeat(41), 'always', 'tap', 'speak', 'chime', 'off', 'auto', 'haiku', 'sonnet', 'opus', 'fable',
-  'claude-code', 'api-key', 'codex', 'grok', 'claude', 'low', 'medium', 'high', 'moonshine', 'parakeet-110m', 'parakeet-v2', 'buddy', 'qubit', 'none',
+  'claude-code', 'api-key', 'codex', 'grok', 'claude', 'gemini', 'gemini-cli', 'gemini-live', 'low', 'medium', 'high', 'moonshine', 'parakeet-110m', 'parakeet-v2', 'buddy', 'qubit', 'none',
+  'Aoede', 'Puck', 'Zephyr', 'aoede', 'gemini-3.8-flash-low', 'gemini-4-neon-low', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite',
+  'gemini-2.5-flash-native-audio-preview-12-2025', 'gemini-2.0-flash-live-001', `gemini-${'a'.repeat(72)}`, `gemini-${'a'.repeat(73)}`, 'gemini-bad model',
+  'claude-desktop', 't3-code',
+  'http://127.0.0.1:3773', 'http://127.0.0.1:3773/', 'http://127.0.0.1:3773/api///', 'https://localhost:8443/t3/', 'http://[::1]:3773',
+  'https://example.com', 'http://192.168.1.5:3773', 'http://127.0.0.1.evil.com:3773', 'ftp://127.0.0.1:3773', 'ws://127.0.0.1:3773', `http://localhost:3773/${'a'.repeat(200)}`,
   'Command+Alt+G', 'Control+Alt+K', 'Ctrl Alt', 'é+K', 'x'.repeat(59), 'x'.repeat(60), 'grok-voice-latest',
+  9, 11, 24, 54, '9', 'default', 'alfred', 'jarvis', 'kitten', 'kokoro-en', 'kokoro-v1', 'bogus',
   '/usr/local/bin/claude', '/Users/me/.local/bin/claude', '/opt/homebrew/bin/CLAUDE', '/Users/x/claude.exe', 'relative/claude', '//share/claude', '/bin/cl"aude', '/bin/claude2', '/a\tb/claude', `/${'d/'.repeat(200)}claude`,
+  '/usr/local/bin/gemini', '/opt/homebrew/bin/GEMINI', '/Users/x/gemini.exe', '/Applications/Gemini.app/Contents/Helpers/agy', '/usr/local/bin/agy', 'relative/gemini', '//share/gemini', '/bin/gemini2', '/bin/agy2',
 ];
 
 export function settingsCases(sanitize, DEFAULTS) {
@@ -87,6 +97,10 @@ export function loadCases(config) {
     { name: 'an older install with a key', file: { avatar: 'qubit' }, key: KEY },
     { name: 'Claude chosen', file: { voiceEngine: 'claude' }, key: KEY },
     { name: 'Grok chosen', file: { voiceEngine: 'grok' }, key: '' },
+    { name: 'Gemini CLI chosen', file: { voiceEngine: 'gemini-cli' }, key: KEY },
+    { name: 'Gemini CLI chosen, no key', file: { voiceEngine: 'gemini-cli' }, key: '' },
+    { name: 'Gemini Live chosen', file: { voiceEngine: 'gemini-live' }, key: KEY },
+    { name: 'Gemini Live chosen, no key', file: { voiceEngine: 'gemini-live' }, key: '' },
     { name: 'a junk choice', file: { voiceEngine: 'gpt' }, key: '' },
     { name: 'a junk choice, no key', raw: '{"voiceEngine": 5}', key: '' },
     { name: 'an unreadable file', raw: '{nope', key: '' },
@@ -100,7 +114,7 @@ export function loadCases(config) {
       if (s.raw !== undefined) fs.writeFileSync(file, s.raw);
       else if (s.file) fs.writeFileSync(file, JSON.stringify(s.file));
       const read = () => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null);
-      const loaded = config.initConfig({ dir, secrets: mem(s.key), brainSecrets: mem('') });
+      const loaded = config.initConfig({ dir, secrets: mem(s.key), brainSecrets: mem(''), geminiSecrets: mem(''), t3Secrets: mem('') });
       const afterLoad = read();
       config.updateSettings({ speed: 1.3 });
       const afterChange = read();
@@ -111,7 +125,7 @@ export function loadCases(config) {
     }
   }
   const engineFor = [];
-  for (const saved of [undefined, 'grok', 'claude', 'gpt', ''])
+  for (const saved of [undefined, 'grok', 'claude', 'gemini-cli', 'gemini-live', 'gemini', 'gpt', ''])
     for (const hadFile of [false, true]) for (const hasKey of [false, true]) engineFor.push({ saved: saved ?? null, hadFile, hasKey, output: config.engineFor({ saved, hadFile, hasKey }) });
   return { loads: out, engineFor };
 }
@@ -161,6 +175,8 @@ export async function build() {
       // ...and which windows Orbit may read (the macOS port's policy.js: made on a Mac, from a tree with it).
       return { intent: { platform: 'any', ...f.intent }, policy: { platform: 'darwin', ...f.policy } };
     })()),
+    // SP3 routing (rankCandidates, checkTopicDrift, createPromptQueue, heuristics) — OS-independent.
+    router: { platform: 'any', ...(await routerFixtures(root, rng)) },
     // The Claude driver (the macOS port's platform/mac/desktop.js against its stand-in Claude).
     ...(fs.existsSync(path.join(root, 'src', 'platform', 'mac', 'desktop.js')) ? { desktop: { platform: 'darwin', ...(await desktopFixtures(root)) } } : {}),
     // Claude Code's sessions on disk and the watcher (a Mac's folders: made on a Mac).
@@ -206,7 +222,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
         continue;
       }
       fs.writeFileSync(path.join(FIXTURES, `${name}.json`), `${JSON.stringify(data, null, 1)}\n`);
-      console.log(`${name}: ${(data.cases || data.scenarios || data.steps || []).length} ${data.scenarios ? 'scenarios' : data.steps ? 'steps' : 'cases'}`);
+      const count = (data.cases || data.scenarios || data.steps || data.rounds || data.rankCases || []).length;
+      const label = data.scenarios ? 'scenarios' : data.steps ? 'steps' : data.rounds ? 'rounds' : data.rankCases ? 'rank cases' : 'cases';
+      console.log(`${name}: ${count} ${label}`);
     }
   }
 }

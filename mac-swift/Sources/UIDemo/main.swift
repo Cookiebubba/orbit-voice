@@ -281,8 +281,13 @@ final class Demo: NSObject, NSApplicationDelegate {
     case .numberRange: return not == .number(0.1) ? .number(0.12) : .number(0.1)
     case .integer(let lo, let hi): return .number(Double((lo...hi).first { Double($0) != not.doubleValue } ?? lo))
     case .choice(let opts): return opts.first { .string($0) != not }.map { .string($0) }
-    case .token: return spec.key == "voice" ? (not == "rex" ? "ara" : "rex") : nil
+    case .token:
+      if spec.key == "voice" { return not == "rex" ? "ara" : "rex" }
+      if spec.key == "geminiLiveModel" { return not == "gemini-2.0-flash-live-001" ? "gemini-2.5-flash-native-audio-preview-12-2025" : "gemini-2.0-flash-live-001" }
+      return nil
     case .claudePath: return not == "/usr/local/bin/claude" ? "/opt/homebrew/bin/claude" : "/usr/local/bin/claude"
+    case .geminiPath: return not == "/usr/local/bin/gemini" ? "/opt/homebrew/bin/gemini" : "/usr/local/bin/gemini"
+    case .loopbackURL: return not == "http://127.0.0.1:3773" ? "http://localhost:3773" : "http://127.0.0.1:3773"
     case .appList: return not == ["discord.exe"] ? ["slack"] : ["discord.exe"]
     case .object: return nil
     }

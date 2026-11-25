@@ -14,11 +14,13 @@ import Foundation
 public final class LocalSpeechRelay {
   /** Make 24 kHz speech for `text`; call back (on any thread) with the samples. */
   public typealias Speak = (_ text: String, _ sid: Int, _ speed: Double, _ done: @escaping ([Float]) -> Void) -> Void
+  /** Make 24 kHz speech for `text` using the requested TTS pack ("kitten" or "kokoro-en"). */
+  public typealias SpeakWithTts = (_ text: String, _ tts: String, _ sid: Int, _ speed: Double, _ done: @escaping ([Float]) -> Void) -> Void
 
   private struct Item { var text: String?; let waitsForSpeech: Bool }
   private var queue: [Item] = []
   private var generation = 0
-  private let speak: Speak
+  private let speak: SpeakWithTts
   private let deliver: (String) -> Void
   private let lock = NSLock()
   /** Pieces spoken here, and their total audio (for logs and tests). */
@@ -26,7 +28,12 @@ public final class LocalSpeechRelay {
   public private(set) var spokenSamples = 0
 
   public init(speak: @escaping Speak, deliver: @escaping (String) -> Void) {
-    self.speak = speak
+    self.speak = { text, _, sid, speed, done in speak(text, sid, speed, done) }
+    self.deliver = deliver
+  }
+
+  public init(speakWithTts: @escaping SpeakWithTts, deliver: @escaping (String) -> Void) {
+    self.speak = speakWithTts
     self.deliver = deliver
   }
 
@@ -34,6 +41,7 @@ public final class LocalSpeechRelay {
   public func receive(_ text: String) {
     guard let v = try? JSONValue.parse(text), let type = v["type"]?.stringValue else { return pass(text) }
     if (type == "response.output_audio.delta" || type == "response.audio.delta"), v["delta"]?.stringValue == "", let say = v["text"]?.stringValue, !say.isEmpty {
+      let tts = v.at(path: "voice.tts")?.stringValue ?? "kitten"
       let sid = v.at(path: "voice.sid")?.intValue ?? 0
       let speed = v.at(path: "voice.speed")?.doubleValue ?? 1
       let (index, gen) = lock.withLock { () -> (Int, Int) in
@@ -41,7 +49,7 @@ public final class LocalSpeechRelay {
         return (queue.count - 1, generation)
       }
       _ = index
-      speak(say, sid, speed) { [weak self] samples in self?.spokenDone(v, samples, gen) }
+      speak(say, tts, sid, speed) { [weak self] samples in self?.spokenDone(v, samples, gen) }
       return
     }
     if type.hasPrefix("response.") {
@@ -113,6 +121,8 @@ public protocol LocalSpeechEngine: AnyObject {
   func reset()
   /** Say `text` (24 kHz out), in order. */
   func say(_ text: String, sid: Int, speed: Double, done: @escaping ([Float]) -> Void)
+  /** Say `text` using the requested TTS pack ("kitten" or "kokoro-en"). */
+  func say(_ text: String, tts: String, sid: Int, speed: Double, done: @escaping ([Float]) -> Void)
   /** Talked over: drop what's still to be said. */
   func cancelSpeaking()
   /** The call ended (its speaking, for the log). */
@@ -120,5 +130,8 @@ public protocol LocalSpeechEngine: AnyObject {
 }
 
 public extension LocalSpeechEngine {
+  func say(_ text: String, tts: String, sid: Int, speed: Double, done: @escaping ([Float]) -> Void) {
+    say(text, sid: sid, speed: speed, done: done)
+  }
   func callEnded() {}
 }

@@ -3,8 +3,10 @@
 // the latest app notification (a notification, a window or a helper can't make Orbit read
 // anything), and a call has a cap. What a window shows is data: never instructions, never consent.
 
-import { getBrainKey, getSetting } from '../config.js';
+import { getBrainKey, getGeminiKey, getSetting } from '../config.js';
 import { findClaude } from '../brain.js';
+import { findGemini } from '../gemini/auth.js';
+import { askGeminiVision } from '../gemini/vision.js';
 import { appName, uiaRequest } from '../platform/index.js';
 import { agents, anywhereAvailable, comeHere, leaveWindow, profileFor } from './index.js';
 import { findControl } from './hands.js';
@@ -143,6 +145,13 @@ export function createAnywhereHandlers({ recentUtterance = () => null, utterance
   const seeWith = () => {
     if (!getSetting('anywhereVision')) return null;
     if (vision) return vision;
+    const useGemini = getSetting('brainProvider') === 'gemini' || String(getSetting('voiceEngine') || '').startsWith('gemini');
+    if (useGemini) {
+      const apiKey = getGeminiKey();
+      const gemini = findGemini(getSetting('geminiPath'));
+      if (apiKey) return (picture, question) => askGeminiVision({ picture, question, connection: 'api-key', apiKey });
+      if (gemini) return (picture, question) => askGeminiVision({ picture, question, connection: 'gemini-cli', geminiPath: gemini.path });
+    }
     const claude = findClaude(getSetting('brainClaudePath'));
     if (!claude) return null;
     const apiKey = getSetting('brainConnection') === 'api-key' ? getBrainKey() : '';

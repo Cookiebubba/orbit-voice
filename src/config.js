@@ -10,6 +10,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isClaudeFile } from './brain.js';
+import { GEMINI_LIVE_VOICES, GEMINI_VOICE_MODELS, isGeminiFile } from './gemini/auth.js';
+import { personaOk } from './personas.js';
+import { ttsOk } from './voice-models.js';
 
 export const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -92,9 +95,25 @@ export const DEFAULTS = Object.freeze({
   anywhereMouse: true,
   // ...how long it leads an act (ms, 0 to 600): the act waits this long for the glide, no more.
   anywhereMouseLeadMs: 220,
-  // Background helpers (Orbit anywhere): the engine they run on. 'claude-code' (the user's Claude
-  // sign-in) for now; 'codex' is planned.
+  // Background helpers (Orbit anywhere): the engine they run on. 'claude-code' or 'gemini' ('codex' planned).
   helperEngine: 'claude-code',
+  // Gemini multimodal & CLI voice / brain settings.
+  geminiVoice: 'Aoede', // Gemini Live prebuilt voice (Puck, Charon, Kore, Fenrir, Aoede, Leda, Orus, Zephyr)
+  geminiVoiceModel: 'gemini-2.5-flash', // model for Local Speech + Gemini CLI voice
+  geminiLiveModel: 'gemini-2.5-flash-native-audio-preview-12-2025', // model for Gemini Live WebSocket
+  geminiPath: '', // '' = find Gemini CLI automatically
+  brainProvider: 'claude', // 'claude' | 'gemini'
+  // Target backend: 'auto' (T3 Code if t3Endpoint configured, else Claude Desktop), 't3-code', or 'claude-desktop'.
+  targetBackend: 'auto',
+  t3Endpoint: '', // loopback URL for T3 Code local bridge (e.g. http://127.0.0.1:3773)
+  // SP3-inspired smart routing guards (advisory warning & busy-turn queueing).
+  routingDriftGuard: true, // spoken heads-up when prompt looks unrelated to the open session/thread
+  routingDriftThreshold: 0.8, // 0.5–0.98 confidence bar before warning
+  routingQueueBusy: true, // queue confirmed prompts when busy (hard-blocked if waiting on permission/question)
+  // Voice persona & optional local TTS pack (e.g. Alfred + Kokoro British English).
+  persona: 'default', // 'default' | 'alfred'
+  claudeVoiceTts: 'kitten', // 'kitten' (bundled) | 'kokoro-en' (British & US voices)
+  kokoroVoice: 9, // Kokoro speaker id (0–10; 9 = bm_george British Male for Alfred)
   // The first-run onboarding ("How should Orbit talk?") has been through: finished or skipped. A
   // brand-new install starts with false (FIRST_RUN_SETTINGS); any install from before reads as done.
   onboarded: true,
@@ -123,6 +142,8 @@ let configDir = PROJECT_ROOT;
 let settings = { ...DEFAULTS };
 let secretStore = null;
 let brainSecretStore = null;
+let geminiSecretStore = null;
+let t3TokenStore = null;
 const listeners = new Set();
 
 /** Plain-text .env store, used outside the desktop app. */
@@ -196,10 +217,49 @@ function sanitize(input) {
         if (val === 'claude-code' || val === 'api-key') out.brainConnection = val;
         break;
       case 'helperEngine':
-        if (val === 'claude-code' || val === 'codex') out.helperEngine = val;
+        if (val === 'claude-code' || val === 'gemini' || val === 'codex') out.helperEngine = val;
         break;
       case 'voiceEngine':
-        if (val === 'grok' || val === 'claude') out.voiceEngine = val;
+        if (val === 'grok' || val === 'claude' || val === 'gemini-cli' || val === 'gemini-live') out.voiceEngine = val;
+        break;
+      case 'geminiVoice':
+        if (typeof val === 'string' && GEMINI_LIVE_VOICES.includes(val)) out.geminiVoice = val;
+        break;
+      case 'geminiVoiceModel':
+        if (typeof val === 'string' && Object.hasOwn(GEMINI_VOICE_MODELS, val)) out.geminiVoiceModel = val;
+        break;
+      case 'geminiLiveModel':
+        if (typeof val === 'string' && val.length > 0 && val.length < 80 && /^gemini-[a-z0-9._-]+$/i.test(val)) out.geminiLiveModel = val;
+        break;
+      case 'geminiPath':
+        if (val === '' || (typeof val === 'string' && val.length < 400 && path.isAbsolute(val) && !/^[\\/]{2}/.test(val) && ![...val].some((c) => c.charCodeAt(0) < 32 || '"<>|?*'.includes(c)) && isGeminiFile(val))) out.geminiPath = val;
+        break;
+      case 'brainProvider':
+        if (val === 'claude' || val === 'gemini') out.brainProvider = val;
+        break;
+      case 'targetBackend':
+        if (val === 'auto' || val === 'claude-desktop' || val === 't3-code') out.targetBackend = val;
+        break;
+      case 't3Endpoint':
+        if (val === '') out.t3Endpoint = '';
+        else if (typeof val === 'string' && val.length < 200) {
+          try {
+            const u = new URL(val);
+            if ((u.protocol === 'http:' || u.protocol === 'https:') && ['127.0.0.1', 'localhost', '::1'].includes(u.hostname)) out.t3Endpoint = u.origin + u.pathname.replace(/\/+$/, '');
+          } catch {}
+        }
+        break;
+      case 'routingDriftThreshold':
+        if (Number.isFinite(val)) out.routingDriftThreshold = Math.min(0.98, Math.max(0.5, Math.round(val * 100) / 100));
+        break;
+      case 'persona':
+        if (personaOk(val)) out.persona = val;
+        break;
+      case 'claudeVoiceTts':
+        if (ttsOk(val)) out.claudeVoiceTts = val;
+        break;
+      case 'kokoroVoice':
+        if (Number.isInteger(val) && val >= 0 && val <= 53) out.kokoroVoice = val;
         break;
       case 'claudeVoice':
         if (Number.isInteger(val) && val >= 0 && val <= 7) out.claudeVoice = val;
@@ -266,11 +326,13 @@ export { sanitize as sanitizeSettings };
  * Order: defaults → .env overrides in the project folder → settings.json in the config folder.
  * `firstRun`: settings a brand-new install starts with (the desktop app passes FIRST_RUN_SETTINGS).
  */
-export function initConfig({ dir, secrets, brainSecrets, firstRun = {} } = {}) {
+export function initConfig({ dir, secrets, brainSecrets, geminiSecrets, t3Secrets, firstRun = {} } = {}) {
   configDir = dir || PROJECT_ROOT;
   fs.mkdirSync(configDir, { recursive: true });
   secretStore = secrets || envSecretStore(configDir);
   brainSecretStore = brainSecrets || envSecretStore(configDir, 'ANTHROPIC_API_KEY');
+  geminiSecretStore = geminiSecrets || envSecretStore(configDir, 'GEMINI_API_KEY');
+  t3TokenStore = t3Secrets || envSecretStore(configDir, 'T3_API_TOKEN');
 
   const env = { ...readDotEnv(path.join(PROJECT_ROOT, '.env')), ...process.env };
   const fromEnv = {};
@@ -317,7 +379,7 @@ export function initConfig({ dir, secrets, brainSecrets, firstRun = {} } = {}) {
  * key already saved) stays on Grok; a new install starts on Claude, which needs no xAI key.
  */
 export function engineFor({ saved, hadFile = false, hasKey = false } = {}) {
-  if (saved === 'grok' || saved === 'claude') return saved;
+  if (saved === 'grok' || saved === 'claude' || saved === 'gemini-cli' || saved === 'gemini-live') return saved;
   return hadFile || hasKey ? 'grok' : 'claude';
 }
 
@@ -372,4 +434,10 @@ export const keyStorageKind = () => secretStore?.kind || 'none';
 /** The optional Anthropic API key for the second brain (stored like the xAI key). */
 export const getBrainKey = () => (brainSecretStore ? brainSecretStore.get() : '') || '';
 export const setBrainKey = (key) => brainSecretStore.set(key);
+/** The optional Gemini API key (for Gemini Live realtime audio+vision or Gemini API brain/vision). */
+export const getGeminiKey = () => (geminiSecretStore ? geminiSecretStore.get() : '') || '';
+export const setGeminiKey = (key) => geminiSecretStore.set(key);
+/** The optional Bearer token for a local T3 Code bridge endpoint. */
+export const getT3Token = () => (t3TokenStore ? t3TokenStore.get() : '') || '';
+export const setT3Token = (key) => t3TokenStore.set(key);
 export const getConfigDir = () => configDir;

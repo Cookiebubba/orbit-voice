@@ -24,14 +24,16 @@ Orbit is a voice companion for the Claude desktop app. Ask what Claude is doing,
 
 <p align="center"><sub>The newest release, 1.3.0 beta 4. <a href="../../releases">All releases</a> · <a href="RELEASE_NOTES.md">what's new</a></sub></p>
 
-> Orbit is an independent open-source project. It is not affiliated with, endorsed by, or sponsored by xAI or Anthropic. Grok is a trademark of xAI; Claude is a trademark of Anthropic.
+> Orbit is an independent open-source project. It is not affiliated with, endorsed by, or sponsored by xAI, Anthropic, or Google. Grok is a trademark of xAI; Claude is a trademark of Anthropic; Gemini is a trademark of Google.
 
 ---
 
 ## What Orbit does
 
-- **Two voices, your choice.** Orbit talks with **Claude voice** (the default) or **Grok voice**:
-  - **Claude voice** runs on your own Claude Code sign-in, so it counts toward your Claude plan. Orbit hears you and speaks on your computer (Silero, Moonshine or Parakeet, Kitten TTS). No key, no extra bill.
+- **Your choice of voice engine.** Orbit talks with **Claude voice** (the default), **Gemini CLI / Antigravity**, **Gemini Live**, or **Grok voice**:
+  - **Claude voice** runs on your own Claude Code sign-in, so it counts toward your Claude plan. Orbit hears you and speaks on your computer (Silero, Moonshine or Parakeet, Kitten or Kokoro TTS). No key, no extra bill.
+  - **Gemini CLI / Antigravity (`agy`)** runs on your Google subscription via the Antigravity CLI (`agy`) or standalone Gemini CLI — keeping a persistent streaming session warm with local speech on your computer, plus Gemini second brain, web search, vision, and background helpers. No API key or Claude sign-in required.
+  - **Gemini Live** connects directly to Google's realtime multimodal audio + window vision API with your own Gemini API key.
   - **Grok voice** is xAI's realtime voice: the quickest replies, billed by xAI per minute with your own key.
   - Switch any time in Settings → Voice engine, or pick one in the first-run setup.
 - **Qubit lives on your Claude window.** A square with one eye stands on Claude's prompt box. He sleeps while Orbit sleeps, listens as you talk (his eye stretches with your voice), speaks with Orbit's voice, waits by Send for your yes, watches Claude work and celebrates when it's done. Ask him for a backflip. Pick him up and throw him. Prefer something else? Choose the pixel buddy or no avatar, and on Windows the floating orb.
@@ -81,6 +83,15 @@ Until the app is notarized, macOS may ask for Accessibility and the Keychain aga
   Then run `claude` once and sign in with your Claude account. Anthropic's [setup guide](https://code.claude.com/docs/en/setup) has the details.
 - **Only for Grok voice:** an [xAI API key](https://console.x.ai), added in Settings → Voice engine → Grok. Grok voice is billed by xAI per minute connected (about $0.08/min at the time of writing); Orbit shows an estimate in Settings → Usage. Sleeping costs nothing.
 - Claude voice's speech models (about 175 MB) download the first time you talk, and stay on your computer.
+
+## Gemini CLI, T3 Code & Alfred (opt-in)
+
+Everything below is opt-in — default installs continue to work with Claude Desktop and Claude Code exactly as before.
+
+- **Gemini CLI / Antigravity (`agy`):** Choose **Gemini CLI** in Settings → Voice engine (and **Gemini** under Second brain). Orbit auto-detects the Google Antigravity CLI (`/Applications/Gemini.app/Contents/Helpers/agy` on macOS or `agy` on `PATH`) and falls back to standalone `gemini`, running a persistent `stream-json` session on your Google subscription (e.g. `gemini-3.8-flash-low` or `gemini-4-neon-low`) with zero Claude dependency.
+- **Gemini Live (API key):** Choose **Gemini Live** and add a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey) for realtime native audio and opt-in live window vision frames.
+- **T3 Code lead orchestrator + smart routing:** Set **Target backend** to **T3 Code** (or **Auto** with a loopback endpoint) in Settings → Target & routing and run `npm run t3:bridge` (`http://127.0.0.1:4318`) to orchestrate all T3 Code threads across local and remote SSH projects by voice. Includes weighted thread ranking, an advisory 80% topic-drift heads-up (never auto-switches), and busy-turn prompt queueing (hard-blocked whenever a thread is waiting on a question or permission). When T3 Code is active, the local Claude Desktop watcher and Claude Accessibility nag are automatically silenced.
+- **Alfred persona & Kokoro British RP voices:** Pick **Alfred** under Settings → Persona and select **Kokoro v1.0 British RP** (`lexicon-gb-en.txt`: Daniel, Lewis, George, Fable) or **Kokoro English** under Local voice pack (each verified by pinned SHA-256).
 
 ## Using it
 
@@ -163,6 +174,7 @@ None of these touch the real Claude app, xAI or Anthropic, or your own settings.
 | Command | What it runs |
 | --- | --- |
 | `npm test` | Unit tests, plus `test/sandboxed/` with the Claude window and the second brain swapped for fakes |
+| `npm run eval:route` | 28-case routing & topic-drift regression suite (20 routing + 8 drift cases) |
 | `npm run fuzz -- --seed N` | In-process fuzzer: random tool calls, bridge messages and a fake Grok |
 | `npm run fuzz:e2e -- --seed N --iterations M` | The real app, hidden, against a fake Grok, a fake `claude.exe`, a fake Claude window and throwaway sessions. It fails on a crash or hang, a prompt sent without a fresh yes, a key or your words in the logs, and more |
 | `cd mac-swift && swift test` | Orbit Native's tests (needs a Mac) |
