@@ -20,6 +20,16 @@ private let sttOptions: [(value: String, label: String, hint: String)] = [
   ("parakeet-v2", "Accurate", "Parakeet 0.6B: the most accurate, about 1 word in 8 even when mumbling, about 0.3 s slower per sentence. A 460 MB download. Recommended if you mumble."),
 ]
 
+private let personaOptions: [(value: String, label: String, hint: String)] = [
+  ("default", "Orbit (Default)", "Calm, plain-spoken companion."),
+  ("alfred", "Alfred — British Chief of Staff", "Aristocratic British chief of staff — dry wit, calm precision, gets things done. Pairs best with Kokoro English (George) or Gemini Live."),
+]
+
+private let ttsPackOptions: [(value: String, label: String, hint: String)] = [
+  ("kitten", "Kitten Nano", "Bundled local voice pack (8 voices)."),
+  ("kokoro-en", "Kokoro English — British & US", "Optional 98 MB download adding 11 British & US voices, including George (British male — Alfred) and Lewis."),
+]
+
 private let geminiLiveVoices: [String] = ["Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"]
 
 private let geminiVoiceModelOptions: [Segmented.Option] = [
@@ -59,6 +69,7 @@ struct VoiceEngineSection: View {
         Segmented(value: s.string("claudeVoiceStt"), options: sttOptions.map { .init(value: $0.value, label: $0.label) }) { chooseStt($0) }
         Hint(text: "\(sttOptions.first { $0.value == s.string("claudeVoiceStt") }?.hint ?? "") All on \(thisComputer).").padding(.top, 8)
         sttStatus
+        localVoicePackPicker
       } else if engine == "gemini-live" {
         Hint(text: "Gemini Live realtime multimodal voice over WebSocket, using your Gemini API key.").padding(.top, 8)
         FieldLabel(text: "Gemini voice")
@@ -97,11 +108,49 @@ struct VoiceEngineSection: View {
         Segmented(value: s.string("claudeVoiceStt"), options: sttOptions.map { .init(value: $0.value, label: $0.label) }) { chooseStt($0) }
         Hint(text: "\(sttOptions.first { $0.value == s.string("claudeVoiceStt") }?.hint ?? "") All on \(thisComputer). (Grok hears you on xAI's side: this is for Claude voice only.)").padding(.top, 8)
         sttStatus
+        localVoicePackPicker
         modelsStatus
       }
+      personaPicker
     }
     .task(id: engine) { await refresh() }
     .onDisappear { poll?.cancel() }
+  }
+
+  @ViewBuilder private var personaPicker: some View {
+    let s = ctx.settings
+    let current = s.string("persona")
+    FieldLabel(text: "Persona")
+    Segmented(value: current, options: personaOptions.map { .init(value: $0.value, label: $0.label) }) { save(s, "persona", .string($0)) }
+    Hint(text: personaOptions.first { $0.value == current }?.hint ?? "").padding(.top, 8)
+  }
+
+  @ViewBuilder private var localVoicePackPicker: some View {
+    let s = ctx.settings
+    let current = s.string("claudeVoiceTts")
+    FieldLabel(text: "Local voice pack")
+    Segmented(value: current, options: ttsPackOptions.map { .init(value: $0.value, label: $0.label) }) { chooseTts($0) }
+    Hint(text: "\(ttsPackOptions.first { $0.value == current }?.hint ?? "") All on \(thisComputer).").padding(.top, 8)
+    ttsStatus
+  }
+
+  @ViewBuilder private var ttsStatus: some View {
+    let id = ctx.settings.string("claudeVoiceTts")
+    if id != "kitten", let st = status?.tts[id], st.state != "ready" {
+      if st.state == "downloading" {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Downloading… \(st.percent)% (Kitten Nano speaks until it's ready)").font(Theme.font(12)).foregroundStyle(Theme.ink)
+          ProgressBar(percent: st.percent)
+        }
+        .padding(.top, 6)
+      } else {
+        HStack(spacing: 12) {
+          Hint(text: st.state == "error" ? "Download failed: \(st.error)" : "Needs a \(st.mb) MB download. Kitten Nano speaks until then.", color: st.state == "error" ? Theme.amber700 : Theme.muted)
+          Button(st.state == "error" ? "Retry" : "Download") { downloadTts(id) }.buttonStyle(PillButtonStyle(kind: .dark, size: 12, hPad: 10, vPad: 4, radius: 8))
+        }
+        .padding(.top, 6)
+      }
+    }
   }
 
   @ViewBuilder private var sttStatus: some View {
@@ -149,7 +198,9 @@ struct VoiceEngineSection: View {
   private func refresh() async {
     status = try? await ctx.bridge.claudeVoice()
     // While models download, check progress every second.
-    let downloading = status?.models.state == "downloading" || (status?.stt.values.contains { $0.state == "downloading" } ?? false)
+    let downloading = status?.models.state == "downloading"
+      || (status?.stt.values.contains { $0.state == "downloading" } ?? false)
+      || (status?.tts.values.contains { $0.state == "downloading" } ?? false)
     poll?.cancel()
     if downloading {
       poll = Task {
@@ -173,8 +224,16 @@ struct VoiceEngineSection: View {
     }
   }
 
+  private func chooseTts(_ id: String) {
+    Task {
+      await ctx.settings.set("claudeVoiceTts", .string(id))
+      if id != "kitten", let st = status?.tts[id], st.state != "ready", st.state != "downloading" { downloadTts(id) }
+    }
+  }
+
   private func download() { Task { _ = try? await ctx.bridge.claudeVoiceDownload(); await refresh() } }
   private func downloadStt(_ id: String) { Task { _ = try? await ctx.bridge.sttDownload(id); await refresh() } }
+  private func downloadTts(_ id: String) { Task { _ = try? await ctx.bridge.ttsDownload(id); await refresh() } }
 }
 
 struct ProgressBar: View {
@@ -215,7 +274,8 @@ struct VoiceCard: View {
             .font(Theme.font(12.5)).foregroundStyle(Theme.muted).relaxed(12.5).padding(.top, 12)
           Text("Voice").font(Theme.font(12)).foregroundStyle(Theme.muted).padding(.top, 16).padding(.bottom, 6)
           HStack(spacing: 8) {
-            voicePicker(list, current: claude ? String(s.int("claudeVoice")) : s.string("voice"))
+            let currentVoice = claude ? (s.string("claudeVoiceTts") == "kokoro-en" ? String(s.int("kokoroVoice")) : String(s.int("claudeVoice"))) : s.string("voice")
+            voicePicker(list, current: currentVoice)
             Button(action: playPreview) {
               HStack(spacing: 6) {
                 if preview == "loading" { ProgressView().controlSize(.mini).tint(.white) } else { Image(systemName: preview == "playing" ? "stop.fill" : "play.fill").font(.system(size: 10)) }
@@ -261,7 +321,7 @@ struct VoiceCard: View {
         }
       }
     }
-    .task {
+    .task(id: "\(engine)|\(s.string("claudeVoiceTts"))") {
       do { list = try await ctx.bridge.voices(engine: engine) } catch { self.error = "Couldn't load voice settings." }
     }
     .onDisappear { player.stop(); saveTask?.cancel() }
@@ -298,7 +358,16 @@ struct VoiceCard: View {
   private func pick(_ id: String) {
     error = ""
     Task {
-      let r = engine == "claude" ? await ctx.settings.set("claudeVoice", .number(Double(id) ?? 0)) : await ctx.settings.set("voice", .string(id))
+      let r: SettingChange
+      if engine == "claude" {
+        if ctx.settings.string("claudeVoiceTts") == "kokoro-en" {
+          r = await ctx.settings.set("kokoroVoice", .number(Double(id) ?? 9))
+        } else {
+          r = await ctx.settings.set("claudeVoice", .number(Double(id) ?? 0))
+        }
+      } else {
+        r = await ctx.settings.set("voice", .string(id))
+      }
       if case .saved = r {} else { error = "Couldn't save that setting." }
     }
   }
@@ -331,7 +400,7 @@ struct VoiceCard: View {
     preview = "loading"
     error = ""
     let s = ctx.settings
-    let voice = engine == "claude" ? String(s.int("claudeVoice")) : s.string("voice")
+    let voice = engine == "claude" ? (s.string("claudeVoiceTts") == "kokoro-en" ? String(s.int("kokoroVoice")) : String(s.int("claudeVoice"))) : s.string("voice")
     Task {
       do {
         let data = try await ctx.bridge.voicePreview(engine: engine, voice: voice, speed: speed ?? s.double("speed"))

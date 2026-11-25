@@ -30,7 +30,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { isSignInProblem } from './brain.js';
 import { createCueStream } from './emote-cues.js';
-import { STT_MODELS, modelPaths, sttModelConfig, sttOk, sttReady } from './voice-models.js';
+import { STT_MODELS, TTS_MODELS, modelPaths, sttModelConfig, sttOk, sttReady, ttsModelConfig, ttsOk, ttsReady } from './voice-models.js';
 import { joinTranscripts, splitForStt } from './stt-chunks.js';
 import { childEnv, groupOptions, killTree } from './platform/system.js';
 
@@ -410,6 +410,34 @@ export function loadRecognizer(root, id, { threads = CLAUDE_VOICE.threads } = {}
   return p;
 }
 
+// Optional text-to-speech packs beyond bundled Kitten (e.g. Kokoro English with British voices).
+const ttsEngines = new Map(); // `${root}|${id}` -> Promise<{ id, speak }>
+/** Loads a downloaded TTS pack (src/voice-models.js TTS_MODELS); rejects if it can't. */
+export function loadTts(root, id, { threads = CLAUDE_VOICE.threads } = {}) {
+  const key = `${root}|${id}`;
+  if (ttsEngines.has(key)) return ttsEngines.get(key);
+  if (!ttsOk(id) || id === 'kitten') return Promise.reject(new Error('Kitten comes with the speech models'));
+  if (!ttsReady(root, id)) return Promise.reject(new Error(`${TTS_MODELS[id].label} isn't downloaded`));
+  ttsEngines.clear();
+  const p = (async () => {
+    const sherpa = loadSherpa();
+    const tts = await sherpa.OfflineTts.createAsync({ model: { ...ttsModelConfig(root, id), numThreads: threads, provider: 'cpu' }, maxNumSentences: 1 });
+    try {
+      await tts.generateAsync({ text: 'Very good.', sid: 9, speed: 1, enableExternalBuffer: false });
+    } catch {}
+    return {
+      id,
+      async speak(text, { speed = 1, sid = 9 } = {}) {
+        const a = await tts.generateAsync({ text, sid, speed, enableExternalBuffer: false });
+        return a.sampleRate === IN_RATE ? a.samples : new sherpa.LinearResampler(a.sampleRate, IN_RATE).flush(a.samples);
+      },
+    };
+  })();
+  ttsEngines.set(key, p);
+  p.catch(() => ttsEngines.get(key) === p && ttsEngines.delete(key));
+  return p;
+}
+
 // ---------------------------------------------------------------- Claude Code, kept open
 
 const liveProcs = new Set();
@@ -582,7 +610,7 @@ const SLOW_FILLERS = ['One moment.', 'Let me think.'];
  * src/avatar-commands.js): Claude isn't asked at all (no tokens, no wait), and the note joins
  * Claude's next turn so it knows what happened.
  */
-export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = CLAUDE_VOICE.sid, model = CLAUDE_VOICE.model, effort = CLAUDE_VOICE.effort, stt = 'moonshine', onMetrics = () => {}, onWarn = () => {}, speech: injectedSpeech, spawnImpl, localTurn = null, localSpeech = false, now = () => Date.now() }) {
+export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = CLAUDE_VOICE.sid, tts = 'kitten', kokoroSid = 9, model = CLAUDE_VOICE.model, effort = CLAUDE_VOICE.effort, stt = 'moonshine', onMetrics = () => {}, onWarn = () => {}, speech: injectedSpeech, spawnImpl, localTurn = null, localSpeech = false, now = () => Date.now() }) {
   const sock = new EventEmitter();
   sock.readyState = 0;
   if (!modelOk(model)) model = CLAUDE_VOICE.model;
@@ -618,6 +646,25 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
       },
     );
   };
+  let ttsWant = 'kitten';
+  let ttsNow = null; // { id, speak } of optional TTS pack (e.g. kokoro-en) once loaded
+  const switchTts = (id) => {
+    if (!ttsOk(id)) id = 'kitten';
+    if (id !== 'kitten' && !injectedSpeech?.loadTts && !ttsReady(modelsRoot, id)) id = 'kitten';
+    if (id === ttsWant) return;
+    ttsWant = id;
+    if (id === 'kitten') return void (ttsNow = null);
+    const load = injectedSpeech?.loadTts ? Promise.resolve().then(() => injectedSpeech.loadTts(id)) : loadTts(modelsRoot, id);
+    load.then(
+      (r) => ttsWant === id && (ttsNow = { id, speak: r.speak }),
+      (e) => {
+        warnOnce(`Claude voice: ${TTS_MODELS[id].label} couldn't load, using Kitten`, e);
+        if (ttsWant === id) ttsNow = null;
+      },
+    );
+  };
+  const activeVoiceSid = () => (ttsNow ? kokoroSid : sid);
+  const speakNow = (text) => (ttsNow ? ttsNow.speak(text, { speed, sid: kokoroSid }) : speech.speak(text, { speed, sid }));
   let vad = null;
   let resampler = null;
   let pendingSamples = new Float32Array(0);
@@ -804,14 +851,14 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
   // voice), and the app speaks them; everything else about the reply is unchanged.
   const sendAudio = (t, pcmB64, reflex = false, emote = null, text = '') => {
     if (t.cancelled) return;
-    emit({ type: 'response.output_audio.delta', response_id: t.id, item_id: t.itemId, delta: pcmB64, ...(text ? { text, voice: { sid, speed } } : {}), ...(reflex ? { reflex: true } : {}), ...(emote ? { emote: { name: emote } } : {}) });
+    emit({ type: 'response.output_audio.delta', response_id: t.id, item_id: t.itemId, delta: pcmB64, ...(text ? { text, voice: { sid: activeVoiceSid(), tts: ttsWant, speed } } : {}), ...(reflex ? { reflex: true } : {}), ...(emote ? { emote: { name: emote } } : {}) });
   };
 
   const fillerPcm = async (text) => {
-    const key = `${sid}|${speed}|${text}`;
+    const key = `${ttsNow?.id || 'kitten'}|${activeVoiceSid()}|${speed}|${text}`;
     let pcm = fillerCache.get(key);
     if (!pcm) {
-      pcm = floatToPcm16(await speech.speak(text, { speed, sid })).toString('base64');
+      pcm = floatToPcm16(await speakNow(text)).toString('base64');
       fillerCache.set(key, pcm);
     }
     return pcm;
@@ -867,7 +914,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
           }
           let samples;
           try {
-            samples = await speech.speak(say, { speed, sid });
+            samples = await speakNow(say);
           } catch (e) {
             warnOnce('Claude voice: text to speech failed', e);
             return;
@@ -1083,6 +1130,8 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
         if (typeof s.instructions === 'string') instructions = s.instructions;
         if (Array.isArray(s.tools)) tools = s.tools;
         if (Number.isInteger(s.claude_voice) && s.claude_voice >= 0 && s.claude_voice <= 7) sid = s.claude_voice;
+        if (Number.isInteger(s.kokoro_voice) && s.kokoro_voice >= 0 && s.kokoro_voice <= 10) kokoroSid = s.kokoro_voice;
+        if (typeof s.claude_tts === 'string') switchTts(s.claude_tts);
         const s2 = s.audio?.output?.speed;
         if (Number.isFinite(s2)) speed = s2;
         // The brain behind the voice (Settings, or "use Opus"): a new model is a new process too.
@@ -1155,6 +1204,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
       if (!localSpeech) {
         speech = injectedSpeech || (await loadSpeech(modelsRoot));
         switchStt(stt);
+        switchTts(tts);
         vad = speech.newVad();
         resampler = speech.newResampler();
       }

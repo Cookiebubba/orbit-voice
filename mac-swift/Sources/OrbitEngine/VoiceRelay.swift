@@ -375,7 +375,7 @@ public final class VoiceHub: @unchecked Sendable {
 
   func settingsChanged(_ changed: [String], _ all: [String: JSONValue]) {
     // What the voice is told follows these: a live call gets it at once.
-    let pushKeys: Set<String> = Set(["voice", "claudeVoice", "claudeVoiceModel", "claudeVoiceEffort", "claudeVoiceStt", "speed", "wakeHotkey"] + Agent.contextSettings)
+    let pushKeys: Set<String> = Set(["voice", "claudeVoice", "claudeVoiceModel", "claudeVoiceEffort", "claudeVoiceStt", "claudeVoiceTts", "kokoroVoice", "speed", "wakeHotkey"] + Agent.contextSettings)
     if changed.contains(where: { pushKeys.contains($0) }) {
       for c in liveSessions.values { c.pushConfig() }
       if changed.contains(where: { Agent.contextSettings.contains($0) }) {
@@ -619,6 +619,8 @@ final class VoiceCall: @unchecked Sendable {
       var o = ClaudeRealtime.Options()
       o.speed = hub.s.config.number("speed")
       o.sid = Int(hub.s.config.number("claudeVoice"))
+      o.tts = hub.str("claudeVoiceTts")
+      o.kokoroSid = Int(hub.s.config.number("kokoroVoice"))
       o.model = hub.str("claudeVoiceModel")
       o.effort = hub.str("claudeVoiceEffort")
       o.stt = hub.str("claudeVoiceStt")
@@ -1013,8 +1015,14 @@ final class VoiceCall: @unchecked Sendable {
     ]
     if useClaude {
       // Claude voice also takes its own voice choice (Grok would reject an unknown field).
-      session += [("claude_voice", .num(hub.s.config.number("claudeVoice"))), ("claude_model", .str(hub.str("claudeVoiceModel"))),
-                  ("claude_effort", .str(hub.str("claudeVoiceEffort"))), ("claude_stt", .str(hub.str("claudeVoiceStt")))]
+      session += [
+        ("claude_voice", .num(hub.s.config.number("claudeVoice"))),
+        ("claude_tts", .str(hub.str("claudeVoiceTts"))),
+        ("kokoro_voice", .num(hub.s.config.number("kokoroVoice"))),
+        ("claude_model", .str(hub.str("claudeVoiceModel"))),
+        ("claude_effort", .str(hub.str("claudeVoiceEffort"))),
+        ("claude_stt", .str(hub.str("claudeVoiceStt"))),
+      ]
     }
     toXai(OJSON.obj([("type", .str("session.update")), ("session", .obj(session))]).text)
   }

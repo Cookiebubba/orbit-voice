@@ -11,6 +11,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isClaudeFile } from './brain.js';
 import { GEMINI_LIVE_VOICES, GEMINI_VOICE_MODELS, isGeminiFile } from './gemini/auth.js';
+import { personaOk } from './personas.js';
+import { ttsOk } from './voice-models.js';
 
 export const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -108,6 +110,10 @@ export const DEFAULTS = Object.freeze({
   routingDriftGuard: true, // spoken heads-up when prompt looks unrelated to the open session/thread
   routingDriftThreshold: 0.8, // 0.5–0.98 confidence bar before warning
   routingQueueBusy: true, // queue confirmed prompts when busy (hard-blocked if waiting on permission/question)
+  // Voice persona & optional local TTS pack (e.g. Alfred + Kokoro British English).
+  persona: 'default', // 'default' | 'alfred'
+  claudeVoiceTts: 'kitten', // 'kitten' (bundled) | 'kokoro-en' (British & US voices)
+  kokoroVoice: 9, // Kokoro speaker id (0–10; 9 = bm_george British Male for Alfred)
   // The first-run onboarding ("How should Orbit talk?") has been through: finished or skipped. A
   // brand-new install starts with false (FIRST_RUN_SETTINGS); any install from before reads as done.
   onboarded: true,
@@ -245,6 +251,15 @@ function sanitize(input) {
         break;
       case 'routingDriftThreshold':
         if (Number.isFinite(val)) out.routingDriftThreshold = Math.min(0.98, Math.max(0.5, Math.round(val * 100) / 100));
+        break;
+      case 'persona':
+        if (personaOk(val)) out.persona = val;
+        break;
+      case 'claudeVoiceTts':
+        if (ttsOk(val)) out.claudeVoiceTts = val;
+        break;
+      case 'kokoroVoice':
+        if (Number.isInteger(val) && val >= 0 && val <= 10) out.kokoroVoice = val;
         break;
       case 'claudeVoice':
         if (Number.isInteger(val) && val >= 0 && val <= 7) out.claudeVoice = val;

@@ -21,6 +21,7 @@ import { AVATAR_ACTIONS, AVATAR_NAMES, activeAvatar, actionsFor } from './avatar
 import { CUES } from './emote-cues.js';
 import { toolDefs } from './tools.js';
 import { ANYWHERE_GUIDE, anywhereAvailable } from './anywhere/tools.js';
+import { personaPrompt } from './personas.js';
 
 const ORBIT_PERSONA = `
 Who you are:
@@ -181,13 +182,15 @@ Lead voice across T3 Code threads:
 /** The instructions and tools for what's on screen now (or for `screen`, see onScreen). */
 export function agentContext(screen = onScreen()) {
   const { face, avatar, orb } = screen;
-  const persona = face === 'orbit' ? ORBIT_PERSONA : `${PERSONAS[face]}${orb ? `\n${ORB_TOO}` : ''}`;
+  const engine = getSetting('voiceEngine');
+  const customPersona = personaPrompt(getSetting('persona'), { engine });
+  const persona = customPersona || (face === 'orbit' ? ORBIT_PERSONA : `${PERSONAS[face]}${orb ? `\n${ORB_TOO}` : ''}`);
   const anywhere = anywhereAvailable();
   const t3Active = getSetting('targetBackend') === 't3-code' || (getSetting('targetBackend') === 'auto' && !!getSetting('t3Endpoint'));
   const instructions = [persona, core(), t3Active ? T3_LEAD_GUIDE : '', avatar ? avatarBody(avatar) : '', anywhere ? ANYWHERE_GUIDE : ''].filter(Boolean).join('\n\n');
-  const tools = toolDefs({ brainEnabled: getSetting('brainEnabled'), brainModel: getSetting('brainModel'), brainExplore: getSetting('brainExplore'), brainConnection: getSetting('brainConnection'), brainProvider: getSetting('brainProvider'), avatar, webSearch: getSetting('webSearch'), engine: getSetting('voiceEngine'), anywhere, t3Active });
+  const tools = toolDefs({ brainEnabled: getSetting('brainEnabled'), brainModel: getSetting('brainModel'), brainExplore: getSetting('brainExplore'), brainConnection: getSetting('brainConnection'), brainProvider: getSetting('brainProvider'), avatar, webSearch: getSetting('webSearch'), engine, anywhere, t3Active });
   return { face, avatar, orb, instructions, tools };
 }
 
 /** Settings that change what the model is told (the live session is updated when they change). */
-export const CONTEXT_SETTINGS = Object.freeze(['avatar', 'showOrb', 'brainEnabled', 'brainModel', 'brainExplore', 'brainConnection', 'brainProvider', 'wakeOnResults', 'webSearch', 'anywhere', 'targetBackend', 't3Endpoint', 'routingDriftGuard', 'routingQueueBusy']);
+export const CONTEXT_SETTINGS = Object.freeze(['avatar', 'showOrb', 'persona', 'brainEnabled', 'brainModel', 'brainExplore', 'brainConnection', 'brainProvider', 'wakeOnResults', 'webSearch', 'anywhere', 'targetBackend', 't3Endpoint', 'routingDriftGuard', 'routingQueueBusy']);

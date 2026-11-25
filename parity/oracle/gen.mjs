@@ -60,6 +60,7 @@ const VALUES = [
   'http://127.0.0.1:3773', 'http://127.0.0.1:3773/', 'http://127.0.0.1:3773/api///', 'https://localhost:8443/t3/', 'http://[::1]:3773',
   'https://example.com', 'http://192.168.1.5:3773', 'http://127.0.0.1.evil.com:3773', 'ftp://127.0.0.1:3773', 'ws://127.0.0.1:3773', `http://localhost:3773/${'a'.repeat(200)}`,
   'Command+Alt+G', 'Control+Alt+K', 'Ctrl Alt', 'é+K', 'x'.repeat(59), 'x'.repeat(60), 'grok-voice-latest',
+  9, 11, '9', 'default', 'alfred', 'jarvis', 'kitten', 'kokoro-en', 'bogus',
   '/usr/local/bin/claude', '/Users/me/.local/bin/claude', '/opt/homebrew/bin/CLAUDE', '/Users/x/claude.exe', 'relative/claude', '//share/claude', '/bin/cl"aude', '/bin/claude2', '/a\tb/claude', `/${'d/'.repeat(200)}claude`,
   '/usr/local/bin/gemini', '/opt/homebrew/bin/GEMINI', '/Users/x/gemini.exe', 'relative/gemini', '//share/gemini', '/bin/gemini2',
 ];

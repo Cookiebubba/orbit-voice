@@ -43,8 +43,9 @@ import { createGeminiLiveRealtime } from './gemini/live-voice.js';
 import { createPromptQueue } from './router/queue.js';
 import { createT3Target } from './targets/t3-code.js';
 import { hotkeyLabel as platformHotkeyLabel, primeLoginShellPath } from './platform/system.js';
-import { createClaudeRealtime, keepSpare, loadRecognizer, loadSpeech, speechLoaded, stopClaudeVoice, systemPrompt } from './claude-voice.js';
-import { downloadModels, downloadStatus, downloadStt, modelsReady, STT_MODELS, sttOk, sttReady, sttStatus, VOICE_MODELS_MB } from './voice-models.js';
+import { createClaudeRealtime, keepSpare, loadRecognizer, loadSpeech, loadTts, speechLoaded, stopClaudeVoice, systemPrompt } from './claude-voice.js';
+import { KOKORO_EN_VOICES, TTS_MODELS, downloadModels, downloadStatus, downloadStt, downloadTts, modelsReady, STT_MODELS, sttOk, sttReady, sttStatus, ttsOk, ttsReady, ttsStatus, VOICE_MODELS_MB } from './voice-models.js';
+import { PERSONA_PRESETS, personaOk } from './personas.js';
 import { setClipboardWriter } from './clipboard.js';
 import { createContinuity, quoteSafe } from './continuity.js';
 import { getDesktopInfo, getPendingPrompt, listSidebarSessions, switchSession } from './desktop.js';
@@ -364,6 +365,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       // The chosen speech to text too, if it isn't Moonshine and it's downloaded (else Moonshine carries on).
       const stt = getSetting('claudeVoiceStt');
       if (stt !== 'moonshine' && sttReady(voiceModelsDir, stt)) loadRecognizer(voiceModelsDir, stt).catch((e) => logWarn('voice', `Claude voice: ${STT_MODELS[stt].label} failed to load`, String(e?.message || e).slice(0, 200)));
+      const tts = getSetting('claudeVoiceTts');
+      if (tts !== 'kitten' && ttsReady(voiceModelsDir, tts)) loadTts(voiceModelsDir, tts).catch((e) => logWarn('voice', `Local voice: ${TTS_MODELS[tts].label} failed to load`, String(e?.message || e).slice(0, 200)));
     }
     const { instructions: text, tools } = agentContext();
     keepSpare({ exe: claude.path, prompt: systemPrompt({ instructions: text, tools }), model: getSetting('claudeVoiceModel'), effort: getSetting('claudeVoiceEffort') });
@@ -610,7 +613,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     const { orbPosition, orbStickAnchor, ...visible } = all;
     broadcast({ type: 'settings.changed', changed, settings: visible });
     // What the voice model is told follows these (src/agent.js): a live call gets it at once.
-    if (changed.some((k) => ['voice', 'claudeVoice', 'claudeVoiceModel', 'claudeVoiceEffort', 'claudeVoiceStt', 'geminiVoice', 'geminiVoiceModel', 'geminiLiveModel', 'speed', 'wakeHotkey', ...CONTEXT_SETTINGS].includes(k))) {
+    if (changed.some((k) => ['voice', 'claudeVoice', 'claudeVoiceModel', 'claudeVoiceEffort', 'claudeVoiceStt', 'claudeVoiceTts', 'kokoroVoice', 'geminiVoice', 'geminiVoiceModel', 'geminiLiveModel', 'speed', 'wakeHotkey', ...CONTEXT_SETTINGS].includes(k))) {
       for (const s of liveSessions) s.pushConfig();
       if (changed.some((k) => CONTEXT_SETTINGS.includes(k))) logInfo('voice', `Context now: ${agentContext().face}${liveSessions.size ? ` (live call${liveSessions.size > 1 ? 's' : ''} updated)` : ''}`);
     }
@@ -736,7 +739,43 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           // Claude Code is here, and whether it's signed in (null when that couldn't be checked).
           const claude = findClaude(getSetting('brainClaudePath'));
           const signedIn = claude ? await claudeSignedIn(claude) : null;
-          return sendJson(res, 200, { models: downloadStatus(voiceModelsDir), mb: VOICE_MODELS_MB, claudeFound: !!claude, signedIn, stt: sttStatus(voiceModelsDir) });
+          return sendJson(res, 200, { models: downloadStatus(voiceModelsDir), mb: VOICE_MODELS_MB, claudeFound: !!claude, signedIn, stt: sttStatus(voiceModelsDir), tts: ttsStatus(voiceModelsDir) });
+        }
+
+        case 'POST /api/claude-voice/tts-download': {
+          // Optional TTS voice pack (e.g. Kokoro English with British male George for Alfred).
+          const { id } = await readJson(req);
+          if (!ttsOk(id)) return sendJson(res, 400, { error: 'Unknown text-to-speech model.' });
+          downloadTts(voiceModelsDir, id, { log: (m) => logInfo('voice', m) })
+            .then(() => {
+              prewarmClaudeVoice();
+              for (const s of liveSessions) s.pushConfig();
+            })
+            .catch((e) => logWarn('voice', `Local voice: ${TTS_MODELS[id].label} download failed`, String(e?.message || e).slice(0, 200)));
+          return sendJson(res, 200, { ok: true, tts: ttsStatus(voiceModelsDir) });
+        }
+
+        case 'GET /api/personas':
+          return sendJson(res, 200, {
+            persona: getSetting('persona'),
+            presets: Object.values(PERSONA_PRESETS).map((p) => ({ id: p.id, label: p.label, tagline: p.tagline, recommended: p.recommended })),
+          });
+
+        case 'POST /api/persona/apply': {
+          const body = await readJson(req);
+          const id = String(body.persona || '').trim();
+          if (!personaOk(id)) return sendJson(res, 400, { error: 'Unknown persona.' });
+          const preset = PERSONA_PRESETS[id];
+          const patch = { persona: id, ...(body.applyRecommended !== false ? preset.recommended : {}) };
+          updateSettings(patch);
+          if (patch.claudeVoiceTts === 'kokoro-en' && body.autoDownload !== false && !ttsReady(voiceModelsDir, 'kokoro-en')) {
+            downloadTts(voiceModelsDir, 'kokoro-en', { log: (m) => logInfo('voice', m) })
+              .then(() => {
+                for (const s of liveSessions) s.pushConfig();
+              })
+              .catch((e) => logWarn('voice', 'Local voice: Kokoro download failed', String(e?.message || e).slice(0, 200)));
+          }
+          return sendJson(res, 200, { ok: true, settings: publicSettings(), tts: ttsStatus(voiceModelsDir) });
         }
 
         case 'POST /api/claude-voice/stt-download': {
@@ -760,10 +799,16 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           return sendJson(res, 200, { ok: true, models: downloadStatus(voiceModelsDir) });
 
         case 'GET /api/voice': {
-          // Grok's voices come from xAI; Gemini Live uses Google prebuilt voices; Claude & Gemini CLI use Kitten's 8 local voices.
+          // Grok's voices come from xAI; Gemini Live uses Google prebuilt voices; Claude & Gemini CLI use Kitten (or Kokoro English when chosen).
           const want = url.searchParams.get('engine') || voiceEngine();
           if (want === 'gemini-live') return sendJson(res, 200, { voice: getSetting('geminiVoice'), speed: getSetting('speed'), ...LIMITS, voices: GEMINI_LIVE_VOICE_LIST, engine: 'gemini-live' });
-          if (want === 'claude' || want === 'gemini-cli') return sendJson(res, 200, { voice: String(getSetting('claudeVoice')), speed: getSetting('speed'), ...LIMITS, voices: CLAUDE_VOICES, engine: want });
+          if (want === 'claude' || want === 'gemini-cli') {
+            const wantTts = url.searchParams.get('tts') || getSetting('claudeVoiceTts');
+            if (wantTts === 'kokoro-en') {
+              return sendJson(res, 200, { voice: String(getSetting('kokoroVoice')), speed: getSetting('speed'), ...LIMITS, voices: KOKORO_EN_VOICES, engine: want, tts: 'kokoro-en' });
+            }
+            return sendJson(res, 200, { voice: String(getSetting('claudeVoice')), speed: getSetting('speed'), ...LIMITS, voices: CLAUDE_VOICES, engine: want, tts: 'kitten' });
+          }
           return sendJson(res, 200, { voice: getSetting('voice'), speed: getSetting('speed'), ...LIMITS, voices: await listVoices(), engine: 'grok' });
         }
 
@@ -778,6 +823,7 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
             signedIn: auth?.ok ? auth.signedIn : null,
             hasKey: !!getGeminiKey(),
             stt: sttStatus(voiceModelsDir),
+            tts: ttsStatus(voiceModelsDir),
             voiceModels: GEMINI_VOICE_MODELS,
             liveModels: GEMINI_LIVE_MODELS,
             liveVoices: GEMINI_LIVE_VOICE_LIST,
@@ -853,13 +899,27 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         }
 
         case 'POST /api/claude-voice/preview': {
-          // A short sample of one of Claude voice's voices, made on this PC (no network, no cost).
-          if (!modelsReady(voiceModelsDir)) return sendJson(res, 409, { error: 'Download the speech models first (Voice engine, above).' });
+          // A short sample of one of the local voices (Kitten or Kokoro English), made on this PC.
           const body = await readJson(req);
-          const sid = Number.isInteger(Number(body.voice)) && Number(body.voice) >= 0 && Number(body.voice) <= 7 ? Number(body.voice) : getSetting('claudeVoice');
+          const wantTts = body.tts || getSetting('claudeVoiceTts');
           const speed = Math.min(LIMITS.maxSpeed, Math.max(LIMITS.minSpeed, Number(body.speed) || getSetting('speed')));
+          const isAlfred = getSetting('persona') === 'alfred';
+          if (wantTts === 'kokoro-en') {
+            if (!ttsReady(voiceModelsDir, 'kokoro-en')) return sendJson(res, 409, { error: 'Download Kokoro English first (Settings → Voice engine).' });
+            const sid = Number.isInteger(Number(body.voice)) && Number(body.voice) >= 0 && Number(body.voice) <= 10 ? Number(body.voice) : getSetting('kokoroVoice');
+            const kokoro = await loadTts(voiceModelsDir, 'kokoro-en');
+            const line = isAlfred || sid === 9 || sid === 10
+              ? 'Good evening, sir. Alfred at your service — everything across your threads is in order.'
+              : "Hi, I'm Orbit. Tell me what you need, and I'll handle it.";
+            const samples = await kokoro.speak(line, { speed, sid });
+            res.writeHead(200, { 'content-type': 'audio/wav', 'cache-control': 'no-store', ...SECURITY_HEADERS });
+            return res.end(wavFile(samples, 24000));
+          }
+          if (!modelsReady(voiceModelsDir)) return sendJson(res, 409, { error: 'Download the speech models first (Voice engine, above).' });
+          const sid = Number.isInteger(Number(body.voice)) && Number(body.voice) >= 0 && Number(body.voice) <= 7 ? Number(body.voice) : getSetting('claudeVoice');
           const speech = await loadSpeech(voiceModelsDir);
-          const samples = await speech.speak("Hi, I'm Orbit. Tell me what you need, and I'll pass it on to Claude.", { speed, sid });
+          const line = isAlfred ? 'Good evening, sir. Alfred at your service.' : "Hi, I'm Orbit. Tell me what you need, and I'll pass it on to Claude.";
+          const samples = await speech.speak(line, { speed, sid });
           res.writeHead(200, { 'content-type': 'audio/wav', 'cache-control': 'no-store', ...SECURITY_HEADERS });
           return res.end(wavFile(samples, 24000));
         }
@@ -1419,9 +1479,9 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     };
 
     const upstream = useClaude
-      ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), sid: getSetting('claudeVoice'), model: getSetting('claudeVoiceModel'), effort: getSetting('claudeVoiceEffort'), stt: getSetting('claudeVoiceStt'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d), localTurn: (text, itemId) => tryFastPath(text, itemId), localSpeech })
+      ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), sid: getSetting('claudeVoice'), tts: getSetting('claudeVoiceTts'), kokoroSid: getSetting('kokoroVoice'), model: getSetting('claudeVoiceModel'), effort: getSetting('claudeVoiceEffort'), stt: getSetting('claudeVoiceStt'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d), localTurn: (text, itemId) => tryFastPath(text, itemId), localSpeech })
       : useGeminiCli
-        ? createGeminiCliRealtime({ geminiPath: findGemini(getSetting('geminiPath'))?.path, apiKey: '', modelsRoot: voiceModelsDir, speed: getSetting('speed'), sid: getSetting('claudeVoice'), model: getSetting('geminiVoiceModel'), stt: getSetting('claudeVoiceStt'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d), localTurn: (text, itemId) => tryFastPath(text, itemId), localSpeech })
+        ? createGeminiCliRealtime({ geminiPath: findGemini(getSetting('geminiPath'))?.path, apiKey: '', modelsRoot: voiceModelsDir, speed: getSetting('speed'), sid: getSetting('claudeVoice'), tts: getSetting('claudeVoiceTts'), kokoroSid: getSetting('kokoroVoice'), model: getSetting('geminiVoiceModel'), stt: getSetting('claudeVoiceStt'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d), localTurn: (text, itemId) => tryFastPath(text, itemId), localSpeech })
         : useGeminiLive
           ? createGeminiLiveRealtime({ apiKey: geminiKey, model: getSetting('geminiLiveModel'), voice: getSetting('geminiVoice'), webSearch: getSetting('webSearch'), liveUrl: process.env.GEMINI_LIVE_URL || undefined, onWarn: (m, d) => logWarn('voice', m, d) })
           : new WebSocket(process.env.XAI_REALTIME_URL || `wss://api.x.ai/v1/realtime?model=${encodeURIComponent(getSetting('model'))}`, { headers: { Authorization: `Bearer ${apiKey}` } });
@@ -1526,9 +1586,9 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         configAt = Date.now();
         const base = sessionConfig();
         const session = useClaude
-          ? { ...base, claude_voice: getSetting('claudeVoice'), claude_model: getSetting('claudeVoiceModel'), claude_effort: getSetting('claudeVoiceEffort'), claude_stt: getSetting('claudeVoiceStt') }
+          ? { ...base, claude_voice: getSetting('claudeVoice'), claude_tts: getSetting('claudeVoiceTts'), kokoro_voice: getSetting('kokoroVoice'), claude_model: getSetting('claudeVoiceModel'), claude_effort: getSetting('claudeVoiceEffort'), claude_stt: getSetting('claudeVoiceStt') }
           : useGeminiCli
-            ? { ...base, claude_voice: getSetting('claudeVoice'), gemini_model: getSetting('geminiVoiceModel'), claude_stt: getSetting('claudeVoiceStt') }
+            ? { ...base, claude_voice: getSetting('claudeVoice'), claude_tts: getSetting('claudeVoiceTts'), kokoro_voice: getSetting('kokoroVoice'), gemini_model: getSetting('geminiVoiceModel'), claude_stt: getSetting('claudeVoiceStt') }
             : useGeminiLive
               ? { ...base, voice: getSetting('geminiVoice'), model: getSetting('geminiLiveModel'), webSearch: getSetting('webSearch') }
               : base;

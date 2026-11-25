@@ -170,6 +170,66 @@ public enum Agent {
     return all
   }
 
+  // MARK: personas (src/personas.js, word for word)
+
+  public struct PersonaPreset: Sendable, Equatable {
+    public let id: String
+    public let label: String
+    public let tagline: String
+    public let prompt: String
+    public let liveAccentHint: String
+    public let recommended: [String: JSONValue]
+  }
+
+  public static let personaIds: [String] = ["default", "alfred"]
+
+  public static let personaPresets: [String: PersonaPreset] = [
+    "default": PersonaPreset(
+      id: "default",
+      label: "Orbit (Default)",
+      tagline: "Calm, plain-spoken companion.",
+      prompt: "",
+      liveAccentHint: "",
+      recommended: [:]
+    ),
+    "alfred": PersonaPreset(
+      id: "alfred",
+      label: "Alfred",
+      tagline: "Aristocratic British chief of staff — dry wit, calm precision, gets things done.",
+      prompt: #"""
+      Who you are (Alfred):
+      - You are Alfred, the user's aristocratic British chief of staff and voice orchestrator across their projects and threads.
+      - Tone & cadence: calm, impeccably composed, understated British dry wit, warm loyalty, zero sycophancy. Speak with quiet competence — never melodramatic, never stiff or theatrical, never long-winded.
+      - Style: crisp, polished spoken English ("Very good, sir.", "Right away.", "If I may, that looks like a different project — shall I switch?", "The auth thread has wrapped up; two tests remain."). Use "sir" sparingly so it feels natural, never repetitive.
+      - Your job and safety rules (below) always come first: remain brief (one to two sentences unless asked for more), never invent prompt words, and never send or switch without the user's own confirmation.
+      """#,
+      liveAccentHint: "Voice delivery: speak with a refined, warm, understated British Received Pronunciation (RP) accent — calm, measured, aristocratic butler cadence, crisp articulation, never cartoonish or exaggerated.",
+      recommended: [
+        "claudeVoiceTts": "kokoro-en",
+        "kokoroVoice": 9,
+        "geminiVoice": "Charon",
+        "voice": "rex",
+      ]
+    ),
+  ]
+
+  public static func personaOk(_ id: String?) -> Bool {
+    guard let id else { return false }
+    return personaPresets[id] != nil
+  }
+
+  /**
+   * Returns the persona prompt layer for `personaId` (or "" for "default").
+   * When `engine == "gemini-live"`, includes native audio accent/delivery guidance.
+   */
+  public static func personaPrompt(_ personaId: String?, engine: String = "") -> String {
+    guard let id = personaId, personaOk(id), id != "default", let p = personaPresets[id] else { return "" }
+    if engine == "gemini-live" && !p.liveAccentHint.isEmpty {
+      return "\(p.prompt)\n- \(p.liveAccentHint)"
+    }
+    return p.prompt
+  }
+
   // MARK: the instructions
 
   static let orbitPersona = """
@@ -215,6 +275,7 @@ public enum Agent {
   public struct CoreSettings: Sendable {
     public var webSearch = true
     public var voiceEngine = "grok"
+    public var persona = "default"
     public var brainEnabled = true
     public var brainModel = "auto"
     public var wakeOnResults = false
@@ -370,7 +431,7 @@ public enum Agent {
 
   /** The settings that change what the model is told (a live session is updated when they change). */
   public static let contextSettings = [
-    "avatar", "showOrb", "brainEnabled", "brainModel", "brainExplore", "brainConnection",
+    "avatar", "showOrb", "persona", "brainEnabled", "brainModel", "brainExplore", "brainConnection",
     "brainProvider", "wakeOnResults", "webSearch", "anywhere", "targetBackend", "t3Endpoint",
     "routingDriftGuard", "routingQueueBusy",
   ]
@@ -386,10 +447,13 @@ public enum Agent {
     let chosen = str("avatar")
     let active = avatarShown && (chosen == "qubit" || chosen == "buddy") ? chosen : nil
     let screen = onScreen(avatar: active, showOrb: settings["showOrb"] != .bool(false))
-    let persona = screen.face == "orbit" ? orbitPersona : "\(personas[screen.face]!)\(screen.orb ? "\n\(orbToo)" : "")"
+    let engine = str("voiceEngine")
+    let customPersona = personaPrompt(str("persona"), engine: engine)
+    let persona = customPersona.isEmpty ? (screen.face == "orbit" ? orbitPersona : "\(personas[screen.face]!)\(screen.orb ? "\n\(orbToo)" : "")") : customPersona
     var c = CoreSettings()
     c.webSearch = on("webSearch")
-    c.voiceEngine = str("voiceEngine")
+    c.voiceEngine = engine
+    c.persona = str("persona").isEmpty ? "default" : str("persona")
     c.brainEnabled = on("brainEnabled")
     c.brainModel = str("brainModel")
     c.wakeOnResults = on("wakeOnResults")

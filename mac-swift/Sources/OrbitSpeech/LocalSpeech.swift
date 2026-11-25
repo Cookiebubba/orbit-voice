@@ -111,6 +111,22 @@ public final class LocalSpeaker: @unchecked Sendable {
     }
   }
 
+  /** Synthesizes `text` using the chosen TTS pack ("kokoro-en" or "kitten"), falling back to Kitten if Kokoro isn't installed. */
+  public func say(_ text: String, tts: String, sid: Int, speed: Float, done: @escaping @Sendable ([Float]) -> Void) {
+    let g = lock.withLock { generation }
+    queue.async {
+      guard self.lock.withLock({ self.generation }) == g else { return }
+      let samples: [Float]
+      if tts == "kokoro-en", let kokoro = try? self.speech.speakKokoro(text, sid: sid, speed: speed), !kokoro.isEmpty {
+        samples = kokoro
+      } else {
+        samples = self.speech.speak(text, sid: max(0, min(7, sid)), speed: speed)
+      }
+      guard self.lock.withLock({ self.generation }) == g else { return }
+      done(samples)
+    }
+  }
+
   /** Talked over: nothing still queued is said. */
   public func cancel() { lock.withLock { generation += 1 } }
 }

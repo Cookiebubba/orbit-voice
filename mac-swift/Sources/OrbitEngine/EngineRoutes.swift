@@ -35,7 +35,23 @@ extension Engine {
       // whether it's signed in (null when that couldn't be checked).
       let claude = await brain.findClaude(config.string("brainClaudePath"))
       let signedIn = claude == nil ? JSONValue.null : await claudeSignedIn(claude!.path)
-      return json(200, ["models": voiceModels.status(), "mb": .number(Double(VoiceModels.mb)), "claudeFound": .bool(claude != nil), "signedIn": signedIn, "stt": voiceModels.sttStatus()])
+      return json(200, ["models": voiceModels.status(), "mb": .number(Double(VoiceModels.mb)), "claudeFound": .bool(claude != nil), "signedIn": signedIn, "stt": voiceModels.sttStatus(), "tts": voiceModels.ttsStatus()])
+
+    case "POST /api/claude-voice/tts-download":
+      // Optional local TTS pack (e.g. Kokoro English with pinned SHA-256); Settings polls GET for progress.
+      let id = JSONValue(any: BridgePolicy.readJSON(r.body)["id"])
+      guard VoiceModels.ttsOk(id), let tid = id.stringValue else { return json(400, ["error": "Unknown text-to-speech model."]) }
+      let task = try? voiceModels.startTts(tid)
+      let label = VoiceModels.tts.first { $0.id == tid }?.label ?? tid
+      Task { [weak self] in
+        do {
+          try await task?.value
+          self?.prewarm()
+        } catch {
+          self?.log.warn("voice", "Local voice: \(label) download failed", JS.slice(VoiceModels.message(error), 0, 200))
+        }
+      }
+      return json(200, ["ok": true, "tts": voiceModels.ttsStatus()])
 
     case "POST /api/claude-voice/stt-download":
       // One speech-to-text model (pinned checksum), when it's chosen; Settings polls GET for progress.
@@ -74,9 +90,18 @@ extension Engine {
       let engine = r.query("engine")
       var out: [String: JSONValue] = ["speed": config["speed"] ?? .null, "minSpeed": .number(Self.speedFloor), "maxSpeed": .number(Self.speedCeiling)]
       if engine == "claude" || (engine != "grok" && config.string("voiceEngine") == "claude") {
-        out["voice"] = .string(JSTruthy.string(config["claudeVoice"]))
-        out["voices"] = .array(Self.claudeVoices)
-        out["engine"] = "claude"
+        let wantTts = r.query("tts") ?? config.string("claudeVoiceTts")
+        if wantTts == "kokoro-en" {
+          out["voice"] = .string(JSTruthy.string(config["kokoroVoice"]))
+          out["voices"] = .array(VoiceModels.kokoroEnVoices.map(\.json))
+          out["engine"] = "claude"
+          out["tts"] = "kokoro-en"
+        } else {
+          out["voice"] = .string(JSTruthy.string(config["claudeVoice"]))
+          out["voices"] = .array(Self.claudeVoices)
+          out["engine"] = "claude"
+          out["tts"] = "kitten"
+        }
       } else {
         out["voice"] = config["voice"] ?? .null
         out["voices"] = .array(await listVoices())

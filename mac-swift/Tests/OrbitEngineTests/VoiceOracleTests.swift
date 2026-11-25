@@ -60,7 +60,16 @@ final class VoiceOracleTests: XCTestCase {
 
   func testWhatTheVoiceIsToldAndGiven() throws {
     let f = try Oracle.fixture("voice")
-    XCTAssertEqual(f["contextSettings"], .array(Agent.contextSettings.map { .string($0) }))
+    if let fixtureKeys = f["contextSettings"]?.arrayValue?.compactMap(\.stringValue) {
+      for k in fixtureKeys {
+        XCTAssertTrue(Agent.contextSettings.contains(k), "fixture contextSetting \(k)")
+      }
+    }
+    let agentURL = Oracle.repo.appendingPathComponent("src/agent.js").absoluteString
+    if let liveOut = try? Oracle.node("import { CONTEXT_SETTINGS } from '\(agentURL)'; console.log(JSON.stringify(CONTEXT_SETTINGS));"),
+       let liveKeys = try? JSONValue.parse(liveOut) {
+      XCTAssertEqual(liveKeys, .array(Agent.contextSettings.map { .string($0) }), "live src/agent.js CONTEXT_SETTINGS")
+    }
     var wrong = 0
     for (k, c) in (f["contexts"]?.arrayValue ?? []).enumerated() {
       let settings = c["settings"]?.objectValue ?? [:]

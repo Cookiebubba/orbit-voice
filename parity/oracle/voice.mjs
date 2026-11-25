@@ -101,17 +101,20 @@ function contextSettings(r) {
     t3Endpoint: '',
     routingDriftGuard: true,
     routingQueueBusy: true,
+    persona: 'default',
   };
   for (const avatar of ['qubit', 'buddy', 'none']) {
     for (const showOrb of [true, false]) out.push({ ...base, avatar, showOrb });
   }
-  // Explicit coverage for Gemini voice engines, Gemini second brain, and T3 Code lead mode.
+  // Explicit coverage for Gemini voice engines, Gemini second brain, T3 Code lead mode, and Alfred persona.
   out.push(
     { ...base, avatar: 'qubit', voiceEngine: 'gemini-cli', webSearch: true, brainEnabled: true, brainProvider: 'gemini' },
     { ...base, avatar: 'qubit', voiceEngine: 'gemini-live', webSearch: true, brainEnabled: true, brainProvider: 'gemini' },
     { ...base, avatar: 'buddy', voiceEngine: 'claude', targetBackend: 't3-code', t3Endpoint: '', routingDriftGuard: true, routingQueueBusy: true },
     { ...base, avatar: 'none', voiceEngine: 'grok', targetBackend: 'auto', t3Endpoint: 'http://127.0.0.1:3773', routingDriftGuard: false, routingQueueBusy: false },
     { ...base, avatar: 'qubit', voiceEngine: 'gemini-live', targetBackend: 'claude-desktop', t3Endpoint: 'http://127.0.0.1:3773' },
+    { ...base, avatar: 'qubit', voiceEngine: 'claude', persona: 'alfred' },
+    { ...base, avatar: 'qubit', voiceEngine: 'gemini-live', persona: 'alfred' },
   );
   for (let i = 0; i < 20; i++) {
     out.push({
@@ -130,6 +133,7 @@ function contextSettings(r) {
       t3Endpoint: r() < 0.4 ? 'http://127.0.0.1:3773' : '',
       routingDriftGuard: r() < 0.5,
       routingQueueBusy: r() < 0.5,
+      persona: pick(r, ['default', 'alfred']),
     });
   }
   return out;
@@ -201,7 +205,7 @@ export async function voiceFixtures(root, rng) {
       const ctx = agent.agentContext();
       const all = config.getSettings();
       const settings = Object.fromEntries(
-        ['avatar', 'showOrb', 'brainEnabled', 'brainModel', 'brainExplore', 'brainConnection', 'brainProvider', 'wakeOnResults', 'webSearch', 'voiceEngine', 'anywhere', 'targetBackend', 't3Endpoint', 'routingDriftGuard', 'routingQueueBusy'].map((k) => [k, all[k]]),
+        ['avatar', 'showOrb', 'brainEnabled', 'brainModel', 'brainExplore', 'brainConnection', 'brainProvider', 'wakeOnResults', 'webSearch', 'voiceEngine', 'anywhere', 'targetBackend', 't3Endpoint', 'routingDriftGuard', 'routingQueueBusy', 'persona'].map((k) => [k, all[k]]),
       );
       contexts.push({ settings, context: plain(ctx), prompt: cv.systemPrompt({ instructions: ctx.instructions, tools: ctx.tools }) });
     }

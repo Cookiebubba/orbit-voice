@@ -61,6 +61,32 @@ final class OrbitSpeechTests: XCTestCase {
     XCTAssertThrowsError(try OrbitSpeech(root: URL(fileURLWithPath: "/nonexistent")))
   }
 
+  func testKokoroModelPathsAndReadinessCheck() throws {
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("orbit-speech-kokoro-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+
+    let kp = SpeechModelPaths.kokoroPaths(root: tmp)
+    XCTAssertEqual(kp.dir, tmp.appendingPathComponent("kokoro-int8-en-v0_19").path)
+    XCTAssertEqual(kp.model, tmp.appendingPathComponent("kokoro-int8-en-v0_19/model.int8.onnx").path)
+    XCTAssertEqual(kp.voices, tmp.appendingPathComponent("kokoro-int8-en-v0_19/voices.bin").path)
+    XCTAssertEqual(kp.tokens, tmp.appendingPathComponent("kokoro-int8-en-v0_19/tokens.txt").path)
+    XCTAssertEqual(kp.dataDir, tmp.appendingPathComponent("kokoro-int8-en-v0_19/espeak-ng-data").path)
+    XCTAssertFalse(kp.ready())
+    XCTAssertFalse(kp.ready(requireVerified: false))
+
+    let dir = URL(fileURLWithPath: kp.dir)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    for f in ["model.int8.onnx", "voices.bin", "tokens.txt"] {
+      try Data("stub".utf8).write(to: dir.appendingPathComponent(f))
+    }
+    XCTAssertTrue(kp.ready(requireVerified: false))
+    XCTAssertFalse(kp.ready(requireVerified: true))
+
+    try Data(#"{"sha256":"c9f0dd393615805b0bab050c340834d5e684e732aec91c0e860cd30e982c08bd"}"#.utf8).write(to: URL(fileURLWithPath: kp.verifiedMarker))
+    XCTAssertTrue(kp.ready(requireVerified: true))
+  }
+
   /** The same clips, the same words as the Node core (and Kitten's samples equal). */
   func testMatchesTheNodeCore() throws {
     let s = try engine()

@@ -5,6 +5,7 @@
 //   4. SP3 Busy-Turn Queue + Permission-Waiting Hard Guard (T3 mode:'queue' & Claude Desktop flushQueued)
 //   5. T3 Lead Orchestrator tools (steer_thread, list_t3_projects, new_session worktree,
 //      read_claude_prompt + answer_claude_prompt) + deterministic consent checks
+//   6. Alfred persona + Kokoro English TTS preset & Gemini Live RP accent/Charon setup
 //
 // 100% offline, OS-independent, using throwaway temp config dirs & random free ports.
 // Runs with: node --import ./test/fuzz/register.mjs --test test/sandboxed/gemini-t3-routing.test.js
@@ -763,6 +764,84 @@ test('5. T3 Lead Orchestrator tools (list_t3_projects, switch_session, steer_thr
     assert.equal(respondCall.args.requestId, 'req_rl_1');
     assert.equal(leadFakeT3.getThread('thr_run').waiting, false);
   });
+});
+
+// ============================================================================
+// 6. Alfred persona + Kokoro English TTS & Gemini Live RP accent setup
+// ============================================================================
+
+test('6. Alfred persona API, Kokoro bm_george voice listing, and Gemini Live Charon + RP setup', async () => {
+  // Verify GET /api/personas exposes the Alfred preset
+  const personasRes = await getJson('/api/personas');
+  assert.equal(personasRes.status, 200);
+  const alfredPreset = personasRes.json.presets?.find((p) => p.id === 'alfred');
+  assert.ok(alfredPreset, 'expected alfred preset in GET /api/personas');
+  assert.equal(alfredPreset.recommended?.claudeVoiceTts, 'kokoro-en');
+  assert.equal(alfredPreset.recommended?.kokoroVoice, 9);
+  assert.equal(alfredPreset.recommended?.geminiVoice, 'Charon');
+
+  // Apply Alfred persona without triggering network download
+  const applyRes = await postJson('/api/persona/apply', { persona: 'alfred', autoDownload: false });
+  assert.equal(applyRes.status, 200);
+  assert.equal(applyRes.json.ok, true);
+  assert.equal(applyRes.json.settings.persona, 'alfred');
+  assert.equal(applyRes.json.settings.claudeVoiceTts, 'kokoro-en');
+  assert.equal(applyRes.json.settings.kokoroVoice, 9);
+  assert.equal(applyRes.json.settings.geminiVoice, 'Charon');
+
+  // Verify GET /api/voice?engine=gemini-cli&tts=kokoro-en returns bm_george (sid '9') as default voice
+  const kokoroVoiceRes = await getJson('/api/voice?engine=gemini-cli&tts=kokoro-en');
+  assert.equal(kokoroVoiceRes.status, 200);
+  assert.equal(kokoroVoiceRes.json.engine, 'gemini-cli');
+  assert.equal(kokoroVoiceRes.json.tts, 'kokoro-en');
+  assert.equal(kokoroVoiceRes.json.voice, '9');
+  const george = kokoroVoiceRes.json.voices?.find((v) => v.id === '9');
+  assert.ok(george, 'expected sid 9 in Kokoro voices');
+  assert.equal(george.speaker, 'bm_george');
+
+  // Ensure Gemini Live engine & sandbox key are active, then connect /voice
+  await postJson('/api/gemini/key', { key: 'AIzaSyFakeSandboxKey1234567890abcd' });
+  const liveCfgRes = await postJson('/api/settings', { voiceEngine: 'gemini-live' });
+  assert.equal(liveCfgRes.status, 200);
+  assert.equal(liveCfgRes.json.voiceEngine, 'gemini-live');
+
+  const ws = new WebSocket(`ws://${host}/voice`, { headers: { origin, cookie } });
+  const browserEvents = [];
+  ws.on('message', (d) => browserEvents.push(JSON.parse(String(d))));
+
+  try {
+    const readyEvt = await waitFor(
+      () => browserEvents.find((e) => e.type === 'bridge.ready'),
+      { label: 'bridge.ready (alfred gemini-live)' },
+    );
+    assert.equal(readyEvt.engine, 'gemini-live');
+    assert.equal(readyEvt.voice, 'Charon');
+
+    await waitFor(
+      () => browserEvents.find((e) => e.type === 'session.updated'),
+      { label: 'session.updated (alfred gemini-live)' },
+    );
+
+    const conn = fakeGemini.current();
+    assert.ok(conn, 'expected active fake Gemini Live connection for Alfred');
+    assert.ok(conn.setup, 'expected Gemini Live setup payload');
+    assert.equal(
+      conn.setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName,
+      'Charon',
+    );
+    const sysInstruction = (conn.setup.systemInstruction?.parts || []).map((p) => p.text || '').join('\n');
+    assert.match(sysInstruction, /Who you are \(Alfred\)/);
+    assert.match(sysInstruction, /aristocratic British/i);
+    assert.match(sysInstruction, /Received Pronunciation/);
+  } finally {
+    const closed = new Promise((r) => {
+      if (ws.readyState === WebSocket.CLOSED) return r();
+      ws.once('close', r);
+      ws.close();
+    });
+    await closed;
+    await waitFor(() => !fakeGemini.current(), { label: 'upstream Gemini Live socket close (alfred)' });
+  }
 });
 
 // Clean teardown: stop watchers, close fake servers, clean temp dir, exit cleanly preserving exitCode.

@@ -20,13 +20,14 @@ import {
   isJunk,
   loadRecognizer,
   loadSpeech,
+  loadTts,
   soundsUnfinished,
   speakableText,
   systemPrompt,
   takeChunks,
 } from '../claude-voice.js';
 import { createCueStream } from '../emote-cues.js';
-import { STT_MODELS, sttOk, sttReady } from '../voice-models.js';
+import { STT_MODELS, TTS_MODELS, sttOk, sttReady, ttsOk, ttsReady } from '../voice-models.js';
 import { childEnv, groupOptions, killTree } from '../platform/system.js';
 import { GEMINI_VOICE_MODELS, isGeminiSignInProblem } from './auth.js';
 
@@ -318,6 +319,8 @@ export function createGeminiCliRealtime({
   modelsRoot,
   speed = 1,
   sid = GEMINI_VOICE.sid,
+  tts = 'kitten',
+  kokoroSid = 9,
   model = GEMINI_VOICE.model,
   stt = 'moonshine',
   onMetrics = () => {},
@@ -359,6 +362,27 @@ export function createGeminiCliRealtime({
       },
     );
   };
+  let ttsWant = 'kitten';
+  let ttsNow = null;
+  const switchTts = (id) => {
+    if (!ttsOk(id)) id = 'kitten';
+    if (id !== 'kitten' && !injectedSpeech?.loadTts && !ttsReady(modelsRoot, id)) id = 'kitten';
+    if (id === ttsWant) return;
+    ttsWant = id;
+    if (id === 'kitten') return void (ttsNow = null);
+    const load = injectedSpeech?.loadTts
+      ? Promise.resolve().then(() => injectedSpeech.loadTts(id))
+      : loadTts(modelsRoot, id);
+    load.then(
+      (r) => ttsWant === id && (ttsNow = { id, speak: r.speak }),
+      (e) => {
+        warnOnce(`Gemini voice: ${TTS_MODELS[id].label} couldn't load, using Kitten`, e);
+        if (ttsWant === id) ttsNow = null;
+      },
+    );
+  };
+  const activeVoiceSid = () => (ttsNow ? kokoroSid : sid);
+  const speakNow = (text) => (ttsNow ? ttsNow.speak(text, { speed, sid: kokoroSid }) : speech.speak(text, { speed, sid }));
 
   let vad = null;
   let resampler = null;
@@ -558,10 +582,10 @@ export function createGeminiCliRealtime({
   };
 
   const fillerPcm = async (text) => {
-    const key = `${sid}|${speed}|${text}`;
+    const key = `${ttsNow?.id || 'kitten'}|${activeVoiceSid()}|${speed}|${text}`;
     let pcm = fillerCache.get(key);
     if (!pcm) {
-      pcm = floatToPcm16(await speech.speak(text, { speed, sid })).toString('base64');
+      pcm = floatToPcm16(await speakNow(text)).toString('base64');
       fillerCache.set(key, pcm);
     }
     return pcm;
@@ -616,7 +640,7 @@ export function createGeminiCliRealtime({
           }
           let samples;
           try {
-            samples = await speech.speak(say, { speed, sid });
+            samples = await speakNow(say);
           } catch (e) {
             warnOnce('Gemini voice: text to speech failed', e);
             return;
@@ -830,6 +854,8 @@ export function createGeminiCliRealtime({
         if (Array.isArray(s.tools)) tools = s.tools;
         const v = Number.isInteger(s.gemini_voice) ? s.gemini_voice : s.claude_voice;
         if (Number.isInteger(v) && v >= 0 && v <= 7) sid = v;
+        if (Number.isInteger(s.kokoro_voice) && s.kokoro_voice >= 0 && s.kokoro_voice <= 10) kokoroSid = s.kokoro_voice;
+        if (typeof s.claude_tts === 'string') switchTts(s.claude_tts);
         const s2 = s.audio?.output?.speed;
         if (Number.isFinite(s2)) speed = s2;
         if (modelOk(s.gemini_model)) model = s.gemini_model;
@@ -917,6 +943,7 @@ export function createGeminiCliRealtime({
       if (!localSpeech) {
         speech = injectedSpeech || (await loadSpeech(modelsRoot));
         switchStt(stt);
+        switchTts(tts);
         vad = speech.newVad();
         resampler = speech.newResampler();
       }

@@ -12336,6 +12336,8 @@
          }
         },
         "claude_voice": 0,
+        "claude_tts": "kitten",
+        "kokoro_voice": 9,
         "claude_model": "haiku",
         "claude_effort": "low",
         "claude_stt": "moonshine"
@@ -12996,6 +12998,8 @@
          }
         },
         "claude_voice": 0,
+        "claude_tts": "kitten",
+        "kokoro_voice": 9,
         "claude_model": "opus",
         "claude_effort": "low",
         "claude_stt": "moonshine"

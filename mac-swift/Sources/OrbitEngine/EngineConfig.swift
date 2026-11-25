@@ -221,6 +221,12 @@ public final class EngineConfig: @unchecked Sendable {
         if case .string(let s) = val, let clean = SettingsSchema.sanitizeLoopbackURL(s) { out[k] = .string(clean) }
       case "routingDriftThreshold":
         if case .number(let n) = val, n.isFinite { out[k] = .number(min(0.98, max(0.5, round(n, places: 100)))) }
+      case "persona":
+        if Agent.personaOk(val.stringValue) { out[k] = val }
+      case "claudeVoiceTts":
+        if VoiceModels.ttsOk(val) { out[k] = val }
+      case "kokoroVoice":
+        if isInteger(val), let n = val.doubleValue, n >= 0, n <= 10 { out[k] = val }
       case "claudeVoice":
         if isInteger(val), let n = val.doubleValue, n >= 0, n <= 7 { out[k] = val }
       case "claudeVoiceModel":

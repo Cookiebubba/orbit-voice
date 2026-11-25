@@ -415,4 +415,161 @@ final class GeminiT3RouterTests: XCTestCase {
       XCTAssertEqual(r.auth, "Bearer secret-test-token")
     }
   }
+
+  // MARK: - Alfred Persona & Kokoro English TTS parity
+
+  func testEngineConfigSanitizesPersonaAndKokoroKeys() {
+    // Defaults match src/config.js
+    XCTAssertEqual(EngineConfig.defaults["persona"], "default")
+    XCTAssertEqual(EngineConfig.defaults["claudeVoiceTts"], "kitten")
+    XCTAssertEqual(EngineConfig.defaults["kokoroVoice"], 9)
+
+    // Valid values accepted
+    let valid = EngineConfig.sanitize([
+      "persona": "alfred",
+      "claudeVoiceTts": "kokoro-en",
+      "kokoroVoice": 10,
+    ])
+    XCTAssertEqual(valid["persona"], "alfred")
+    XCTAssertEqual(valid["claudeVoiceTts"], "kokoro-en")
+    XCTAssertEqual(valid["kokoroVoice"], 10)
+
+    // String coercion & boundary values
+    let boundaries = EngineConfig.sanitize([
+      "persona": "default",
+      "claudeVoiceTts": "kitten",
+      "kokoroVoice": "0",
+    ])
+    XCTAssertEqual(boundaries["persona"], "default")
+    XCTAssertEqual(boundaries["claudeVoiceTts"], "kitten")
+    XCTAssertEqual(boundaries["kokoroVoice"], 0)
+
+    // Invalid values rejected
+    let invalid = EngineConfig.sanitize([
+      "persona": "jarvis",
+      "claudeVoiceTts": "piper",
+      "kokoroVoice": 11,
+    ])
+    XCTAssertTrue(invalid.isEmpty, "invalid persona/TTS values must be dropped: \(invalid)")
+    XCTAssertTrue(EngineConfig.sanitize(["kokoroVoice": -1]).isEmpty)
+    XCTAssertTrue(EngineConfig.sanitize(["kokoroVoice": 4.5]).isEmpty)
+    XCTAssertTrue(EngineConfig.sanitize(["kokoroVoice": "not-a-number"]).isEmpty)
+
+    // SettingsSchema parity
+    XCTAssertEqual(SettingsSchema.sanitize("persona", "alfred"), "alfred")
+    XCTAssertNil(SettingsSchema.sanitize("persona", "jarvis"))
+    XCTAssertEqual(SettingsSchema.sanitize("claudeVoiceTts", "kokoro-en"), "kokoro-en")
+    XCTAssertNil(SettingsSchema.sanitize("claudeVoiceTts", "piper"))
+    XCTAssertEqual(SettingsSchema.sanitize("kokoroVoice", 9), 9)
+    XCTAssertNil(SettingsSchema.sanitize("kokoroVoice", 11))
+    XCTAssertNil(SettingsSchema.sanitize("kokoroVoice", -1))
+  }
+
+  func testAgentAlfredPersonaAndGeminiLiveAccentHint() throws {
+    XCTAssertTrue(Agent.contextSettings.contains("persona"))
+    XCTAssertEqual(Agent.contextSettings.firstIndex(of: "persona"), 2, "persona follows showOrb as in src/agent.js")
+    XCTAssertTrue(Agent.personaOk("default"))
+    XCTAssertTrue(Agent.personaOk("alfred"))
+    XCTAssertFalse(Agent.personaOk("jarvis"))
+    XCTAssertEqual(Agent.personaPrompt("default"), "")
+    XCTAssertEqual(Agent.personaPrompt("unknown"), "")
+
+    let alfredPrompt = Agent.personaPrompt("alfred", engine: "claude")
+    XCTAssertTrue(alfredPrompt.hasPrefix("Who you are (Alfred):"))
+    XCTAssertTrue(alfredPrompt.contains("aristocratic British chief of staff"))
+    XCTAssertFalse(alfredPrompt.contains("Received Pronunciation (RP)"), "non-live engines omit live accent hint")
+
+    let alfredLive = Agent.personaPrompt("alfred", engine: "gemini-live")
+    XCTAssertTrue(alfredLive.hasPrefix(alfredPrompt + "\n- "))
+    XCTAssertTrue(alfredLive.contains("British Received Pronunciation (RP) accent"))
+
+    // Verify Agent.context injects Alfred persona (overriding default Orbit/avatar persona) and appends RP hint on gemini-live
+    var baseSettings = EngineConfig.defaults
+    baseSettings["persona"] = "alfred"
+    baseSettings["voiceEngine"] = "claude"
+    let claudeCtx = Agent.context(baseSettings)
+    XCTAssertTrue(claudeCtx.instructions.hasPrefix("Who you are (Alfred):"))
+    XCTAssertFalse(claudeCtx.instructions.contains("Received Pronunciation (RP)"))
+    XCTAssertFalse(claudeCtx.instructions.contains("You are Orbit, the voice of the Orbit app"))
+
+    baseSettings["voiceEngine"] = "gemini-live"
+    let liveCtx = Agent.context(baseSettings)
+    XCTAssertTrue(liveCtx.instructions.hasPrefix(alfredLive))
+
+    // Word-for-word parity against live src/personas.js when Node is available
+    let personasURL = Oracle.repo.appendingPathComponent("src/personas.js").absoluteString
+    if let liveOut = try? Oracle.node("""
+      import { PERSONA_PRESETS, personaPrompt } from '\(personasURL)';
+      console.log(JSON.stringify({
+        claude: personaPrompt('alfred', { engine: 'claude' }),
+        live: personaPrompt('alfred', { engine: 'gemini-live' }),
+        def: personaPrompt('default', { engine: 'gemini-live' }),
+        recommended: PERSONA_PRESETS.alfred.recommended,
+      }));
+      """),
+       let v = try? JSONValue.parse(liveOut) {
+      XCTAssertEqual(alfredPrompt, v["claude"]?.stringValue, "Alfred prompt must match src/personas.js word-for-word")
+      XCTAssertEqual(alfredLive, v["live"]?.stringValue, "Alfred Gemini Live prompt must match src/personas.js word-for-word")
+      XCTAssertEqual(Agent.personaPrompt("default", engine: "gemini-live"), v["def"]?.stringValue)
+      XCTAssertEqual(Agent.personaPresets["alfred"]?.recommended, v["recommended"]?.objectValue)
+    }
+  }
+
+  func testVoiceModelsKokoroTtsCatalogConfigAndReadiness() throws {
+    XCTAssertEqual(VoiceModels.ttsIds, ["kitten", "kokoro-en"])
+    XCTAssertTrue(VoiceModels.ttsOk("kitten"))
+    XCTAssertTrue(VoiceModels.ttsOk("kokoro-en"))
+    XCTAssertFalse(VoiceModels.ttsOk("piper"))
+
+    let kokoro = try XCTUnwrap(VoiceModels.tts.first { $0.id == "kokoro-en" })
+    XCTAssertFalse(kokoro.bundled)
+    XCTAssertEqual(kokoro.download?.sha256, "c9f0dd393615805b0bab050c340834d5e684e732aec91c0e860cd30e982c08bd")
+    XCTAssertEqual(kokoro.download?.size, 103_248_205)
+    XCTAssertEqual(kokoro.download?.url, "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-en-v0_19.tar.bz2")
+    XCTAssertEqual(kokoro.files, ["model.int8.onnx", "voices.bin", "tokens.txt"])
+    XCTAssertEqual(kokoro.voices.count, 11)
+    XCTAssertEqual(kokoro.voices.first?.id, "9")
+    XCTAssertEqual(kokoro.voices.first?.speaker, "bm_george")
+
+    // ttsConfig for kitten vs kokoro-en vs unknown
+    let root = "/tmp/orbit-voice-models-test"
+    let kittenCfg = VoiceModels.ttsConfig(root: root, id: "kitten")
+    XCTAssertEqual(kittenCfg["kitten"]?["model"], .string("\(root)/kitten-nano-en-v0_8-fp32/model.fp32.onnx"))
+    let fallbackCfg = VoiceModels.ttsConfig(root: root, id: "unknown")
+    XCTAssertEqual(fallbackCfg, kittenCfg)
+
+    let kokoroCfg = VoiceModels.ttsConfig(root: root, id: "kokoro-en")
+    XCTAssertEqual(kokoroCfg["kokoro"]?["model"], .string("\(root)/kokoro-int8-en-v0_19/model.int8.onnx"))
+    XCTAssertEqual(kokoroCfg["kokoro"]?["voices"], .string("\(root)/kokoro-int8-en-v0_19/voices.bin"))
+    XCTAssertEqual(kokoroCfg["kokoro"]?["tokens"], .string("\(root)/kokoro-int8-en-v0_19/tokens.txt"))
+    XCTAssertEqual(kokoroCfg["kokoro"]?["dataDir"], .string("\(root)/kokoro-int8-en-v0_19/espeak-ng-data"))
+
+    // Readiness and status on a temporary directory
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("orbit-kokoro-test-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+
+    let models = VoiceModels(root: tmp.path)
+    XCTAssertFalse(models.ttsReady("kokoro-en"))
+    XCTAssertFalse(models.ttsReady("unknown"))
+    let idleStatus = models.ttsStatus()
+    XCTAssertEqual(idleStatus["kokoro-en"]?["state"], "idle")
+    XCTAssertEqual(idleStatus["kokoro-en"]?["mb"], 98)
+
+    // Populate verified Kokoro files and confirm ttsReady + ttsStatus flip to ready
+    let kDir = tmp.appendingPathComponent("kokoro-int8-en-v0_19")
+    try FileManager.default.createDirectory(at: kDir, withIntermediateDirectories: true)
+    for f in kokoro.files {
+      try Data("stub".utf8).write(to: kDir.appendingPathComponent(f))
+    }
+    // Wrong sha256 stays unready
+    try Data(#"{"sha256":"0000"}"#.utf8).write(to: kDir.appendingPathComponent("verified.json"))
+    XCTAssertFalse(models.ttsReady("kokoro-en"))
+
+    // Matching pinned sha256 becomes ready
+    try Data(#"{"sha256":"c9f0dd393615805b0bab050c340834d5e684e732aec91c0e860cd30e982c08bd"}"#.utf8).write(to: kDir.appendingPathComponent("verified.json"))
+    XCTAssertTrue(models.ttsReady("kokoro-en"))
+    XCTAssertEqual(models.ttsStatus()["kokoro-en"]?["state"], "ready")
+    XCTAssertEqual(models.ttsStatus()["kokoro-en"]?["percent"], 100)
+  }
 }

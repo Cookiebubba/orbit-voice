@@ -77,11 +77,13 @@ public struct ClaudeVoiceStatus: Sendable, Equatable {
   public var mb: Int
   public var claudeFound: Bool
   public var stt: [String: DownloadState]
+  public var tts: [String: DownloadState]
   public init(json: JSONValue) {
     models = DownloadState(json: json["models"])
     mb = json["mb"]?.intValue ?? 0
     claudeFound = json["claudeFound"]?.boolValue ?? false
     stt = (json["stt"]?.objectValue ?? [:]).mapValues { DownloadState(json: $0) }
+    tts = (json["tts"]?.objectValue ?? [:]).mapValues { DownloadState(json: $0) }
   }
 }
 
@@ -296,6 +298,9 @@ public actor BridgeClient {
   public func claudeVoiceDownload() async throws -> DownloadState { DownloadState(json: try await post("/api/claude-voice/download")["models"]) }
   public func sttDownload(_ id: String) async throws -> [String: DownloadState] {
     (try await post("/api/claude-voice/stt-download", ["id": .string(id)])["stt"]?.objectValue ?? [:]).mapValues { DownloadState(json: $0) }
+  }
+  public func ttsDownload(_ id: String) async throws -> [String: DownloadState] {
+    (try await post("/api/claude-voice/tts-download", ["id": .string(id)])["tts"]?.objectValue ?? [:]).mapValues { DownloadState(json: $0) }
   }
 
   public func brain() async throws -> BrainStatus { BrainStatus(json: try await get("/api/brain")) }

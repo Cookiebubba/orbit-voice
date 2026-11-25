@@ -259,3 +259,129 @@ export function downloadStt(root, id, { fetchImpl = fetch, log = () => {} } = {}
   sttJobs.set(id, job);
   return job;
 }
+
+// ---------------------------------------------------------------- text-to-speech choices
+//
+// Kitten nano comes bundled with the local speech models; Kokoro English (int8, ~98 MB) is an
+// optional pinned-SHA-256 upgrade from sherpa-onnx's releases adding 11 crisp British & US voices,
+// including George (sid 9, British male — ideal for Alfred) and Lewis (sid 10, British male).
+
+export const KOKORO_EN_VOICES = Object.freeze([
+  Object.freeze({ id: '9', name: 'George (British — Alfred)', gender: 'male', accent: 'british', speaker: 'bm_george' }),
+  Object.freeze({ id: '10', name: 'Lewis (British)', gender: 'male', accent: 'british', speaker: 'bm_lewis' }),
+  Object.freeze({ id: '7', name: 'Emma (British)', gender: 'female', accent: 'british', speaker: 'bf_emma' }),
+  Object.freeze({ id: '8', name: 'Isabella (British)', gender: 'female', accent: 'british', speaker: 'bf_isabella' }),
+  Object.freeze({ id: '5', name: 'Adam (US)', gender: 'male', accent: 'us', speaker: 'am_adam' }),
+  Object.freeze({ id: '6', name: 'Michael (US)', gender: 'male', accent: 'us', speaker: 'am_michael' }),
+  Object.freeze({ id: '1', name: 'Bella (US)', gender: 'female', accent: 'us', speaker: 'af_bella' }),
+  Object.freeze({ id: '2', name: 'Nicole (US)', gender: 'female', accent: 'us', speaker: 'af_nicole' }),
+  Object.freeze({ id: '3', name: 'Sarah (US)', gender: 'female', accent: 'us', speaker: 'af_sarah' }),
+  Object.freeze({ id: '4', name: 'Sky (US)', gender: 'female', accent: 'us', speaker: 'af_sky' }),
+  Object.freeze({ id: '0', name: 'Default (US)', gender: 'female', accent: 'us', speaker: 'af' }),
+]);
+
+export const TTS_MODELS = Object.freeze({
+  kitten: Object.freeze({ label: 'Kitten Nano (bundled)', bundled: true, mb: 0 }),
+  'kokoro-en': Object.freeze({
+    label: 'Kokoro English (British & US)',
+    file: 'kokoro-int8-en-v0_19.tar.bz2',
+    dir: 'kokoro-int8-en-v0_19',
+    url: `${BASE}/tts-models/kokoro-int8-en-v0_19.tar.bz2`,
+    sha256: 'c9f0dd393615805b0bab050c340834d5e684e732aec91c0e860cd30e982c08bd',
+    size: 103248205,
+    files: ['model.int8.onnx', 'voices.bin', 'tokens.txt'],
+    voices: KOKORO_EN_VOICES,
+  }),
+});
+export const TTS_IDS = Object.freeze(Object.keys(TTS_MODELS));
+export const ttsOk = (id) => typeof id === 'string' && Object.hasOwn(TTS_MODELS, id);
+
+/** sherpa-onnx's OfflineTts model config for a TTS choice (Kitten: the bundled one). */
+export function ttsModelConfig(root, id) {
+  if (!ttsOk(id) || id === 'kitten') return { kitten: modelPaths(root).tts };
+  const d = path.join(root, TTS_MODELS[id].dir);
+  return {
+    kokoro: {
+      model: path.join(d, 'model.int8.onnx'),
+      voices: path.join(d, 'voices.bin'),
+      tokens: path.join(d, 'tokens.txt'),
+      dataDir: path.join(d, 'espeak-ng-data'),
+    },
+  };
+}
+
+/** Is this text-to-speech choice on disk and verified? */
+export function ttsReady(root, id) {
+  if (!ttsOk(id) || !root) return false;
+  const m = TTS_MODELS[id];
+  if (m.bundled) return modelsReady(root);
+  try {
+    const marker = JSON.parse(fs.readFileSync(path.join(root, m.dir, 'verified.json'), 'utf8'));
+    return marker?.sha256 === m.sha256 && m.files.every((f) => fs.existsSync(path.join(root, m.dir, f)));
+  } catch {
+    return false;
+  }
+}
+
+const ttsJobs = new Map(); // id -> promise
+const ttsProgress = new Map(); // id -> { state, percent, error }
+
+/** { [id]: { state: 'idle' | 'downloading' | 'ready' | 'error', percent, error, mb } } */
+export function ttsStatus(root) {
+  const out = {};
+  for (const id of TTS_IDS) {
+    const p = ttsProgress.get(id);
+    const mb = Math.round((TTS_MODELS[id].size || 0) / 1048576);
+    out[id] = p?.state === 'downloading' ? { ...p, mb } : ttsReady(root, id) ? { state: 'ready', percent: 100, error: '', mb } : { ...(p || { state: 'idle', percent: 0, error: '' }), mb };
+  }
+  return out;
+}
+
+/** Download, verify and unpack one text-to-speech pack into `root`. */
+export function downloadTts(root, id, { fetchImpl = fetch, log = () => {} } = {}) {
+  if (!ttsOk(id)) return Promise.reject(new Error('Unknown text-to-speech model'));
+  const m = TTS_MODELS[id];
+  if (m.bundled) return downloadModels(root, { fetchImpl, log });
+  if (ttsReady(root, id)) return Promise.resolve();
+  if (ttsJobs.has(id)) return ttsJobs.get(id);
+  ttsProgress.set(id, { state: 'downloading', percent: 0, error: '' });
+  const job = (async () => {
+    fs.mkdirSync(root, { recursive: true });
+    const dest = path.join(root, m.file);
+    const part = `${dest}.part`;
+    const res = await fetchImpl(m.url, { redirect: 'follow' });
+    if (!res.ok || !res.body) throw new Error(`Download failed (HTTP ${res.status})`);
+    const out = fs.createWriteStream(part);
+    let got = 0;
+    try {
+      for await (const chunk of res.body) {
+        got += chunk.length;
+        if (got > m.size * 1.01 + 1024) throw new Error('Download was larger than expected');
+        if (!out.write(chunk)) await new Promise((r) => out.once('drain', r));
+        ttsProgress.set(id, { state: 'downloading', percent: Math.min(99, Math.floor((got / m.size) * 100)), error: '' });
+      }
+    } finally {
+      await new Promise((resolve) => out.end(resolve));
+    }
+    const hash = await sha256File(part);
+    if (hash !== m.sha256) {
+      fs.rmSync(part, { force: true });
+      throw new Error(`${m.label} failed its checksum`);
+    }
+    fs.renameSync(part, dest);
+    fs.rmSync(path.join(root, m.dir), { recursive: true, force: true });
+    await untar(dest, root);
+    fs.rmSync(dest, { force: true });
+    if (!m.files.every((f) => fs.existsSync(path.join(root, m.dir, f)))) throw new Error(`${m.label} unpacked without its model files`);
+    fs.writeFileSync(path.join(root, m.dir, 'verified.json'), JSON.stringify({ at: new Date().toISOString(), sha256: m.sha256 }));
+    ttsProgress.set(id, { state: 'ready', percent: 100, error: '' });
+    log(`Local voice: ${m.label} ready`);
+  })()
+    .catch((e) => {
+      ttsProgress.set(id, { state: 'error', percent: 0, error: String(e?.message || e).slice(0, 200) });
+      throw e;
+    })
+    .finally(() => ttsJobs.delete(id));
+  ttsJobs.set(id, job);
+  return job;
+}

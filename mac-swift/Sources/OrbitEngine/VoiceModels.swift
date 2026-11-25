@@ -36,6 +36,45 @@ public struct SttChoice: Sendable {
   public let files: [String]
 }
 
+public struct KokoroVoiceOption: Sendable, Equatable {
+  public let id: String
+  public let name: String
+  public let gender: String
+  public let accent: String
+  public let speaker: String
+
+  public init(id: String, name: String, gender: String, accent: String, speaker: String) {
+    self.id = id
+    self.name = name
+    self.gender = gender
+    self.accent = accent
+    self.speaker = speaker
+  }
+
+  public var json: JSONValue {
+    ["id": .string(id), "name": .string(name), "gender": .string(gender), "accent": .string(accent), "speaker": .string(speaker)]
+  }
+}
+
+public struct TtsChoice: Sendable {
+  public let id: String
+  public let label: String
+  public let bundled: Bool
+  /** A download of its own (nil for Kitten, which comes bundled with the rest). */
+  public let download: SpeechModelFile?
+  public let files: [String]
+  public let voices: [KokoroVoiceOption]
+
+  public init(id: String, label: String, bundled: Bool, download: SpeechModelFile?, files: [String], voices: [KokoroVoiceOption] = []) {
+    self.id = id
+    self.label = label
+    self.bundled = bundled
+    self.download = download
+    self.files = files
+    self.voices = voices
+  }
+}
+
 public struct VoiceModelError: Error, CustomStringConvertible, Equatable {
   public let description: String
   public init(_ d: String) { description = d }
@@ -64,11 +103,48 @@ public final class VoiceModels: @unchecked Sendable {
               files: ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"]),
   ]
 
+  public static let kokoroEnVoices: [KokoroVoiceOption] = [
+    KokoroVoiceOption(id: "9", name: "George (British — Alfred)", gender: "male", accent: "british", speaker: "bm_george"),
+    KokoroVoiceOption(id: "10", name: "Lewis (British)", gender: "male", accent: "british", speaker: "bm_lewis"),
+    KokoroVoiceOption(id: "7", name: "Emma (British)", gender: "female", accent: "british", speaker: "bf_emma"),
+    KokoroVoiceOption(id: "8", name: "Isabella (British)", gender: "female", accent: "british", speaker: "bf_isabella"),
+    KokoroVoiceOption(id: "5", name: "Adam (US)", gender: "male", accent: "us", speaker: "am_adam"),
+    KokoroVoiceOption(id: "6", name: "Michael (US)", gender: "male", accent: "us", speaker: "am_michael"),
+    KokoroVoiceOption(id: "1", name: "Bella (US)", gender: "female", accent: "us", speaker: "af_bella"),
+    KokoroVoiceOption(id: "2", name: "Nicole (US)", gender: "female", accent: "us", speaker: "af_nicole"),
+    KokoroVoiceOption(id: "3", name: "Sarah (US)", gender: "female", accent: "us", speaker: "af_sarah"),
+    KokoroVoiceOption(id: "4", name: "Sky (US)", gender: "female", accent: "us", speaker: "af_sky"),
+    KokoroVoiceOption(id: "0", name: "Default (US)", gender: "female", accent: "us", speaker: "af"),
+  ]
+
+  public static let tts: [TtsChoice] = [
+    TtsChoice(id: "kitten", label: "Kitten Nano (bundled)", bundled: true, download: nil, files: []),
+    TtsChoice(
+      id: "kokoro-en",
+      label: "Kokoro English (British & US)",
+      bundled: false,
+      download: SpeechModelFile(
+        id: "kokoro-en",
+        file: "kokoro-int8-en-v0_19.tar.bz2",
+        dir: "kokoro-int8-en-v0_19",
+        url: "\(base)/tts-models/kokoro-int8-en-v0_19.tar.bz2",
+        sha256: "c9f0dd393615805b0bab050c340834d5e684e732aec91c0e860cd30e982c08bd",
+        size: 103_248_205
+      ),
+      files: ["model.int8.onnx", "voices.bin", "tokens.txt"],
+      voices: kokoroEnVoices
+    ),
+  ]
+
   /** VOICE_MODELS_MB */
   public static var mb: Int { Int((Double(voice.reduce(0) { $0 + $1.size }) / 1_048_576).rounded(.toNearestOrAwayFromZero)) }
   public static var sttIds: [String] { stt.map(\.id) }
   public static func sttOk(_ id: JSONValue?) -> Bool { id?.stringValue.map { s in stt.contains { $0.id == s } } ?? false }
   static func choice(_ id: String) -> SttChoice? { stt.first { $0.id == id } }
+  public static var ttsIds: [String] { tts.map(\.id) }
+  public static func ttsOk(_ id: JSONValue?) -> Bool { id?.stringValue.map { s in tts.contains { $0.id == s } } ?? false }
+  public static func ttsOk(_ id: String?) -> Bool { id.map { s in tts.contains { $0.id == s } } ?? false }
+  static func ttsChoice(_ id: String) -> TtsChoice? { tts.first { $0.id == id } }
 
   /** A response's status and its body as chunks (nil body: none). Tests pass a stand-in. */
   public typealias Fetcher = @Sendable (URL) async throws -> (status: Int, body: AsyncThrowingStream<Data, Error>?)
@@ -76,6 +152,7 @@ public final class VoiceModels: @unchecked Sendable {
   public let root: String
   let voiceCatalog: [SpeechModelFile]
   let sttCatalog: [SttChoice]
+  let ttsCatalog: [TtsChoice]
   let fetch: Fetcher
   let log: @Sendable (String) -> Void
   private let lock = NSLock()
@@ -83,14 +160,17 @@ public final class VoiceModels: @unchecked Sendable {
   private var progress: (state: String, percent: Int, error: String) = ("idle", 0, "")
   private var sttJobs: [String: Task<Void, Error>] = [:]
   private var sttProgress: [String: (state: String, percent: Int, error: String)] = [:]
+  private var ttsJobs: [String: Task<Void, Error>] = [:]
+  private var ttsProgress: [String: (state: String, percent: Int, error: String)] = [:]
 
   public init(root: String, fetch: @escaping Fetcher = VoiceModels.urlSessionFetch, log: @escaping @Sendable (String) -> Void = { _ in },
-              voiceCatalog: [SpeechModelFile] = VoiceModels.voice, sttCatalog: [SttChoice] = VoiceModels.stt) {
+              voiceCatalog: [SpeechModelFile] = VoiceModels.voice, sttCatalog: [SttChoice] = VoiceModels.stt, ttsCatalog: [TtsChoice] = VoiceModels.tts) {
     self.root = root
     self.fetch = fetch
     self.log = log
     self.voiceCatalog = voiceCatalog
     self.sttCatalog = sttCatalog
+    self.ttsCatalog = ttsCatalog
   }
 
   func p(_ parts: String...) -> String { MacSystem.join(([root] + parts).joined(separator: "/")) }
@@ -152,6 +232,43 @@ public final class VoiceModels: @unchecked Sendable {
       let mb = JSONValue.number((Double(c.download?.size ?? 0) / 1_048_576).rounded(.toNearestOrAwayFromZero))
       let pr = lock.withLock { sttProgress[c.id] }
       let s: (state: String, percent: Int, error: String) = pr?.state == "downloading" ? pr! : sttReady(c.id) ? ("ready", 100, "") : (pr ?? ("idle", 0, ""))
+      out[c.id] = ["state": .string(s.state), "percent": .number(Double(s.percent)), "error": .string(s.error), "mb": mb]
+    }
+    return .object(out)
+  }
+
+  /** sherpa-onnx's OfflineTts model config for a TTS choice (Kitten, the bundled one, for anything unknown). */
+  public static func ttsConfig(root: String, id: String?) -> JSONValue {
+    let j = { (parts: [String]) in JSONValue.string(MacSystem.join(([root] + parts).joined(separator: "/"))) }
+    guard let id, id != "kitten", let c = ttsChoice(id), let d = c.download?.dir else {
+      return ["kitten": paths(root: root)["tts"]!]
+    }
+    return [
+      "kokoro": [
+        "model": j([d, "model.int8.onnx"]),
+        "voices": j([d, "voices.bin"]),
+        "tokens": j([d, "tokens.txt"]),
+        "dataDir": j([d, "espeak-ng-data"]),
+      ],
+    ]
+  }
+
+  /** Is this text-to-speech choice on disk and verified? (Kitten: with the rest of Claude voice.) */
+  public func ttsReady(_ id: String) -> Bool {
+    guard !root.isEmpty, let c = ttsCatalog.first(where: { $0.id == id }) else { return false }
+    if c.bundled { return ready }
+    guard let dl = c.download, let dir = dl.dir,
+          let data = FileManager.default.contents(atPath: p(dir, "verified.json")), let marker = try? JSONValue.parse(data) else { return false }
+    return marker["sha256"]?.stringValue == dl.sha256 && c.files.allSatisfy { Self.exists(p(dir, $0)) }
+  }
+
+  /** {[id]: {state, percent, error, mb}} */
+  public func ttsStatus() -> JSONValue {
+    var out: [String: JSONValue] = [:]
+    for c in ttsCatalog {
+      let mb = JSONValue.number((Double(c.download?.size ?? 0) / 1_048_576).rounded(.toNearestOrAwayFromZero))
+      let pr = lock.withLock { ttsProgress[c.id] }
+      let s: (state: String, percent: Int, error: String) = pr?.state == "downloading" ? pr! : ttsReady(c.id) ? ("ready", 100, "") : (pr ?? ("idle", 0, ""))
       out[c.id] = ["state": .string(s.state), "percent": .number(Double(s.percent)), "error": .string(s.error), "mb": mb]
     }
     return .object(out)
@@ -290,6 +407,46 @@ public final class VoiceModels: @unchecked Sendable {
         }
       }
       sttJobs[id] = t
+      return t
+    }
+  }
+
+  /** Download, verify and unpack one text-to-speech choice (one job per model at a time). */
+  public func downloadTts(_ id: String) async throws { try await startTts(id)?.value }
+
+  /** Starts one TTS pack's download (Kitten: all of Claude voice's), or nil when it's already verified. */
+  @discardableResult
+  public func startTts(_ id: String) throws -> Task<Void, Error>? {
+    guard let c = ttsCatalog.first(where: { $0.id == id }) else { throw VoiceModelError("Unknown text-to-speech model") }
+    if c.bundled { return startDownload() }
+    if ttsReady(id) { return nil }
+    guard let m = c.download, let dir = m.dir else { return nil }
+    return lock.withLock {
+      if let j = ttsJobs[id] { return j }
+      ttsProgress[id] = ("downloading", 0, "")
+      let t = Task { [self] in
+        do {
+          try FileManager.default.createDirectory(atPath: self.root, withIntermediateDirectories: true)
+          try await self.fetchVerified(m, label: c.label) { got in
+            self.lock.withLock { self.ttsProgress[id] = ("downloading", min(99, Int((Double(got) / Double(m.size) * 100).rounded(.down))), "") }
+          }
+          guard c.files.allSatisfy({ Self.exists(self.p(dir, $0)) }) else { throw VoiceModelError("\(c.label) unpacked without its model files") }
+          let marker: [String: Any] = ["at": ISO8601DateFormatter.js.string(from: Date()), "sha256": m.sha256]
+          try JSONSerialization.data(withJSONObject: marker).write(to: URL(fileURLWithPath: self.p(dir, "verified.json")))
+          self.lock.withLock {
+            self.ttsProgress[id] = ("ready", 100, "")
+            self.ttsJobs[id] = nil
+          }
+          self.log("Local voice: \(c.label) ready")
+        } catch {
+          self.lock.withLock {
+            self.ttsProgress[id] = ("error", 0, JS.slice(Self.message(error), 0, 200))
+            self.ttsJobs[id] = nil
+          }
+          throw error
+        }
+      }
+      ttsJobs[id] = t
       return t
     }
   }

@@ -4,7 +4,7 @@ import { ArrowLeft, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { desktop, isMac, thisComputer, type HotkeyInfo, type UpdateState } from "./desktop";
 import { postJson, type AppConfig, type Settings as SettingsT } from "./useAppState";
-import VoiceSettings, { prefetchVoices, type Engine as VoiceEngine } from "./VoiceSettings";
+import VoiceSettings, { prefetchVoices, type Engine as VoiceEngine, type TtsPack } from "./VoiceSettings";
 import PillScroll from "./components/PillScroll";
 import Reveal from "./components/Reveal";
 import { InstallCommand, NotSignedInLine, SetupGuideLink, SignInStep } from "./components/ClaudeSetup";
@@ -17,9 +17,13 @@ type GeminiVoiceModel = "gemini-2.5-flash" | "gemini-2.5-pro" | "gemini-2.5-flas
 type BrainProvider = "claude" | "gemini";
 type HelperEngine = "claude-code" | "gemini" | "codex";
 type TargetBackend = "auto" | "t3-code" | "claude-desktop";
+type PersonaId = "default" | "alfred";
 
 type ExtendedSettings = Omit<SettingsT, "voiceEngine"> & {
   voiceEngine: VoiceEngine;
+  persona?: PersonaId;
+  claudeVoiceTts?: TtsPack;
+  kokoroVoice?: number;
   geminiVoice?: string;
   geminiVoiceModel?: GeminiVoiceModel;
   geminiLiveModel?: string;
@@ -53,15 +57,29 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
   const isGeminiCli = s.voiceEngine === "gemini-cli";
   const isGeminiLive = s.voiceEngine === "gemini-live";
   const isLocalSpeech = isClaude || isGeminiCli;
+  const localTts: TtsPack = s.claudeVoiceTts === "kokoro-en" ? "kokoro-en" : "kitten";
+  const [voiceSync, setVoiceSync] = useState(0);
   // The assistant's name in the text: Grok, Gemini (Live), or Orbit for local-speech engines.
   const name = isGrok ? "Grok" : isGeminiLive ? "Gemini" : "Orbit";
-  // Prefetch all voice lists up front, so switching engines opens the next card at its real size.
+  // Prefetch all voice lists up front, so switching engines or local TTS packs opens at its real size.
   useEffect(() => {
     prefetchVoices("grok");
-    prefetchVoices("claude");
-    prefetchVoices("gemini-cli");
+    prefetchVoices("claude", "kitten");
+    prefetchVoices("claude", "kokoro-en");
+    prefetchVoices("gemini-cli", "kitten");
+    prefetchVoices("gemini-cli", "kokoro-en");
     prefetchVoices("gemini-live");
   }, []);
+  const handlePersonaApplied = () => {
+    prefetchVoices("grok");
+    prefetchVoices("claude", "kitten");
+    prefetchVoices("claude", "kokoro-en");
+    prefetchVoices("gemini-cli", "kitten");
+    prefetchVoices("gemini-cli", "kokoro-en");
+    prefetchVoices("gemini-live");
+    setVoiceSync((n) => n + 1);
+    window.dispatchEvent(new Event(TTS_REFRESH_EVENT));
+  };
   return (
     <PillScroll className="flex flex-col px-5 pb-8">
       <button onClick={onClose} className="mb-3 flex items-center gap-1.5 self-start rounded-md py-1 pr-2 text-[13px] text-muted transition-colors hover:text-fg">
@@ -71,19 +89,22 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
       <p className="mt-2 mb-3 text-[12.5px] text-muted">Everything saves as soon as you change it.</p>
 
       <div className="flex flex-col">
-        <VoiceEngineSection s={s} update={patchSettings} config={cfg} onKeySaved={onKeySaved} focusKey={focusKey} />
+        <PersonaSection s={s} onApplied={handlePersonaApplied} />
+        <Reveal show gap={GAP}>
+          <VoiceEngineSection s={s} update={patchSettings} config={cfg} onKeySaved={onKeySaved} focusKey={focusKey} />
+        </Reveal>
         {/* Each engine's own voice card: one closes as the other opens. */}
         <Reveal show={isGrok} gap={GAP}>
-          <VoiceSettings engine="grok" volume={s.voiceVolume} onVolume={(voiceVolume) => patchSettings({ voiceVolume })} />
+          <VoiceSettings engine="grok" volume={s.voiceVolume} onVolume={(voiceVolume) => patchSettings({ voiceVolume })} syncKey={voiceSync} />
         </Reveal>
         <Reveal show={isClaude} gap={GAP}>
-          <VoiceSettings engine="claude" volume={s.voiceVolume} onVolume={(voiceVolume) => patchSettings({ voiceVolume })} />
+          <VoiceSettings engine="claude" tts={localTts} volume={s.voiceVolume} onVolume={(voiceVolume) => patchSettings({ voiceVolume })} syncKey={voiceSync} />
         </Reveal>
         <Reveal show={isGeminiCli} gap={GAP}>
-          <VoiceSettings engine="gemini-cli" volume={s.voiceVolume} onVolume={(voiceVolume) => patchSettings({ voiceVolume })} />
+          <VoiceSettings engine="gemini-cli" tts={localTts} volume={s.voiceVolume} onVolume={(voiceVolume) => patchSettings({ voiceVolume })} syncKey={voiceSync} />
         </Reveal>
         <Reveal show={isGeminiLive} gap={GAP}>
-          <VoiceSettings engine="gemini-live" volume={s.voiceVolume} onVolume={(voiceVolume) => patchSettings({ voiceVolume })} />
+          <VoiceSettings engine="gemini-live" volume={s.voiceVolume} onVolume={(voiceVolume) => patchSettings({ voiceVolume })} syncKey={voiceSync} />
         </Reveal>
 
         <Reveal show gap={GAP}>
@@ -500,9 +521,186 @@ const STT: { value: SttId; label: string; hint: string }[] = [
   { value: "parakeet-v2", label: "Accurate", hint: "Parakeet 0.6B: the most accurate, about 1 word in 8 even when mumbling, about 0.3 s slower per sentence. A 460 MB download. Recommended if you mumble." },
 ];
 type SttState = { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string; mb: number };
+type TtsState = { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string; mb: number };
+
+type PersonaPreset = { id: PersonaId; label: string; tagline: string };
+const DEFAULT_PERSONA_PRESETS: PersonaPreset[] = [
+  { id: "default", label: "Orbit (Default)", tagline: "Calm, plain-spoken companion." },
+  { id: "alfred", label: "Alfred", tagline: "Aristocratic British chief of staff — dry wit, calm precision, gets things done." },
+];
+
+/** Persona preset switcher (Orbit default vs Alfred). */
+function PersonaSection({ s, onApplied }: { s: ExtendedSettings; onApplied: () => void }) {
+  const [presets, setPresets] = useState<PersonaPreset[]>(DEFAULT_PERSONA_PRESETS);
+  const [applying, setApplying] = useState<PersonaId | null>(null);
+  const [error, setError] = useState("");
+  const current: PersonaId = s.persona === "alfred" ? "alfred" : "default";
+
+  useEffect(() => {
+    fetch("/api/personas")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { presets?: PersonaPreset[] } | null) => {
+        if (d?.presets?.length) {
+          const valid = d.presets.filter((p): p is PersonaPreset => p.id === "default" || p.id === "alfred");
+          if (valid.length) setPresets(valid);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const choosePersona = async (id: PersonaId) => {
+    if (applying) return;
+    setError("");
+    setApplying(id);
+    try {
+      const body = id === "alfred" ? { persona: "alfred" } : { persona: "default", applyRecommended: false };
+      const r = await postJson("/api/persona/apply", body);
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        setError(data.error || "Couldn't switch persona.");
+        return;
+      }
+      onApplied();
+    } catch {
+      setError("Couldn't reach Orbit.");
+    } finally {
+      setApplying(null);
+    }
+  };
+
+  return (
+    <Section title="Persona">
+      <div role="radiogroup" aria-label="Persona" className="flex flex-col gap-2">
+        {presets.map((p) => {
+          const active = current === p.id;
+          const busy = applying === p.id;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              disabled={!!applying}
+              onClick={() => choosePersona(p.id)}
+              className={cn(
+                "w-full rounded-xl border px-3.5 py-2.5 text-left transition-colors disabled:opacity-60",
+                active ? "border-fg bg-fg text-white" : "border-line bg-soft text-fg hover:border-black/20 hover:bg-black/[0.04]"
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[13px] font-medium">{p.label}</span>
+                <span className={cn("text-[11px] font-medium", active ? "text-white/80" : "text-faint")}>
+                  {busy ? "Applying…" : active ? "Active" : p.id === "alfred" ? "British" : ""}
+                </span>
+              </div>
+              <p className={cn("mt-1 text-[12px] leading-snug", active ? "text-white/75" : "text-muted")}>{p.tagline}</p>
+            </button>
+          );
+        })}
+      </div>
+      {current === "alfred" && (
+        <p className="mt-2 text-[12px] leading-snug text-muted">
+          Sets Alfred's voice presets across engines (George on Kokoro English, Charon on Gemini Live, Rex on Grok) and downloads Kokoro English if needed.
+        </p>
+      )}
+      {error && <p className="mt-2 text-[12px] text-amber-700">{error}</p>}
+    </Section>
+  );
+}
+
+/** Local TTS voice pack selector shared by Claude voice and Gemini CLI. */
+function LocalVoicePackSelector({
+  value,
+  kokoro,
+  onChange,
+  onDownloadKokoro,
+}: {
+  value: TtsPack;
+  kokoro?: TtsState;
+  onChange: (pack: TtsPack) => void;
+  onDownloadKokoro: () => void;
+}) {
+  const mb = kokoro?.mb || 98;
+  const kokoroBadge =
+    kokoro?.state === "ready"
+      ? "Ready"
+      : kokoro?.state === "downloading"
+        ? `${kokoro.percent}%`
+        : kokoro?.state === "error"
+          ? "Error"
+          : `~${mb} MB`;
+
+  return (
+    <div className="mt-4">
+      <div className="mb-1.5 text-[12.5px] text-ink">Voice pack</div>
+      <div role="radiogroup" aria-label="Voice pack" className="flex flex-col gap-1.5">
+        <button
+          type="button"
+          role="radio"
+          aria-checked={value === "kitten"}
+          onClick={() => onChange("kitten")}
+          className={cn(
+            "flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-[12.5px] transition-colors",
+            value === "kitten" ? "border-fg bg-fg text-white" : "border-line bg-soft text-fg hover:border-black/20 hover:bg-black/[0.04]"
+          )}
+        >
+          <span className="font-medium">Kitten Nano (bundled)</span>
+          <span className={cn("shrink-0 text-[11px]", value === "kitten" ? "text-white/75" : "text-faint")}>Bundled</span>
+        </button>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={value === "kokoro-en"}
+          onClick={() => onChange("kokoro-en")}
+          className={cn(
+            "flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-[12.5px] transition-colors",
+            value === "kokoro-en" ? "border-fg bg-fg text-white" : "border-line bg-soft text-fg hover:border-black/20 hover:bg-black/[0.04]"
+          )}
+        >
+          <span className="font-medium">Kokoro English (British &amp; US — ~98 MB)</span>
+          <span className={cn("shrink-0 text-[11px] tabular-nums", value === "kokoro-en" ? "text-white/75" : "text-faint")}>{kokoroBadge}</span>
+        </button>
+      </div>
+      <p className="mt-1.5 text-[12px] leading-snug text-muted">
+        {value === "kokoro-en"
+          ? "11 crisp British & US voices on this computer, including George (British — Alfred) and Lewis."
+          : `8 lightweight bundled voices on ${thisComputer}.`}
+      </p>
+      {(value === "kokoro-en" || kokoro?.state === "downloading") && kokoro && (
+        <div className="mt-2 text-[12px] leading-snug">
+          {kokoro.state === "ready" ? (
+            <p className="text-muted">Kokoro English ready ✓</p>
+          ) : kokoro.state === "downloading" ? (
+            <>
+              <p className="text-ink">Downloading Kokoro English… {kokoro.percent}% (Kitten speaks until it's ready)</p>
+              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/[0.07]">
+                <div className="h-full rounded-full bg-fg transition-[width] duration-700 ease-out" style={{ width: `${kokoro.percent}%` }} />
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-3">
+              <p className={cn("flex-1", kokoro.state === "error" ? "text-amber-700" : "text-muted")}>
+                {kokoro.state === "error"
+                  ? `Download failed: ${kokoro.error}`
+                  : `Needs a ~${mb} MB download. Kitten Nano speaks until it's ready.`}
+              </p>
+              <button
+                type="button"
+                onClick={onDownloadKokoro}
+                className="shrink-0 rounded-lg bg-fg px-2.5 py-1 text-[12px] font-medium text-white transition-colors hover:bg-[#2b2b2b]"
+              >
+                {kokoro.state === "error" ? "Retry" : "Download"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ---------- voice engine + second brain + T3 routing ----------
-type ClaudeVoiceStatus = { models: { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string }; mb: number; claudeFound: boolean; signedIn?: boolean | null; stt?: Record<SttId, SttState> };
+type ClaudeVoiceStatus = { models: { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string }; mb: number; claudeFound: boolean; signedIn?: boolean | null; stt?: Record<SttId, SttState>; tts?: Record<TtsPack, TtsState> };
 type GeminiModelMeta = { label: string; speed: string };
 type GeminiVoiceStatus = {
   models: { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string };
@@ -512,6 +710,7 @@ type GeminiVoiceStatus = {
   signedIn: boolean | null;
   hasKey: boolean;
   stt?: Record<SttId, SttState>;
+  tts?: Record<TtsPack, TtsState>;
   voiceModels?: Record<string, GeminiModelMeta>;
   liveModels?: Record<string, GeminiModelMeta>;
 };
@@ -530,6 +729,8 @@ const DEFAULT_GEMINI_LIVE_MODELS: Record<string, GeminiModelMeta> = {
 
 /** Second brain's "Check again" tells the Claude voice section to look again too. */
 const CLAUDE_CHECK_EVENT = "orbit:claude-check";
+/** Applying a persona (e.g. Alfred) tells VoiceEngineSection to re-check TTS download status. */
+const TTS_REFRESH_EVENT = "orbit:tts-refresh";
 
 /** Grok, Claude, Gemini CLI (local speech), or Gemini Live (native audio + vision). */
 function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: ExtendedSettings; update: Update; config: ExtendedAppConfig; onKeySaved: () => void; focusKey: boolean }) {
@@ -558,21 +759,32 @@ function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: Ex
     refreshGemini();
   }, [s.voiceEngine]);
   useEffect(() => {
+    const onTtsRefresh = () => {
+      refresh();
+      refreshGemini();
+    };
     window.addEventListener(CLAUDE_CHECK_EVENT, refresh);
-    return () => window.removeEventListener(CLAUDE_CHECK_EVENT, refresh);
+    window.addEventListener(TTS_REFRESH_EVENT, onTtsRefresh);
+    return () => {
+      window.removeEventListener(CLAUDE_CHECK_EVENT, refresh);
+      window.removeEventListener(TTS_REFRESH_EVENT, onTtsRefresh);
+    };
   }, []);
 
   // While local speech models download (shared by Claude & Gemini CLI), poll every second.
   const sttDownloading = !!status?.stt && Object.values(status.stt).some((x) => x.state === "downloading");
+  const ttsDownloading =
+    (!!status?.tts && Object.values(status.tts).some((x) => x.state === "downloading")) ||
+    (!!geminiStatus?.tts && Object.values(geminiStatus.tts).some((x) => x.state === "downloading"));
   const modelsDownloading = status?.models.state === "downloading" || geminiStatus?.models.state === "downloading";
   useEffect(() => {
-    if (!modelsDownloading && !sttDownloading) return;
+    if (!modelsDownloading && !sttDownloading && !ttsDownloading) return;
     const id = setInterval(() => {
       refresh();
       if (s.voiceEngine === "gemini-cli") refreshGemini();
     }, 1000);
     return () => clearInterval(id);
-  }, [modelsDownloading, sttDownloading, s.voiceEngine]);
+  }, [modelsDownloading, sttDownloading, ttsDownloading, s.voiceEngine]);
 
   // After Gemini CLI "Sign in": poll every 3 s (for up to 3 minutes) until signed in.
   useEffect(() => {
@@ -639,6 +851,21 @@ function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: Ex
     const r = await (await postJson("/api/claude-voice/stt-download", { id })).json().catch(() => null);
     if (r?.stt) setStatus((st) => (st ? { ...st, stt: r.stt } : st));
     else refresh();
+  };
+  const downloadTts = async (id: TtsPack) => {
+    const r = await (await postJson("/api/claude-voice/tts-download", { id })).json().catch(() => null);
+    if (r?.tts) {
+      setStatus((st) => (st ? { ...st, tts: r.tts } : st));
+      setGeminiStatus((st) => (st ? { ...st, tts: r.tts } : st));
+    } else {
+      refresh();
+      refreshGemini();
+    }
+  };
+  const ttsPack: TtsPack = s.claudeVoiceTts === "kokoro-en" ? "kokoro-en" : "kitten";
+  const kokoroTts = (s.voiceEngine === "gemini-cli" ? geminiStatus?.tts?.["kokoro-en"] : status?.tts?.["kokoro-en"]) ?? status?.tts?.["kokoro-en"] ?? geminiStatus?.tts?.["kokoro-en"];
+  const chooseTts = (claudeVoiceTts: TtsPack) => {
+    update({ claudeVoiceTts });
   };
   // Choosing one that isn't here yet downloads it; Moonshine is used until it's ready.
   const chooseStt = (claudeVoiceStt: SttId) => {
@@ -748,6 +975,7 @@ function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: Ex
             )}
           </div>
         )}
+        <LocalVoicePackSelector value={ttsPack} kokoro={kokoroTts} onChange={chooseTts} onDownloadKokoro={() => downloadTts("kokoro-en")} />
         {status && (
           <div className="mt-3 text-[12px] leading-snug">
             <Reveal show={!status.claudeFound}>
@@ -794,6 +1022,8 @@ function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: Ex
             ? `${geminiStatus.voiceModels[geminiModel].label}: ${geminiStatus.voiceModels[geminiModel].speed}.`
             : DEFAULT_GEMINI_VOICE_MODELS.find((o) => o.value === geminiModel)?.hint}
         </p>
+
+        <LocalVoicePackSelector value={ttsPack} kokoro={kokoroTts} onChange={chooseTts} onDownloadKokoro={() => downloadTts("kokoro-en")} />
 
         {geminiStatus && (
           <div className="mt-3 space-y-2 text-[12px] leading-snug">
