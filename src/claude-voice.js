@@ -653,7 +653,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
     if (id !== 'kitten' && !injectedSpeech?.loadTts && !ttsReady(modelsRoot, id)) id = 'kitten';
     if (id === ttsWant) return;
     ttsWant = id;
-    if (id === 'kitten') return void (ttsNow = null);
+    if (id === 'kitten' || localSpeech) return void (ttsNow = null);
     const load = injectedSpeech?.loadTts ? Promise.resolve().then(() => injectedSpeech.loadTts(id)) : loadTts(modelsRoot, id);
     load.then(
       (r) => ttsWant === id && (ttsNow = { id, speak: r.speak }),
@@ -663,7 +663,7 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
       },
     );
   };
-  const activeVoiceSid = () => (ttsNow ? kokoroSid : sid);
+  const activeVoiceSid = () => ((localSpeech ? ttsWant !== 'kitten' : !!ttsNow) ? kokoroSid : sid);
   const speakNow = (text) => (ttsNow ? ttsNow.speak(text, { speed, sid: kokoroSid }) : speech.speak(text, { speed, sid }));
   let vad = null;
   let resampler = null;
@@ -1201,7 +1201,9 @@ export function createClaudeRealtime({ claudePath, modelsRoot, speed = 1, sid = 
     try {
       if (!claudePath) throw new Error('Claude Code was not found. Install it, or set its path in Settings → Second brain.');
       // Local speech: the app has the models and does the listening and speaking; none load here.
-      if (!localSpeech) {
+      if (localSpeech) {
+        switchTts(tts);
+      } else {
         speech = injectedSpeech || (await loadSpeech(modelsRoot));
         switchStt(stt);
         switchTts(tts);

@@ -369,7 +369,7 @@ export function createGeminiCliRealtime({
     if (id !== 'kitten' && !injectedSpeech?.loadTts && !ttsReady(modelsRoot, id)) id = 'kitten';
     if (id === ttsWant) return;
     ttsWant = id;
-    if (id === 'kitten') return void (ttsNow = null);
+    if (id === 'kitten' || localSpeech) return void (ttsNow = null);
     const load = injectedSpeech?.loadTts
       ? Promise.resolve().then(() => injectedSpeech.loadTts(id))
       : loadTts(modelsRoot, id);
@@ -381,7 +381,7 @@ export function createGeminiCliRealtime({
       },
     );
   };
-  const activeVoiceSid = () => (ttsNow ? kokoroSid : sid);
+  const activeVoiceSid = () => ((localSpeech ? ttsWant !== 'kitten' : !!ttsNow) ? kokoroSid : sid);
   const speakNow = (text) => (ttsNow ? ttsNow.speak(text, { speed, sid: kokoroSid }) : speech.speak(text, { speed, sid }));
 
   let vad = null;
@@ -940,7 +940,9 @@ export function createGeminiCliRealtime({
     await new Promise((r) => setImmediate(r));
     try {
       if (!geminiPath) throw new Error('Gemini CLI was not found. Install it, or set its path in Settings.');
-      if (!localSpeech) {
+      if (localSpeech) {
+        switchTts(tts);
+      } else {
         speech = injectedSpeech || (await loadSpeech(modelsRoot));
         switchStt(stt);
         switchTts(tts);

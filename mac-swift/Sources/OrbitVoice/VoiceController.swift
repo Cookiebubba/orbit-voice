@@ -445,7 +445,7 @@ public final class VoiceController: ObservableObject {
     localActive = true
     engine.reset()
     let r = LocalSpeechRelay(
-      speak: { text, sid, speed, done in engine.say(text, sid: sid, speed: speed, done: done) },
+      speakWithTts: { text, tts, sid, speed, done in engine.say(text, tts: tts, sid: sid, speed: speed, done: done) },
       deliver: { [weak self] t in DispatchQueue.main.async { MainActor.assumeIsolated { self?.session.socketMessage(generation: gen, t) } } })
     relay = r
     engine.onStarted = { [weak self] in
