@@ -266,7 +266,25 @@ async function main() {
       secrets: sealedKeyStore(sealer, profile, 'xai-key.sealed'),
       brainSecrets: sealedKeyStore(sealer, profile, 'anthropic-key.sealed'),
       geminiSecrets: sealedKeyStore(sealer, profile, 'gemini-key.sealed'),
-      t3Secrets: sealedKeyStore(sealer, profile, 't3-token.sealed'),
+      t3Secrets: (() => {
+        const base = sealedKeyStore(sealer, profile, 't3-token.sealed');
+        const fallbackFile = path.join(profile, '.t3-bridge-token');
+        return {
+          kind: base.kind,
+          get() {
+            const v = base.get();
+            if (v) return v;
+            try {
+              return fs.readFileSync(fallbackFile, 'utf8').trim();
+            } catch {
+              return '';
+            }
+          },
+          set(k) {
+            base.set(k);
+          },
+        };
+      })(),
       clipboard: (text) => send({ t: 'clipboard', text: String(text) }),
       models: process.env.ORBIT_MODELS_DIR || path.join(CORE, 'resources', 'models'),
       // Orbit Native hears and speaks for Claude voice itself (phase 2): the core needn't hold the models too.
