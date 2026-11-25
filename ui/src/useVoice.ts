@@ -98,6 +98,18 @@ export function useVoice(options: VoiceOptions) {
   const micIdRef = useRef(micId);
   micIdRef.current = micId;
   const [activeMicLabel, setActiveMicLabel] = useState<string>("");
+  const [rawMic, setRawMic] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("orbit.rawMic");
+      return saved === null ? isMac : saved === "true";
+    } catch {
+      return isMac;
+    }
+  });
+  const rawMicRef = useRef(rawMic);
+  rawMicRef.current = rawMic;
+  const [micPeakPct, setMicPeakPct] = useState<number>(0);
+  const peakRef = useRef<number>(0);
 
   const ws = useRef<WebSocket | null>(null);
   const ctx = useRef<AudioContext | null>(null);
@@ -214,12 +226,30 @@ export function useVoice(options: VoiceOptions) {
     return () => md.removeEventListener("devicechange", onChange);
   }, [refreshMics]);
 
+function resampleInt16(src: Int16Array, fromRate: number, toRate: number): Int16Array {
+  if (!fromRate || fromRate === toRate) return src;
+  const ratio = fromRate / toRate;
+  const outLen = Math.max(1, Math.round(src.length / ratio));
+  const out = new Int16Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const pos = i * ratio;
+    const lo = Math.floor(pos);
+    const hi = Math.min(src.length - 1, lo + 1);
+    const frac = pos - lo;
+    out[i] = Math.round(src[lo] * (1 - frac) + src[hi] * frac);
+  }
+  return out;
+}
+
   /** Open the microphone and start sending it (unless asleep). Needs the AudioContext from start(). */
-  const openMic = useCallback(async (overrideDeviceId?: string) => {
+  const openMic = useCallback(async (overrideDeviceId?: string, overrideRaw?: boolean) => {
     const ac = ctx.current;
     if (!ac || mic.current) return;
     const wanted = overrideDeviceId !== undefined ? overrideDeviceId : micIdRef.current;
-    const baseAudio: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    const useRaw = overrideRaw !== undefined ? overrideRaw : rawMicRef.current;
+    const baseAudio: MediaTrackConstraints = useRaw
+      ? { echoCancellation: false, noiseSuppression: false, autoGainControl: true }
+      : { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
@@ -250,13 +280,22 @@ export function useVoice(options: VoiceOptions) {
         // (half-duplex) Grok is talking and might hear itself.
         const a = announceRef.current;
         const deaf = mutedRef.current || asleepRef.current || (!!a && a.stage === "speaking") || (opts.current.halfDuplex && (isPlaying() || soundPlaying()));
-        const pcm = new Int16Array(e.data);
+        const rawPcm = new Int16Array(e.data);
         let sum = 0;
-        for (let i = 0; i < pcm.length; i++) sum += (pcm[i] / 0x8000) ** 2;
-        inLevel.current = deaf ? 0 : Math.sqrt(sum / pcm.length);
+        let peak = 0;
+        for (let i = 0; i < rawPcm.length; i++) {
+          const v = rawPcm[i] / 0x8000;
+          sum += v * v;
+          const av = v < 0 ? -v : v;
+          if (av > peak) peak = av;
+        }
+        inLevel.current = deaf ? 0 : Math.sqrt(sum / rawPcm.length);
+        peakRef.current = deaf ? 0 : Math.max(peak, peakRef.current * 0.55);
         if (inLevel.current > 0.02) lastLoudAt.current = Date.now();
-        if (!deaf && ws.current?.readyState === WebSocket.OPEN)
-          ws.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: bufToB64(e.data) }));
+        if (!deaf && ws.current?.readyState === WebSocket.OPEN) {
+          const outPcm = ac.sampleRate !== RATE ? resampleInt16(rawPcm, ac.sampleRate, RATE) : rawPcm;
+          ws.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: bufToB64(outPcm.buffer as ArrayBuffer) }));
+        }
       };
     }
     if (ctx.current !== ac) {
@@ -274,6 +313,7 @@ export function useVoice(options: VoiceOptions) {
     mic.current?.getTracks().forEach((tr) => tr.stop());
     micSource.current = mic.current = null;
     inLevel.current = 0;
+    peakRef.current = 0;
   };
 
   /** Switch to another microphone (hot-swaps live if a call is active). */
@@ -287,7 +327,26 @@ export function useVoice(options: VoiceOptions) {
     if (ctx.current && mic.current) {
       closeMic();
       try {
-        await openMic(nextId);
+        await openMic(nextId, rawMicRef.current);
+        if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+      } catch (e: any) {
+        caption({ id: `err-${Date.now()}`, who: "error", text: micProblem(e) });
+      }
+    }
+  }, [openMic, caption]);
+
+  /** Toggle raw microphone capture (disables macOS/Chrome VoiceProcessingIO AEC attenuation). */
+  const toggleRawMic = useCallback(async () => {
+    const next = !rawMicRef.current;
+    setRawMic(next);
+    rawMicRef.current = next;
+    try {
+      localStorage.setItem("orbit.rawMic", String(next));
+    } catch {}
+    if (ctx.current && mic.current) {
+      closeMic();
+      try {
+        await openMic(micIdRef.current, next);
         if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
       } catch (e: any) {
         caption({ id: `err-${Date.now()}`, who: "error", text: micProblem(e) });
@@ -855,6 +914,7 @@ export function useVoice(options: VoiceOptions) {
       }
       inp = Math.max(inLevel.current, inp * 0.8);
       setLevels({ input: Math.min(1, inp * 6), output: Math.min(1, out * 5) });
+      setMicPeakPct(Math.min(100, Math.round(peakRef.current * 100)));
       setPhase(
         !ready.current
           ? "connecting"
@@ -950,5 +1010,8 @@ export function useVoice(options: VoiceOptions) {
     micId,
     activeMicLabel,
     selectMic,
+    rawMic,
+    toggleRawMic,
+    micPeakPct,
   };
 }
