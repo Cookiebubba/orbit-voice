@@ -274,6 +274,11 @@ function resampleInt16(src: Int16Array, fromRate: number, toRate: number): Int16
     if (!worklet.current) {
       await ac.audioWorklet.addModule("pcm-worklet.js");
       const node = new AudioWorkletNode(ac, "pcm-capture");
+      // Keep the capture worklet actively pulled by Chromium's audio graph on macOS without echoing mic audio.
+      const silentSink = ac.createGain();
+      silentSink.gain.value = 0;
+      node.connect(silentSink);
+      silentSink.connect(ac.destination);
       worklet.current = node;
       node.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
         // Not listening: asleep, a spoken update whose listening window isn't open, or
@@ -302,6 +307,7 @@ function resampleInt16(src: Int16Array, fromRate: number, toRate: number): Int16
       stream.getTracks().forEach((tr) => tr.stop());
       return;
     }
+    if (ac.state === "suspended") void ac.resume().catch(() => {});
     mic.current = stream;
     micSource.current = ac.createMediaStreamSource(stream);
     micSource.current.connect(worklet.current);
@@ -855,7 +861,9 @@ function resampleInt16(src: Int16Array, fromRate: number, toRate: number): Int16
     mutedRef.current = false; // every call starts with the mic live
     setMuted(false);
     try {
-      const ac = new AudioContext({ sampleRate: RATE });
+      // Use the hardware's native sample rate (44.1 / 48 kHz on macOS) so Chromium CoreAudio mic capture
+      // never outputs zeros on rate mismatch; capture chunks are resampled cleanly to 24 kHz for the bridge.
+      const ac = new AudioContext();
       ctx.current = ac;
       // Playback is timed on this context's own clock, from 0.
       playHead.current = 0;
