@@ -504,7 +504,7 @@ test('cli-voice: VAD speech in, barge-in cancel, localTurn, localSpeech, and mid
   const deltaEv = evLocal.find((e) => e.type === 'response.output_audio.delta');
   assert.equal(deltaEv.delta, '');
   assert.equal(deltaEv.text, 'All good.');
-  assert.deepEqual(deltaEv.voice, { sid: 2, speed: 1.2 });
+  assert.deepEqual(deltaEv.voice, { sid: 2, tts: 'kitten', speed: 1.2 });
   sockLocal.close();
 });
 
