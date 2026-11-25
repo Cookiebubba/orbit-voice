@@ -54,15 +54,15 @@ const VALUES = [
   ['Discord.exe', 'discord.exe', 'Slack', 'bad/name', 'my app (beta)', 'x'.repeat(81), 5, 'A+B.exe'],
   'eve', 'EVE', 'Rex_2', 'bad voice', 'a'.repeat(40), 'a'.repeat(41), 'always', 'tap', 'speak', 'chime', 'off', 'auto', 'haiku', 'sonnet', 'opus', 'fable',
   'claude-code', 'api-key', 'codex', 'grok', 'claude', 'gemini', 'gemini-cli', 'gemini-live', 'low', 'medium', 'high', 'moonshine', 'parakeet-110m', 'parakeet-v2', 'buddy', 'qubit', 'none',
-  'Aoede', 'Puck', 'Zephyr', 'aoede', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite',
+  'Aoede', 'Puck', 'Zephyr', 'aoede', 'gemini-3.8-flash-low', 'gemini-4-neon-low', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite',
   'gemini-2.5-flash-native-audio-preview-12-2025', 'gemini-2.0-flash-live-001', `gemini-${'a'.repeat(72)}`, `gemini-${'a'.repeat(73)}`, 'gemini-bad model',
   'claude-desktop', 't3-code',
   'http://127.0.0.1:3773', 'http://127.0.0.1:3773/', 'http://127.0.0.1:3773/api///', 'https://localhost:8443/t3/', 'http://[::1]:3773',
   'https://example.com', 'http://192.168.1.5:3773', 'http://127.0.0.1.evil.com:3773', 'ftp://127.0.0.1:3773', 'ws://127.0.0.1:3773', `http://localhost:3773/${'a'.repeat(200)}`,
   'Command+Alt+G', 'Control+Alt+K', 'Ctrl Alt', 'é+K', 'x'.repeat(59), 'x'.repeat(60), 'grok-voice-latest',
-  9, 11, '9', 'default', 'alfred', 'jarvis', 'kitten', 'kokoro-en', 'bogus',
+  9, 11, 24, 54, '9', 'default', 'alfred', 'jarvis', 'kitten', 'kokoro-en', 'kokoro-v1', 'bogus',
   '/usr/local/bin/claude', '/Users/me/.local/bin/claude', '/opt/homebrew/bin/CLAUDE', '/Users/x/claude.exe', 'relative/claude', '//share/claude', '/bin/cl"aude', '/bin/claude2', '/a\tb/claude', `/${'d/'.repeat(200)}claude`,
-  '/usr/local/bin/gemini', '/opt/homebrew/bin/GEMINI', '/Users/x/gemini.exe', 'relative/gemini', '//share/gemini', '/bin/gemini2',
+  '/usr/local/bin/gemini', '/opt/homebrew/bin/GEMINI', '/Users/x/gemini.exe', '/Applications/Gemini.app/Contents/Helpers/agy', '/usr/local/bin/agy', 'relative/gemini', '//share/gemini', '/bin/gemini2', '/bin/agy2',
 ];
 
 export function settingsCases(sanitize, DEFAULTS) {

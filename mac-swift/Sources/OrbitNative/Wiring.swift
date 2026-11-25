@@ -229,10 +229,12 @@ extension AppDelegate {
    */
   func syncLocalSpeech() {
     guard config.speechInApp, !quitting, let v = voiceController else { return }
-    if v.settings.voiceEngine != "claude" {
+    let eng = v.settings.voiceEngine
+    let usesLocalSpeech = eng == "claude" || eng == "gemini-cli"
+    if !usesLocalSpeech {
       if v.localSpeech != nil, v.state.phase == .off {
         v.localSpeech = nil
-        log.info("speech", "on-device speech in Swift released (Grok is the voice)")
+        log.info("speech", "on-device speech in Swift released (\(eng) is the voice)")
       }
       return
     }
@@ -264,7 +266,8 @@ extension AppDelegate {
       self.voiceController?.localSpeechLoading = nil
       self.voiceController?.voiceWarming = false
       // Still wanted (the engine may have changed while loading), and not replacing one in use.
-      if let engine, self.voiceController?.settings.voiceEngine == "claude", self.voiceController?.localSpeech == nil {
+      let nowEng = self.voiceController?.settings.voiceEngine
+      if let engine, (nowEng == "claude" || nowEng == "gemini-cli"), self.voiceController?.localSpeech == nil {
         self.voiceController?.localSpeech = engine
       }
     }

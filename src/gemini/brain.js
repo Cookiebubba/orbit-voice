@@ -25,6 +25,7 @@ import {
   speakable,
 } from '../brain.js';
 import { childEnv, groupOptions, killTree as killProcessTree } from '../platform/system.js';
+import { isAgyFile } from './auth.js';
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -305,10 +306,27 @@ function removeDirSync(dir) {
   } catch { /* best-effort */ }
 }
 
-/** Command-line arguments for a headless Gemini CLI brain run (prompt goes on stdin). */
-export function geminiBrainArgs({ model = 'flash' } = {}) {
+const AGY_BRAIN_MODEL = Object.freeze({
+  lite: 'gemini-3.8-flash-low',
+  haiku: 'gemini-3.8-flash-low',
+  flash: 'gemini-3.8-flash-medium',
+  sonnet: 'gemini-3.8-flash-medium',
+  pro: 'gemini-4-neon-low',
+  opus: 'gemini-4-neon-low',
+});
+
+/** Command-line arguments for a headless Gemini/Antigravity CLI brain run (prompt goes on stdin). */
+export function geminiBrainArgs({ model = 'flash', exe = '' } = {}) {
   const spec = GEMINI_BRAIN_MODELS[model];
   if (!spec) throw new Error(`unknown model ${model}`);
+  if (isAgyFile(exe)) {
+    return [
+      '--input-format', 'stream-json',
+      '--output-format', 'stream-json',
+      '--model', AGY_BRAIN_MODEL[model] || 'gemini-3.8-flash-low',
+      '--disable-slash-commands',
+    ];
+  }
   return [
     '-p', '',
     '--output-format', 'json',
@@ -316,13 +334,34 @@ export function geminiBrainArgs({ model = 'flash' } = {}) {
   ];
 }
 
-/** Command-line arguments for a headless Gemini CLI web search run (query goes on stdin). */
-export function geminiSearchArgs() {
+/** Command-line arguments for a headless Gemini/Antigravity CLI web search run (query goes on stdin). */
+export function geminiSearchArgs({ exe = '' } = {}) {
+  if (isAgyFile(exe)) {
+    return [
+      '--input-format', 'stream-json',
+      '--output-format', 'stream-json',
+      '--model', 'gemini-3.8-flash-low',
+      '--disable-slash-commands',
+    ];
+  }
   return [
     '-p', '',
     '--output-format', 'json',
     '--model', GEMINI_SEARCH_LIMITS.model,
   ];
+}
+
+function unwrapCliResult(j) {
+  if (!j || typeof j !== 'object') return null;
+  if (j.event === 'result' && j.result && typeof j.result === 'object') {
+    const r = j.result;
+    const status = String(r.status || '').toUpperCase();
+    return {
+      ...r,
+      is_error: status === 'ERROR' || status === 'FAILED' || !!r.error,
+    };
+  }
+  return j;
 }
 
 function stripCodeFences(text) {
@@ -546,9 +585,11 @@ export async function askGeminiBrain({
       return resolve({ ok: false, error: `Couldn't prepare isolated folder: ${e.message}` });
     }
 
+    const agy = isAgyFile(exe);
     const env = childEnv(process.env);
     delete env.GEMINI_API_KEY;
     delete env.GOOGLE_API_KEY;
+    delete env.GEMINI_HOME;
     delete env.ELECTRON_RUN_AS_NODE;
     if (apiKey) env.GEMINI_API_KEY = apiKey;
 
@@ -568,7 +609,7 @@ export async function askGeminiBrain({
 
     let child;
     try {
-      child = spawnImpl(exe, geminiBrainArgs({ model }), {
+      child = spawnImpl(exe, geminiBrainArgs({ model, exe }), {
         cwd: dir,
         env,
         windowsHide: true,
@@ -600,7 +641,7 @@ export async function askGeminiBrain({
     child.on('error', (e) => finish({ ok: false, error: `Couldn't start Gemini CLI: ${e.message}` }));
     child.on('close', (code) => {
       const seconds = Math.round((Date.now() - started) / 100) / 10;
-      const j = parseCliJson(out);
+      const j = unwrapCliResult(parseCliJson(out));
       if (!j) {
         return finish({
           ok: false,
@@ -628,7 +669,7 @@ export async function askGeminiBrain({
 
     child.stdin.on('error', () => {});
     const fullStdin = `${doExplore ? `${BRAIN_SYSTEM}${EXPLORE_NOTE}` : BRAIN_SYSTEM}\n\n${promptText}`;
-    child.stdin.end(fullStdin);
+    child.stdin.end(agy ? `${JSON.stringify({ event: 'user', message: { content: `${fullStdin}\n\nIMPORTANT: Do not invoke any tools. Reply ONLY with the JSON object.` } })}\n` : fullStdin);
   });
 }
 
@@ -769,9 +810,11 @@ export async function searchGeminiWeb({
       return resolve({ ok: false, error: `Couldn't prepare isolated folder: ${e.message}` });
     }
 
+    const agy = isAgyFile(exe);
     const env = childEnv(process.env);
     delete env.GEMINI_API_KEY;
     delete env.GOOGLE_API_KEY;
+    delete env.GEMINI_HOME;
     delete env.ELECTRON_RUN_AS_NODE;
     if (apiKey) env.GEMINI_API_KEY = apiKey;
 
@@ -791,7 +834,7 @@ export async function searchGeminiWeb({
 
     let child;
     try {
-      child = spawnImpl(exe, geminiSearchArgs(), {
+      child = spawnImpl(exe, geminiSearchArgs({ exe }), {
         cwd: dir,
         env,
         windowsHide: true,
@@ -823,7 +866,7 @@ export async function searchGeminiWeb({
     child.on('error', (e) => finish({ ok: false, error: `Couldn't start Gemini CLI: ${e.message}` }));
     child.on('close', (code) => {
       const seconds = Math.round((Date.now() - started) / 100) / 10;
-      const j = parseCliJson(out);
+      const j = unwrapCliResult(parseCliJson(out));
       if (!j) {
         return finish({
           ok: false,
@@ -857,7 +900,8 @@ export async function searchGeminiWeb({
     });
 
     child.stdin.on('error', () => {});
-    child.stdin.end(`${SEARCH_CLI_SYSTEM}\n\nQuestion: ${q}\n\nToday is ${today}.`);
+    const searchStdin = `${SEARCH_CLI_SYSTEM}\n\nQuestion: ${q}\n\nToday is ${today}.`;
+    child.stdin.end(agy ? `${JSON.stringify({ event: 'user', message: { content: searchStdin } })}\n` : searchStdin);
   });
 }
 

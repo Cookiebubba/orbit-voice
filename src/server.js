@@ -38,7 +38,7 @@ import {
 import { askBrain, claudeAuthStatus, findClaude, openClaudeSignIn, speakable } from './brain.js';
 import { GEMINI_LIVE_MODELS, GEMINI_LIVE_VOICES, GEMINI_VOICE_MODELS, findGemini, geminiAuthStatus, openGeminiSignIn } from './gemini/auth.js';
 import { askGeminiBrain } from './gemini/brain.js';
-import { createGeminiCliRealtime, stopGeminiVoice } from './gemini/cli-voice.js';
+import { createGeminiCliRealtime, keepGeminiSpare, stopGeminiVoice } from './gemini/cli-voice.js';
 import { createGeminiLiveRealtime } from './gemini/live-voice.js';
 import { createPromptQueue } from './router/queue.js';
 import { createT3Target } from './targets/t3-code.js';
@@ -354,22 +354,28 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     broadcast({ type: 'voice.warming', warming: on });
   };
   const prewarmClaudeVoice = () => {
-    if (!claudeVoiceOn() || !modelsReady(voiceModelsDir)) return;
-    const claude = findClaude(getSetting('brainClaudePath'));
-    if (!claude) return;
+    if (!localSpeechEngineOn() || !modelsReady(voiceModelsDir)) return;
     if (!speechInShell) {
       if (!speechLoaded(voiceModelsDir)) setVoiceWarming(true);
       loadSpeech(voiceModelsDir)
-        .catch((e) => logWarn('voice', 'Claude voice: speech models failed to load', String(e?.message || e).slice(0, 200)))
+        .catch((e) => logWarn('voice', 'Local voice: speech models failed to load', String(e?.message || e).slice(0, 200)))
         .finally(() => setVoiceWarming(false));
-      // The chosen speech to text too, if it isn't Moonshine and it's downloaded (else Moonshine carries on).
       const stt = getSetting('claudeVoiceStt');
-      if (stt !== 'moonshine' && sttReady(voiceModelsDir, stt)) loadRecognizer(voiceModelsDir, stt).catch((e) => logWarn('voice', `Claude voice: ${STT_MODELS[stt].label} failed to load`, String(e?.message || e).slice(0, 200)));
+      if (stt !== 'moonshine' && sttReady(voiceModelsDir, stt)) loadRecognizer(voiceModelsDir, stt).catch((e) => logWarn('voice', `Local voice: ${STT_MODELS[stt].label} failed to load`, String(e?.message || e).slice(0, 200)));
       const tts = getSetting('claudeVoiceTts');
       if (tts !== 'kitten' && ttsReady(voiceModelsDir, tts)) loadTts(voiceModelsDir, tts).catch((e) => logWarn('voice', `Local voice: ${TTS_MODELS[tts].label} failed to load`, String(e?.message || e).slice(0, 200)));
     }
-    const { instructions: text, tools } = agentContext();
-    keepSpare({ exe: claude.path, prompt: systemPrompt({ instructions: text, tools }), model: getSetting('claudeVoiceModel'), effort: getSetting('claudeVoiceEffort') });
+    if (claudeVoiceOn()) {
+      const claude = findClaude(getSetting('brainClaudePath'));
+      if (!claude) return;
+      const { instructions: text, tools } = agentContext();
+      keepSpare({ exe: claude.path, prompt: systemPrompt({ instructions: text, tools }), model: getSetting('claudeVoiceModel'), effort: getSetting('claudeVoiceEffort') });
+    } else if (geminiCliOn()) {
+      const gemini = findGemini(getSetting('geminiPath'));
+      if (!gemini) return;
+      const { instructions: text, tools } = agentContext();
+      keepGeminiSpare({ exe: gemini.path, prompt: systemPrompt({ instructions: text, tools }), model: getSetting('geminiVoiceModel') });
+    }
   };
   prewarmHook = prewarmClaudeVoice;
   const claudeVoiceMetrics = (m) => {
@@ -1849,10 +1855,11 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       const micSecs = (stats.micBytes / 2 / 24000).toFixed(1); // pcm16 mono at 24 kHz
       // Counts and codes only: Grok's audio length tells "Grok never spoke" from "spoke, not heard".
       const grokSecs = (stats.grokAudioBytes / 2 / 24000).toFixed(1);
-      const heard = `mic audio sent ${micSecs}s, loudest ${Math.round((stats.micPeak / 32768) * 100)}%, heard you ${stats.heard}x, replied ${stats.replies}x, tools ${stats.tools}, ${useClaude ? 'voice' : 'Grok'} audio received ${grokSecs}s${stats.note ? ', resume note given' : ''}${pageReason ? `, page: ${pageReason}` : ''}`;
-      if (pageClosed) logInfo('xai', `${useClaude ? 'Claude voice' : 'Grok'} session ended by Orbit after ${secs}s (${wasAnnounce ? 'spoken update' : 'hang up / sleep'})`, heard);
-      else if (code !== 1000 && code !== 1005) logWarn('xai', `Grok closed the connection after ${secs}s (code ${code})`, `${why} · ${heard}`);
-      else logWarn('xai', `Grok ended the session after ${secs}s (code ${code})`, `${why || 'no reason given'} · ${heard}`);
+      const engineLabel = useClaude ? 'Claude voice' : useGeminiCli ? 'Gemini CLI voice' : useGeminiLive ? 'Gemini Live' : 'Grok';
+      const heard = `mic audio sent ${micSecs}s, loudest ${Math.round((stats.micPeak / 32768) * 100)}%, heard you ${stats.heard}x, replied ${stats.replies}x, tools ${stats.tools}, ${useLocalSpeechEngine ? 'voice' : engineLabel} audio received ${grokSecs}s${stats.note ? ', resume note given' : ''}${pageReason ? `, page: ${pageReason}` : ''}`;
+      if (pageClosed) logInfo('xai', `${engineLabel} session ended by Orbit after ${secs}s (${wasAnnounce ? 'spoken update' : 'hang up / sleep'})`, heard);
+      else if (code !== 1000 && code !== 1005) logWarn('xai', `${engineLabel} closed the connection after ${secs}s (code ${code})`, `${why} · ${heard}`);
+      else logWarn('xai', `${engineLabel} ended the session after ${secs}s (code ${code})`, `${why || 'no reason given'} · ${heard}`);
       toBrowser({ type: 'bridge.closed', code, reason: reason.toString() });
       browser.close();
     });

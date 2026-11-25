@@ -115,7 +115,7 @@ public enum SettingsSchema {
     SettingSpec("anywhereMouseLeadMs", .number(min: 0, max: 600, places: 0), 220, .hidden, "Mouse lead (ms)"),
     SettingSpec("helperEngine", .choice(["claude-code", "gemini", "codex"]), "claude-code", .hidden, "Helper engine"),
     SettingSpec("geminiVoice", .choice(["Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"]), "Aoede", .voice, "Gemini voice"),
-    SettingSpec("geminiVoiceModel", .choice(["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"]), "gemini-2.5-flash", .voiceEngine, "Gemini CLI model"),
+    SettingSpec("geminiVoiceModel", .choice(["gemini-3.8-flash-low", "gemini-4-neon-low", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"]), "gemini-2.5-flash", .voiceEngine, "Gemini CLI model"),
     SettingSpec("geminiLiveModel", .token(pattern: "^(?i)gemini-[a-z0-9._-]+$", maxLength: 79, lowercase: false), "gemini-2.5-flash-native-audio-preview-12-2025", .voiceEngine, "Gemini Live model"),
     SettingSpec("geminiPath", .geminiPath, "", .voiceEngine, "Gemini CLI location"),
     SettingSpec("brainProvider", .choice(["claude", "gemini"]), "claude", .secondBrain, "Provider"),
@@ -205,7 +205,7 @@ public enum SettingsSchema {
       guard let s = text(value) else { return nil }
       if s.isEmpty { return "" }
       let bad = s.unicodeScalars.contains { $0.value < 32 || "\"<>|?*".unicodeScalars.contains($0) }
-      guard (s as NSString).length < 400, s.hasPrefix("/"), !s.hasPrefix("//"), !s.hasPrefix("\\"), !bad, matches((s as NSString).lastPathComponent, "^(?i)gemini(\\.exe)?$") else { return nil }
+      guard (s as NSString).length < 400, s.hasPrefix("/"), !s.hasPrefix("//"), !s.hasPrefix("\\"), !bad, matches((s as NSString).lastPathComponent, "^(?i)(?:gemini|agy)(\\.exe)?$") else { return nil }
       return .string(s)
     case .loopbackURL:
       guard let s = text(value), let clean = sanitizeLoopbackURL(s) else { return nil }

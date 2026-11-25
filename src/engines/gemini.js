@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 import { speakable } from '../brain.js';
+import { isAgyFile } from '../gemini/auth.js';
 import { isGeminiSignInProblem } from '../gemini/brain.js';
 import { childEnv, groupOptions, killTree as killProcessTree } from '../platform/system.js';
 import { HELPER_SYSTEM, progressLine } from './claude-code.js';
@@ -84,8 +85,17 @@ export function geminiHelperSettings({ mcpUrl, token, tools = [], extra = null }
   };
 }
 
-/** Command-line arguments for one headless Gemini helper run (task goes on stdin). */
-export function geminiHelperArgs({ model = GEMINI_HELPER_LIMITS.model, allowedServers = ['orbit-hands'] } = {}) {
+/** Command-line arguments for one headless Gemini/Antigravity helper run (task goes on stdin). */
+export function geminiHelperArgs({ model = GEMINI_HELPER_LIMITS.model, allowedServers = ['orbit-hands'], exe = '' } = {}) {
+  if (isAgyFile(exe)) {
+    const agyModel = /^gemini-2\./i.test(model) ? 'gemini-3.8-flash-low' : model;
+    return [
+      '--input-format', 'stream-json',
+      '--output-format', 'stream-json',
+      '--model', agyModel,
+      '--disable-slash-commands',
+    ];
+  }
   return [
     '-p', '',
     '--output-format', 'stream-json',
@@ -144,9 +154,11 @@ export function startGeminiHelper({
     throw e;
   }
 
+  const agy = isAgyFile(geminiPath);
   const env = childEnv(process.env);
   delete env.GEMINI_API_KEY;
   delete env.GOOGLE_API_KEY;
+  delete env.GEMINI_HOME;
   delete env.ELECTRON_RUN_AS_NODE;
   if (apiKey) env.GEMINI_API_KEY = apiKey;
 
@@ -154,7 +166,7 @@ export function startGeminiHelper({
   const allowedServers = Object.keys(settings.mcpServers);
   let child;
   try {
-    child = spawnImpl(geminiPath, geminiHelperArgs({ model, allowedServers }), {
+    child = spawnImpl(geminiPath, geminiHelperArgs({ model, allowedServers, exe: geminiPath }), {
       cwd: dir,
       env,
       windowsHide: true,
@@ -210,6 +222,30 @@ export function startGeminiHelper({
       return;
     }
     if (!j || typeof j !== 'object') return;
+
+    // Antigravity CLI (`agy`) stream-json events
+    if (j.event === 'init') return onEvent({ type: 'started' });
+    if (j.event === 'step_update' && j.step_update?.step_type === 'agent_response' && typeof j.step_update.text_delta === 'string' && j.step_update.text_delta) {
+      lastText = `${lastText}${j.step_update.text_delta}`;
+      onEvent({ type: 'text', text: j.step_update.text_delta });
+      return;
+    }
+    if (j.event === 'result' && j.result && typeof j.result === 'object') {
+      const r = j.result;
+      const status = String(r.status || '').toUpperCase();
+      const ok = status === 'SUCCESS' && !r.error;
+      const raw = (typeof r.response === 'string' && r.response.trim()) ? r.response : lastText;
+      const errMsg = typeof r.error === 'string' ? r.error : (typeof r.error?.message === 'string' ? r.error.message : raw);
+      end({
+        type: 'done',
+        ok,
+        summary: speakable(ok ? raw : errMsg).slice(0, 400) || (ok ? 'Done.' : 'It stopped.'),
+        cost: null,
+        seconds: Math.round((Date.now() - started) / 1000),
+        needsSignIn: !ok && isGeminiSignInProblem(errMsg || err),
+      });
+      return;
+    }
 
     // Gemini CLI stream-json init event (or Claude-compatible system/init)
     if (j.type === 'init' || (j.type === 'system' && j.subtype === 'init')) {
@@ -281,7 +317,10 @@ export function startGeminiHelper({
   const send = (text) => {
     if (ended) return false;
     try {
-      child.stdin.write(`${JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: String(text).slice(0, 4000) }] } })}\n`);
+      const payload = agy
+        ? { event: 'user', message: { content: String(text).slice(0, 4000) } }
+        : { type: 'user', message: { role: 'user', content: [{ type: 'text', text: String(text).slice(0, 4000) }] } };
+      child.stdin.write(`${JSON.stringify(payload)}\n`);
       return true;
     } catch {
       return false;

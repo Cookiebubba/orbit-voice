@@ -176,7 +176,13 @@ function fakeGeminiCli(script, { sessionId = 'gem_sess_1', delayMs = 2 } = {}) {
 // ============================================================================
 
 test('auth: model and voice catalogs match expected names and are frozen', () => {
-  assert.deepEqual(Object.keys(GEMINI_VOICE_MODELS), ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite']);
+  assert.deepEqual(Object.keys(GEMINI_VOICE_MODELS), [
+    'gemini-3.8-flash-low',
+    'gemini-4-neon-low',
+    'gemini-2.5-flash',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash-lite',
+  ]);
   assert.deepEqual(Object.keys(GEMINI_LIVE_MODELS), ['gemini-2.5-flash-native-audio-preview-12-2025', 'gemini-2.0-flash-live-001']);
   assert.deepEqual([...GEMINI_LIVE_VOICES], ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr']);
   assert.ok(Object.isFrozen(GEMINI_VOICE_MODELS));
@@ -184,16 +190,20 @@ test('auth: model and voice catalogs match expected names and are frozen', () =>
   assert.ok(Object.isFrozen(GEMINI_LIVE_VOICES));
 });
 
-test('auth: isGeminiFile validates executable names per platform', () => {
+test('auth: isGeminiFile validates executable names per platform (gemini and Antigravity agy)', () => {
   assert.equal(isGeminiFile('/usr/local/bin/gemini', 'darwin'), true);
+  assert.equal(isGeminiFile('/Applications/Gemini.app/Contents/Helpers/agy', 'darwin'), true);
   assert.equal(isGeminiFile('/usr/bin/gemini', 'linux'), true);
+  assert.equal(isGeminiFile('/usr/bin/agy', 'linux'), true);
   assert.equal(isGeminiFile('/usr/bin/gemini.exe', 'linux'), true);
   assert.equal(isGeminiFile('/usr/bin/gemini-cli', 'darwin'), false);
   assert.equal(isGeminiFile('/usr/bin/claude', 'darwin'), false);
 
   assert.equal(isGeminiFile('C:\\Users\\me\\AppData\\Roaming\\npm\\gemini.cmd', 'win32'), true);
   assert.equal(isGeminiFile('C:\\bin\\GEMINI.EXE', 'win32'), true);
+  assert.equal(isGeminiFile('C:\\bin\\agy.exe', 'win32'), true);
   assert.equal(isGeminiFile('C:\\bin\\gemini', 'win32'), false, 'bare gemini rejected on Windows');
+  assert.equal(isGeminiFile('C:\\bin\\agy', 'win32'), false, 'bare agy rejected on Windows');
   assert.equal(isGeminiFile('C:\\bin\\gemini.bat', 'win32'), false);
   assert.equal(isGeminiFile('C:\\bin\\evil.exe', 'win32'), false);
 });
@@ -533,6 +543,86 @@ test('cli-voice: reports sign-in errors, missing CLI, and stopGeminiVoice kills 
   assert.equal(p.dead, false);
   stopGeminiVoice();
   assert.equal(p.dead, true);
+});
+
+test('cli-voice: Antigravity agy keeps ONE persistent stream-json process open across turns and strips GEMINI_HOME', async () => {
+  const prevHome = process.env.GEMINI_HOME;
+  process.env.GEMINI_HOME = '/sandbox/should-be-stripped';
+  const spawns = [];
+  const stdinLines = [];
+  const spawnImpl = (exe, args, opts) => {
+    const child = new EventEmitter();
+    child.stdin = new PassThrough();
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.pid = undefined;
+    child.kill = () => setImmediate(() => child.emit('close', null));
+    spawns.push({ exe, args, opts });
+    let buf = '';
+    child.stdin.on('data', (d) => {
+      buf += d.toString('utf8');
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (!line) continue;
+        const msg = JSON.parse(line);
+        stdinLines.push(msg);
+        const turnNum = stdinLines.length;
+        setImmediate(() => {
+          if (turnNum === 1) {
+            child.stdout.write(`${JSON.stringify({ event: 'init', conversation_id: 'agy_conv_1' })}\n`);
+            child.stdout.write(`${JSON.stringify({ event: 'step_update', step_update: { step_type: 'agent_response', text_delta: 'Very good, sir. ' } })}\n`);
+            child.stdout.write(`${JSON.stringify({ event: 'step_update', step_update: { step_type: 'agent_response', text_delta: '<tool>{"name":"list_sessions","arguments":{}}</tool>' } })}\n`);
+            child.stdout.write(`${JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: 'Very good, sir. <tool>{"name":"list_sessions","arguments":{}}</tool>' } })}\n`);
+          } else {
+            child.stdout.write(`${JSON.stringify({ event: 'step_update', step_update: { step_type: 'agent_response', text_delta: 'All threads are in order.' } })}\n`);
+            child.stdout.write(`${JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: 'All threads are in order.' } })}\n`);
+          }
+        });
+      }
+    });
+    return child;
+  };
+
+  try {
+    const speech = fakeSpeech();
+    const sock = createGeminiCliRealtime({
+      geminiPath: '/Applications/Gemini.app/Contents/Helpers/agy',
+      model: 'gemini-3.8-flash-low',
+      speech,
+      spawnImpl,
+    });
+    const ev = collect(sock);
+    await opened(sock);
+    sock.send(JSON.stringify({
+      type: 'session.update',
+      session: { instructions: 'You are Alfred.', tools: [{ name: 'list_sessions', description: 'List', parameters: {} }] },
+    }));
+    sock.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Check threads' }] } }));
+    sock.send(JSON.stringify({ type: 'response.create' }));
+    await until(() => ev.some((e) => e.type === 'response.done'));
+
+    const call = ev.find((e) => e.type === 'response.function_call_arguments.done');
+    assert.equal(call.name, 'list_sessions');
+    assert.equal(spawns.length, 1, 'persistent agy process spawned once');
+    assert.equal(spawns[0].opts.env.GEMINI_HOME, undefined, 'GEMINI_HOME stripped for agy');
+    assert.ok(spawns[0].args.includes('--input-format'));
+    assert.ok(spawns[0].args.includes('gemini-3.8-flash-low'));
+    assert.match(stdinLines[0].message.content, /You are Alfred\./);
+
+    // Turn 2 reuses the EXACT same persistent child process without repeating system instructions!
+    sock.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: call.call_id, output: '{"sessions":[]}' } }));
+    sock.send(JSON.stringify({ type: 'response.create' }));
+    await until(() => ev.filter((e) => e.type === 'response.done').length === 2);
+    assert.equal(spawns.length, 1, 'second turn reused persistent agy process');
+    assert.equal(stdinLines[1].message.content, '[Tool result: list_sessions] {"sessions":[]}');
+    assert.equal(ev.filter((e) => e.type === 'response.output_audio_transcript.done').at(-1).transcript, 'All threads are in order.');
+    sock.close();
+  } finally {
+    if (prevHome === undefined) delete process.env.GEMINI_HOME;
+    else process.env.GEMINI_HOME = prevHome;
+  }
 });
 
 // ============================================================================

@@ -181,7 +181,9 @@ public final class Engine: @unchecked Sendable {
     if path == "/voice" && r.isWebSocketUpgrade {
       // Only Orbit's own signed-in windows (the ws server's verifyClient): anything else is refused.
       guard policy.sameOrigin(r), policy.hasValidSession(r) else { return .response(BridgeResponse(status: 401)) }
-      if let v = voice {
+      let eng = config.string("voiceEngine")
+      let t3Active = config.string("targetBackend") == "t3-code" || (config.string("targetBackend") != "claude-desktop" && !config.string("t3Endpoint").isEmpty)
+      if let v = voice, (eng == "claude" || eng == "grok"), !t3Active {
         let announce = r.query("announce") == "1"
         // Orbit Native hears and speaks on its own (Claude voice only): only words go back and forth.
         let localSpeech = r.query("speech") == "local"

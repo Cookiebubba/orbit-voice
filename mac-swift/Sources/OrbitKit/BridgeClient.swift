@@ -283,9 +283,9 @@ public actor BridgeClient {
 
   public func voices(engine: String) async throws -> VoiceList { VoiceList(json: try await get("/api/voice", query: [URLQueryItem(name: "engine", value: engine)])) }
 
-  /** A spoken sample (audio bytes): Grok's through xAI, Claude voice's made on this Mac. */
+  /** A spoken sample (audio bytes): Grok's through xAI, local voice's (Claude / Gemini CLI) made on this Mac. */
   public func voicePreview(engine: String, voice: String, speed: Double) async throws -> Data {
-    let path = engine == "claude" ? "/api/claude-voice/preview" : "/api/voice/preview"
+    let path = (engine == "claude" || engine == "gemini-cli") ? "/api/claude-voice/preview" : "/api/voice/preview"
     let (data, http) = try await send("POST", path, json: ["voice": .string(voice), "speed": .number(speed)])
     guard http.statusCode == 200 else {
       let v = (try? JSONValue.parse(data)) ?? .null

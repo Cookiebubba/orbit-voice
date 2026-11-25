@@ -34,9 +34,10 @@ private let ttsPackOptions: [(value: String, label: String, hint: String)] = [
 private let geminiLiveVoices: [String] = ["Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"]
 
 private let geminiVoiceModelOptions: [Segmented.Option] = [
+  .init(value: "gemini-3.8-flash-low", label: "3.8 Flash"),
+  .init(value: "gemini-4-neon-low", label: "4 Neon"),
   .init(value: "gemini-2.5-flash", label: "2.5 Flash"),
   .init(value: "gemini-2.5-pro", label: "2.5 Pro"),
-  .init(value: "gemini-2.5-flash-lite", label: "2.5 Lite"),
 ]
 
 private let geminiLiveModelOptions: [Segmented.Option] = [

@@ -11,6 +11,8 @@ import path from 'node:path';
 import { childEnv, groupOptions, killTree, searchDirs } from '../platform/system.js';
 
 export const GEMINI_VOICE_MODELS = Object.freeze({
+  'gemini-3.8-flash-low': { label: 'Gemini 3.8 Flash', speed: 'fastest, Antigravity subscription' },
+  'gemini-4-neon-low': { label: 'Gemini 4 Neon', speed: 'flagship reasoning, Antigravity subscription' },
   'gemini-2.5-flash': { label: 'Gemini 2.5 Flash', speed: 'fast, balanced' },
   'gemini-2.5-pro': { label: 'Gemini 2.5 Pro', speed: 'slower, deeper reasoning' },
   'gemini-2.5-flash-lite': { label: 'Gemini 2.5 Flash Lite', speed: 'fastest, lightweight' },
@@ -40,22 +42,29 @@ function isLocalAbsolute(p, platform = process.platform) {
   return pathFor(platform).isAbsolute(s) && !/^[\\/]{2}/.test(s);
 }
 
+/** True when `p` points to the Google Antigravity CLI (`agy`). */
+export function isAgyFile(p, platform = process.platform) {
+  const base = pathFor(platform).basename(String(p || ''));
+  return (platform === 'win32' ? /^agy\.(exe|cmd)$/i : /^agy(\.exe)?$/i).test(base);
+}
+
 /**
- * Only ever run something that is plainly the Gemini CLI. On Windows, npm installs a `gemini.cmd`
- * shim and native bundles use `gemini.exe` (reject bare `gemini` or other names).
+ * Only ever run something that is plainly the Gemini CLI (`gemini`) or Antigravity CLI (`agy`).
+ * On Windows, npm installs `.cmd` shims and native bundles use `.exe` (reject bare names).
  */
 export function isGeminiFile(p, platform = process.platform) {
   const base = pathFor(platform).basename(String(p || ''));
-  return (platform === 'win32' ? /^gemini\.(exe|cmd)$/i : /^gemini(\.exe)?$/i).test(base);
+  return (platform === 'win32' ? /^(?:gemini|agy)\.(exe|cmd)$/i : /^(?:gemini|agy)(\.exe)?$/i).test(base);
 }
 
+const agyNames = (platform = process.platform) => (platform === 'win32' ? ['agy.exe', 'agy.cmd'] : ['agy']);
 const geminiNames = (platform = process.platform) => (platform === 'win32' ? ['gemini.exe', 'gemini.cmd'] : ['gemini']);
 
 /**
- * Finds the Gemini CLI executable: a configured local absolute path first, then PATH (plus
- * login-shell PATH and well-known install folders via searchDirs, and npm's global folder on
- * Windows). Returns { path, source } or null.
- * `opts` ({ platform, homedir, shellPath, exists }) is for tests.
+ * Finds the Gemini/Antigravity CLI executable: a configured local absolute path first, then
+ * Antigravity CLI (`agy` in Gemini.app or on PATH, preferred since Google migrated individual
+ * Google accounts to Antigravity), then standalone `gemini` on PATH / well-known folders.
+ * Returns { path, source } or null. `opts` ({ platform, homedir, shellPath, exists }) is for tests.
  */
 export function findGemini(configured = '', env = process.env, opts = {}) {
   const platform = opts.platform ?? process.platform;
@@ -67,12 +76,27 @@ export function findGemini(configured = '', env = process.env, opts = {}) {
       ? { path: configured, source: 'settings' }
       : null;
   }
-  const names = geminiNames(platform);
   const dirs = [...searchDirs({ platform, env, homedir, shellPath: opts.shellPath })];
   if (platform === 'win32') {
     const npmBin = p.join(env.APPDATA || p.join(homedir, 'AppData', 'Roaming'), 'npm');
     if (!dirs.includes(npmBin)) dirs.push(npmBin);
   }
+  // Prefer Antigravity CLI (`agy`) when installed (macOS Gemini.app bundle or PATH).
+  if (platform === 'darwin') {
+    for (const bundleAgy of [
+      '/Applications/Gemini.app/Contents/Helpers/agy',
+      p.join(homedir, 'Applications', 'Gemini.app', 'Contents', 'Helpers', 'agy'),
+    ]) {
+      if (exists(bundleAgy)) return { path: bundleAgy, source: 'antigravity-app' };
+    }
+  }
+  for (const dir of dirs) {
+    for (const name of agyNames(platform)) {
+      const file = p.join(dir, name);
+      if (exists(file)) return { path: file, source: 'path' };
+    }
+  }
+  const names = geminiNames(platform);
   for (const dir of dirs) {
     for (const name of names) {
       const file = p.join(dir, name);
@@ -84,18 +108,32 @@ export function findGemini(configured = '', env = process.env, opts = {}) {
 
 /** Gemini CLI or Google API sign-in is missing or expired (as opposed to a rate limit or crash). */
 export function isGeminiSignInProblem(text) {
-  return /session expired|could not be refreshed|token.*expired|invalid_grant|not logged in|not authenticated|unauthenticated|please (?:log ?in|sign ?in|authenticate)|run [`'"]?gemini[`'"]? to sign in|auth(?:entication)? (?:failed|required|error)|invalid (?:api ?key|credentials)|api[ _]?key.*(?:not valid|invalid|missing)|unauthori[sz]ed|\b401\b/i.test(
+  return /session expired|could not be refreshed|token.*expired|invalid_grant|not logged in|not authenticated|unauthenticated|please (?:log ?in|sign ?in|authenticate)|run [`'"]?(?:gemini|agy)[`'"]? to sign in|auth(?:entication)? (?:failed|required|error)|invalid (?:api ?key|credentials)|api[ _]?key.*(?:not valid|invalid|missing)|unauthori[sz]ed|\b401\b/i.test(
     String(text || ''),
   );
 }
 
-/** Environment for running Gemini CLI on the user's own Google sign-in (no API keys). */
+/** Environment for running Gemini/Antigravity CLI on the user's own Google sign-in (no API keys). */
 function loginEnv(base = process.env) {
   const env = childEnv(base);
   delete env.GEMINI_API_KEY;
   delete env.GOOGLE_API_KEY;
+  delete env.GEMINI_HOME;
   delete env.ELECTRON_RUN_AS_NODE;
   return env;
+}
+
+/** Inspects ~/.gemini/antigravity-cli state without touching the network. */
+function readCachedAgyAuth(homedir) {
+  if (!homedir) return { found: false, valid: false };
+  const file = path.join(homedir, '.gemini', 'antigravity-cli', 'jetski_state.pbtxt');
+  try {
+    if (!fs.existsSync(file)) return { found: false, valid: false };
+    const st = fs.statSync(file);
+    return { found: true, valid: st.size > 0 };
+  } catch {
+    return { found: false, valid: false };
+  }
 }
 
 /** Inspects ~/.gemini/oauth_creds.json (or $GEMINI_CLI_HOME/.gemini) without touching the network. */
@@ -133,8 +171,14 @@ export function geminiAuthStatus({ geminiPath, homedir = os.homedir(), env = pro
   return new Promise((resolve) => {
     if (!geminiPath) return resolve({ ok: false, error: 'Gemini CLI was not found.' });
 
-    const oauth = readCachedOAuth(homedir, env);
-    if (oauth.valid) return resolve({ ok: true, signedIn: true, method: 'oauth' });
+    const agy = isAgyFile(geminiPath);
+    if (agy) {
+      const cachedAgy = readCachedAgyAuth(homedir);
+      if (cachedAgy.valid) return resolve({ ok: true, signedIn: true, method: 'antigravity' });
+    } else {
+      const oauth = readCachedOAuth(homedir, env);
+      if (oauth.valid) return resolve({ ok: true, signedIn: true, method: 'oauth' });
+    }
 
     const apiKey = typeof env?.GEMINI_API_KEY === 'string' && env.GEMINI_API_KEY.trim()
       ? env.GEMINI_API_KEY.trim()
@@ -147,6 +191,7 @@ export function geminiAuthStatus({ geminiPath, homedir = os.homedir(), env = pro
       return resolve({ ok: true, signedIn: true, method: 'vertex-ai' });
     }
 
+    const oauth = agy ? { expired: false } : readCachedOAuth(homedir, env);
     let out = '';
     let err = '';
     let done = false;
@@ -158,7 +203,7 @@ export function geminiAuthStatus({ geminiPath, homedir = os.homedir(), env = pro
     };
     let child;
     try {
-      child = spawnImpl(geminiPath, ['--version'], {
+      child = spawnImpl(geminiPath, agy ? ['models'] : ['--version'], {
         cwd: os.tmpdir(),
         env: loginEnv(env),
         windowsHide: true,
@@ -176,6 +221,9 @@ export function geminiAuthStatus({ geminiPath, homedir = os.homedir(), env = pro
     child.stderr?.on('data', (d) => { if (err.length < 20_000) err += d; });
     child.on('error', (e) => finish({ ok: false, error: `Couldn't start Gemini CLI: ${String(e?.message || e).slice(0, 160)}` }));
     child.on('close', (code) => {
+      if (agy && code === 0 && /gemini-/i.test(out)) {
+        return finish({ ok: true, signedIn: true, method: 'antigravity' });
+      }
       if (code === 0 && out.trim()) {
         return finish({ ok: true, signedIn: false, method: oauth.expired ? 'oauth-expired' : null });
       }
@@ -189,9 +237,11 @@ export function geminiAuthStatus({ geminiPath, homedir = os.homedir(), env = pro
 /** One argument for /bin/sh, single-quoted. */
 const shellQuote = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
 
-/** The Mac sign-in's .command file: removes itself, then launches Gemini CLI interactively in Terminal. */
+/** The Mac sign-in's .command file: removes itself, then launches Gemini/Antigravity CLI interactively in Terminal. */
 export const geminiSignInScript = (file, geminiPath) =>
-  `#!/bin/sh\nrm -f ${shellQuote(file)}\nexec ${shellQuote(geminiPath)}\n`;
+  isAgyFile(geminiPath)
+    ? `#!/bin/sh\nrm -f ${shellQuote(file)}\nexec env -u GEMINI_HOME ${shellQuote(geminiPath)}\n`
+    : `#!/bin/sh\nrm -f ${shellQuote(file)}\nexec ${shellQuote(geminiPath)}\n`;
 
 /**
  * Opens Gemini CLI in its own console window so the user can complete Google OAuth sign-in in

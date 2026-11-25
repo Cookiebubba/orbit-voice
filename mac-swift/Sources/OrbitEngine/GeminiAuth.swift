@@ -17,6 +17,8 @@ public enum GeminiAuth {
   }
 
   public static let GEMINI_VOICE_MODELS: [String: ModelInfo] = [
+    "gemini-3.8-flash-low": ModelInfo(label: "Gemini 3.8 Flash", speed: "fastest, Antigravity subscription"),
+    "gemini-4-neon-low": ModelInfo(label: "Gemini 4 Neon", speed: "flagship reasoning, Antigravity subscription"),
     "gemini-2.5-flash": ModelInfo(label: "Gemini 2.5 Flash", speed: "fast, balanced"),
     "gemini-2.5-pro": ModelInfo(label: "Gemini 2.5 Pro", speed: "slower, deeper reasoning"),
     "gemini-2.5-flash-lite": ModelInfo(label: "Gemini 2.5 Flash Lite", speed: "fastest, lightweight"),
@@ -42,10 +44,11 @@ public enum GeminiAuth {
   public static var liveModels: [String: ModelInfo] { GEMINI_LIVE_MODELS }
   public static var liveVoices: [String] { GEMINI_LIVE_VOICES }
 
-  private static let geminiFileRegex = JSRegExp(#"^gemini(\.exe)?$"#, "i")
+  private static let agyFileRegex = JSRegExp(#"^agy(\.exe)?$"#, "i")
+  private static let geminiFileRegex = JSRegExp(#"^(?:gemini|agy)(\.exe)?$"#, "i")
   private static let uncRegex = JSRegExp(#"^[\\/]{2}"#)
   private static let signInRegex = JSRegExp(
-    #"session expired|could not be refreshed|token.*expired|invalid_grant|not logged in|not authenticated|unauthenticated|please (?:log ?in|sign ?in|authenticate)|run [`'"]?gemini[`'"]? to sign in|auth(?:entication)? (?:failed|required|error)|invalid (?:api ?key|credentials)|api[ _]?key.*(?:not valid|invalid|missing)|unauthori[sz]ed|\b401\b"#,
+    #"session expired|could not be refreshed|token.*expired|invalid_grant|not logged in|not authenticated|unauthenticated|please (?:log ?in|sign ?in|authenticate)|run [`'"]?(?:gemini|agy)[`'"]? to sign in|auth(?:entication)? (?:failed|required|error)|invalid (?:api ?key|credentials)|api[ _]?key.*(?:not valid|invalid|missing)|unauthori[sz]ed|\b401\b"#,
     "i"
   )
 
@@ -62,14 +65,19 @@ public enum GeminiAuth {
     return String(s.split(separator: "/", omittingEmptySubsequences: false).last ?? "")
   }
 
-  /** Only ever run something that is plainly the Gemini CLI (`gemini` or `gemini.exe` on POSIX). */
+  /** True when `path` points to the Google Antigravity CLI (`agy`). */
+  public static func isAgyFile(_ path: String) -> Bool {
+    agyFileRegex.test(basename(path))
+  }
+
+  /** Only ever run something that is plainly the Gemini CLI (`gemini`) or Antigravity CLI (`agy`). */
   public static func isGeminiFile(_ path: String) -> Bool {
     geminiFileRegex.test(basename(path))
   }
 
   /**
-   * Finds the Gemini CLI executable: a configured local absolute path first, then PATH, the login
-   * shell's PATH, and well-known install folders via `MacSystem.searchDirs`.
+   * Finds the Gemini/Antigravity CLI executable: a configured local absolute path first, then
+   * Antigravity CLI (`agy` in Gemini.app or on PATH), then standalone `gemini` via `MacSystem.searchDirs`.
    */
   public static func findGemini(
     _ configured: String = "",
@@ -83,7 +91,18 @@ public enum GeminiAuth {
         ? (configured, "settings")
         : nil
     }
-    for dir in MacSystem.searchDirs(env: env, home: home, shellPath: shellPath) {
+    for bundleAgy in [
+      "/Applications/Gemini.app/Contents/Helpers/agy",
+      MacSystem.join(home, "Applications", "Gemini.app", "Contents", "Helpers", "agy"),
+    ] {
+      if exists(bundleAgy) { return (bundleAgy, "antigravity-app") }
+    }
+    let dirs = MacSystem.searchDirs(env: env, home: home, shellPath: shellPath)
+    for dir in dirs {
+      let file = MacSystem.join(dir, "agy")
+      if exists(file) { return (file, "path") }
+    }
+    for dir in dirs {
       let file = MacSystem.join(dir, "gemini")
       if exists(file) { return (file, "path") }
     }
@@ -122,8 +141,11 @@ public enum GeminiAuth {
     return (true, false, false)
   }
 
-  /** The Mac sign-in's .command file: removes itself, then launches Gemini CLI interactively in Terminal. */
+  /** The Mac sign-in's .command file: removes itself, then launches Gemini/Antigravity CLI interactively in Terminal. */
   public static func geminiSignInScript(file: String, geminiPath: String) -> String {
-    "#!/bin/sh\nrm -f \(Brain.shellQuote(file))\nexec \(Brain.shellQuote(geminiPath))\n"
+    if isAgyFile(geminiPath) {
+      return "#!/bin/sh\nrm -f \(Brain.shellQuote(file))\nexec env -u GEMINI_HOME \(Brain.shellQuote(geminiPath))\n"
+    }
+    return "#!/bin/sh\nrm -f \(Brain.shellQuote(file))\nexec \(Brain.shellQuote(geminiPath))\n"
   }
 }

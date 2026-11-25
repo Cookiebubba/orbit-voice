@@ -184,7 +184,7 @@ struct MainContent: View {
 
       if ctx.typing && on {
         HStack(spacing: 0) {
-          TextField("", text: $text, prompt: Text(s.string("voiceEngine") == "claude" ? "Type to Orbit…" : "Type to Grok…").foregroundStyle(Theme.faint))
+          TextField("", text: $text, prompt: Text(s.string("persona") == "alfred" ? "Type to Alfred…" : (s.string("voiceEngine") == "grok" ? "Type to Grok…" : "Type to Orbit…")).foregroundStyle(Theme.faint))
             .textFieldStyle(.plain).font(Theme.font(13)).foregroundStyle(Theme.fg)
             .focused($focused)
             .onSubmit(send)

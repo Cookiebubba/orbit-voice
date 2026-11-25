@@ -256,6 +256,8 @@ final class GeminiT3RouterTests: XCTestCase {
   // MARK: - GeminiAuth.swift
 
   func testGeminiAuthCatalogsDiscoveryAndSignInDetection() {
+    XCTAssertNotNil(GeminiAuth.GEMINI_VOICE_MODELS["gemini-3.8-flash-low"])
+    XCTAssertNotNil(GeminiAuth.GEMINI_VOICE_MODELS["gemini-4-neon-low"])
     XCTAssertNotNil(GeminiAuth.GEMINI_VOICE_MODELS["gemini-2.5-flash"])
     XCTAssertNotNil(GeminiAuth.GEMINI_VOICE_MODELS["gemini-2.5-pro"])
     XCTAssertNotNil(GeminiAuth.GEMINI_VOICE_MODELS["gemini-2.5-flash-lite"])
@@ -264,7 +266,10 @@ final class GeminiT3RouterTests: XCTestCase {
     XCTAssertEqual(GeminiAuth.GEMINI_LIVE_VOICES.count, 8)
 
     XCTAssertTrue(GeminiAuth.isGeminiFile("/opt/homebrew/bin/gemini"))
+    XCTAssertTrue(GeminiAuth.isGeminiFile("/Applications/Gemini.app/Contents/Helpers/agy"))
     XCTAssertTrue(GeminiAuth.isGeminiFile("/usr/local/bin/GEMINI.EXE"))
+    XCTAssertTrue(GeminiAuth.isAgyFile("/Applications/Gemini.app/Contents/Helpers/agy"))
+    XCTAssertFalse(GeminiAuth.isAgyFile("/opt/homebrew/bin/gemini"))
     XCTAssertFalse(GeminiAuth.isGeminiFile("/opt/homebrew/bin/gemini-cli"))
     XCTAssertFalse(GeminiAuth.isGeminiFile("/opt/homebrew/bin/bash"))
 

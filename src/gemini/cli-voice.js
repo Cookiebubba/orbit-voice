@@ -29,7 +29,7 @@ import {
 import { createCueStream } from '../emote-cues.js';
 import { STT_MODELS, TTS_MODELS, sttOk, sttReady, ttsOk, ttsReady } from '../voice-models.js';
 import { childEnv, groupOptions, killTree } from '../platform/system.js';
-import { GEMINI_VOICE_MODELS, isGeminiSignInProblem } from './auth.js';
+import { GEMINI_VOICE_MODELS, isAgyFile, isGeminiSignInProblem } from './auth.js';
 
 export const GEMINI_VOICE = Object.freeze({
   model: 'gemini-2.5-flash',
@@ -77,14 +77,20 @@ process.on('exit', () => {
 });
 
 /**
- * Manages headless `gemini -p "" --output-format stream-json` turns in order, passing the system
- * prompt via `GEMINI_SYSTEM_MD` and user turns on stdin, resuming via `--resume <session_id>` once
- * Gemini CLI reports one. Strips GEMINI_API_KEY / GOOGLE_API_KEY unless `apiKey` is explicitly
- * supplied, strips ELECTRON_RUN_AS_NODE, and runs in an isolated empty temp folder.
+ * Manages headless Gemini CLI turns in order:
+ *   - For Google Antigravity CLI (`agy`): keeps ONE persistent `agy --input-format stream-json
+ *     --output-format stream-json --model <model> --disable-slash-commands` process open across
+ *     turns (zero cold start per turn!) with Orbit's system prompt injected on turn 1.
+ *   - For standalone `gemini` CLI: runs `gemini -p "" --output-format stream-json` per turn with
+ *     `GEMINI_SYSTEM_MD` and `--resume <session_id>`.
+ * Strips GEMINI_API_KEY / GOOGLE_API_KEY (unless explicit `apiKey`), GEMINI_HOME, and
+ * ELECTRON_RUN_AS_NODE, and runs in an isolated empty temp folder.
  */
 export class GeminiCliProc {
   constructor({ exe, prompt, model = GEMINI_VOICE.model, apiKey = '', spawnImpl = spawn }) {
     this.exe = exe;
+    this.isAgy = isAgyFile(exe);
+    this.prompt = String(prompt || '');
     this.model = model;
     this.apiKey = typeof apiKey === 'string' ? apiKey : '';
     this.spawnImpl = spawnImpl;
@@ -94,13 +100,17 @@ export class GeminiCliProc {
     this.child = null;
     this.active = null;
     this.queue = [];
-    this.promptFile = path.join(os.tmpdir(), `orbit-gemini-voice-${crypto.randomBytes(6).toString('hex')}.md`);
-    fs.writeFileSync(this.promptFile, String(prompt || ''), { mode: 0o600 });
+    this.sentSystemPrompt = false;
+    this.agyBuf = '';
+    this.agyStderr = '';
+    this.promptFile = this.isAgy ? null : path.join(os.tmpdir(), `orbit-gemini-voice-${crypto.randomBytes(6).toString('hex')}.md`);
+    if (this.promptFile) fs.writeFileSync(this.promptFile, this.prompt, { mode: 0o600 });
     this.cwd = path.join(os.tmpdir(), 'orbit-gemini-voice-not-a-project');
     try {
       fs.mkdirSync(this.cwd, { recursive: true });
     } catch {}
     liveProcs.add(this);
+    if (this.isAgy) this.ensureAgyChild();
   }
 
   static key({ exe, prompt, model = GEMINI_VOICE.model }) {
@@ -117,10 +127,137 @@ export class GeminiCliProc {
     const env = childEnv(process.env);
     delete env.GEMINI_API_KEY;
     delete env.GOOGLE_API_KEY;
+    delete env.GEMINI_HOME;
     delete env.ELECTRON_RUN_AS_NODE;
     if (this.apiKey) env.GEMINI_API_KEY = this.apiKey;
     if (this.promptFile) env.GEMINI_SYSTEM_MD = this.promptFile;
     return env;
+  }
+
+  /** Spawns (if needed) the persistent kept-open Antigravity `agy` process. */
+  ensureAgyChild() {
+    if (this.dead || this.child) return this.child;
+    const agyModel = /^gemini-2\./i.test(this.model) ? 'gemini-3.8-flash-low' : this.model;
+    const args = [
+      '--input-format',
+      'stream-json',
+      '--output-format',
+      'stream-json',
+      '--model',
+      agyModel,
+      '--disable-slash-commands',
+    ];
+    const child = this.spawnImpl(this.exe, args, {
+      cwd: fs.existsSync(this.cwd) ? this.cwd : os.tmpdir(),
+      env: this.buildEnv(),
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      ...groupOptions(),
+    });
+    this.child = child;
+    this.sentSystemPrompt = false;
+    this.agyBuf = '';
+    this.agyStderr = '';
+
+    child.stdout?.on('data', (d) => {
+      if (this.child !== child) return;
+      this.agyBuf += d;
+      let i;
+      while ((i = this.agyBuf.indexOf('\n')) >= 0) {
+        const line = this.agyBuf.slice(0, i).trim();
+        this.agyBuf = this.agyBuf.slice(i + 1);
+        if (!line) continue;
+        let e;
+        try {
+          e = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        this.handleAgyEvent(e);
+      }
+    });
+    child.stderr?.on('data', (d) => {
+      if (this.child !== child) return;
+      this.agyStderr = (this.agyStderr + d).slice(-2000);
+    });
+    child.stdin?.on('error', () => {});
+    child.on('error', (e) => {
+      if (this.child !== child) return;
+      this.child = null;
+      const run = this.active;
+      this.active = null;
+      if (run && !run.done && !run.interrupted) {
+        run.done = true;
+        run.turn.onFail?.(`Couldn't start Antigravity CLI: ${String(e?.message || e).slice(0, 160)}`);
+      }
+    });
+    child.on('close', (code) => {
+      if (this.child !== child) return;
+      if (this.agyBuf.trim()) {
+        try {
+          this.handleAgyEvent(JSON.parse(this.agyBuf.trim()));
+        } catch {}
+        this.agyBuf = '';
+      }
+      this.child = null;
+      const run = this.active;
+      this.active = null;
+      if (run && !run.done) {
+        run.done = true;
+        if (run.interrupted || this.dead) {
+          run.turn.onResult?.({ is_error: false, cancelled: true });
+        } else if (code === 0 && run.sawText) {
+          run.turn.onMessageEnd?.();
+          run.turn.onResult?.({ is_error: false });
+        } else {
+          const detail = run.lastError || this.agyStderr.trim().split('\n').pop() || 'Antigravity CLI stopped.';
+          if (isGeminiSignInProblem(detail)) run.turn.onResult?.({ is_error: true, result: detail });
+          else run.turn.onFail?.(detail);
+        }
+      }
+      if (!this.dead && this.queue.length) this.pump();
+    });
+    return child;
+  }
+
+  handleAgyEvent(e) {
+    if (!e || typeof e !== 'object') return;
+    if (e.event === 'init' && typeof e.conversation_id === 'string' && e.conversation_id) {
+      this.sessionId = e.conversation_id;
+      return;
+    }
+    const run = this.active;
+    if (!run || run.done || run.interrupted) return;
+    if (e.event === 'step_update') {
+      const su = e.step_update;
+      if (su && su.step_type === 'agent_response' && typeof su.text_delta === 'string' && su.text_delta) {
+        run.sawDelta = true;
+        run.sawText = true;
+        run.turn.onText?.(su.text_delta);
+      }
+      return;
+    }
+    if (e.event === 'error') {
+      const msg = e.message || e.error?.message || (typeof e.error === 'string' ? e.error : '');
+      if (msg) run.lastError = String(msg);
+      return;
+    }
+    if (e.event === 'result') {
+      run.done = true;
+      run.gotResult = true;
+      if (this.active === run) this.active = null;
+      const r = e.result && typeof e.result === 'object' ? e.result : e;
+      const status = String(r.status || '').toUpperCase();
+      const isErr = status === 'ERROR' || status === 'FAILED' || e.is_error === true || !!r.error;
+      if (!isErr && !run.sawDelta && typeof r.response === 'string' && r.response.trim()) {
+        run.sawText = true;
+        run.turn.onText?.(r.response);
+      }
+      const msg = (typeof r.error === 'string' ? r.error : r.error?.message) || (typeof r.response === 'string' ? r.response : '') || run.lastError || '';
+      if (!isErr) run.turn.onMessageEnd?.();
+      run.turn.onResult?.({ ...r, is_error: isErr, result: msg });
+      if (!this.dead) this.pump();
+    }
   }
 
   /** Queues one user turn; `turn` gets onText, onMessageEnd, onResult and onFail. */
@@ -145,6 +282,31 @@ export class GeminiCliProc {
       done: false,
     };
     this.active = run;
+
+    if (this.isAgy) {
+      let child;
+      try {
+        child = this.ensureAgyChild();
+      } catch (e) {
+        this.active = null;
+        turn.onFail?.(`Couldn't start Antigravity CLI: ${String(e?.message || e).slice(0, 160)}`);
+        this.pump();
+        return;
+      }
+      const content = !this.sentSystemPrompt && this.prompt
+        ? `[SYSTEM INSTRUCTIONS — FOLLOW STRICTLY FOR THIS ENTIRE VOICE CALL]\n${this.prompt}\n\nIMPORTANT: Never invoke built-in file, shell, workspace, search, or edit tools. Only emit Orbit's <tool>{"name":"...","arguments":{...}}</tool> tags listed above, or speak your reply directly.\n[END SYSTEM INSTRUCTIONS]\n\n${text}`
+        : text;
+      this.sentSystemPrompt = true;
+      try {
+        child.stdin?.write(`${JSON.stringify({ event: 'user', message: { content } })}\n`);
+      } catch (e) {
+        run.done = true;
+        this.active = null;
+        turn.onFail?.(`Couldn't write to Antigravity CLI: ${String(e?.message || e).slice(0, 160)}`);
+        this.pump();
+      }
+      return;
+    }
 
     const args = [
       '-p',
@@ -275,9 +437,20 @@ export class GeminiCliProc {
   /** Stops the turn currently running without killing the session for future turns. */
   interrupt() {
     if (!this.active) return;
-    this.active.interrupted = true;
+    const run = this.active;
+    run.interrupted = true;
     const c = this.child;
     this.child = null;
+    if (this.isAgy) {
+      run.done = true;
+      this.active = null;
+      this.sentSystemPrompt = false;
+      this.sessionId = null;
+      if (c) killTree(c);
+      run.turn.onResult?.({ is_error: false, cancelled: true });
+      if (!this.dead && this.queue.length) this.pump();
+      return;
+    }
     if (c) killTree(c);
   }
 
@@ -299,7 +472,34 @@ export class GeminiCliProc {
   }
 }
 
+// One pre-warmed Antigravity `agy` process kept ready between calls, matching Claude voice's keepSpare.
+let geminiSpare = null;
+
+export function keepGeminiSpare({ exe, prompt, model = GEMINI_VOICE.model, apiKey = '' } = {}) {
+  if (!exe || !isAgyFile(exe)) return;
+  if (!modelOk(model)) model = GEMINI_VOICE.model;
+  const key = GeminiCliProc.key({ exe, prompt, model });
+  if (geminiSpare && !geminiSpare.dead && geminiSpare.key === key) return;
+  geminiSpare?.kill();
+  geminiSpare = new GeminiCliProc({ exe, prompt, model, apiKey });
+}
+
+function takeGeminiSpare({ exe, prompt, model, apiKey, spawnImpl }) {
+  if (spawnImpl && spawnImpl !== spawn) return null;
+  const key = GeminiCliProc.key({ exe, prompt, model });
+  if (geminiSpare && !geminiSpare.dead && geminiSpare.key === key && geminiSpare.apiKey === (apiKey || '')) {
+    const p = geminiSpare;
+    geminiSpare = null;
+    return p;
+  }
+  return null;
+}
+
 export function stopGeminiVoice() {
+  if (geminiSpare) {
+    geminiSpare.kill();
+    geminiSpare = null;
+  }
   for (const p of [...liveProcs]) p.kill();
 }
 
@@ -548,7 +748,8 @@ export function createGeminiCliRealtime({
 
   // --- Gemini CLI -----------------------------------------------------------
   const makeProc = (prompt) =>
-    new GeminiCliProc({ exe: geminiPath, prompt, model, apiKey, spawnImpl: spawnImpl || spawn });
+    takeGeminiSpare({ exe: geminiPath, prompt, model, apiKey, spawnImpl })
+    || new GeminiCliProc({ exe: geminiPath, prompt, model, apiKey, spawnImpl: spawnImpl || spawn });
 
   const ensureProc = () => {
     if (proc && !proc.dead) return proc;

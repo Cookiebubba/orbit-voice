@@ -12,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { speakable } from '../brain.js';
 import { childEnv, groupOptions, killTree as killProcessTree } from '../platform/system.js';
+import { isAgyFile } from './auth.js';
 import { isGeminiSignInProblem, parseCliJson } from './brain.js';
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -84,7 +85,16 @@ function removeDirSync(dir) {
   } catch { /* best-effort */ }
 }
 
-export function geminiVisionArgs({ model = GEMINI_VISION_LIMITS.model } = {}) {
+export function geminiVisionArgs({ model = GEMINI_VISION_LIMITS.model, exe = '' } = {}) {
+  if (isAgyFile(exe)) {
+    const agyModel = /^gemini-2\./i.test(model) ? 'gemini-3.8-flash-low' : model;
+    return [
+      '--input-format', 'stream-json',
+      '--output-format', 'stream-json',
+      '--model', agyModel,
+      '--disable-slash-commands',
+    ];
+  }
   return [
     '-p', '',
     '--output-format', 'json',
@@ -255,9 +265,11 @@ export async function askGeminiVision({
       return resolve({ ok: false, error: 'The picture of the window was not there.' });
     }
 
+    const agy = isAgyFile(exe);
     const env = childEnv(process.env);
     delete env.GEMINI_API_KEY;
     delete env.GOOGLE_API_KEY;
+    delete env.GEMINI_HOME;
     delete env.ELECTRON_RUN_AS_NODE;
     if (apiKey) env.GEMINI_API_KEY = apiKey;
 
@@ -281,7 +293,7 @@ export async function askGeminiVision({
     };
 
     try {
-      child = spawnImpl(exe, geminiVisionArgs({ model }), {
+      child = spawnImpl(exe, geminiVisionArgs({ model, exe }), {
         cwd: dir,
         env,
         windowsHide: true,
@@ -307,7 +319,10 @@ export async function askGeminiVision({
     child.stderr.on('data', (d) => { if (err.length < 20_000) err += d; });
     child.on('error', (e) => finish({ ok: false, error: `Couldn't start Gemini CLI: ${String(e?.message || e).slice(0, 120)}` }));
     child.on('close', () => {
-      const j = parseCliJson(out);
+      const parsed = parseCliJson(out);
+      const j = parsed?.event === 'result' && parsed.result && typeof parsed.result === 'object'
+        ? { ...parsed.result, is_error: String(parsed.result.status || '').toUpperCase() === 'ERROR' || !!parsed.result.error }
+        : parsed;
       if (!j || j.is_error || j.error) {
         const raw = (j && typeof j.error === 'string' && j.error)
           || (j && typeof j.error?.message === 'string' && j.error.message)
@@ -334,6 +349,7 @@ export async function askGeminiVision({
     });
 
     child.stdin.on('error', () => {});
-    child.stdin.end(`${VISION_SYSTEM_CLI}\n\nImage file: @window.png\nQuestion: ${promptQuestion}`);
+    const visionPrompt = `${VISION_SYSTEM_CLI}\n\nImage file: @window.png\nQuestion: ${promptQuestion}`;
+    child.stdin.end(agy ? `${JSON.stringify({ event: 'user', message: { content: visionPrompt } })}\n` : visionPrompt);
   });
 }

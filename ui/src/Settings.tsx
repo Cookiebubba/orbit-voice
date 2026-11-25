@@ -13,7 +13,7 @@ import { ARROW_PATH, PREVIEW, css } from "./mouse/shape.js";
 
 export const REPO_URL = "https://github.com/Cookiebubba/orbit-voice";
 
-type GeminiVoiceModel = "gemini-2.5-flash" | "gemini-2.5-pro" | "gemini-2.5-flash-lite";
+type GeminiVoiceModel = "gemini-3.8-flash-low" | "gemini-4-neon-low" | "gemini-2.5-flash" | "gemini-2.5-pro" | "gemini-2.5-flash-lite";
 type BrainProvider = "claude" | "gemini";
 type HelperEngine = "claude-code" | "gemini" | "codex";
 type TargetBackend = "auto" | "t3-code" | "claude-desktop";
@@ -717,9 +717,10 @@ type GeminiVoiceStatus = {
 type T3Status = { active: boolean; backend: TargetBackend; endpoint: string; hasToken: boolean };
 
 const DEFAULT_GEMINI_VOICE_MODELS: { value: GeminiVoiceModel; label: string; hint: string }[] = [
+  { value: "gemini-3.8-flash-low", label: "3.8 Flash", hint: "Gemini 3.8 Flash: fastest voice turns via your Antigravity subscription." },
+  { value: "gemini-4-neon-low", label: "4 Neon", hint: "Gemini 4 Neon: flagship reasoning via your Antigravity subscription." },
   { value: "gemini-2.5-flash", label: "2.5 Flash", hint: "Gemini 2.5 Flash: fast and balanced for everyday voice turns." },
   { value: "gemini-2.5-pro", label: "2.5 Pro", hint: "Gemini 2.5 Pro: deeper reasoning, slower to start talking." },
-  { value: "gemini-2.5-flash-lite", label: "2.5 Flash Lite", hint: "Gemini 2.5 Flash Lite: fastest and lightest responses." },
 ];
 
 const DEFAULT_GEMINI_LIVE_MODELS: Record<string, GeminiModelMeta> = {
