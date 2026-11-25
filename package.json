@@ -41,7 +41,8 @@
     "latency:claude-voice": "node scripts/claude-voice-latency.mjs",
     "eval:intent": "node scripts/intent-eval.mjs",
     "eval:listen": "node scripts/listen-eval.mjs",
-    "eval:emote": "node scripts/emote-eval.mjs"
+    "eval:emote": "node scripts/emote-eval.mjs",
+    "eval:route": "node scripts/route-eval.mjs"
   },
   "engines": {
     "node": ">=20"

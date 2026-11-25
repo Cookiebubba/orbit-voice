@@ -72,7 +72,7 @@ public final class EngineConfig: @unchecked Sendable {
 
   /** config.js engineFor: which voice engine to start on. */
   public static func engineFor(saved: String?, hadFile: Bool, hasKey: Bool) -> String {
-    if saved == "grok" || saved == "claude" { return saved! }
+    if saved == "grok" || saved == "claude" || saved == "gemini-cli" || saved == "gemini-live" { return saved! }
     return hadFile || hasKey ? "grok" : "claude"
   }
 
@@ -202,9 +202,25 @@ public final class EngineConfig: @unchecked Sendable {
       case "brainConnection":
         if val == "claude-code" || val == "api-key" { out[k] = val }
       case "helperEngine":
-        if val == "claude-code" || val == "codex" { out[k] = val }
+        if val == "claude-code" || val == "gemini" || val == "codex" { out[k] = val }
       case "voiceEngine":
-        if val == "grok" || val == "claude" { out[k] = val }
+        if val == "grok" || val == "claude" || val == "gemini-cli" || val == "gemini-live" { out[k] = val }
+      case "geminiVoice":
+        if case .string(let s) = val, GeminiAuth.liveVoices.contains(s) { out[k] = val }
+      case "geminiVoiceModel":
+        if case .string(let s) = val, GeminiAuth.voiceModels[s] != nil { out[k] = val }
+      case "geminiLiveModel":
+        if case .string(let s) = val, (s as NSString).length > 0, (s as NSString).length < 80, matches(s, #"^gemini-[a-z0-9._-]+$"#, .caseInsensitive) { out[k] = val }
+      case "geminiPath":
+        if case .string(let s) = val, s.isEmpty || isGeminiPath(s) { out[k] = val }
+      case "brainProvider":
+        if val == "claude" || val == "gemini" { out[k] = val }
+      case "targetBackend":
+        if val == "auto" || val == "claude-desktop" || val == "t3-code" { out[k] = val }
+      case "t3Endpoint":
+        if case .string(let s) = val, let clean = SettingsSchema.sanitizeLoopbackURL(s) { out[k] = .string(clean) }
+      case "routingDriftThreshold":
+        if case .number(let n) = val, n.isFinite { out[k] = .number(min(0.98, max(0.5, round(n, places: 100)))) }
       case "claudeVoice":
         if isInteger(val), let n = val.doubleValue, n >= 0, n <= 7 { out[k] = val }
       case "claudeVoiceModel":
@@ -277,6 +293,17 @@ public final class EngineConfig: @unchecked Sendable {
     for u in s.utf16 where u < 32 { return false }
     if s.contains(where: { "\"<>|?*".contains($0) }) { return false }
     return matches((s as NSString).lastPathComponent, #"^claude(\.exe)?$"#, .caseInsensitive)
+  }
+
+  /**
+   * geminiPath: only ever a local absolute path (no network share) to `gemini` (isGeminiFile in
+   * src/gemini/auth.js on a Mac: gemini or gemini.exe), without control or shell-ish characters.
+   */
+  static func isGeminiPath(_ s: String) -> Bool {
+    guard (s as NSString).length < 400, s.hasPrefix("/"), !matches(s, #"^[\\/]{2}"#) else { return false }
+    for u in s.utf16 where u < 32 { return false }
+    if s.contains(where: { "\"<>|?*".contains($0) }) { return false }
+    return GeminiAuth.isGeminiFile(s)
   }
 }
 

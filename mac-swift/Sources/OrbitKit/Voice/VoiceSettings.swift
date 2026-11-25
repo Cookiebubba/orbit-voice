@@ -10,7 +10,7 @@ public struct VoiceSettings: Equatable, Sendable {
   public var announce = "speak" // speak | chime | off
   public var avatarThrow = true
   public var avatarThrowSound = true
-  public var voiceEngine = "claude" // claude | grok (config.js's default: new installs start on Claude voice)
+  public var voiceEngine = "claude" // claude | grok | gemini-cli | gemini-live (config.js's default: new installs start on Claude voice)
   public var wakeHotkey = HotkeyAccelerator.defaultAccelerator
   public init() {}
 
@@ -23,7 +23,7 @@ public struct VoiceSettings: Equatable, Sendable {
     if let v = s["announce"]?.stringValue, ["speak", "chime", "off"].contains(v) { announce = v }
     if let v = s["avatarThrow"]?.boolValue { avatarThrow = v }
     if let v = s["avatarThrowSound"]?.boolValue { avatarThrowSound = v }
-    if let v = s["voiceEngine"]?.stringValue, ["grok", "claude"].contains(v) { voiceEngine = v }
+    if let v = s["voiceEngine"]?.stringValue, ["grok", "claude", "gemini-cli", "gemini-live"].contains(v) { voiceEngine = v }
     if let v = s["wakeHotkey"]?.stringValue, HotkeyAccelerator.isAcceptable(v) { wakeHotkey = v }
   }
 

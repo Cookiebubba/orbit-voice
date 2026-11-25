@@ -1062,7 +1062,7 @@ final class VoiceCall: @unchecked Sendable {
     connectedAt = now
     hub.s.log?.info("xai", useClaude ? "Claude voice session started" : "Grok session started")
     pushConfig()
-    toBrowser(["type": "bridge.ready", "model": .string(useClaude ? "claude-\(hub.str("claudeVoiceModel"))" : hub.str("model")), "voice": .string(hub.str("voice"))])
+    toBrowser(["type": "bridge.ready", "model": .string(useClaude ? "claude-\(hub.str("claudeVoiceModel"))" : hub.str("model")), "voice": .string(hub.str("voice")), "engine": .string(useClaude ? "claude" : "grok")])
     _ = runTool("get_current_session", nil)
     // The resume note from recent calls goes in first, quietly (no response.create).
     let note = hub.continuity.noteText(untoldToo: hub.str("announce") != "speak")

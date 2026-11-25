@@ -57,7 +57,8 @@ final class ToolsOracleTests: XCTestCase {
     let sessions = Sessions(home: root, now: { clock.get() })
     let config = EngineConfig(dir: root.appendingPathComponent("orbit-config"))
     _ = config.load(env: [:])
-    config.update(["brainEnabled": true, "brainModel": "auto", "brainExplore": true, "brainConnection": "claude-code", "webSearch": true, "avatar": "qubit", "voiceEngine": "grok"])
+    let fixtureHasQueue = f["results"]?.text.contains("bridge.queued") == true
+    config.update(["brainEnabled": true, "brainModel": "auto", "brainExplore": true, "brainConnection": "claude-code", "webSearch": true, "avatar": "qubit", "voiceEngine": "grok", "routingQueueBusy": .bool(fixtureHasQueue)])
     let replay = Replay()
     let avatar = AvatarRunner()
     avatar.chosen = { config.string("avatar") }

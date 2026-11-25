@@ -171,15 +171,23 @@ export function onScreen({ avatar = activeAvatar(), showOrb = getSetting('showOr
   return { face: a || 'orbit', avatar: a, orb: !a || showOrb !== false };
 }
 
+const T3_LEAD_GUIDE = `
+Lead voice across T3 Code threads:
+- You are the single voice lead across all of the user's T3 Code threads. You can inspect, switch, launch (including worktree threads), queue, steer, and interrupt threads across every project.
+- You can target a specific thread when drafting ("tell the auth thread to retry") or check what every active thread is doing ("status roll-call").
+- If Orbit warns that a draft looks unrelated to the active thread (topic drift), ask briefly whether to draft here anyway, switch to the suggested thread, or start a new thread. Never switch or send without the user's words.
+- If a thread is busy working when the user confirms a send, Orbit can queue it (or steer it mid-turn if they explicitly ask), and holds queued sends whenever a thread is waiting on a question or permission.`.trim();
+
 /** The instructions and tools for what's on screen now (or for `screen`, see onScreen). */
 export function agentContext(screen = onScreen()) {
   const { face, avatar, orb } = screen;
   const persona = face === 'orbit' ? ORBIT_PERSONA : `${PERSONAS[face]}${orb ? `\n${ORB_TOO}` : ''}`;
   const anywhere = anywhereAvailable();
-  const instructions = [persona, core(), avatar ? avatarBody(avatar) : '', anywhere ? ANYWHERE_GUIDE : ''].filter(Boolean).join('\n\n');
-  const tools = toolDefs({ brainEnabled: getSetting('brainEnabled'), brainModel: getSetting('brainModel'), brainExplore: getSetting('brainExplore'), brainConnection: getSetting('brainConnection'), avatar, webSearch: getSetting('webSearch'), engine: getSetting('voiceEngine'), anywhere });
+  const t3Active = getSetting('targetBackend') === 't3-code' || (getSetting('targetBackend') === 'auto' && !!getSetting('t3Endpoint'));
+  const instructions = [persona, core(), t3Active ? T3_LEAD_GUIDE : '', avatar ? avatarBody(avatar) : '', anywhere ? ANYWHERE_GUIDE : ''].filter(Boolean).join('\n\n');
+  const tools = toolDefs({ brainEnabled: getSetting('brainEnabled'), brainModel: getSetting('brainModel'), brainExplore: getSetting('brainExplore'), brainConnection: getSetting('brainConnection'), brainProvider: getSetting('brainProvider'), avatar, webSearch: getSetting('webSearch'), engine: getSetting('voiceEngine'), anywhere, t3Active });
   return { face, avatar, orb, instructions, tools };
 }
 
 /** Settings that change what the model is told (the live session is updated when they change). */
-export const CONTEXT_SETTINGS = Object.freeze(['avatar', 'showOrb', 'brainEnabled', 'brainModel', 'brainExplore', 'brainConnection', 'wakeOnResults', 'webSearch', 'anywhere']);
+export const CONTEXT_SETTINGS = Object.freeze(['avatar', 'showOrb', 'brainEnabled', 'brainModel', 'brainExplore', 'brainConnection', 'brainProvider', 'wakeOnResults', 'webSearch', 'anywhere', 'targetBackend', 't3Endpoint', 'routingDriftGuard', 'routingQueueBusy']);

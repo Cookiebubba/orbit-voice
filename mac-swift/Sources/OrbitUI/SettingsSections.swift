@@ -20,6 +20,19 @@ private let sttOptions: [(value: String, label: String, hint: String)] = [
   ("parakeet-v2", "Accurate", "Parakeet 0.6B: the most accurate, about 1 word in 8 even when mumbling, about 0.3 s slower per sentence. A 460 MB download. Recommended if you mumble."),
 ]
 
+private let geminiLiveVoices: [String] = ["Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"]
+
+private let geminiVoiceModelOptions: [Segmented.Option] = [
+  .init(value: "gemini-2.5-flash", label: "2.5 Flash"),
+  .init(value: "gemini-2.5-pro", label: "2.5 Pro"),
+  .init(value: "gemini-2.5-flash-lite", label: "2.5 Lite"),
+]
+
+private let geminiLiveModelOptions: [Segmented.Option] = [
+  .init(value: "gemini-2.5-flash-native-audio-preview-12-2025", label: "2.5 Native Audio"),
+  .init(value: "gemini-2.0-flash-live-001", label: "2.0 Flash Live"),
+]
+
 struct VoiceEngineSection: View {
   @Bindable var ctx: UIContext
   @State private var status: ClaudeVoiceStatus?
@@ -29,10 +42,49 @@ struct VoiceEngineSection: View {
     let s = ctx.settings
     let engine = s.string("voiceEngine")
     SettingsSection(title: "Voice engine") {
-      Segmented(value: engine, options: [.init(value: "grok", label: "Grok"), .init(value: "claude", label: "Claude (beta)")]) { choose($0) }
+      Segmented(value: engine, options: [
+        .init(value: "grok", label: "Grok"),
+        .init(value: "claude", label: "Claude"),
+        .init(value: "gemini-cli", label: "Gemini CLI"),
+        .init(value: "gemini-live", label: "Gemini Live"),
+      ]) { choose($0) }
       if engine == "grok" {
         Hint(text: "Grok's realtime voice, billed by xAI per minute.").padding(.top, 8)
         XaiKeyField(ctx: ctx)
+      } else if engine == "gemini-cli" {
+        Hint(text: "Gemini through your own Gemini CLI sign-in, with speech recognized and spoken on \(thisComputer). No xAI cost.").padding(.top, 8)
+        FieldLabel(text: "Gemini model")
+        Segmented(value: s.string("geminiVoiceModel"), options: geminiVoiceModelOptions) { save(s, "geminiVoiceModel", .string($0)) }
+        FieldLabel(text: "Speech to text")
+        Segmented(value: s.string("claudeVoiceStt"), options: sttOptions.map { .init(value: $0.value, label: $0.label) }) { chooseStt($0) }
+        Hint(text: "\(sttOptions.first { $0.value == s.string("claudeVoiceStt") }?.hint ?? "") All on \(thisComputer).").padding(.top, 8)
+        sttStatus
+      } else if engine == "gemini-live" {
+        Hint(text: "Gemini Live realtime multimodal voice over WebSocket, using your Gemini API key.").padding(.top, 8)
+        FieldLabel(text: "Gemini voice")
+        Menu {
+          ForEach(geminiLiveVoices, id: \.self) { v in
+            Button(v) { save(s, "geminiVoice", .string(v)) }
+          }
+        } label: {
+          HStack {
+            Text(s.string("geminiVoice")).font(Theme.font(13)).foregroundStyle(Theme.fg)
+            Spacer()
+            Image(systemName: "chevron.down").font(.system(size: 11)).foregroundStyle(Theme.muted)
+          }
+          .padding(.horizontal, 12)
+          .frame(height: 40)
+          .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.soft))
+          .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
+          .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .accessibilityLabel("Gemini voice")
+        .accessibilityValue(s.string("geminiVoice"))
+        FieldLabel(text: "Live model")
+        Segmented(value: s.string("geminiLiveModel"), options: geminiLiveModelOptions) { save(s, "geminiLiveModel", .string($0)) }
       } else {
         Hint(text: "Claude through your own Claude Code sign-in, with speech recognized and spoken on \(thisComputer). No xAI cost. Replies take a moment longer than Grok's.").padding(.top, 8)
         FieldLabel(text: "Brain")
@@ -317,6 +369,14 @@ struct SecondBrainSection: View {
         ? "For current facts (the latest versions, news, docs), \(name) looks them up instead of guessing: a quick search through your Claude Code that can only search and read web pages. What pages say is never taken as an instruction."
         : "For current facts (the latest versions, news, docs), \(name) looks them up instead of guessing, with xAI's own web and X search. What pages say is never taken as an instruction.", isOn: s.bool("webSearch")) { save(s, "webSearch", .bool($0)) }.padding(.top, 16)
       if s.bool("brainEnabled") {
+        FieldLabel(text: "Provider")
+        Segmented(value: s.string("brainProvider"), options: [.init(value: "claude", label: "Claude"), .init(value: "gemini", label: "Gemini")]) { save(s, "brainProvider", .string($0)) }
+        Hint(text: s.string("brainProvider") == "gemini" ? "Routes hard questions through Gemini CLI or your Gemini API key." : "Routes hard questions through Claude Code or your Anthropic API key.").padding(.top, 8)
+        if s.string("brainProvider") == "gemini" {
+          FieldLabel(text: "Gemini model")
+          Segmented(value: s.string("geminiVoiceModel"), options: geminiVoiceModelOptions) { save(s, "geminiVoiceModel", .string($0)) }
+          ToggleRow(label: "Read the current project", hint: "Gemini may read the files of the current project in read-only mode to answer.", isOn: s.bool("brainExplore")) { save(s, "brainExplore", .bool($0)) }.padding(.top, 16)
+        } else {
         FieldLabel(text: "Model")
         Segmented(value: s.string("brainModel"), options: [.init(value: "auto", label: "\(name) picks"), .init(value: "haiku", label: "Haiku"), .init(value: "sonnet", label: "Sonnet"), .init(value: "opus", label: "Opus")]) { save(s, "brainModel", .string($0)) }
         Hint(text: s.string("brainModel") == "auto" ? "\(name) chooses per question: Haiku for quick lookups, Sonnet for most code questions, Opus only for hard problems." : "Every question goes to \(s.string("brainModel").capitalizedFirst).").padding(.top, 8)
@@ -389,6 +449,7 @@ struct SecondBrainSection: View {
             Hint(text: "Leave empty to find it automatically. Otherwise, the full path to claude.", size: 11.5, color: Theme.faint)
           }
           .padding(.top, 8)
+        }
         }
       }
     }

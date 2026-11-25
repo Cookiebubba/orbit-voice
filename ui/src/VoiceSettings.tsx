@@ -1,5 +1,6 @@
-// Voice + speaking speed, for either engine. Changes save right away and apply mid-conversation.
-// Grok: xAI's voices, previewed through xAI. Claude voice: Kitten's 8 voices, previewed on this PC.
+// Voice + speaking speed, for any voice engine. Changes save right away and apply mid-conversation.
+// Grok: xAI's voices, previewed through xAI. Claude / Gemini CLI: Kitten's 8 voices, previewed on
+// this PC. Gemini Live: Google's prebuilt native voices, applied directly in call.
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,7 +16,7 @@ async function post(url: string, body: object) {
 
 // Each engine's voice list, kept for the session: when Settings switches engines, the other card
 // opens at its real size instead of growing out of a "Loading voices…" box.
-type Engine = "grok" | "claude";
+export type Engine = "grok" | "claude" | "gemini-cli" | "gemini-live";
 const cache: Partial<Record<Engine, VoiceState>> = {};
 export function prefetchVoices(engine: Engine) {
   return fetch(`/api/voice?engine=${engine}`)
@@ -25,7 +26,8 @@ export function prefetchVoices(engine: Engine) {
 }
 
 export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME, onVolume }: { engine?: Engine; volume?: number; onVolume?: (v: number) => void }) {
-  const claude = engine === "claude";
+  const localSpeech = engine === "claude" || engine === "gemini-cli";
+  const geminiLive = engine === "gemini-live";
   const [state, setState] = useState<VoiceState | null>(cache[engine] ?? null);
   const [speed, setSpeed] = useState(cache[engine]?.speed ?? 1);
   const [preview, setPreview] = useState<"idle" | "loading" | "playing">("idle");
@@ -44,6 +46,8 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
   };
 
   useEffect(() => {
+    setState(cache[engine] ?? null);
+    if (cache[engine]) setSpeed(cache[engine]!.speed);
     prefetchVoices(engine).then((s) => {
       if (!s) return setError("Couldn't load voice settings.");
       setState(s);
@@ -54,16 +58,24 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
       clearTimeout(saveTimer.current);
       clearTimeout(volTimer.current);
     };
-  }, []);
+  }, [engine]);
 
   const save = async (change: { voice?: string; speed?: number }) => {
     setError("");
-    const body = claude && change.voice !== undefined ? { claudeVoice: Number(change.voice) } : change;
+    const body =
+      change.voice !== undefined
+        ? localSpeech
+          ? { claudeVoice: Number(change.voice) }
+          : geminiLive
+            ? { geminiVoice: change.voice }
+            : change
+        : change;
     const r = await post("/api/settings", body);
     if (r.ok) {
       const saved = await r.json();
+      const savedVoice = localSpeech ? String(saved.claudeVoice) : geminiLive ? String(saved.geminiVoice) : saved.voice;
       setState((s) => {
-        const next = s ? { ...s, voice: claude ? String(saved.claudeVoice) : saved.voice, speed: saved.speed } : s;
+        const next = s ? { ...s, voice: savedVoice, speed: saved.speed } : s;
         if (next) cache[engine] = next;
         return next;
       });
@@ -77,6 +89,7 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
   };
 
   const playPreview = async () => {
+    if (geminiLive) return;
     if (preview === "playing") {
       audio.current?.pause();
       setPreview("idle");
@@ -85,7 +98,7 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
     setPreview("loading");
     setError("");
     try {
-      const r = await post(claude ? "/api/claude-voice/preview" : "/api/voice/preview", { voice: state?.voice, speed });
+      const r = await post(localSpeech ? "/api/claude-voice/preview" : "/api/voice/preview", { voice: state?.voice, speed });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Preview failed.");
       const url = URL.createObjectURL(await r.blob());
       audio.current?.pause();
@@ -122,9 +135,13 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
 
   return (
     <section className="border-t border-line pt-5">
-      <h3 className="eyebrow">{claude ? "Orbit's voice" : "Grok's voice"}</h3>
+      <h3 className="eyebrow">{localSpeech ? "Orbit's voice" : geminiLive ? "Gemini's voice" : "Grok's voice"}</h3>
       <p className="mt-3 text-[12.5px] leading-relaxed text-muted">
-        {claude ? `Spoken on ${thisComputer}. Pick one by ear with Preview. Changes apply right away.` : "Changes apply right away, even mid-conversation."}
+        {localSpeech
+          ? `Spoken on ${thisComputer}. Pick one by ear with Preview. Changes apply right away.`
+          : geminiLive
+            ? "Gemini Live native voices apply directly when you start a call."
+            : "Changes apply right away, even mid-conversation."}
       </p>
 
       <label className="mt-4 mb-1.5 block text-[12px] text-muted">Voice</label>
@@ -150,14 +167,16 @@ export default function VoiceSettings({ engine = "grok", volume = DEFAULT_VOLUME
         </div>
         <button
           onClick={playPreview}
-          aria-label={preview === "playing" ? "Stop preview" : "Preview voice"}
-          title={preview === "playing" ? "Stop preview" : "Preview this voice"}
-          className="flex h-10 items-center gap-1.5 rounded-xl bg-fg px-3.5 text-[13px] font-medium text-white transition-colors hover:bg-[#2b2b2b]"
+          disabled={geminiLive}
+          aria-label={geminiLive ? "Preview unavailable for Gemini Live" : preview === "playing" ? "Stop preview" : "Preview voice"}
+          title={geminiLive ? "Gemini Live voices apply directly in call" : preview === "playing" ? "Stop preview" : "Preview this voice"}
+          className="flex h-10 items-center gap-1.5 rounded-xl bg-fg px-3.5 text-[13px] font-medium text-white transition-colors hover:bg-[#2b2b2b] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {preview === "loading" ? <Loader2 size={14} className="animate-spin" /> : preview === "playing" ? <Square size={12} /> : <Play size={13} />}
           {preview === "playing" ? "Stop" : "Preview"}
         </button>
       </div>
+      {geminiLive && <p className="mt-1.5 text-[11.5px] leading-snug text-faint">Voice preview isn't available for Gemini Live; your selection applies directly in call.</p>}
 
       <div className="mt-5 mb-1.5 flex items-baseline justify-between">
         <label className="text-[12px] text-muted">Talking speed</label>

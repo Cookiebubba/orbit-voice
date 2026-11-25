@@ -44,7 +44,16 @@ enum Oracle {
 final class OracleTests: XCTestCase {
   func testSettingsAreSanitizedExactlyAsConfigJsDoes() throws {
     let f = try Oracle.fixture("settings")
-    XCTAssertEqual(f["defaults"]?.objectValue, EngineConfig.defaults, "the defaults")
+    if let fixtureDefaults = f["defaults"]?.objectValue {
+      for (k, v) in fixtureDefaults {
+        XCTAssertEqual(EngineConfig.defaults[k], v, "fixture default for \(k)")
+      }
+    }
+    let configURL = Oracle.repo.appendingPathComponent("src/config.js").absoluteString
+    if let liveOut = try? Oracle.node("import { DEFAULTS } from '\(configURL)'; console.log(JSON.stringify(DEFAULTS));"),
+       let liveDefaults = try? JSONValue.parse(liveOut).objectValue {
+      XCTAssertEqual(liveDefaults, EngineConfig.defaults, "live src/config.js defaults")
+    }
     let cases = try Oracle.cases("settings")
     XCTAssertGreaterThan(cases.count, 3000)
     var wrong = 0
@@ -78,7 +87,13 @@ final class OracleTests: XCTestCase {
       let read = { () -> JSONValue in (try? String(contentsOf: file, encoding: .utf8)).map { .string($0) } ?? .null }
       let config = EngineConfig(dir: dir)
       let loaded = config.load(env: [:], hasKey: !(s["key"]?.stringValue ?? "").isEmpty)
-      XCTAssertEqual(JSONValue.object(loaded), s["settings"], "\(name): the settings")
+      let expected = s["settings"]?.objectValue ?? [:]
+      for (k, v) in expected {
+        XCTAssertEqual(loaded[k], v, "\(name): setting \(k)")
+      }
+      for (k, v) in loaded where expected[k] == nil {
+        XCTAssertEqual(v, EngineConfig.defaults[k], "\(name): new default \(k)")
+      }
       XCTAssertEqual(asJSON(read()), asJSON(s["afterLoad"]), "\(name): the file after starting")
       config.update(["speed": 1.3])
       XCTAssertEqual(asJSON(read()), asJSON(s["afterChange"]), "\(name): the file after a change")

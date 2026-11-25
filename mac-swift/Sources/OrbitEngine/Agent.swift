@@ -47,6 +47,8 @@ public enum Agent {
     fn("draft_prompt", "Your main tool. Turn what the user wants done (in their code, project, terminal, git...) into a prompt for the Claude Code session open in the desktop app: Claude does the work. Use it whenever the user asks for something to be done, even if they said it to you rather than \"tell Claude\". It types the draft into Claude's prompt box. If their request itself said to send it (\"…and send it\", \"just send it\", \"send Claude: …\"), Orbit sends it at once (the result says sent); otherwise it is not sent: ask whether to send it (\"Want me to send it?\").", [
       ("text", prop("string", "The prompt, written as the user talking straight to Claude: leave out what they said to you about passing it on (\"tell Claude to\", \"ask it\", \"send this:\"), make Claude \"you\" and keep the user as \"I\" (\"tell him he forgot the README\" → \"You forgot the README.\"). Everything else in their own words, faithfully: nothing added, explained or improved. Code they spelled out written as code, in backticks; steps they listed as a numbered list. Filler words like \"um\" may stay: Orbit removes those itself. Orbit refuses a draft with words of substance the user did not say.")),
       ("verbatim", prop("boolean", "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay.")),
+      ("thread", prop("string", "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one.")),
+      ("force", prop("boolean", "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread.")),
     ], required: ["text"]),
     fn("send_draft", "Send the current draft to Claude (presses Send on it in the Claude desktop app). Call it when the user's latest reply to the draft is any clear yes, however they say it (\"yeah\", \"sure\", \"looks good\", \"go for it\", \"send it over\", \"mhm\"). Not for a no, a \"wait\", a question or a change."),
     fn("cancel_draft", "Throw away the current draft without sending."),
@@ -103,6 +105,22 @@ public enum Agent {
   /** xAI's own search tools for Grok's realtime session. */
   public static let xaiSearchTools: [OJSON] = [.obj([("type", .str("web_search"))]), .obj([("type", .str("x_search"))])]
 
+  /** T3_TOOL_DEFS (src/tools.js), offered when T3 Code lead mode is active. */
+  public static let t3ToolDefs: [OJSON] = [
+    fn("list_t3_projects", "List registered projects in T3 Code (id, title, workspace folder)."),
+    fn("t3_thread_status", "Give a status roll-call across all active and recent T3 Code threads (which are running, waiting on a question, idle, or failed).", [
+      ("limit", prop("integer", "Max threads to inspect, default 12, max 25.")),
+    ]),
+    fn("steer_thread", "Send a mid-turn update to a currently running T3 Code thread, only when the user explicitly asks to steer/update it while it works.", [
+      ("thread", prop("string", "Title, id, or file/project words identifying the running thread (empty = active thread).")),
+      ("text", prop("string", "The user's own words to steer the running thread.")),
+    ], required: ["text"]),
+    fn("queue_prompt", "Inspect or cancel prompts queued for busy sessions/threads.", [
+      ("action", prop("string", "list queued prompts or cancel them.", enumValues: ["list", "cancel"])),
+      ("thread", prop("string", "Optional session/thread title or id.")),
+    ], required: ["action"]),
+  ]
+
   /** The `avatar` tool for this avatar (only offered while one is on). */
   public static func avatarTool(_ kind: String) -> OJSON {
     let name = AvatarCommands.names[kind] ?? kind
@@ -119,11 +137,13 @@ public enum Agent {
     public var brainModel = "auto"
     public var brainExplore = true
     public var brainConnection = "claude-code"
+    public var brainProvider = "claude"
     public var avatar: String?
     public var webSearch = true
     public var engine = "grok"
     /** xAI took its own search tools (else search_web, as for Claude voice). */
     public var xaiNativeSearch = true
+    public var t3Active = false
     /** Orbit anywhere's tool definitions, while it's on. */
     public var anywhere: [OJSON] = []
     public init() {}
@@ -134,9 +154,17 @@ public enum Agent {
     var all = toolDefs
     if s.brainEnabled {
       all.append(brainTool(brainModel: s.brainModel, brainExplore: s.brainExplore))
-      if s.brainConnection != "api-key" { all.append(signInTool) }
+      if s.brainConnection != "api-key" && s.brainProvider != "gemini" { all.append(signInTool) }
     }
-    if s.webSearch { all += s.engine != "claude" && s.xaiNativeSearch ? xaiSearchTools : [searchTool] }
+    let isGeminiLive = s.engine == "gemini-live"
+    if s.webSearch {
+      if s.engine == "grok" && s.xaiNativeSearch {
+        all += xaiSearchTools
+      } else if !isGeminiLive {
+        all.append(searchTool)
+      }
+    }
+    if s.t3Active { all += t3ToolDefs }
     all += s.anywhere
     if let a = s.avatar, a == "qubit" || a == "buddy" { all.append(avatarTool(a)) }
     return all
@@ -332,8 +360,20 @@ public enum Agent {
     }
   }
 
+  static let t3LeadGuide = """
+  Lead voice across T3 Code threads:
+  - You are the single voice lead across all of the user's T3 Code threads. You can inspect, switch, launch (including worktree threads), queue, steer, and interrupt threads across every project.
+  - You can target a specific thread when drafting ("tell the auth thread to retry") or check what every active thread is doing ("status roll-call").
+  - If Orbit warns that a draft looks unrelated to the active thread (topic drift), ask briefly whether to draft here anyway, switch to the suggested thread, or start a new thread. Never switch or send without the user's words.
+  - If a thread is busy working when the user confirms a send, Orbit can queue it (or steer it mid-turn if they explicitly ask), and holds queued sends whenever a thread is waiting on a question or permission.
+  """
+
   /** The settings that change what the model is told (a live session is updated when they change). */
-  public static let contextSettings = ["avatar", "showOrb", "brainEnabled", "brainModel", "brainExplore", "brainConnection", "wakeOnResults", "webSearch", "anywhere"]
+  public static let contextSettings = [
+    "avatar", "showOrb", "brainEnabled", "brainModel", "brainExplore", "brainConnection",
+    "brainProvider", "wakeOnResults", "webSearch", "anywhere", "targetBackend", "t3Endpoint",
+    "routingDriftGuard", "routingQueueBusy",
+  ]
 
   /**
    * agentContext(): the instructions and tools for what's on screen now. `settings`: Orbit's settings;
@@ -354,16 +394,20 @@ public enum Agent {
     c.brainModel = str("brainModel")
     c.wakeOnResults = on("wakeOnResults")
     c.brainConnection = str("brainConnection")
-    let instructions = [persona, core(c), screen.avatar.map(avatarBody) ?? "", anywhere?.guide ?? ""].filter { !$0.isEmpty }.joined(separator: "\n\n")
+    let targetBackend = str("targetBackend")
+    let t3Active = targetBackend == "t3-code" || (targetBackend == "auto" && !str("t3Endpoint").isEmpty)
+    let instructions = [persona, core(c), t3Active ? t3LeadGuide : "", screen.avatar.map(avatarBody) ?? "", anywhere?.guide ?? ""].filter { !$0.isEmpty }.joined(separator: "\n\n")
     var t = ToolSettings()
     t.brainEnabled = c.brainEnabled
     t.brainModel = c.brainModel
     t.brainExplore = on("brainExplore")
     t.brainConnection = c.brainConnection
+    t.brainProvider = str("brainProvider")
     t.avatar = screen.avatar
     t.webSearch = c.webSearch
     t.engine = c.voiceEngine
     t.xaiNativeSearch = xaiNativeSearch
+    t.t3Active = t3Active
     t.anywhere = anywhere?.tools ?? []
     return Context(face: screen.face, avatar: screen.avatar, orb: screen.orb, instructions: instructions, tools: tools(t))
   }

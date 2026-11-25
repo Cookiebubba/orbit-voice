@@ -21,6 +21,8 @@ import {
   PROJECT_ROOT,
   getApiKey,
   getBrainKey,
+  getGeminiKey,
+  getT3Token,
   getConfigDir,
   getSetting,
   getSettings,
@@ -29,9 +31,17 @@ import {
   onSettingsChange,
   setApiKey,
   setBrainKey,
+  setGeminiKey,
+  setT3Token,
   updateSettings,
 } from './config.js';
 import { askBrain, claudeAuthStatus, findClaude, openClaudeSignIn, speakable } from './brain.js';
+import { GEMINI_LIVE_MODELS, GEMINI_LIVE_VOICES, GEMINI_VOICE_MODELS, findGemini, geminiAuthStatus, openGeminiSignIn } from './gemini/auth.js';
+import { askGeminiBrain } from './gemini/brain.js';
+import { createGeminiCliRealtime, stopGeminiVoice } from './gemini/cli-voice.js';
+import { createGeminiLiveRealtime } from './gemini/live-voice.js';
+import { createPromptQueue } from './router/queue.js';
+import { createT3Target } from './targets/t3-code.js';
 import { hotkeyLabel as platformHotkeyLabel, primeLoginShellPath } from './platform/system.js';
 import { createClaudeRealtime, keepSpare, loadRecognizer, loadSpeech, speechLoaded, stopClaudeVoice, systemPrompt } from './claude-voice.js';
 import { downloadModels, downloadStatus, downloadStt, modelsReady, STT_MODELS, sttOk, sttReady, sttStatus, VOICE_MODELS_MB } from './voice-models.js';
@@ -102,6 +112,7 @@ export function stopBackgroundWork() {
   continuity.abortHeld();
   stopWakes();
   stopClaudeVoice();
+  stopGeminiVoice();
 }
 
 /** "Ctrl+Alt+G" on Windows, "⌃⌥G" on a Mac (see src/platform/system.js). */
@@ -287,16 +298,47 @@ function tokenMatches(value) {
  * The desktop app passes its own config folder and encrypted key store. Tests may pass a `watcher`
  * (anything with on/start/working) to feed in "Claude finished" events.
  */
-export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, brainSecrets, clipboard, models, watcher: injectedWatcher, speechInShell = false, firstRun } = {}) {
-  initConfig({ dir: configDir, secrets, brainSecrets, firstRun });
+const GEMINI_LIVE_VOICE_LIST = GEMINI_LIVE_VOICES.map((id) => ({
+  id,
+  name: id,
+  gender: ['Aoede', 'Kore', 'Leda', 'Zephyr'].includes(id) ? 'female' : 'male',
+}));
+
+export function startServer({ port = Number(process.env.PORT || 4317), configDir, secrets, brainSecrets, geminiSecrets, t3Secrets, clipboard, models, watcher: injectedWatcher, t3Target: injectedT3Target = null, speechInShell = false, firstRun } = {}) {
+  initConfig({ dir: configDir, secrets, brainSecrets, geminiSecrets, t3Secrets, firstRun });
   if (clipboard) setClipboardWriter(clipboard);
   const modelsDir = models || path.join(PROJECT_ROOT, 'resources', 'models');
   initLog(getConfigDir());
   logInfo('app', `Orbit ${VERSION} starting`);
 
-  // Claude voice (beta): speech models live with the settings, downloaded when it's turned on.
+  // Local-speech engines (Claude voice & Gemini CLI voice): speech models live with the settings.
   const voiceModelsDir = path.join(getConfigDir(), 'claude-voice-models');
-  const claudeVoiceOn = () => getSetting('voiceEngine') === 'claude';
+  const voiceEngine = () => getSetting('voiceEngine');
+  const claudeVoiceOn = () => voiceEngine() === 'claude';
+  const geminiCliOn = () => voiceEngine() === 'gemini-cli';
+  const geminiLiveOn = () => voiceEngine() === 'gemini-live';
+  const localSpeechEngineOn = () => claudeVoiceOn() || geminiCliOn();
+  const promptQueue = createPromptQueue();
+  let t3Instance = injectedT3Target || null;
+  let t3EndpointBound = '';
+  let t3Watcher = null;
+  const resolveT3 = () => {
+    if (injectedT3Target) return injectedT3Target;
+    const mode = getSetting('targetBackend');
+    const ep = getSetting('t3Endpoint');
+    if (mode === 'claude-desktop' || !ep) return null;
+    if (t3Instance && t3EndpointBound === ep) return t3Instance;
+    t3Watcher?.stop?.();
+    t3Watcher = null;
+    t3EndpointBound = ep;
+    t3Instance = createT3Target({ endpoint: ep, token: getT3Token() });
+    return t3Instance;
+  };
+  const activeTarget = () => {
+    const mode = getSetting('targetBackend');
+    if (mode === 'claude-desktop') return null;
+    return resolveT3();
+  };
   /**
    * Load the speech models and start a Claude Code process now, so the next call needn't wait. A
    * desktop shell that hears and speaks itself (`speechInShell`: Orbit Native) holds the models, so
@@ -486,22 +528,39 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     if (!entry.spoken) scheduleWake({ fresh: true });
   }
 
-  watcher.on((evt) => {
+  const handleWatcherEvent = (evt) => {
     broadcast(evt);
     if (evt.type === 'claude.waiting') return void onWaiting(evt).catch((e) => logWarn('watcher', 'Checking what Claude waits on failed', String(e?.message || e).slice(0, 200)));
     if (evt.type !== 'claude.finished') return;
+    // Flush any explicitly confirmed prompt queued for this session (never if waiting).
+    for (const s of liveSessions) s.flushQueued?.(evt.title || evt.id, { working: false, waiting: false });
     const title = notifyTitle(evt.title);
     const key = sessionKey(evt);
     // A prompt the user sent: its result is told as theirs (and supersedes the plain update).
     const result = continuity.matchFinished(evt);
     const cooling = Date.now() - (wokeForSession.get(key) || 0) < WAKE_LIMITS.sessionCooldownMs;
-    const entry = { title, ref: sessionRef(evt, title), key, at: Date.now(), spoken: !!result, wakes: !cooling };
+    const entry = { title, ref: sessionRef(evt, title), key, at: Date.now(), spoken: !!result, wakes: !cooling, backend: evt.backend };
     recentFinished.push(entry);
     if (recentFinished.length > 10) recentFinished.shift();
     if (result) return passOnResults();
     for (const s of liveSessions) if (s.announce(entry)) entry.spoken = true;
     if (!entry.spoken) scheduleWake({ fresh: true });
-  });
+  };
+  watcher.on(handleWatcherEvent);
+  const syncT3Watcher = () => {
+    const t3 = activeTarget();
+    if (!t3) {
+      t3Watcher?.stop?.();
+      t3Watcher = null;
+      return;
+    }
+    if (!t3Watcher) {
+      t3Watcher = t3.createWatcher();
+      t3Watcher.on(handleWatcherEvent);
+      t3Watcher.start();
+    }
+  };
+  syncT3Watcher();
 
   // Background helpers (Orbit anywhere, src/anywhere/agents.js): every voice goes through Orbit.
   // A helper that needs the user's OK (or fails) is urgent: said in a call that's on, or it wakes
@@ -551,10 +610,11 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     const { orbPosition, orbStickAnchor, ...visible } = all;
     broadcast({ type: 'settings.changed', changed, settings: visible });
     // What the voice model is told follows these (src/agent.js): a live call gets it at once.
-    if (changed.some((k) => ['voice', 'claudeVoice', 'claudeVoiceModel', 'claudeVoiceEffort', 'claudeVoiceStt', 'speed', 'wakeHotkey', ...CONTEXT_SETTINGS].includes(k))) {
+    if (changed.some((k) => ['voice', 'claudeVoice', 'claudeVoiceModel', 'claudeVoiceEffort', 'claudeVoiceStt', 'geminiVoice', 'geminiVoiceModel', 'geminiLiveModel', 'speed', 'wakeHotkey', ...CONTEXT_SETTINGS].includes(k))) {
       for (const s of liveSessions) s.pushConfig();
       if (changed.some((k) => CONTEXT_SETTINGS.includes(k))) logInfo('voice', `Context now: ${agentContext().face}${liveSessions.size ? ` (live call${liveSessions.size > 1 ? 's' : ''} updated)` : ''}`);
     }
+    if (changed.some((k) => ['targetBackend', 't3Endpoint'].includes(k))) syncT3Watcher();
     // Turned off: held questions stop now, and nothing waits to wake Grok.
     const resultsOff = (changed.includes('wakeOnResults') && !all.wakeOnResults) || (changed.includes('announce') && all.announce !== 'speak');
     if (resultsOff || (changed.includes('brainEnabled') && !all.brainEnabled)) continuity.abortHeld();
@@ -641,6 +701,9 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
           return sendJson(res, 200, {
             version: VERSION,
             hasKey: !!getApiKey(),
+            hasGeminiKey: !!getGeminiKey(),
+            hasT3Token: !!getT3Token(),
+            activeTarget: activeTarget()?.id || 'claude-desktop',
             keyStorage: keyStorageKind(),
             settings: publicSettings(),
             voiceWarming,
@@ -696,11 +759,98 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
             .catch((e) => logWarn('voice', 'Claude voice: model download failed', String(e?.message || e).slice(0, 200)));
           return sendJson(res, 200, { ok: true, models: downloadStatus(voiceModelsDir) });
 
-        case 'GET /api/voice':
-          // Grok's voices come from xAI; Claude voice's are Kitten's 8, on this PC.
-          // ?engine= asks for one engine's list (Settings shows both while switching between them).
-          if (url.searchParams.get('engine') === 'claude' || (url.searchParams.get('engine') !== 'grok' && claudeVoiceOn())) return sendJson(res, 200, { voice: String(getSetting('claudeVoice')), speed: getSetting('speed'), ...LIMITS, voices: CLAUDE_VOICES, engine: 'claude' });
+        case 'GET /api/voice': {
+          // Grok's voices come from xAI; Gemini Live uses Google prebuilt voices; Claude & Gemini CLI use Kitten's 8 local voices.
+          const want = url.searchParams.get('engine') || voiceEngine();
+          if (want === 'gemini-live') return sendJson(res, 200, { voice: getSetting('geminiVoice'), speed: getSetting('speed'), ...LIMITS, voices: GEMINI_LIVE_VOICE_LIST, engine: 'gemini-live' });
+          if (want === 'claude' || want === 'gemini-cli') return sendJson(res, 200, { voice: String(getSetting('claudeVoice')), speed: getSetting('speed'), ...LIMITS, voices: CLAUDE_VOICES, engine: want });
           return sendJson(res, 200, { voice: getSetting('voice'), speed: getSetting('speed'), ...LIMITS, voices: await listVoices(), engine: 'grok' });
+        }
+
+        case 'GET /api/gemini-voice': {
+          const gemini = findGemini(getSetting('geminiPath'));
+          const auth = gemini ? await geminiAuthStatus({ geminiPath: gemini.path }).catch(() => null) : null;
+          return sendJson(res, 200, {
+            models: downloadStatus(voiceModelsDir),
+            mb: VOICE_MODELS_MB,
+            geminiFound: !!gemini,
+            path: gemini?.path ?? null,
+            signedIn: auth?.ok ? auth.signedIn : null,
+            hasKey: !!getGeminiKey(),
+            stt: sttStatus(voiceModelsDir),
+            voiceModels: GEMINI_VOICE_MODELS,
+            liveModels: GEMINI_LIVE_MODELS,
+            liveVoices: GEMINI_LIVE_VOICE_LIST,
+          });
+        }
+
+        case 'POST /api/gemini/key': {
+          const key = String((await readJson(req)).key || '').trim();
+          if (key && !/^[\w.-]{20,200}$/.test(key)) return sendJson(res, 400, { error: 'That does not look like a Gemini API key.' });
+          setGeminiKey(key);
+          return sendJson(res, 200, { hasKey: !!key });
+        }
+
+        case 'POST /api/gemini/login': {
+          if (Date.now() - lastSignInOpenedAt < 5000) return sendJson(res, 200, { ok: true, note: 'The sign-in window is already open.' });
+          const gemini = findGemini(getSetting('geminiPath'));
+          if (!gemini) return sendJson(res, 200, { ok: false, error: 'Gemini CLI was not found. Install @google/gemini-cli or set its path in Settings.' });
+          const r = await openGeminiSignIn({ geminiPath: gemini.path });
+          if (r.ok) lastSignInOpenedAt = Date.now();
+          return sendJson(res, 200, r);
+        }
+
+        case 'POST /api/gemini/test': {
+          const key = getGeminiKey();
+          const gemini = findGemini(getSetting('geminiPath'));
+          if (!key && !gemini) return sendJson(res, 200, { ok: false, error: 'Add a Gemini API key or install Gemini CLI first.' });
+          const r = await askGeminiBrain({
+            question: 'Reply with exactly one word: ready',
+            model: 'lite',
+            connection: key ? 'api-key' : 'gemini-cli',
+            geminiPath: gemini?.path,
+            apiKey: key,
+          });
+          return sendJson(res, 200, r.ok ? { ok: true, seconds: r.seconds } : { ok: false, error: r.error, needsSignIn: !!r.needsSignIn });
+        }
+
+        case 'GET /api/t3/status': {
+          const t3 = activeTarget();
+          return sendJson(res, 200, {
+            active: t3?.id === 't3-code',
+            backend: getSetting('targetBackend'),
+            endpoint: getSetting('t3Endpoint'),
+            hasToken: !!getT3Token(),
+          });
+        }
+
+        case 'POST /api/t3/token': {
+          const token = String((await readJson(req)).token || '').trim();
+          if (token && token.length > 500) return sendJson(res, 400, { error: 'Token is too long.' });
+          setT3Token(token);
+          t3Instance = null;
+          t3EndpointBound = '';
+          syncT3Watcher();
+          return sendJson(res, 200, { hasToken: !!token });
+        }
+
+        case 'GET /api/t3/threads': {
+          const t3 = activeTarget();
+          if (!t3) return sendJson(res, 200, { active: false, threads: [] });
+          const resList = await t3.listSessions({ limit: 30, allProjects: true });
+          const threads = Array.isArray(resList?.sessions) ? resList.sessions : Array.isArray(resList) ? resList : [];
+          const cur = await t3.getActiveSession().catch(() => null);
+          return sendJson(res, 200, { active: true, activeThreadId: cur?.activeThreadId || null, threads });
+        }
+
+        case 'POST /api/t3/switch': {
+          const t3 = activeTarget();
+          if (!t3) return sendJson(res, 409, { ok: false, error: 'T3 Code backend is not active.' });
+          const body = await readJson(req);
+          const r = await t3.switchSession(String(body.threadId || body.title || ''));
+          if (r.ok) broadcast({ type: 'claude.open', title: r.sessionTitle, threadId: r.threadId });
+          return sendJson(res, r.ok ? 200 : 409, r);
+        }
 
         case 'POST /api/claude-voice/preview': {
           // A short sample of one of Claude voice's voices, made on this PC (no network, no cost).
@@ -734,6 +884,24 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         }
 
         case 'GET /api/sessions': {
+          const t3 = activeTarget();
+          if (t3) {
+            const list = await t3.listSessions({ limit: 40, allProjects: true }).catch(() => ({ sessions: [] }));
+            const cur = await t3.getActiveSession().catch(() => null);
+            const rows = (Array.isArray(list?.sessions) ? list.sessions : Array.isArray(list) ? list : []).map((s) => ({
+              id: s.id,
+              title: s.title,
+              project: s.project || '',
+              badge: s.status || '',
+              open: s.id === cur?.activeThreadId,
+              lastActive: ago(s.lastActivityAt),
+              working: !!s.working,
+              waiting: !!s.waiting,
+              backend: 't3-code',
+            }));
+            const openRow = rows.find((r) => r.open);
+            return sendJson(res, 200, { sessions: rows, openInApp: openRow?.title || null, canSwitch: true, backend: 't3-code' });
+          }
           // What Claude's sidebar shows (so every row can be opened), enriched with what we know
           // from disk. Falls back to the on-disk list if the Claude window can't be read.
           const working = new Set(watcher.working().map((w) => w.title));
@@ -752,7 +920,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
 
         case 'POST /api/switch': {
           const title = String((await readJson(req)).title || '');
-          const result = await switchSession(title);
+          const t3 = activeTarget();
+          const result = t3 ? await t3.switchSession(title) : await switchSession(title);
           if (result.ok) broadcast({ type: 'claude.open', title: result.sessionTitle });
           return sendJson(res, result.ok ? 200 : 409, result);
         }
@@ -905,27 +1074,36 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
     } catch {}
     const toBrowser = (obj) => browser.readyState === WebSocket.OPEN && browser.send(JSON.stringify(obj));
     const apiKey = getApiKey();
-    // Claude voice (beta) stands in for Grok's socket; everything below works the same with it.
-    const useClaude = claudeVoiceOn();
-    const localSpeech = useClaude && wantLocalSpeech;
+    const geminiKey = getGeminiKey();
+    const engine = voiceEngine();
+    const useClaude = engine === 'claude';
+    const useGeminiCli = engine === 'gemini-cli';
+    const useGeminiLive = engine === 'gemini-live';
+    const useLocalSpeechEngine = useClaude || useGeminiCli;
+    const localSpeech = useLocalSpeechEngine && wantLocalSpeech;
     let connectedAt = Date.now();
     let pageClosed = false; // Orbit hung up (sleep, hotkey, quit), as opposed to Grok closing
     // For the log line when the session ends (no audio or words are kept, only counts).
     const stats = { micBytes: 0, micPeak: 0, heard: 0, replies: 0, tools: 0, grokAudioBytes: 0, note: 0 };
     let pageReason = ''; // why the page hung up, as it said (a code)
-    // Claude voice runs on the user's own Claude Code sign-in: it never needs an xAI key. Only Grok does.
-    if (useClaude && !modelsReady(voiceModelsDir)) {
-      logWarn('voice', 'Could not start Claude voice: speech models not downloaded');
+    // Local-speech engines (Claude voice & Gemini CLI voice) need the on-device speech models.
+    if (useLocalSpeechEngine && !modelsReady(voiceModelsDir)) {
+      logWarn('voice', `Could not start ${useGeminiCli ? 'Gemini CLI' : 'Claude'} voice: speech models not downloaded`);
       const dl = downloadStatus(voiceModelsDir);
       toBrowser({
         type: 'bridge.error',
-        message: dl.state === 'downloading' ? `Claude voice is still getting ready: downloading its speech models (${dl.percent}%).` : "Claude voice's speech models aren't downloaded yet. Download them in Settings → Voice engine.",
+        message: dl.state === 'downloading' ? `Speech models are still downloading (${dl.percent}%).` : "On-device speech models aren't downloaded yet. Download them in Settings → Voice engine.",
       });
       return browser.close();
     }
-    if (!useClaude && !apiKey) {
+    if (useGeminiLive && !geminiKey && !process.env.GEMINI_LIVE_URL) {
+      logWarn('voice', 'Could not start Gemini Live: no Gemini API key saved');
+      toBrowser({ type: 'bridge.error', message: 'Gemini Live needs a Gemini API key. Add one in Settings, or switch to Gemini CLI voice (subscription login).' });
+      return browser.close();
+    }
+    if (!useLocalSpeechEngine && !useGeminiLive && !apiKey) {
       logWarn('xai', 'Could not start Grok: no xAI API key saved');
-      toBrowser({ type: 'bridge.error', message: 'Grok voice needs an xAI key. Add one in Settings, or switch to Claude voice.' });
+      toBrowser({ type: 'bridge.error', message: 'Grok voice needs an xAI key. Add one in Settings, or switch to Claude or Gemini voice.' });
       return browser.close();
     }
     // A spoken update that isn't allowed, has nothing to say, or comes too soon after the last one
@@ -1013,6 +1191,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       heardSince: (ts) => speechStartedAt > ts || utterance.at > ts,
       repliesSince: (ts) => exchanges.filter((x) => x.who === 'user' && x.at > ts).length,
       brainHolder,
+      target: activeTarget(),
+      promptQueue,
     });
 
     // Announce wake (see ANNOUNCE_TIMING). null = an ordinary conversation.
@@ -1240,9 +1420,13 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
 
     const upstream = useClaude
       ? createClaudeRealtime({ claudePath: findClaude(getSetting('brainClaudePath'))?.path, modelsRoot: voiceModelsDir, speed: getSetting('speed'), sid: getSetting('claudeVoice'), model: getSetting('claudeVoiceModel'), effort: getSetting('claudeVoiceEffort'), stt: getSetting('claudeVoiceStt'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d), localTurn: (text, itemId) => tryFastPath(text, itemId), localSpeech })
-      : new WebSocket(process.env.XAI_REALTIME_URL || `wss://api.x.ai/v1/realtime?model=${encodeURIComponent(getSetting('model'))}`, { headers: { Authorization: `Bearer ${apiKey}` } });
+      : useGeminiCli
+        ? createGeminiCliRealtime({ geminiPath: findGemini(getSetting('geminiPath'))?.path, apiKey: '', modelsRoot: voiceModelsDir, speed: getSetting('speed'), sid: getSetting('claudeVoice'), model: getSetting('geminiVoiceModel'), stt: getSetting('claudeVoiceStt'), onMetrics: claudeVoiceMetrics, onWarn: (m, d) => logWarn('voice', m, d), localTurn: (text, itemId) => tryFastPath(text, itemId), localSpeech })
+        : useGeminiLive
+          ? createGeminiLiveRealtime({ apiKey: geminiKey, model: getSetting('geminiLiveModel'), voice: getSetting('geminiVoice'), webSearch: getSetting('webSearch'), liveUrl: process.env.GEMINI_LIVE_URL || undefined, onWarn: (m, d) => logWarn('voice', m, d) })
+          : new WebSocket(process.env.XAI_REALTIME_URL || `wss://api.x.ai/v1/realtime?model=${encodeURIComponent(getSetting('model'))}`, { headers: { Authorization: `Bearer ${apiKey}` } });
     const toXai = (obj) => upstream.readyState === WebSocket.OPEN && upstream.send(JSON.stringify(obj));
-    const stopMeter = useClaude ? () => {} : startMeter(); // Claude voice isn't billed by xAI
+    const stopMeter = useLocalSpeechEngine || useGeminiLive ? () => {} : startMeter(); // only Grok bills xAI per-minute meter
 
     const requestResponse = () => {
       awaitingResponse = Date.now();
@@ -1337,16 +1521,27 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
 
     let configAt = 0; // when the last session.update went out
     const hooks = {
-      // Claude voice also takes its own voice choice (Grok would reject an unknown field).
+      // Each voice engine receives its relevant config fields (Grok rejects unknown fields).
       pushConfig: () => {
         configAt = Date.now();
-        toXai({ type: 'session.update', session: useClaude ? { ...sessionConfig(), claude_voice: getSetting('claudeVoice'), claude_model: getSetting('claudeVoiceModel'), claude_effort: getSetting('claudeVoiceEffort'), claude_stt: getSetting('claudeVoiceStt') } : sessionConfig() });
+        const base = sessionConfig();
+        const session = useClaude
+          ? { ...base, claude_voice: getSetting('claudeVoice'), claude_model: getSetting('claudeVoiceModel'), claude_effort: getSetting('claudeVoiceEffort'), claude_stt: getSetting('claudeVoiceStt') }
+          : useGeminiCli
+            ? { ...base, claude_voice: getSetting('claudeVoice'), gemini_model: getSetting('geminiVoiceModel'), claude_stt: getSetting('claudeVoiceStt') }
+            : useGeminiLive
+              ? { ...base, voice: getSetting('geminiVoice'), model: getSetting('geminiLiveModel'), webSearch: getSetting('webSearch') }
+              : base;
+        toXai({ type: 'session.update', session });
       },
+      /** Flush any confirmed prompt queued for a busy session (never while waiting). */
+      flushQueued: (sessionKey, state) => tools.flushQueued?.(sessionKey, state).catch(() => {}),
       /** A spoken update (a session finished). Returns true if this conversation will speak it. */
       announce: (entry) => {
         if (getSetting('announce') !== 'speak') return false;
         if (asleep && getSetting('listenMode') !== 'tap') return false; // asleep in always-on mode: chime only
         if (announce?.stage === 'waiting') return false; // a spoken update about to start picks it up
+        if (entry.backend === 't3-code' && entry.ref) activeTarget()?.noteSpoken?.(entry.ref);
         pending.push(finishedText(entry));
         flushPending();
         return true;
@@ -1394,9 +1589,17 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
 
     upstream.on('open', () => {
       connectedAt = Date.now();
-      logInfo('xai', useClaude ? 'Claude voice session started' : 'Grok session started');
+      const label = useClaude ? 'Claude voice' : useGeminiCli ? 'Gemini CLI voice' : useGeminiLive ? 'Gemini Live' : 'Grok';
+      logInfo('xai', `${label} session started`);
       hooks.pushConfig();
-      toBrowser({ type: 'bridge.ready', model: useClaude ? `claude-${getSetting('claudeVoiceModel')}` : getSetting('model'), voice: getSetting('voice') });
+      const readyModel = useClaude
+        ? `claude-${getSetting('claudeVoiceModel')}`
+        : useGeminiCli
+          ? getSetting('geminiVoiceModel')
+          : useGeminiLive
+            ? getSetting('geminiLiveModel')
+            : getSetting('model');
+      toBrowser({ type: 'bridge.ready', model: readyModel, voice: useGeminiLive ? getSetting('geminiVoice') : getSetting('voice'), engine });
       runTool('get_current_session').catch(() => {});
       // The resume note from recent calls goes in first, quietly: no response.create, so Grok
       // doesn't start talking about it. It's Orbit's record, so what Grok does next (drafting,
@@ -1456,10 +1659,10 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
       toBrowser(evt);
       for (const e of emotes) toBrowser(e);
 
-      // xAI's own web search ran (its events name it): what it brought back is outside data, like a
+      // Native web search ran (xAI or Gemini Live): what it brought back is outside data, like a
       // second-brain answer, for the checks on what the model does next.
-      if (!useClaude && (/search/i.test(evt.type) || /search/i.test(String(evt.item?.type || '')))) tools.noteOutsideData();
-      if (evt.type === 'error' && !useClaude && SEARCH_STATE.xaiNative && Date.now() - configAt < 5000 && /web_search|x_search/i.test(JSON.stringify(evt.error || {}))) {
+      if (!useLocalSpeechEngine && (/search/i.test(evt.type) || /search/i.test(String(evt.item?.type || '')))) tools.noteOutsideData();
+      if (evt.type === 'error' && !useLocalSpeechEngine && !useGeminiLive && SEARCH_STATE.xaiNative && Date.now() - configAt < 5000 && /web_search|x_search/i.test(JSON.stringify(evt.error || {}))) {
         // xAI refused its own search tools: search through Claude Code (search_web) from now on.
         SEARCH_STATE.xaiNative = false;
         logWarn('xai', 'xAI did not take its web search tools; using search_web instead');
@@ -1496,8 +1699,8 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         }
         setUtterance(evt.transcript, speechStarts.get(evt.item_id) || speechStartedAt || Date.now());
         if (evt.type.endsWith('.completed')) said('user', evt.transcript);
-        // (Claude voice asked before calling Claude; see localTurn.)
-        if (!useClaude && evt.type.endsWith('.completed')) {
+        // (Local-speech engines asked before calling the model; see localTurn.)
+        if (!useLocalSpeechEngine && evt.type.endsWith('.completed')) {
           const local = tryFastPath(evt.transcript, evt.item_id);
           if (local) {
             skipResponseTo(typeof evt.item_id === 'string' ? evt.item_id : speechItem);
@@ -1621,6 +1824,10 @@ export function startServer({ port = Number(process.env.PORT || 4317), configDir
         for (let i = 0; i + 1 < pcm.length; i += 64) stats.micPeak = Math.max(stats.micPeak, Math.abs(pcm.readInt16LE(i)));
       }
       if (FORWARDABLE.has(msg.type)) return toXai(msg);
+      // Multimodal vision frame for Gemini Live (gated by anywhereVision setting + live-voice policy check).
+      if (useGeminiLive && msg.type === 'orbit.vision_frame' && getSetting('anywhereVision')) {
+        return toXai({ type: 'orbit.vision_frame', data: msg.data, mimeType: msg.mimeType || 'image/jpeg', window: msg.window, offLimits: !!msg.offLimits });
+      }
       // Local speech: the app's own speech start and transcript, under the same rule as mic audio
       // (nothing outside a spoken update's listening window).
       if (localSpeech && (msg.type === 'orbit.speech_started' || msg.type === 'orbit.transcript')) {

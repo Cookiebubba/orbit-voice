@@ -2290,6 +2290,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -2647,7 +2655,8 @@
       "msg": {
        "type": "bridge.ready",
        "model": "grok-voice-latest",
-       "voice": "eve"
+       "voice": "eve",
+       "engine": "grok"
       }
      },
      {
@@ -3332,6 +3341,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -3689,7 +3706,8 @@
       "msg": {
        "type": "bridge.ready",
        "model": "grok-voice-latest",
-       "voice": "eve"
+       "voice": "eve",
+       "engine": "grok"
       }
      },
      {
@@ -4074,6 +4092,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -4431,7 +4457,8 @@
       "msg": {
        "type": "bridge.ready",
        "model": "grok-voice-latest",
-       "voice": "eve"
+       "voice": "eve",
+       "engine": "grok"
       }
      },
      {
@@ -4929,6 +4956,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -5286,7 +5321,8 @@
       "msg": {
        "type": "bridge.ready",
        "model": "grok-voice-latest",
-       "voice": "eve"
+       "voice": "eve",
+       "engine": "grok"
       }
      },
      {
@@ -5727,6 +5763,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -6084,7 +6128,8 @@
       "msg": {
        "type": "bridge.ready",
        "model": "grok-voice-latest",
-       "voice": "eve"
+       "voice": "eve",
+       "engine": "grok"
       }
      },
      {
@@ -6466,6 +6511,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -6823,7 +6876,8 @@
       "msg": {
        "type": "bridge.ready",
        "model": "grok-voice-latest",
-       "voice": "eve"
+       "voice": "eve",
+       "engine": "grok"
       }
      },
      {
@@ -7096,6 +7150,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -7453,7 +7515,8 @@
       "msg": {
        "type": "bridge.ready",
        "model": "grok-voice-latest",
-       "voice": "eve"
+       "voice": "eve",
+       "engine": "grok"
       }
      },
      {
@@ -8276,6 +8339,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -8633,7 +8704,8 @@
       "msg": {
        "type": "bridge.ready",
        "model": "grok-voice-latest",
-       "voice": "eve"
+       "voice": "eve",
+       "engine": "grok"
       }
      },
      {
@@ -9163,6 +9235,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -9526,7 +9606,8 @@
       "msg": {
        "type": "bridge.ready",
        "model": "grok-voice-latest",
-       "voice": "eve"
+       "voice": "eve",
+       "engine": "grok"
       }
      },
      {
@@ -9670,6 +9751,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -10255,6 +10344,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -10629,7 +10726,8 @@
       "msg": {
        "type": "bridge.ready",
        "model": "grok-voice-latest",
-       "voice": "eve"
+       "voice": "eve",
+       "engine": "grok"
       }
      },
      {
@@ -10896,6 +10994,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -11350,6 +11456,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -11847,6 +11961,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -12225,7 +12347,8 @@
       "msg": {
        "type": "bridge.ready",
        "model": "claude-haiku",
-       "voice": "eve"
+       "voice": "eve",
+       "engine": "claude"
       }
      },
      {
@@ -12498,6 +12621,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -13021,6 +13152,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -13395,7 +13534,8 @@
       "msg": {
        "type": "bridge.ready",
        "model": "grok-voice-latest",
-       "voice": "eve"
+       "voice": "eve",
+       "engine": "grok"
       }
      },
      {
@@ -13684,6 +13824,14 @@
             "verbatim": {
              "type": "boolean",
              "description": "True when the user asks for their words exactly (\"verbatim\", \"word for word\"): then even filler words stay."
+            },
+            "thread": {
+             "type": "string",
+             "description": "Optional (T3 Code lead mode): title, project, or file hint of the specific thread to target instead of the active one."
+            },
+            "force": {
+             "type": "boolean",
+             "description": "True only after Orbit warned about topic drift and the user confirmed they still want to draft in this session/thread."
             }
            },
            "required": [
@@ -14058,7 +14206,8 @@
       "msg": {
        "type": "bridge.ready",
        "model": "grok-voice-latest",
-       "voice": "eve"
+       "voice": "eve",
+       "engine": "grok"
       }
      },
      {

@@ -1,10 +1,10 @@
 // Settings screen. Everything saves as soon as you change it.
-import { useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { desktop, isMac, thisComputer, type HotkeyInfo, type UpdateState } from "./desktop";
 import { postJson, type AppConfig, type Settings as SettingsT } from "./useAppState";
-import VoiceSettings, { prefetchVoices } from "./VoiceSettings";
+import VoiceSettings, { prefetchVoices, type Engine as VoiceEngine } from "./VoiceSettings";
 import PillScroll from "./components/PillScroll";
 import Reveal from "./components/Reveal";
 import { InstallCommand, NotSignedInLine, SetupGuideLink, SignInStep } from "./components/ClaudeSetup";
@@ -13,19 +13,54 @@ import { ARROW_PATH, PREVIEW, css } from "./mouse/shape.js";
 
 export const REPO_URL = "https://github.com/Cookiebubba/orbit-voice";
 
-type Update = (patch: Partial<SettingsT>) => Promise<void>;
+type GeminiVoiceModel = "gemini-2.5-flash" | "gemini-2.5-pro" | "gemini-2.5-flash-lite";
+type BrainProvider = "claude" | "gemini";
+type HelperEngine = "claude-code" | "gemini" | "codex";
+type TargetBackend = "auto" | "t3-code" | "claude-desktop";
+
+type ExtendedSettings = Omit<SettingsT, "voiceEngine"> & {
+  voiceEngine: VoiceEngine;
+  geminiVoice?: string;
+  geminiVoiceModel?: GeminiVoiceModel;
+  geminiLiveModel?: string;
+  geminiPath?: string;
+  brainProvider?: BrainProvider;
+  helperEngine?: HelperEngine;
+  targetBackend?: TargetBackend;
+  t3Endpoint?: string;
+  routingDriftGuard?: boolean;
+  routingDriftThreshold?: number;
+  routingQueueBusy?: boolean;
+};
+
+type ExtendedAppConfig = Omit<AppConfig, "settings"> & {
+  hasGeminiKey?: boolean;
+  hasT3Token?: boolean;
+  activeTarget?: string;
+  settings: ExtendedSettings;
+};
+
+type Update = (patch: Partial<ExtendedSettings>) => Promise<void>;
 
 const GAP = 12; // between sections (part of each section's open/close, so nothing jumps)
 
-export default function Settings({ config, update, onClose, onKeySaved, focusKey = false }: { config: AppConfig; update: Update; onClose: () => void; onKeySaved: () => void; focusKey?: boolean }) {
-  const s = config.settings;
-  // The assistant's name in the text: Grok, or Orbit when Claude is the voice ("Claude" is the coder).
-  const claude = s.voiceEngine === "claude";
-  const name = claude ? "Orbit" : "Grok";
-  // Both voice lists up front, so switching engines opens the other card at its real size.
+export default function Settings({ config, update, onClose, onKeySaved, focusKey = false }: { config: AppConfig; update: (patch: Partial<SettingsT>) => Promise<void>; onClose: () => void; onKeySaved: () => void; focusKey?: boolean }) {
+  const cfg = config as ExtendedAppConfig;
+  const s = cfg.settings;
+  const patchSettings: Update = (patch) => update(patch as Partial<SettingsT>);
+  const isGrok = s.voiceEngine === "grok";
+  const isClaude = s.voiceEngine === "claude";
+  const isGeminiCli = s.voiceEngine === "gemini-cli";
+  const isGeminiLive = s.voiceEngine === "gemini-live";
+  const isLocalSpeech = isClaude || isGeminiCli;
+  // The assistant's name in the text: Grok, Gemini (Live), or Orbit for local-speech engines.
+  const name = isGrok ? "Grok" : isGeminiLive ? "Gemini" : "Orbit";
+  // Prefetch all voice lists up front, so switching engines opens the next card at its real size.
   useEffect(() => {
     prefetchVoices("grok");
     prefetchVoices("claude");
+    prefetchVoices("gemini-cli");
+    prefetchVoices("gemini-live");
   }, []);
   return (
     <PillScroll className="flex flex-col px-5 pb-8">
@@ -36,20 +71,26 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
       <p className="mt-2 mb-3 text-[12.5px] text-muted">Everything saves as soon as you change it.</p>
 
       <div className="flex flex-col">
-        <VoiceEngineSection s={s} update={update} config={config} onKeySaved={onKeySaved} focusKey={focusKey} />
+        <VoiceEngineSection s={s} update={patchSettings} config={cfg} onKeySaved={onKeySaved} focusKey={focusKey} />
         {/* Each engine's own voice card: one closes as the other opens. */}
-        <Reveal show={!claude} gap={GAP}>
-          <VoiceSettings engine="grok" volume={s.voiceVolume} onVolume={(voiceVolume) => update({ voiceVolume })} />
+        <Reveal show={isGrok} gap={GAP}>
+          <VoiceSettings engine="grok" volume={s.voiceVolume} onVolume={(voiceVolume) => patchSettings({ voiceVolume })} />
         </Reveal>
-        <Reveal show={claude} gap={GAP}>
-          <VoiceSettings engine="claude" volume={s.voiceVolume} onVolume={(voiceVolume) => update({ voiceVolume })} />
+        <Reveal show={isClaude} gap={GAP}>
+          <VoiceSettings engine="claude" volume={s.voiceVolume} onVolume={(voiceVolume) => patchSettings({ voiceVolume })} />
+        </Reveal>
+        <Reveal show={isGeminiCli} gap={GAP}>
+          <VoiceSettings engine="gemini-cli" volume={s.voiceVolume} onVolume={(voiceVolume) => patchSettings({ voiceVolume })} />
+        </Reveal>
+        <Reveal show={isGeminiLive} gap={GAP}>
+          <VoiceSettings engine="gemini-live" volume={s.voiceVolume} onVolume={(voiceVolume) => patchSettings({ voiceVolume })} />
         </Reveal>
 
         <Reveal show gap={GAP}>
           <Section title="Listening">
             <Segmented
               value={s.listenMode}
-              onChange={(listenMode) => update({ listenMode })}
+              onChange={(listenMode) => patchSettings({ listenMode })}
               options={[
                 { value: "always", label: "Always on" },
                 { value: "tap", label: "One question at a time" },
@@ -57,20 +98,20 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
             />
             <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
               {s.listenMode === "always"
-                ? `${name} hears you until you say "go to sleep" or press ${s.hotkeyLabel}. Then it hangs up${claude ? "" : ", so nothing is billed,"} until you press ${s.hotkeyLabel}${s.wakeWord ? ' or say “Hey Orbit”' : ""} again.`
+                ? `${name} hears you until you say "go to sleep" or press ${s.hotkeyLabel}. Then it hangs up${isLocalSpeech ? "" : ", so nothing is billed,"} until you press ${s.hotkeyLabel}${s.wakeWord ? ' or say “Hey Orbit”' : ""} again.`
                 : `Press ${s.hotkeyLabel}${s.wakeWord ? ' or say “Hey Orbit”' : ""}, ask one question, and ${name} hangs up after answering (it waits up to a minute if a prompt needs your yes). Nothing in the background gets picked up.`}
             </p>
             <Toggle
               className="mt-4"
               checked={s.halfDuplex}
-              onChange={(halfDuplex) => update({ halfDuplex })}
+              onChange={(halfDuplex) => patchSettings({ halfDuplex })}
               label={`Don't listen while ${name} is talking`}
               hint={`Turn on if you use speakers instead of headphones, so ${name} doesn't hear itself. You can't interrupt it then.`}
             />
             <Toggle
               className="mt-4"
               checked={s.wakeWord}
-              onChange={(wakeWord) => update({ wakeWord })}
+              onChange={(wakeWord) => patchSettings({ wakeWord })}
               label="Wake word: say “Hey Orbit” (or “Hey Grok”)"
               hint={`Starts ${name} hands-free after it has gone to sleep. Recognized entirely on ${thisComputer} by a small offline speech model: no audio leaves your computer and it costs nothing. Each wake starts a fresh conversation.`}
             />
@@ -81,7 +122,7 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
           <Section title="When Claude finishes">
             <Segmented
               value={s.announce}
-              onChange={(announce) => update({ announce })}
+              onChange={(announce) => patchSettings({ announce })}
               options={[
                 { value: "speak", label: `${name} tells me` },
                 { value: "chime", label: "Chime only" },
@@ -97,14 +138,14 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
               <Toggle
                 className="mt-4"
                 checked={s.announceWake}
-                onChange={(announceWake) => update({ announceWake })}
+                onChange={(announceWake) => patchSettings({ announceWake })}
                 label={`Wake ${name} to say it`}
-                hint={`While ${name} is asleep, it connects just long enough to tell you, then listens for 3 seconds in case you want something. The mic opens only after it has spoken; press the hotkey to stop it.${claude ? " Each wake uses a little of your Claude plan." : " Each wake bills a few seconds of xAI time."}`}
+                hint={`While ${name} is asleep, it connects just long enough to tell you, then listens for 3 seconds in case you want something. The mic opens only after it has spoken; press the hotkey to stop it.${isClaude ? " Each wake uses a little of your Claude plan." : isGeminiCli ? " Each wake uses your Gemini CLI quota." : isGeminiLive ? " Each wake uses a few seconds of Gemini Live API time." : " Each wake bills a few seconds of xAI time."}`}
               />
               <Toggle
                 className="mt-4"
                 checked={s.wakeOnResults}
-                onChange={(wakeOnResults) => update({ wakeOnResults })}
+                onChange={(wakeOnResults) => patchSettings({ wakeOnResults })}
                 label={`Wake ${name} when something you asked for is ready`}
                 hint={`When Claude finishes a prompt ${name} sent for you, or the second brain answers after you hung up (a question still running then keeps going), ${name} wakes to tell you. At most 6 wakes an hour.`}
               />
@@ -113,12 +154,16 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
         </Reveal>
 
         <Reveal show gap={GAP}>
-          <SecondBrainSection s={s} update={update} name={name} />
+          <SecondBrainSection s={s} update={patchSettings} name={name} />
+        </Reveal>
+
+        <Reveal show gap={GAP}>
+          <T3RoutingSection s={s} update={patchSettings} config={cfg} />
         </Reveal>
 
         {desktop && (
           <Reveal show gap={GAP}>
-            <AnywhereSection s={s} update={update} name={name} />
+            <AnywhereSection s={s} update={patchSettings} name={name} />
           </Reveal>
         )}
 
@@ -135,26 +180,26 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
               <Toggle
                 className="mt-4"
                 checked={s.orbStick}
-                onChange={(orbStick) => update({ orbStick })}
+                onChange={(orbStick) => patchSettings({ orbStick })}
                 label="Stick to Claude Code"
                 hint="The orb rides on the Claude window: it follows it around, stays on top of it, and hides while Claude is minimized. Drag the orb to choose its spot on the window." 
               />
               <Toggle
                 className="mt-4"
                 checked={s.orbPulse}
-                onChange={(orbPulse) => update({ orbPulse })}
+                onChange={(orbPulse) => patchSettings({ orbPulse })}
                 label="Pulse with your voice"
                 hint="The orb grows very slightly as you speak, so you can see it hearing you."
               />
               <Toggle
                 className="mt-4"
                 checked={s.orbPulseGrok}
-                onChange={(orbPulseGrok) => update({ orbPulseGrok })}
+                onChange={(orbPulseGrok) => patchSettings({ orbPulseGrok })}
                 label={`Pulse with ${name}'s voice`}
                 hint={`The same while ${name} is talking.`}
               />
               <Reveal show={s.orbPulse || s.orbPulseGrok}>
-                <PulseAmount value={s.orbPulseAmount} update={update} />
+                <PulseAmount value={s.orbPulseAmount} update={patchSettings} />
               </Reveal>
             </Section>
           </Reveal>
@@ -162,18 +207,18 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
 
         {desktop && (
           <Reveal show gap={GAP}>
-            <AvatarSection s={s} update={update} name={name} />
+            <AvatarSection s={s} update={patchSettings} name={name} />
           </Reveal>
         )}
 
-        {/* What Grok costs: xAI bills by the minute. Claude voice has no xAI cost. */}
-        <Reveal show={!claude} gap={GAP}>
-          <UsageSection costPerMinute={s.costPerMinute} update={update} />
+        {/* What Grok costs: xAI bills by the minute. Claude and Gemini voices have no xAI cost. */}
+        <Reveal show={isGrok} gap={GAP}>
+          <UsageSection costPerMinute={s.costPerMinute} update={patchSettings} />
         </Reveal>
 
         {desktop && (
           <Reveal show gap={GAP}>
-            <UpdatesSection version={config.version} auto={s.autoUpdate} update={update} />
+            <UpdatesSection version={config.version} auto={s.autoUpdate} update={patchSettings} />
           </Reveal>
         )}
 
@@ -186,7 +231,7 @@ export default function Settings({ config, update, onClose, onKeySaved, focusKey
 }
 
 // ---------- building blocks ----------
-function AnywhereSection({ s, update, name }: { s: SettingsT; update: Update; name: string }) {
+function AnywhereSection({ s, update, name }: { s: ExtendedSettings; update: Update; name: string }) {
   return (
     <Section title="Orbit anywhere">
       <Toggle
@@ -329,7 +374,7 @@ function StartWithWindows() {
 
 // ---------- avatar ----------
 /** Who lives along the bottom of the Claude window: the pixel buddy, Qubit, or nobody. Switches live. */
-function AvatarSection({ s, update, name }: { s: SettingsT; update: Update; name: string }) {
+function AvatarSection({ s, update, name }: { s: ExtendedSettings; update: Update; name: string }) {
   const avatar = s.avatar ?? "buddy";
   return (
     <Section title="Avatar">
@@ -456,33 +501,140 @@ const STT: { value: SttId; label: string; hint: string }[] = [
 ];
 type SttState = { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string; mb: number };
 
-// ---------- second brain ----------
+// ---------- voice engine + second brain + T3 routing ----------
 type ClaudeVoiceStatus = { models: { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string }; mb: number; claudeFound: boolean; signedIn?: boolean | null; stt?: Record<SttId, SttState> };
+type GeminiModelMeta = { label: string; speed: string };
+type GeminiVoiceStatus = {
+  models: { state: "idle" | "downloading" | "ready" | "error"; percent: number; error: string };
+  mb: number;
+  geminiFound: boolean;
+  path: string | null;
+  signedIn: boolean | null;
+  hasKey: boolean;
+  stt?: Record<SttId, SttState>;
+  voiceModels?: Record<string, GeminiModelMeta>;
+  liveModels?: Record<string, GeminiModelMeta>;
+};
+type T3Status = { active: boolean; backend: TargetBackend; endpoint: string; hasToken: boolean };
+
+const DEFAULT_GEMINI_VOICE_MODELS: { value: GeminiVoiceModel; label: string; hint: string }[] = [
+  { value: "gemini-2.5-flash", label: "2.5 Flash", hint: "Gemini 2.5 Flash: fast and balanced for everyday voice turns." },
+  { value: "gemini-2.5-pro", label: "2.5 Pro", hint: "Gemini 2.5 Pro: deeper reasoning, slower to start talking." },
+  { value: "gemini-2.5-flash-lite", label: "2.5 Flash Lite", hint: "Gemini 2.5 Flash Lite: fastest and lightest responses." },
+];
+
+const DEFAULT_GEMINI_LIVE_MODELS: Record<string, GeminiModelMeta> = {
+  "gemini-2.5-flash-native-audio-preview-12-2025": { label: "Gemini 2.5 Flash Native Audio", speed: "native audio, lowest latency" },
+  "gemini-2.0-flash-live-001": { label: "Gemini 2.0 Flash Live", speed: "fast multimodal live" },
+};
+
 /** Second brain's "Check again" tells the Claude voice section to look again too. */
 const CLAUDE_CHECK_EVENT = "orbit:claude-check";
 
-/** Claude through your own Claude Code with speech models on this PC, or Grok (with an xAI key). */
-function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: SettingsT; update: Update; config: AppConfig; onKeySaved: () => void; focusKey: boolean }) {
+/** Grok, Claude, Gemini CLI (local speech), or Gemini Live (native audio + vision). */
+function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: ExtendedSettings; update: Update; config: ExtendedAppConfig; onKeySaved: () => void; focusKey: boolean }) {
   const [status, setStatus] = useState<ClaudeVoiceStatus | null>(null);
+  const [geminiStatus, setGeminiStatus] = useState<GeminiVoiceStatus | null>(null);
+  const [geminiSigningIn, setGeminiSigningIn] = useState<{ since: number; error?: string } | null>(null);
+  const [geminiChecking, setGeminiChecking] = useState(false);
+  const [geminiKey, setGeminiKey] = useState("");
+  const [geminiKeyOpen, setGeminiKeyOpen] = useState(false);
+  const [geminiKeyMsg, setGeminiKeyMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  const [geminiTest, setGeminiTest] = useState<{ state: "idle" | "testing" | "ok" | "failed"; text?: string }>({ state: "idle" });
+
   const refresh = () =>
     fetch("/api/claude-voice")
       .then((r) => r.json())
       .then(setStatus)
       .catch(() => {});
+  const refreshGemini = () =>
+    fetch("/api/gemini-voice")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: GeminiVoiceStatus | null) => d && setGeminiStatus(d))
+      .catch(() => {});
+
   useEffect(() => {
     refresh();
+    refreshGemini();
   }, [s.voiceEngine]);
   useEffect(() => {
     window.addEventListener(CLAUDE_CHECK_EVENT, refresh);
     return () => window.removeEventListener(CLAUDE_CHECK_EVENT, refresh);
   }, []);
-  // While the models download, check progress every second.
+
+  // While local speech models download (shared by Claude & Gemini CLI), poll every second.
   const sttDownloading = !!status?.stt && Object.values(status.stt).some((x) => x.state === "downloading");
+  const modelsDownloading = status?.models.state === "downloading" || geminiStatus?.models.state === "downloading";
   useEffect(() => {
-    if (status?.models.state !== "downloading" && !sttDownloading) return;
-    const id = setInterval(refresh, 1000);
+    if (!modelsDownloading && !sttDownloading) return;
+    const id = setInterval(() => {
+      refresh();
+      if (s.voiceEngine === "gemini-cli") refreshGemini();
+    }, 1000);
     return () => clearInterval(id);
-  }, [status?.models.state, sttDownloading]);
+  }, [modelsDownloading, sttDownloading, s.voiceEngine]);
+
+  // After Gemini CLI "Sign in": poll every 3 s (for up to 3 minutes) until signed in.
+  useEffect(() => {
+    if (!geminiSigningIn || geminiSigningIn.error) return;
+    const id = setInterval(async () => {
+      const st: GeminiVoiceStatus | null = await fetch("/api/gemini-voice")
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      if (st) setGeminiStatus(st);
+      if (st?.signedIn || Date.now() - geminiSigningIn.since > 3 * 60 * 1000) {
+        setGeminiSigningIn(null);
+      }
+    }, 3000);
+    return () => clearInterval(id);
+  }, [geminiSigningIn]);
+
+  const signInGemini = async () => {
+    setGeminiSigningIn({ since: Date.now() });
+    try {
+      const r = await (await postJson("/api/gemini/login", {})).json();
+      if (!r.ok) setGeminiSigningIn({ since: Date.now(), error: r.error || "Couldn't open Gemini sign-in." });
+    } catch {
+      setGeminiSigningIn({ since: Date.now(), error: "Couldn't reach Orbit." });
+    }
+  };
+
+  const checkGeminiAgain = async () => {
+    setGeminiChecking(true);
+    await refreshGemini();
+    setGeminiChecking(false);
+  };
+
+  const saveGeminiKey = async (value: string) => {
+    setGeminiKeyMsg(null);
+    try {
+      const r = await postJson("/api/gemini/key", { key: value });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setGeminiKeyMsg({ text: data.error || "Couldn't save the Gemini API key.", bad: true });
+        return;
+      }
+      setGeminiKey("");
+      setGeminiKeyOpen(false);
+      setGeminiTest({ state: "idle" });
+      setGeminiKeyMsg({ text: value ? "Gemini API key saved." : "Gemini API key removed." });
+      refreshGemini();
+    } catch {
+      setGeminiKeyMsg({ text: "Couldn't reach Orbit.", bad: true });
+    }
+  };
+
+  const runGeminiTest = async () => {
+    setGeminiTest({ state: "testing" });
+    try {
+      const r = await (await postJson("/api/gemini/test", {})).json();
+      setGeminiTest(r.ok ? { state: "ok", text: `Connected (${r.seconds} s)` } : { state: "failed", text: r.error || "Connection test failed." });
+      if (r.needsSignIn) refreshGemini();
+    } catch {
+      setGeminiTest({ state: "failed", text: "Couldn't reach Orbit." });
+    }
+  };
+
   const downloadStt = async (id: SttId) => {
     const r = await (await postJson("/api/claude-voice/stt-download", { id })).json().catch(() => null);
     if (r?.stt) setStatus((st) => (st ? { ...st, stt: r.stt } : st));
@@ -497,29 +649,54 @@ function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: Se
   const stt = status?.stt?.[s.claudeVoiceStt];
   const download = async () => {
     const r = await (await postJson("/api/claude-voice/download", {})).json().catch(() => null);
-    if (r?.models) setStatus((st) => (st ? { ...st, models: r.models } : st));
-    else refresh();
+    if (r?.models) {
+      setStatus((st) => (st ? { ...st, models: r.models } : st));
+      setGeminiStatus((st) => (st ? { ...st, models: r.models } : st));
+    } else {
+      refresh();
+      refreshGemini();
+    }
   };
-  const choose = (voiceEngine: "grok" | "claude") => {
+  const choose = (voiceEngine: VoiceEngine) => {
     update({ voiceEngine });
-    if (voiceEngine === "claude" && status && status.models.state !== "ready" && status.models.state !== "downloading") download();
+    const localModels = status?.models ?? geminiStatus?.models;
+    if ((voiceEngine === "claude" || voiceEngine === "gemini-cli") && localModels && localModels.state !== "ready" && localModels.state !== "downloading") download();
   };
 
   const m = status?.models;
+  const gm = geminiStatus?.models ?? status?.models;
+  const geminiModel: GeminiVoiceModel = s.geminiVoiceModel ?? "gemini-2.5-flash";
+  const geminiLiveModel = s.geminiLiveModel ?? "gemini-2.5-flash-native-audio-preview-12-2025";
+  const liveModelsMap = geminiStatus?.liveModels && Object.keys(geminiStatus.liveModels).length ? geminiStatus.liveModels : DEFAULT_GEMINI_LIVE_MODELS;
+  const hasGeminiKey = geminiStatus ? geminiStatus.hasKey : !!config.hasGeminiKey;
+  const engineOptions: { value: VoiceEngine; label: string }[] = [
+    { value: "grok", label: "Grok" },
+    { value: "claude", label: "Claude" },
+    { value: "gemini-cli", label: "Gemini CLI" },
+    { value: "gemini-live", label: "Gemini Live" },
+  ];
+
   return (
     <Section title="Voice engine">
-      <Segmented
-        value={s.voiceEngine}
-        onChange={choose}
-        options={[
-          { value: "grok", label: "Grok" },
-          { value: "claude", label: "Claude (beta)" },
-        ]}
-      />
+      <div role="radiogroup" aria-label="Voice engine" className="grid grid-cols-2 gap-1 rounded-2xl bg-soft p-[3px]">
+        {engineOptions.map((o) => (
+          <button
+            key={o.value}
+            role="radio"
+            aria-checked={s.voiceEngine === o.value}
+            onClick={() => choose(o.value)}
+            className={cn("rounded-xl px-2.5 py-1.5 text-[12.5px] font-medium transition-colors", s.voiceEngine === o.value ? "bg-fg text-white" : "text-ink hover:text-fg")}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+
       <Reveal show={s.voiceEngine === "grok"}>
         <p className="mt-2 text-[12px] leading-snug text-muted">Grok's realtime voice, billed by xAI per minute.</p>
         <XaiKey config={config} onSaved={onKeySaved} focus={focusKey} />
       </Reveal>
+
       <Reveal show={s.voiceEngine === "claude"}>
         <p className="mt-2 text-[12px] leading-snug text-muted">
           Claude through your own Claude Code sign-in, with speech recognized and spoken on {thisComputer}. No xAI cost. Replies take a moment longer than Grok's.
@@ -551,7 +728,7 @@ function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: Se
         </p>
         <div className="mt-4 mb-1.5 text-[12.5px] text-ink">Speech to text</div>
         <Segmented value={s.claudeVoiceStt} onChange={chooseStt} options={STT.map(({ value, label }) => ({ value, label }))} />
-        <p className="mt-2 text-[12px] leading-snug text-muted">{STT.find((o) => o.value === s.claudeVoiceStt)?.hint} All on {thisComputer}. (Grok hears you on xAI's side: this is for Claude voice only.)</p>
+        <p className="mt-2 text-[12px] leading-snug text-muted">{STT.find((o) => o.value === s.claudeVoiceStt)?.hint} All on {thisComputer}. (Grok hears you on xAI's side: this is for local-speech voice only.)</p>
         {s.claudeVoiceStt !== "moonshine" && stt && stt.state !== "ready" && (
           <div className="mt-1.5 text-[12px] leading-snug">
             {stt.state === "downloading" ? (
@@ -601,19 +778,200 @@ function VoiceEngineSection({ s, update, config, onKeySaved, focusKey }: { s: Se
           </div>
         )}
       </Reveal>
+
+      <Reveal show={s.voiceEngine === "gemini-cli"}>
+        <p className="mt-2 text-[12px] leading-snug text-muted">
+          Gemini through your Google subscription / Gemini CLI sign-in, with speech recognized and spoken locally on {thisComputer}. No API key needed.
+        </p>
+        <div className="mt-4 mb-1.5 text-[12.5px] text-ink">Model</div>
+        <Segmented
+          value={geminiModel}
+          onChange={(geminiVoiceModel) => update({ geminiVoiceModel })}
+          options={DEFAULT_GEMINI_VOICE_MODELS.map(({ value, label }) => ({ value, label }))}
+        />
+        <p className="mt-2 text-[12px] leading-snug text-muted">
+          {geminiStatus?.voiceModels?.[geminiModel]
+            ? `${geminiStatus.voiceModels[geminiModel].label}: ${geminiStatus.voiceModels[geminiModel].speed}.`
+            : DEFAULT_GEMINI_VOICE_MODELS.find((o) => o.value === geminiModel)?.hint}
+        </p>
+
+        {geminiStatus && (
+          <div className="mt-3 space-y-2 text-[12px] leading-snug">
+            {!geminiStatus.geminiFound ? (
+              <div className="rounded-xl bg-soft px-3 py-2.5">
+                <p className="text-amber-700">Gemini CLI wasn't found. Install it with <code className="font-mono text-fg">npm i -g @google/gemini-cli</code>, then check again.</p>
+                <button
+                  onClick={checkGeminiAgain}
+                  disabled={geminiChecking}
+                  className="mt-2 h-7 rounded-lg bg-white px-2.5 text-[12px] font-medium text-ink shadow-[0_1px_2px_rgba(0,0,0,.06)] transition-colors hover:text-fg disabled:opacity-50"
+                >
+                  {geminiChecking ? "Checking…" : "Check again"}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-3 text-[12.5px]">
+                <span className={cn("min-w-0 leading-snug", geminiStatus.signedIn ? "text-ink" : geminiSigningIn?.error ? "text-red-600" : "text-amber-700")}>
+                  {geminiStatus.signedIn
+                    ? "Signed in to Gemini CLI ✓"
+                    : geminiSigningIn?.error
+                      ? geminiSigningIn.error
+                      : geminiSigningIn
+                        ? "Finish signing in with Google in the window that opened…"
+                        : "Gemini CLI isn't signed in yet."}
+                </span>
+                {!geminiStatus.signedIn && (
+                  <button
+                    onClick={signInGemini}
+                    disabled={!!geminiSigningIn && !geminiSigningIn.error}
+                    className="h-8 shrink-0 rounded-lg bg-fg px-3 text-[12.5px] font-medium text-white transition-colors hover:bg-[#2b2b2b] disabled:opacity-40"
+                  >
+                    {geminiSigningIn && !geminiSigningIn.error ? "Waiting…" : "Sign in"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            <Reveal show={gm?.state === "ready"}>
+              <p className="text-muted">Local speech models ready.</p>
+            </Reveal>
+            <Reveal show={gm?.state === "downloading"}>
+              <p className="text-ink">Downloading local speech models… {gm?.percent ?? 0}%</p>
+              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/[0.07]">
+                <div className="h-full rounded-full bg-fg transition-[width] duration-700 ease-out" style={{ width: `${gm?.percent ?? 0}%` }} />
+              </div>
+            </Reveal>
+            <Reveal show={gm?.state === "idle" || gm?.state === "error"}>
+              <div className="flex items-center gap-3">
+                <p className={cn("flex-1", gm?.state === "error" ? "text-amber-700" : "text-muted")}>
+                  {gm?.state === "error" ? `Download failed: ${gm.error}` : `Needs about ${geminiStatus.mb} MB of local speech models, kept on ${thisComputer}.`}
+                </p>
+                <button onClick={download} className="shrink-0 rounded-lg bg-fg px-2.5 py-1 text-[12px] font-medium text-white transition-colors hover:bg-[#2b2b2b]">
+                  {gm?.state === "error" ? "Retry" : "Download"}
+                </button>
+              </div>
+            </Reveal>
+          </div>
+        )}
+      </Reveal>
+
+      <Reveal show={s.voiceEngine === "gemini-live"}>
+        <p className="mt-2 text-[12px] leading-snug text-muted">
+          Realtime native audio with live window vision frames over Google's Gemini Live API. Requires a Gemini API key.
+        </p>
+
+        <div className="mt-3 text-[12px] leading-snug">
+          {hasGeminiKey && !geminiKeyOpen ? (
+            <div className="flex items-center gap-2">
+              <p className="min-w-0 flex-1 text-muted">Gemini API key saved, {keyStorageLabel(config.keyStorage)}.</p>
+              <button
+                onClick={() => setGeminiKeyOpen(true)}
+                className="shrink-0 rounded-lg bg-soft px-2.5 py-1 text-[12px] font-medium text-ink transition-colors hover:bg-black/[0.08] hover:text-fg"
+              >
+                Replace
+              </button>
+              <button
+                onClick={() => saveGeminiKey("")}
+                className="shrink-0 rounded-lg px-2 py-1 text-[12px] text-muted transition-colors hover:text-fg"
+              >
+                Remove
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="text-ink">
+                Get a key at{" "}
+                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-fg underline decoration-black/25 underline-offset-2 hover:decoration-fg">
+                  aistudio.google.com
+                </a>
+                . It's stored encrypted, only on {thisComputer}.
+              </p>
+              <form
+                className="mt-2 flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (geminiKey.trim()) saveGeminiKey(geminiKey.trim());
+                }}
+              >
+                <input
+                  value={geminiKey}
+                  onChange={(e) => setGeminiKey(e.target.value)}
+                  type="password"
+                  autoComplete="off"
+                  aria-label="Gemini API key"
+                  placeholder="AIza…"
+                  className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-soft px-2.5 text-[13px] text-fg outline-none select-text placeholder:text-faint focus:border-black/40 focus:bg-white"
+                />
+                <button disabled={!geminiKey.trim()} className="rounded-lg bg-fg px-3 text-[13px] font-medium text-white transition-colors hover:bg-[#2b2b2b] disabled:opacity-30">
+                  Save
+                </button>
+              </form>
+            </>
+          )}
+          {geminiKeyMsg && <p className={cn("mt-1.5 text-[12px]", geminiKeyMsg.bad ? "text-red-600" : "text-muted")}>{geminiKeyMsg.text}</p>}
+          {!hasGeminiKey && (
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-xl bg-soft px-3 py-2 text-[12px]">
+              <span className="text-muted">No API key? Use your Google login instead.</span>
+              <button
+                type="button"
+                onClick={() => choose("gemini-cli")}
+                className="shrink-0 rounded-lg bg-white px-2.5 py-1 text-[12px] font-medium text-fg shadow-[0_1px_2px_rgba(0,0,0,.06)] transition-colors hover:bg-black/[0.04]"
+              >
+                Use Gemini CLI
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 mb-1.5 text-[12.5px] text-ink">Live model</div>
+        <div className="relative">
+          <select
+            value={geminiLiveModel}
+            onChange={(e) => update({ geminiLiveModel: e.target.value })}
+            aria-label="Gemini Live model"
+            className="h-9 w-full appearance-none rounded-xl border border-line bg-soft pr-8 pl-3 text-[12.5px] text-fg outline-none hover:border-black/20 focus:border-black/40 focus:bg-white"
+          >
+            {!liveModelsMap[geminiLiveModel] && <option value={geminiLiveModel}>{geminiLiveModel}</option>}
+            {Object.entries(liveModelsMap).map(([id, meta]) => (
+              <option key={id} value={id}>
+                {meta.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={15} className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-muted" />
+        </div>
+        {liveModelsMap[geminiLiveModel]?.speed && (
+          <p className="mt-1.5 text-[12px] leading-snug text-muted">{liveModelsMap[geminiLiveModel].speed}.</p>
+        )}
+
+        <div className="mt-3 flex items-center gap-3">
+          <button
+            onClick={runGeminiTest}
+            disabled={geminiTest.state === "testing"}
+            className="h-8 shrink-0 rounded-lg bg-soft px-3 text-[12.5px] text-ink transition-colors hover:bg-black/[0.08] hover:text-fg disabled:opacity-50"
+          >
+            {geminiTest.state === "testing" ? "Testing…" : "Test"}
+          </button>
+          <span className={cn("min-w-0 text-[12px] leading-snug", geminiTest.state === "failed" ? "text-red-600" : geminiTest.state === "ok" ? "text-emerald-700" : "text-muted")}>
+            {geminiTest.state === "idle" ? (hasGeminiKey ? "Ready to test your Gemini connection." : "Add a Gemini API key to test.") : geminiTest.text}
+          </span>
+        </div>
+      </Reveal>
     </Section>
   );
 }
 
 type BrainStatus = { found: boolean; path: string | null; source: "settings" | "path" | "claude-desktop" | null; hasKey: boolean; signedIn: boolean | null };
 
-function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update; name: string }) {
+function SecondBrainSection({ s, update, name }: { s: ExtendedSettings; update: Update; name: string }) {
   const [status, setStatus] = useState<BrainStatus | null>(null);
   const [test, setTest] = useState<{ state: "idle" | "testing" | "ok" | "failed"; text?: string }>({ state: "idle" });
   const [key, setKey] = useState("");
   const [keyError, setKeyError] = useState("");
   const [path, setPath] = useState(s.brainClaudePath);
   const [advanced, setAdvanced] = useState(!!s.brainClaudePath);
+
+  const brainProvider: BrainProvider = s.brainProvider ?? "claude";
+  const helperEngine: "claude-code" | "gemini" = s.helperEngine === "gemini" ? "gemini" : "claude-code";
 
   const refresh = () =>
     fetch("/api/brain")
@@ -662,9 +1020,10 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
   const runTest = async () => {
     setTest({ state: "testing" });
     try {
-      const r = await (await postJson("/api/brain/test", {})).json();
+      const endpoint = brainProvider === "gemini" ? "/api/gemini/test" : "/api/brain/test";
+      const r = await (await postJson(endpoint, {})).json();
       setTest(r.ok ? { state: "ok", text: `Connected (${r.seconds} s)` } : { state: "failed", text: r.error });
-      if (r.needsSignIn) refresh();
+      if (r.needsSignIn && brainProvider === "claude") refresh();
     } catch {
       setTest({ state: "failed", text: "Couldn't reach Orbit." });
     }
@@ -679,12 +1038,12 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
 
   const where = status?.source === "claude-desktop" ? "the copy inside the Claude app" : status?.source === "settings" ? "the path below" : `Claude Code on ${thisComputer}`;
   return (
-    <Section title="Second brain">
+    <Section title="Second brain & helpers">
       <Toggle
         checked={s.brainEnabled}
         onChange={(brainEnabled) => update({ brainEnabled })}
-        label={`Let ${name} ask Claude when a question is hard`}
-        hint={`For deep questions, or questions about the code in your current project, ${name} quietly asks Claude and tells you the answer. Only a short note appears when Claude reads your project.`}
+        label={`Let ${name} ask the second brain when a question is hard`}
+        hint={`For deep questions, or questions about the code in your current project, ${name} quietly asks ${brainProvider === "gemini" ? "Gemini" : "Claude"} and tells you the answer. Only a short note appears when it reads your project.`}
       />
       <Toggle
         className="mt-4"
@@ -694,10 +1053,28 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
         hint={
           s.voiceEngine === "claude"
             ? `For current facts (the latest versions, news, docs), ${name} looks them up instead of guessing: a quick search through your Claude Code that can only search and read web pages. What pages say is never taken as an instruction.`
-            : `For current facts (the latest versions, news, docs), ${name} looks them up instead of guessing, with xAI's own web and X search. What pages say is never taken as an instruction.`
+            : s.voiceEngine === "gemini-cli" || s.voiceEngine === "gemini-live"
+              ? `For current facts (the latest versions, news, docs), ${name} looks them up instead of guessing. What pages say is never taken as an instruction.`
+              : `For current facts (the latest versions, news, docs), ${name} looks them up instead of guessing, with xAI's own web and X search. What pages say is never taken as an instruction.`
         }
       />
-      <Reveal show={!!status && !status.found && (s.voiceEngine === "claude" || s.brainConnection === "claude-code")}>
+
+      <div className="mt-4 mb-1.5 text-[12.5px] text-ink">Helper engine</div>
+      <Segmented
+        value={helperEngine}
+        onChange={(v) => update({ helperEngine: v })}
+        options={[
+          { value: "claude-code", label: "Claude Code" },
+          { value: "gemini", label: "Gemini CLI" },
+        ]}
+      />
+      <p className="mt-2 text-[12px] leading-snug text-muted">
+        {helperEngine === "gemini"
+          ? "Background helpers (Orbit anywhere) run through your Gemini CLI."
+          : "Background helpers (Orbit anywhere) run through your Claude Code."}
+      </p>
+
+      <Reveal show={!!status && !status.found && (s.voiceEngine === "claude" || (brainProvider === "claude" && s.brainConnection === "claude-code") || helperEngine === "claude-code")}>
         <div className="mt-4">
           <p className="text-[12.5px] leading-snug text-amber-700">Claude Code isn't on {thisComputer} yet. To install it, paste this into a terminal:</p>
           <InstallCommand className="mt-2" />
@@ -715,106 +1092,131 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
           </div>
         </div>
       </Reveal>
+
       <Reveal show={s.brainEnabled}>
         <>
-          <div className="mt-4 mb-1.5 text-[12.5px] text-ink">Model</div>
+          <div className="mt-4 mb-1.5 text-[12.5px] text-ink">Second brain provider</div>
           <Segmented
-            value={s.brainModel}
-            onChange={(brainModel) => update({ brainModel })}
+            value={brainProvider}
+            onChange={(v) => {
+              update({ brainProvider: v });
+              setTest({ state: "idle" });
+            }}
             options={[
-              { value: "auto", label: `${name} picks` },
-              { value: "haiku", label: "Haiku" },
-              { value: "sonnet", label: "Sonnet" },
-              { value: "opus", label: "Opus" },
+              { value: "claude", label: "Claude" },
+              { value: "gemini", label: "Gemini" },
             ]}
           />
           <p className="mt-2 text-[12px] leading-snug text-muted">
-            {s.brainModel === "auto"
-              ? `${name} chooses per question: Haiku for quick lookups, Sonnet for most code questions, Opus only for hard problems.`
-              : `Every question goes to ${s.brainModel[0].toUpperCase() + s.brainModel.slice(1)}.`}
+            {brainProvider === "gemini"
+              ? "Routes hard questions and project exploration through Gemini (using your Gemini API key if set, or Gemini CLI sign-in)."
+              : "Routes hard questions and project exploration through Claude Code or your Anthropic API key."}
           </p>
+
+          <Reveal show={brainProvider === "claude"}>
+            <div className="mt-4 mb-1.5 text-[12.5px] text-ink">Model</div>
+            <Segmented
+              value={s.brainModel}
+              onChange={(brainModel) => update({ brainModel })}
+              options={[
+                { value: "auto", label: `${name} picks` },
+                { value: "haiku", label: "Haiku" },
+                { value: "sonnet", label: "Sonnet" },
+                { value: "opus", label: "Opus" },
+              ]}
+            />
+            <p className="mt-2 text-[12px] leading-snug text-muted">
+              {s.brainModel === "auto"
+                ? `${name} chooses per question: Haiku for quick lookups, Sonnet for most code questions, Opus only for hard problems.`
+                : `Every question goes to ${s.brainModel[0].toUpperCase() + s.brainModel.slice(1)}.`}
+            </p>
+          </Reveal>
+
           <Toggle
             className="mt-4"
             checked={s.brainExplore}
             onChange={(brainExplore) => update({ brainExplore })}
             label="Read the current project"
-            hint="Claude may read the files of the project open in your Claude session to answer: read-only, only inside that project folder, with common secret files (.env, keys, credentials) blocked. It can't run commands or change anything."
+            hint="May read the files of the project open in your session to answer: read-only, only inside that project folder, with common secret files (.env, keys, credentials) blocked. It can't run commands or change anything."
           />
 
-          <div className="mt-4 mb-1.5 text-[12.5px] text-ink">Connection</div>
-          <Segmented
-            value={s.brainConnection}
-            onChange={(brainConnection) => {
-              update({ brainConnection });
-              setTest({ state: "idle" });
-            }}
-            options={[
-              { value: "claude-code", label: "My Claude login" },
-              { value: "api-key", label: "Anthropic API key" },
-            ]}
-          />
-          <p className="mt-2 text-[12px] leading-snug text-muted">
-            {s.brainConnection === "claude-code"
-              ? "Uses your Claude Code sign-in, so questions count toward your Claude plan. No setup if you use Claude Code."
-              : `Questions are billed to your Anthropic API account. The key is encrypted on ${thisComputer}.`}
-          </p>
+          <Reveal show={brainProvider === "claude"}>
+            <div className="mt-4 mb-1.5 text-[12.5px] text-ink">Connection</div>
+            <Segmented
+              value={s.brainConnection}
+              onChange={(brainConnection) => {
+                update({ brainConnection });
+                setTest({ state: "idle" });
+              }}
+              options={[
+                { value: "claude-code", label: "My Claude login" },
+                { value: "api-key", label: "Anthropic API key" },
+              ]}
+            />
+            <p className="mt-2 text-[12px] leading-snug text-muted">
+              {s.brainConnection === "claude-code"
+                ? "Uses your Claude Code sign-in, so questions count toward your Claude plan. No setup if you use Claude Code."
+                : `Questions are billed to your Anthropic API account. The key is encrypted on ${thisComputer}.`}
+            </p>
 
-
-          <Reveal show={s.brainConnection === "claude-code" && !!status?.found && status.signedIn !== null}>
-            {status && <div className="mt-2 flex items-center justify-between gap-3 text-[12.5px]">
-              <span className={cn("min-w-0 leading-snug", status.signedIn ? "text-ink" : signingIn?.error ? "text-red-600" : "text-amber-700")}>
-                {status.signedIn
-                  ? "Signed in to Claude Code ✓"
-                  : signingIn?.error
-                    ? signingIn.error
-                    : signingIn
-                      ? "Finish signing in in the window and browser that opened…"
-                      : "Claude Code isn't signed in. Sign in here, or run claude once in a terminal."}
-              </span>
-              {!status.signedIn && (
-                <button
-                  onClick={signIn}
-                  disabled={!!signingIn && !signingIn.error}
-                  className="h-8 shrink-0 rounded-lg bg-fg text-white transition-colors hover:bg-[#2b2b2b] px-3 text-[12.5px] font-medium disabled:opacity-40"
-                >
-                  {signingIn && !signingIn.error ? "Waiting…" : "Sign in"}
-                </button>
-              )}
-            </div>}
-          </Reveal>
-
-          <Reveal show={s.brainConnection === "api-key"}>
-            <div className="mt-2">
-              {status?.hasKey && !key ? (
-                <div className="flex items-center justify-between gap-2 text-[12.5px] text-ink">
-                  <span>API key saved ✓</span>
-                  <button onClick={() => saveKey("")} className="rounded-md px-2 py-1 text-muted hover:text-fg">
-                    Remove
-                  </button>
+            <Reveal show={s.brainConnection === "claude-code" && !!status?.found && status.signedIn !== null}>
+              {status && (
+                <div className="mt-2 flex items-center justify-between gap-3 text-[12.5px]">
+                  <span className={cn("min-w-0 leading-snug", status.signedIn ? "text-ink" : signingIn?.error ? "text-red-600" : "text-amber-700")}>
+                    {status.signedIn
+                      ? "Signed in to Claude Code ✓"
+                      : signingIn?.error
+                        ? signingIn.error
+                        : signingIn
+                          ? "Finish signing in in the window and browser that opened…"
+                          : "Claude Code isn't signed in. Sign in here, or run claude once in a terminal."}
+                  </span>
+                  {!status.signedIn && (
+                    <button
+                      onClick={signIn}
+                      disabled={!!signingIn && !signingIn.error}
+                      className="h-8 shrink-0 rounded-lg bg-fg text-white transition-colors hover:bg-[#2b2b2b] px-3 text-[12.5px] font-medium disabled:opacity-40"
+                    >
+                      {signingIn && !signingIn.error ? "Waiting…" : "Sign in"}
+                    </button>
+                  )}
                 </div>
-              ) : (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (key.trim()) saveKey(key.trim());
-                  }}
-                  className="flex gap-2"
-                >
-                  <input
-                    type="password"
-                    value={key}
-                    onChange={(e) => setKey(e.target.value)}
-                    placeholder="sk-ant-…"
-                    autoComplete="off"
-                    className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-soft px-2 text-[13px] text-fg outline-none select-text placeholder:text-faint focus:border-black/40 focus:bg-white"
-                  />
-                  <button disabled={!key.trim()} className="h-8 rounded-lg bg-fg text-white transition-colors hover:bg-[#2b2b2b] px-3 text-[12.5px] font-medium disabled:opacity-30">
-                    Save
-                  </button>
-                </form>
               )}
-              {keyError && <p className="mt-1 text-[12px] text-red-600">{keyError}</p>}
-            </div>
+            </Reveal>
+
+            <Reveal show={s.brainConnection === "api-key"}>
+              <div className="mt-2">
+                {status?.hasKey && !key ? (
+                  <div className="flex items-center justify-between gap-2 text-[12.5px] text-ink">
+                    <span>API key saved ✓</span>
+                    <button onClick={() => saveKey("")} className="rounded-md px-2 py-1 text-muted hover:text-fg">
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (key.trim()) saveKey(key.trim());
+                    }}
+                    className="flex gap-2"
+                  >
+                    <input
+                      type="password"
+                      value={key}
+                      onChange={(e) => setKey(e.target.value)}
+                      placeholder="sk-ant-…"
+                      autoComplete="off"
+                      className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-soft px-2 text-[13px] text-fg outline-none select-text placeholder:text-faint focus:border-black/40 focus:bg-white"
+                    />
+                    <button disabled={!key.trim()} className="h-8 rounded-lg bg-fg text-white transition-colors hover:bg-[#2b2b2b] px-3 text-[12.5px] font-medium disabled:opacity-30">
+                      Save
+                    </button>
+                  </form>
+                )}
+                {keyError && <p className="mt-1 text-[12px] text-red-600">{keyError}</p>}
+              </div>
+            </Reveal>
           </Reveal>
 
           <div className="mt-3 flex items-center gap-3">
@@ -826,28 +1228,289 @@ function SecondBrainSection({ s, update, name }: { s: SettingsT; update: Update;
               {test.state === "testing" ? "Testing…" : "Test connection"}
             </button>
             <span className={cn("min-w-0 text-[12px] leading-snug", test.state === "failed" ? "text-red-600" : test.state === "ok" ? "text-emerald-700" : "text-muted")}>
-              {test.state === "idle" ? (status ? (status.found ? `Using ${where}.` : "Claude Code not found.") : "") : test.text}
+              {test.state === "idle"
+                ? brainProvider === "gemini"
+                  ? "Configure Gemini CLI or a Gemini API key in Voice engine above."
+                  : status
+                    ? status.found
+                      ? `Using ${where}.`
+                      : "Claude Code not found."
+                    : ""
+                : test.text}
             </span>
           </div>
 
-          <button onClick={() => setAdvanced((a) => !a)} className="mt-3 text-[12px] text-muted hover:text-fg">
-            {advanced ? "Hide location" : "Claude Code location…"}
-          </button>
-          <Reveal show={advanced}>
-            <div className="mt-2">
-              <input
-                value={path}
-                onChange={(e) => setPath(e.target.value)}
-                onBlur={() => path.trim() !== s.brainClaudePath && update({ brainClaudePath: path.trim() })}
-                placeholder={status?.path && status.source !== "settings" ? `Automatic: ${status.path}` : "Automatic"}
-                spellCheck={false}
-                className="h-8 w-full rounded-lg border border-line bg-soft px-2 text-[12px] text-fg outline-none select-text placeholder:text-faint focus:border-black/40 focus:bg-white"
-              />
-              <p className="mt-1 text-[11.5px] leading-snug text-faint">Leave empty to find it automatically. Otherwise, the full path to {isMac ? "claude" : "claude.exe"}.</p>
-            </div>
+          <Reveal show={brainProvider === "claude"}>
+            <button onClick={() => setAdvanced((a) => !a)} className="mt-3 text-[12px] text-muted hover:text-fg">
+              {advanced ? "Hide location" : "Claude Code location…"}
+            </button>
+            <Reveal show={advanced}>
+              <div className="mt-2">
+                <input
+                  value={path}
+                  onChange={(e) => setPath(e.target.value)}
+                  onBlur={() => path.trim() !== s.brainClaudePath && update({ brainClaudePath: path.trim() })}
+                  placeholder={status?.path && status.source !== "settings" ? `Automatic: ${status.path}` : "Automatic"}
+                  spellCheck={false}
+                  className="h-8 w-full rounded-lg border border-line bg-soft px-2 text-[12px] text-fg outline-none select-text placeholder:text-faint focus:border-black/40 focus:bg-white"
+                />
+                <p className="mt-1 text-[11.5px] leading-snug text-faint">Leave empty to find it automatically. Otherwise, the full path to {isMac ? "claude" : "claude.exe"}.</p>
+              </div>
+            </Reveal>
           </Reveal>
         </>
       </Reveal>
+    </Section>
+  );
+}
+
+// ---------- T3 Code & smart routing ----------
+const DRIFT_MIN = 0.5;
+const DRIFT_MAX = 0.98;
+
+function isValidLoopbackUrl(value: string) {
+  if (!value) return true;
+  try {
+    const u = new URL(value);
+    return (u.protocol === "http:" || u.protocol === "https:") && ["127.0.0.1", "localhost", "::1"].includes(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function T3RoutingSection({ s, update, config }: { s: ExtendedSettings; update: Update; config: ExtendedAppConfig }) {
+  const targetBackend: TargetBackend = s.targetBackend ?? "auto";
+  const driftGuard = s.routingDriftGuard !== false;
+  const queueBusy = s.routingQueueBusy !== false;
+  const savedThreshold = typeof s.routingDriftThreshold === "number" ? s.routingDriftThreshold : 0.8;
+
+  const [t3Status, setT3Status] = useState<T3Status | null>(null);
+  const [endpoint, setEndpoint] = useState(s.t3Endpoint ?? "");
+  const [endpointErr, setEndpointErr] = useState("");
+  const [token, setToken] = useState("");
+  const [tokenOpen, setTokenOpen] = useState(false);
+  const [tokenMsg, setTokenMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  const [threshold, setThreshold] = useState(savedThreshold);
+  const thresholdTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => setEndpoint(s.t3Endpoint ?? ""), [s.t3Endpoint]);
+  useEffect(() => setThreshold(savedThreshold), [savedThreshold]);
+  useEffect(() => () => clearTimeout(thresholdTimer.current), []);
+
+  const refreshStatus = () =>
+    fetch("/api/t3/status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: T3Status | null) => d && setT3Status(d))
+      .catch(() => {});
+
+  useEffect(() => {
+    refreshStatus();
+  }, [targetBackend, s.t3Endpoint]);
+
+  const saveEndpoint = async (raw: string) => {
+    const trimmed = raw.trim().replace(/\/+$/, "");
+    if (!isValidLoopbackUrl(trimmed)) {
+      setEndpointErr("Must be a local loopback URL (127.0.0.1, localhost, or ::1).");
+      return;
+    }
+    setEndpointErr("");
+    if (trimmed !== (s.t3Endpoint ?? "")) {
+      await update({ t3Endpoint: trimmed });
+      refreshStatus();
+    }
+  };
+
+  const saveToken = async (value: string) => {
+    setTokenMsg(null);
+    try {
+      const r = await postJson("/api/t3/token", { token: value });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setTokenMsg({ text: data.error || "Couldn't save the T3 Bearer token.", bad: true });
+        return;
+      }
+      setToken("");
+      setTokenOpen(false);
+      setTokenMsg({ text: value ? "T3 Bearer token saved." : "T3 Bearer token removed." });
+      refreshStatus();
+    } catch {
+      setTokenMsg({ text: "Couldn't reach Orbit.", bad: true });
+    }
+  };
+
+  const changeThreshold = (v: number) => {
+    setThreshold(v);
+    clearTimeout(thresholdTimer.current);
+    thresholdTimer.current = setTimeout(() => {
+      void update({ routingDriftThreshold: v });
+    }, 150);
+  };
+
+  const hasToken = t3Status ? t3Status.hasToken : !!config.hasT3Token;
+  const active = t3Status ? t3Status.active : config.activeTarget === "t3-code";
+  const pct = Math.round(threshold * 100);
+  const fill = ((threshold - DRIFT_MIN) / (DRIFT_MAX - DRIFT_MIN)) * 100;
+
+  return (
+    <Section title="T3 Code & Smart Routing">
+      <div className="mb-1.5 text-[12.5px] text-ink">Target backend</div>
+      <Segmented
+        value={targetBackend}
+        onChange={async (v) => {
+          await update({ targetBackend: v });
+          refreshStatus();
+        }}
+        options={[
+          { value: "auto", label: "Auto" },
+          { value: "t3-code", label: "T3 Code" },
+          { value: "claude-desktop", label: "Claude Desktop" },
+        ]}
+      />
+      <p className="mt-2 text-[12px] leading-snug text-muted">
+        {targetBackend === "t3-code"
+          ? "Sends drafts and session switches to your local T3 Code bridge."
+          : targetBackend === "claude-desktop"
+            ? "Always targets the Claude Desktop window directly."
+            : "Uses T3 Code automatically when a local endpoint is configured, otherwise falls back to Claude Desktop."}
+      </p>
+
+      <div className="mt-3 flex items-center justify-between gap-2 rounded-xl bg-soft px-3 py-2 text-[12px]">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={cn("size-2 shrink-0 rounded-full", active ? "bg-emerald-500" : "bg-black/25")} aria-hidden />
+          <span className="truncate text-ink">
+            {active
+              ? `T3 Code active${t3Status?.endpoint ? ` (${t3Status.endpoint})` : ""}`
+              : targetBackend === "t3-code" && !t3Status?.endpoint
+                ? "T3 Code selected — set a local endpoint below"
+                : "Claude Desktop active"}
+          </span>
+        </div>
+        <button type="button" onClick={refreshStatus} className="shrink-0 text-[11.5px] text-muted hover:text-fg">
+          Refresh
+        </button>
+      </div>
+
+      <Reveal show={targetBackend !== "claude-desktop"}>
+        <div className="mt-4">
+          <label className="mb-1.5 block text-[12.5px] text-ink">T3 Code endpoint</label>
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void saveEndpoint(endpoint);
+            }}
+          >
+            <input
+              value={endpoint}
+              onChange={(e) => {
+                setEndpoint(e.target.value);
+                if (endpointErr) setEndpointErr("");
+              }}
+              onBlur={() => void saveEndpoint(endpoint)}
+              placeholder="http://127.0.0.1:3773"
+              spellCheck={false}
+              aria-label="T3 Code endpoint"
+              className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-soft px-2.5 text-[12.5px] text-fg outline-none select-text placeholder:text-faint focus:border-black/40 focus:bg-white"
+            />
+            <button
+              type="submit"
+              disabled={endpoint.trim().replace(/\/+$/, "") === (s.t3Endpoint ?? "")}
+              className="h-9 shrink-0 rounded-lg bg-fg px-3 text-[12.5px] font-medium text-white transition-colors hover:bg-[#2b2b2b] disabled:opacity-30"
+            >
+              Save
+            </button>
+          </form>
+          {endpointErr ? (
+            <p className="mt-1 text-[12px] text-red-600">{endpointErr}</p>
+          ) : (
+            <p className="mt-1 text-[11.5px] leading-snug text-faint">Loopback URL only (127.0.0.1, localhost, or ::1). Leave empty to disable.</p>
+          )}
+        </div>
+
+        <div className="mt-3 text-[12px] leading-snug">
+          <div className="mb-1.5 text-[12.5px] text-ink">T3 Bearer token (optional)</div>
+          {hasToken && !tokenOpen ? (
+            <div className="flex items-center gap-2">
+              <p className="min-w-0 flex-1 text-muted">Bearer token saved ✓</p>
+              <button
+                type="button"
+                onClick={() => setTokenOpen(true)}
+                className="shrink-0 rounded-lg bg-soft px-2.5 py-1 text-[12px] font-medium text-ink transition-colors hover:bg-black/[0.08] hover:text-fg"
+              >
+                Replace
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveToken("")}
+                className="shrink-0 rounded-lg px-2 py-1 text-[12px] text-muted transition-colors hover:text-fg"
+              >
+                Remove
+              </button>
+            </div>
+          ) : (
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (token.trim()) void saveToken(token.trim());
+              }}
+            >
+              <input
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                autoComplete="off"
+                aria-label="T3 Bearer token"
+                placeholder="Optional Bearer token"
+                className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-soft px-2.5 text-[13px] text-fg outline-none select-text placeholder:text-faint focus:border-black/40 focus:bg-white"
+              />
+              <button disabled={!token.trim()} className="h-9 shrink-0 rounded-lg bg-fg px-3 text-[12.5px] font-medium text-white transition-colors hover:bg-[#2b2b2b] disabled:opacity-30">
+                Save
+              </button>
+            </form>
+          )}
+          {tokenMsg && <p className={cn("mt-1.5 text-[12px]", tokenMsg.bad ? "text-red-600" : "text-muted")}>{tokenMsg.text}</p>}
+        </div>
+      </Reveal>
+
+      <Toggle
+        className="mt-4"
+        checked={driftGuard}
+        onChange={(routingDriftGuard) => update({ routingDriftGuard })}
+        label="Warn before drafting into an unrelated session/thread"
+        hint="Gives a spoken heads-up before drafting if your prompt looks unrelated to the currently open session or thread."
+      />
+      <Reveal show={driftGuard}>
+        <div className="mt-3 rounded-xl bg-soft px-3 py-2.5">
+          <div className="mb-2 flex items-center justify-between text-[12.5px]">
+            <span className="text-ink">Drift warning threshold</span>
+            <span className="tabular-nums text-fg">{pct}%</span>
+          </div>
+          <input
+            type="range"
+            min={DRIFT_MIN}
+            max={DRIFT_MAX}
+            step={0.01}
+            value={threshold}
+            aria-label="Drift warning threshold"
+            onChange={(e) => changeThreshold(Number(e.target.value))}
+            className="speed-slider w-full"
+            style={{ background: `linear-gradient(to right, #0d0d0d ${fill}%, rgba(0,0,0,.1) ${fill}%)` }}
+          />
+          <div className="mt-1 flex justify-between text-[11px] text-faint">
+            <span>50% (stricter)</span>
+            <span>98% (only obvious drift)</span>
+          </div>
+        </div>
+      </Reveal>
+
+      <Toggle
+        className="mt-4"
+        checked={queueBusy}
+        onChange={(routingQueueBusy) => update({ routingQueueBusy })}
+        label="Queue confirmed prompts while busy"
+        hint="Queues confirmed prompts if the active session or thread is mid-turn (still blocks if it is waiting on a permission or question)."
+      />
     </Section>
   );
 }
@@ -966,7 +1629,7 @@ const keyStorageLabel = (kind: string) =>
       : kind === "env-file" ? "in the .env file (developer mode)" : "not available";
 
 /** Grok voice's xAI key: add one (or replace it). Only Grok needs it; Claude voice never does. */
-function XaiKey({ config, onSaved, focus }: { config: AppConfig; onSaved: () => void; focus: boolean }) {
+function XaiKey({ config, onSaved, focus }: { config: Pick<AppConfig, "hasKey" | "keyStorage">; onSaved: () => void; focus: boolean }) {
   const [open, setOpen] = useState(!config.hasKey);
   const [key, setKey] = useState("");
   const [msg, setMsg] = useState("");

@@ -4,6 +4,7 @@
 //   start({ task, mcpUrl, token, tools, onEvent, ... }) -> { send(text), stop(), pid }
 
 import { claudeCodeEngine } from './claude-code.js';
+import { geminiEngine } from './gemini.js';
 
 export const codexEngine = Object.freeze({
   id: 'codex',
@@ -14,7 +15,7 @@ export const codexEngine = Object.freeze({
   },
 });
 
-export const ENGINES = Object.freeze({ 'claude-code': { ...claudeCodeEngine, available: true }, codex: codexEngine });
+export const ENGINES = Object.freeze({ 'claude-code': { ...claudeCodeEngine, available: true }, gemini: { ...geminiEngine, available: true }, codex: codexEngine });
 
 /** The engine for an id ('claude-code' unless another one is available and asked for). */
 export function engineFor(id) {

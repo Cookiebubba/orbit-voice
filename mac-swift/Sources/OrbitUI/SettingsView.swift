@@ -13,7 +13,8 @@ struct SettingsView: View {
 
   var body: some View {
     let s = ctx.settings
-    let claude = s.string("voiceEngine") == "claude"
+    let engine = s.string("voiceEngine")
+    let usesLocalVoice = engine == "claude" || engine == "gemini-cli"
     ScrollView {
       VStack(alignment: .leading, spacing: 0) {
         BackButton(action: onClose).padding(.bottom, 12)
@@ -21,16 +22,19 @@ struct SettingsView: View {
         Text("Everything saves as soon as you change it.").font(Theme.font(12.5)).foregroundStyle(Theme.muted).padding(.top, 8).padding(.bottom, 12)
         VStack(alignment: .leading, spacing: 12) {
           VoiceEngineSection(ctx: ctx)
-          VoiceCard(ctx: ctx, engine: claude ? "claude" : "grok").id(claude ? "claude" : "grok")
+          if engine == "grok" || usesLocalVoice {
+            VoiceCard(ctx: ctx, engine: usesLocalVoice ? "claude" : "grok").id(usesLocalVoice ? "claude" : "grok")
+          }
           ListeningSection(s: s)
           FinishesSection(s: s)
           SecondBrainSection(ctx: ctx)
+          TargetAndRoutingSection(s: s)
           MacPermissionsSection(ctx: ctx)
           AnywhereSection(s: s)
           HotkeySection(ctx: ctx)
           AppSection(ctx: ctx)
           AvatarSection(s: s)
-          if !claude { UsageSection(ctx: ctx) }
+          if engine == "grok" { UsageSection(ctx: ctx) }
           UpdatesSection(ctx: ctx)
           AboutSection(ctx: ctx)
         }
@@ -77,6 +81,73 @@ struct FinishesSection: View {
       if mode == "speak" {
         ToggleRow(label: "Wake \(name) to say it", hint: "While \(name) is asleep, it connects just long enough to tell you, then listens for 3 seconds in case you want something. The mic opens only after it has spoken; press the hotkey to stop it.\(claude ? " Each wake uses a little of your Claude plan." : " Each wake bills a few seconds of xAI time.")", isOn: s.bool("announceWake")) { save(s, "announceWake", .bool($0)) }.padding(.top, 16)
         ToggleRow(label: "Wake \(name) when something you asked for is ready", hint: "When Claude finishes a prompt \(name) sent for you, or the second brain answers after you hung up (a question still running then keeps going), \(name) wakes to tell you. At most 6 wakes an hour.", isOn: s.bool("wakeOnResults")) { save(s, "wakeOnResults", .bool($0)) }.padding(.top, 16)
+      }
+    }
+  }
+}
+
+// MARK: - Target & routing
+
+struct TargetAndRoutingSection: View {
+  let s: SettingsModel
+  @State private var endpointDraft: String?
+  @State private var endpointError = ""
+  @FocusState private var endpointFocused: Bool
+
+  var body: some View {
+    SettingsSection(title: "Target & routing") {
+      FieldLabel(text: "Target backend")
+      Segmented(value: s.string("targetBackend"), options: [
+        .init(value: "auto", label: "Auto"),
+        .init(value: "claude-desktop", label: "Claude Desktop"),
+        .init(value: "t3-code", label: "T3 Code"),
+      ]) { save(s, "targetBackend", .string($0)) }
+      Hint(text: "Auto uses T3 Code when a local endpoint is configured below, otherwise Claude Desktop.").padding(.top, 8)
+      FieldLabel(text: "T3 Code endpoint")
+      TextField(
+        "",
+        text: Binding(get: { endpointDraft ?? s.string("t3Endpoint") }, set: { endpointDraft = $0; endpointError = "" }),
+        prompt: Text("http://127.0.0.1:3773").foregroundStyle(Theme.faint)
+      )
+      .focused($endpointFocused)
+      .modifier(FieldStyle(size: 12.5, focused: endpointFocused))
+      .onSubmit(saveEndpoint)
+      .onChange(of: endpointFocused) { if !endpointFocused { saveEndpoint() } }
+      .accessibilityLabel("T3 Code endpoint")
+      if !endpointError.isEmpty {
+        Hint(text: endpointError, size: 11.5, color: Theme.amber700).padding(.top, 4)
+      }
+      Hint(text: "Local loopback URL for T3 Code (127.0.0.1 or localhost). Leave empty when using Claude Desktop.", size: 11.5, color: Theme.faint).padding(.top, 4)
+      ToggleRow(
+        label: "Topic drift heads-up",
+        hint: "Speaks an advisory heads-up when a prompt looks meant for another session or a brand-new topic. Never auto-switches.",
+        isOn: s.bool("routingDriftGuard")
+      ) { save(s, "routingDriftGuard", .bool($0)) }.padding(.top, 16)
+      ToggleRow(
+        label: "Queue prompts while busy",
+        hint: "Holds confirmed prompts while a session is working and sends them once it is idle. Always blocked while waiting on a permission or question.",
+        isOn: s.bool("routingQueueBusy")
+      ) { save(s, "routingQueueBusy", .bool($0)) }.padding(.top, 16)
+    }
+  }
+
+  private func saveEndpoint() {
+    guard let draft = endpointDraft else { return }
+    let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed == s.string("t3Endpoint") {
+      endpointDraft = nil
+      return
+    }
+    Task {
+      let result = await s.set("t3Endpoint", .string(trimmed))
+      switch result {
+      case .saved:
+        endpointDraft = nil
+        endpointError = ""
+      case .refused:
+        endpointError = "Enter a local http(s) URL on 127.0.0.1 or localhost (or leave empty)."
+      case .failed(let msg):
+        endpointError = msg
       }
     }
   }

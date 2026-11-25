@@ -83,8 +83,8 @@ public final class SettingsModel {
   public func int(_ key: String) -> Int { Int(double(key)) }
   public func string(_ key: String) -> String { values[key]?.stringValue ?? SettingsSchema.byKey[key]?.defaultValue.stringValue ?? "" }
   public var hotkeyLabel: String { string("hotkeyLabel") }
-  /** The assistant's name in the text: Grok, or Orbit when Claude is the voice. */
-  public var assistantName: String { string("voiceEngine") == "claude" ? "Orbit" : "Grok" }
+  /** The assistant's name in the text: Grok, or Orbit when Claude or Gemini is the voice. */
+  public var assistantName: String { string("voiceEngine") == "grok" ? "Grok" : "Orbit" }
 
   // MARK: changing
 

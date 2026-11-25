@@ -265,6 +265,8 @@ async function main() {
       configDir: profile,
       secrets: sealedKeyStore(sealer, profile, 'xai-key.sealed'),
       brainSecrets: sealedKeyStore(sealer, profile, 'anthropic-key.sealed'),
+      geminiSecrets: sealedKeyStore(sealer, profile, 'gemini-key.sealed'),
+      t3Secrets: sealedKeyStore(sealer, profile, 't3-token.sealed'),
       clipboard: (text) => send({ t: 'clipboard', text: String(text) }),
       models: process.env.ORBIT_MODELS_DIR || path.join(CORE, 'resources', 'models'),
       // Orbit Native hears and speaks for Claude voice itself (phase 2): the core needn't hold the models too.

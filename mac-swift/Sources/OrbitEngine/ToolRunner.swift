@@ -233,11 +233,13 @@ public actor ToolRunner {
   // claude_app (app-control.js)
   var appUsed: [String: Double] = [:]
   var appPending: (action: String, value: String, title: String, at: Double, askedWith: Double)?
+  let promptQueue: PromptQueue
 
   public init(services: ToolServices, hooks: CallHooks) {
     s = services
     h = hooks
     let now = services.now
+    promptQueue = PromptQueue(now: now)
     offers = Offers.Book(now: { now() })
   }
 
@@ -353,10 +355,46 @@ public actor ToolRunner {
       if snapshot.targetNew, JSTruthy.of(result["sessionTitle"]) { h.notify(["type": "bridge.session", "title": result["sessionTitle"]!]) }
       if snapshot.targetNew { newSessionSent = (sentAt, result["sessionTitle"]?.stringValue) }
       if draft == snapshot { setDraft(nil) }
+    } else if result["error"]?.stringValue == "send_button_not_found" && result["why"]?.stringValue == "claude_working" && on("routingQueueBusy") {
+      let key = snapshot.targetTitle ?? "active"
+      let q = promptQueue.enqueue(
+        sessionId: key,
+        prompt: snapshot.text,
+        meta: [
+          "targetTitle": snapshot.targetTitle.map { .string($0) } ?? .null,
+          "targetNew": .bool(snapshot.targetNew),
+          "targetFolder": snapshot.targetFolder.map { .string($0) } ?? .null,
+          "filled": .bool(snapshot.filled),
+        ]
+      )
+      if q.ok {
+        if draft == snapshot { setDraft(nil) }
+        h.notify(["type": "bridge.queued", "text": .string(snapshot.text), "sessionTitle": snapshot.targetTitle.map { .string($0) } ?? .null, "position": .number(Double(q.position ?? 1))])
+        return [
+          "ok": true,
+          "queued": true,
+          "position": .number(Double(q.position ?? 1)),
+          "sessionTitle": snapshot.targetTitle.map { .string($0) } ?? .null,
+          "next_step": "Claude is still working, so Orbit queued the confirmed prompt and will send it once Claude finishes (unless Claude asks for permission first). Say that in a few words.",
+        ]
+      }
+      lastSentAt = 0
     } else {
       lastSentAt = 0
     }
     return result
+  }
+
+  private func smartResolveDesktop(_ query: String) -> DesktopSession? {
+    if let direct = s.sessions.resolve(query) { return direct }
+    let all = Array(s.sessions.list().prefix(12))
+    guard !all.isEmpty else { return nil }
+    let contexts = all.map {
+      SessionRouter.harvestDesktopSession($0, transcriptFile: s.sessions.findTranscript($0.cliSessionId, cwd: $0.cwd)?.path)
+    }
+    let ranked = SessionRouter.rankCandidates(query: query, contexts: contexts, now: now)
+    guard let best = ranked.best, !ranked.suggestNew else { return nil }
+    return all.first { $0.id == best.id }
   }
 
   static func sameText(_ a: String?, _ b: String?) -> Bool {
@@ -461,7 +499,7 @@ public actor ToolRunner {
     let includeTools = JSTruthy.of(a["include_tool_calls"])
     let query = a["session"]?.stringValue.map(JS.trim) ?? ""
     if !query.isEmpty {
-      guard let x = s.sessions.resolve(query) else { return ["error": .string("No session matched \"\(JS.slice(query, 0, 80))\". Try list_sessions.")] }
+      guard let x = smartResolveDesktop(query) else { return ["error": .string("No session matched \"\(JS.slice(query, 0, 80))\". Try list_sessions.")] }
       return readSession(x, lastN: lastN, includeTools: includeTools)
     }
     switch await findOpenSessionNow(await s.desktop.info()) {
@@ -517,6 +555,34 @@ public actor ToolRunner {
     let title = info["sessionTitle"]?.stringValue ?? ""
     if title.isEmpty && !JSTruthy.of(info["newSession"]) { return ["error": "The Claude window is not showing a Code session. Ask the user to open one, or start one with new_session."] }
     let targetNew = !JSTruthy.of(info["sessionTitle"]) && JSTruthy.of(info["newSession"])
+    let force = a["force"] == .bool(true)
+    if on("routingDriftGuard") && !force && !targetNew && !title.isEmpty {
+      let all = Array(s.sessions.list().prefix(10))
+      if let cur = all.first(where: { $0.title == title }), all.count > 1 {
+        let activeCtx = SessionRouter.harvestDesktopSession(cur, transcriptFile: s.sessions.findTranscript(cur.cliSessionId, cwd: cur.cwd)?.path)
+        let otherCtxs = all.filter { $0.id != cur.id }.map {
+          SessionRouter.harvestDesktopSession($0, transcriptFile: s.sessions.findTranscript($0.cliSessionId, cwd: $0.cwd)?.path)
+        }
+        let drift = await SessionRouter.checkTopicDrift(
+          prompt: clean,
+          activeContext: activeCtx,
+          otherContexts: otherCtxs,
+          threshold: s.config.number("routingDriftThreshold")
+        )
+        if drift.drifted {
+          return [
+            "drafted": false,
+            "drift_warning": true,
+            "active_session": .string(cur.title),
+            "suggested_session": drift.suggestedSession?.json ?? .null,
+            "suggest_new": .bool(drift.suggestNew),
+            "reason": drift.reason.map { .string($0) } ?? .null,
+            "warning": drift.warning.map { .string($0) } ?? .null,
+            "next_step": .string("\(drift.warning ?? "This sounds unrelated to the open session.") Ask briefly whether to draft here anyway (call draft_prompt with force=true), switch to the suggested session, or start a new session."),
+          ]
+        }
+      }
+    }
     let folderNow = info["folder"]?.stringValue ?? ""
     let targetFolder = targetNew && !folderNow.isEmpty ? folderNow : nil
     if targetNew && targetFolder == nil {
@@ -749,7 +815,7 @@ public actor ToolRunner {
       || (!VoiceText.asksSwitchWords(words) && asked!.at <= max(lastNotificationAt, lastBrainAnswerAt)) {
       return ["ok": false, "error": "Not switched: only switch sessions when the user has just asked to (each request switches once)."]
     }
-    let known = s.sessions.resolve(query)
+    let known = smartResolveDesktop(query)
     let result = await s.desktop.switchSession(known?.title ?? query)
     if result["ok"] == .bool(true) {
       switchAskUsed = asked!.at
@@ -1019,13 +1085,25 @@ public actor ToolRunner {
     }
     settingAskUsed = asked.at
     if setting == "voice_model" {
+      let geminiAliases = ["flash": "gemini-2.5-flash", "pro": "gemini-2.5-pro", "lite": "gemini-2.5-flash-lite"]
+      if let nextModel = geminiAliases[v] {
+        let was = str("geminiVoiceModel")
+        s.config.update(["geminiVoiceModel": .string(nextModel)])
+        let label = GeminiAuth.voiceModels[nextModel]?.label ?? nextModel
+        h.notify(["type": "bridge.setting", "setting": .string(setting), "value": .string(nextModel)])
+        return [
+          "ok": true, "voice_model": .string(nextModel), "changed": .bool(was != nextModel),
+          "note": .string(str("voiceEngine").hasPrefix("gemini") ? "From your next reply on, \(label) is thinking for you." : "Saved: \(label) is used when Gemini is the voice."),
+          "next_step": .string("Say in a few words that it's \(was == nextModel ? "already" : "now") \(label)."),
+        ]
+      }
       let was = str("claudeVoiceModel")
       s.config.update(["claudeVoiceModel": .string(v)])
       let label = JS.slice(v, 0, 1).uppercased() + JS.slice(v, 1)
       h.notify(["type": "bridge.setting", "setting": .string(setting), "value": .string(v)])
       return [
         "ok": true, "voice_model": .string(v), "changed": .bool(was != v),
-        "note": .string(str("voiceEngine") == "claude" ? "From your next reply on, \(label) is thinking for you (it takes over between turns)." : "Saved: \(label) is used when Claude is the voice (Settings → Voice engine). Right now Grok is the voice."),
+        "note": .string(str("voiceEngine") == "claude" ? "From your next reply on, \(label) is thinking for you (it takes over between turns)." : "Saved: \(label) is used when Claude is the voice (Settings → Voice engine)."),
         "next_step": .string("Say in a few words that it's \(was == v ? "already" : "now") \(label)."),
       ]
     }

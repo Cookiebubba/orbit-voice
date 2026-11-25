@@ -688,6 +688,8 @@ app.whenReady().then(async () => {
       configDir: dir,
       secrets: encryptedKeyStore(dir),
       brainSecrets: encryptedKeyStore(dir, 'anthropic-key.bin'),
+      geminiSecrets: encryptedKeyStore(dir, 'gemini-key.bin'),
+      t3Secrets: encryptedKeyStore(dir, 't3-token.bin'),
       clipboard: (text) => clipboard.writeText(text),
       firstRun: FIRST_RUN_SETTINGS, // a brand-new install: Qubit, no orb, and the onboarding
       // Offline wake-word model: shipped next to the app (extraResources), or in the repo in dev.
